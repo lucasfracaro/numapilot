@@ -19,7 +19,8 @@ jobs:
       - name: Testes
         run: cargo test --release
       - name: Clippy
-        run: cargo clippy --release --all-targets -- -D warnings
+        # Erros de verdade (correctness/suspicious) quebram o CI; lints de estilo novos só avisam.
+        run: cargo clippy --release --all-targets -- -D clippy::correctness -D clippy::suspicious
       - name: Só a linha de comando (sem interface)
         run: cargo build --release --no-default-features
       - name: Shellcheck

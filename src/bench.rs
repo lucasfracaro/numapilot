@@ -107,7 +107,7 @@ fn bandwidth(cpus: &[usize], mem_node: usize, size_mb: usize) -> f64 {
                 let t = Instant::now();
                 let mut s = 0u64;
                 for _ in 0..reps {
-                    for chunk in v.chunks_exact(8) {
+                    for chunk in v.as_chunks::<8>().0 {
                         s = s.wrapping_add(chunk[0] ^ chunk[1] ^ chunk[2] ^ chunk[3] ^ chunk[4] ^ chunk[5] ^ chunk[6] ^ chunk[7]);
                     }
                 }
