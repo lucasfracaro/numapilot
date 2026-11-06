@@ -26,8 +26,25 @@ LAB_PORT_CODE=8443
 LAB_PORT_SSH=2222
 LAB_PYCHARM=0          # 1 = instala o PyCharm dentro da imagem
 LAB_SRC="/usr/local/share/numapilot/container"
+# Servidor de IA (gfx906-rocm llm): llama.cpp compilado para gfx906, API compatível com OpenAI.
+LLM_IMAGE_REPO="docker.io/mixa3607/llama.cpp-gfx906"
+LLM_IMAGE=""           # vazio = a build diária mais nova
+LLM_ROCM="10.1"        # ROCm preferido nas tags (…-rocm-10.1)
+LLM_NAME="gfx906-llm"
+LLM_MODELS="$HOME/models"
+LLM_MODEL=""           # arquivo .gguf dentro de LLM_MODELS
+LLM_GPU="compute:all"  # GPUs (sintaxe do numapilot): compute:all | gfx906-0 | gfx906-1
+LLM_CTX=16384
+LLM_PORT=8080
+LLM_BIND="127.0.0.1"
+LLM_ARGS=""            # argumentos extras do llama-server
+UPDATE_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/gfx906-lab/updates.log"
 # shellcheck source=/dev/null
 [[ -r $CONF ]] && source "$CONF"
+# Ajustes do usuário feitos pela interface gráfica (sobrepõem o /etc).
+USER_SETTINGS="${XDG_CONFIG_HOME:-$HOME/.config}/gfx906-lab/settings.env"
+# shellcheck source=/dev/null
+[[ -r $USER_SETTINGS ]] && source "$USER_SETTINGS"
 ROCM_BASE=${GFX906_ROCM_BASE:-$ROCM_BASE}
 CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/gfx906-rocm
 
@@ -66,6 +83,11 @@ Uso: gfx906-rocm <comando> [args]
   lab [comando]                laboratório de ciência de dados/ML nas MI50 (Jupyter, VS Code, PyCharm):
                                  up | down | info | shell | logs | test | build
                                  update [--check|--force] (testa nas GPUs e volta se falhar) | rollback | pycharm
+  llm [comando]                servidor de IA (llama.cpp nas MI50, API compatível com OpenAI):
+                                 models | up [modelo.gguf] | down | info | logs | update [--check]
+  autoupdate enable|disable|status
+                               atualização semanal automática (laboratório, llama.cpp, ROCm)
+  auto-update                  roda a atualização agora (o que o timer semanal executa)
   doctor                       checa driver, permissões, GPUs e conflitos
 
 Base: $ROCM_BASE   Config: $CONF
@@ -369,7 +391,10 @@ lab_latest_base() { # tag mais nova vX.Y.Z-rocm-A.B no Docker Hub
     curl -fsSL "https://hub.docker.com/v2/repositories/${LAB_BASE_REPO#docker.io/}/tags?page_size=100&ordering=last_updated" |
         python3 -c '
 import json, re, sys
-tags = [t["name"] for t in json.load(sys.stdin).get("results", [])]
+try:
+    tags = [t["name"] for t in json.load(sys.stdin).get("results", [])]
+except Exception:
+    tags = []
 ok = [t for t in tags if re.fullmatch(r"v[0-9.]+-rocm-[0-9.]+", t)]
 key = lambda t: [int(x) for x in re.findall(r"[0-9]+", t)]
 print(sorted(ok, key=key)[-1] if ok else "")'
@@ -459,6 +484,7 @@ lab_up() {
         args+=(-v "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/lab/wayland-0")
     fi
     "$eng" "${args[@]}" "$LAB_IMAGE:latest" >/dev/null
+    enable_podman_restart
     sleep 3
     lab_info
 }
@@ -551,6 +577,235 @@ cmd_lab() {
     esac
 }
 
+# ---------------------------------------------------------------- servidor de IA
+enable_podman_restart() { # containers com --restart voltam após reiniciar o PC (podman sem root)
+    [[ $(engine) == podman && $EUID -ne 0 ]] && systemctl --user enable podman-restart.service >/dev/null 2>&1
+    return 0
+}
+
+llm_latest_tag() {
+    curl -fsSL "https://hub.docker.com/v2/repositories/${LLM_IMAGE_REPO#docker.io/}/tags?page_size=100&ordering=last_updated" |
+        LLM_ROCM="$LLM_ROCM" python3 -c '
+import json, os, re, sys
+try:
+    tags = [t["name"] for t in json.load(sys.stdin).get("results", [])]
+except Exception:
+    tags = []
+want = os.environ.get("LLM_ROCM", "")
+def info(t):
+    m = re.fullmatch(r"(full-|server-)?b?(\d+)-rocm-([0-9.]+)", t)
+    if not m: return None
+    return (m.group(3) == want, m.group(1) == "full-", int(m.group(2)), [int(x) for x in m.group(3).split(".")])
+c = [(info(t), t) for t in tags if info(t)]
+print(max(c)[1] if c else "")'
+}
+
+llm_image() {
+    if [[ -n $LLM_IMAGE ]]; then echo "$LLM_IMAGE"; return; fi
+    local f t
+    f="$(lab_cfg_dir)/llm.image"
+    if [[ -s $f ]]; then cat "$f"; return; fi
+    t=$(llm_latest_tag) || true
+    [[ -n $t ]] || die "não consegui descobrir a imagem do llama.cpp; defina LLM_IMAGE"
+    mkdir -p "$(lab_cfg_dir)"
+    echo "$LLM_IMAGE_REPO:$t" | tee "$f"
+}
+
+llm_running() { [[ $("$(engine)" inspect -f '{{.State.Running}}' "$LLM_NAME" 2>/dev/null) == true ]]; }
+
+llm_models() {
+    [[ -d $LLM_MODELS ]] || { echo "(pasta $LLM_MODELS não existe)"; return 0; }
+    find -L "$LLM_MODELS" -type f -name '*.gguf' ! -regex '.*-0000[2-9]-of-.*' ! -regex '.*-000[1-9][0-9]-of-.*' \
+        -printf '%P\t%s\n' | sort | awk -F'\t' '{ printf "%s\t%.1f GB\n", $1, $2/1e9 }'
+}
+
+llm_health() {
+    curl -fsS --max-time 3 "http://127.0.0.1:$LLM_PORT/health" 2>/dev/null | grep -q '"ok"'
+}
+
+llm_up() {
+    local model=${1:-$LLM_MODEL}
+    [[ -n $model ]] || die "escolha o modelo: gfx906-rocm llm up <arquivo.gguf> (veja gfx906-rocm llm models)"
+    [[ -f $LLM_MODELS/$model ]] || die "modelo não encontrado: $LLM_MODELS/$model"
+    if llm_running; then die "o servidor já está rodando (gfx906-rocm llm down antes)"; fi
+    local img
+    img=$(llm_image)
+    "$(engine)" image inspect "$img" >/dev/null 2>&1 || "$(engine)" pull "$img"
+    # Passa pelo numapilot para pegar só as GPUs escolhidas e os CPUs do socket delas.
+    if command -v numapilot >/dev/null && [[ -z ${NUMAPILOT_MODE:-} ]]; then
+        exec numapilot run --gpu "$LLM_GPU" --use compute --cpu gpu -- "$0" llm _run "$model" "$img"
+    fi
+    llm_run "$model" "$img"
+}
+
+llm_run() {
+    local model=$1 img=$2 eng
+    eng=$(engine)
+    "$eng" rm -f "$LLM_NAME" >/dev/null 2>&1 || true
+    local args=(run -d --name "$LLM_NAME" --restart unless-stopped --device=/dev/kfd --ipc=host
+        --security-opt seccomp=unconfined -p "$LLM_BIND:$LLM_PORT:8080" -v "$LLM_MODELS:/models:ro"
+        --label io.numapilot.model="$model" --entrypoint sh)
+    local renders=${NUMAPILOT_RENDER:-} r ngpu=0
+    [[ -n $renders ]] || renders=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true)
+    for r in $renders; do args+=(--device="$r"); ngpu=$((ngpu + 1)); done
+    if [[ $eng == podman && $EUID -ne 0 ]]; then
+        args+=(--group-add keep-groups)
+    else
+        local gids
+        mapfile -t gids < <(host_gid_args)
+        args+=("${gids[@]}")
+        [[ -n ${NUMAPILOT_CPUS:-} ]] && args+=(--cpuset-cpus "$NUMAPILOT_CPUS")
+        [[ -n ${NUMAPILOT_MEMS:-} ]] && args+=(--cpuset-mems "$NUMAPILOT_MEMS")
+    fi
+    local srv=(-m "/models/$model" --host 0.0.0.0 --port 8080 -ngl 999 -c "$LLM_CTX" --jinja)
+    ((ngpu > 1)) && srv+=(--split-mode layer)
+    # shellcheck disable=SC2206
+    [[ -n $LLM_ARGS ]] && srv+=($LLM_ARGS)
+    # shellcheck disable=SC2016
+    "$eng" "${args[@]}" "$img" -c 'exec "$(command -v llama-server || echo /app/llama-server)" "$@"' llama-server "${srv[@]}" >/dev/null
+    enable_podman_restart
+    info "carregando $model (pode levar alguns minutos)..."
+    local i
+    for i in $(seq 1 180); do
+        if llm_health; then llm_info; return 0; fi
+        llm_running || { "$eng" logs --tail 30 "$LLM_NAME"; die "o servidor parou ao carregar o modelo"; }
+        sleep 2
+    done
+    info "ainda carregando; acompanhe com: gfx906-rocm llm logs"
+}
+
+llm_info() {
+    if ! llm_running; then echo "servidor de IA parado (gfx906-rocm llm up <modelo>)"; return 1; fi
+    local host=$LLM_BIND m
+    [[ $host == 0.0.0.0 ]] && host=$(hostname)
+    m=$("$(engine)" inspect -f '{{ index .Config.Labels "io.numapilot.model" }}' "$LLM_NAME" 2>/dev/null)
+    cat <<EOF
+Servidor de IA rodando: $m  ($(llm_health && echo pronto || echo carregando))
+  Chat no navegador : http://$host:$LLM_PORT
+  API (OpenAI)      : http://$host:$LLM_PORT/v1   (modelo: qualquer nome)
+EOF
+}
+
+llm_update() {
+    local check=0 a
+    for a in "$@"; do [[ $a == --check ]] && check=1; done
+    local cur new f
+    f="$(lab_cfg_dir)/llm.image"
+    cur=$(cat "$f" 2>/dev/null || true)
+    if [[ -n $LLM_IMAGE ]]; then
+        new=$LLM_IMAGE
+    else
+        new=$(llm_latest_tag) || true
+        [[ -n $new ]] || die "não consegui consultar as builds do llama.cpp"
+        new="$LLM_IMAGE_REPO:$new"
+    fi
+    echo "llama.cpp atual: ${cur:-nenhum}"
+    echo "llama.cpp novo : $new"
+    [[ $new == "$cur" ]] && { info "já está na build mais nova"; return 0; }
+    [[ $check == 1 ]] && return 0
+    "$(engine)" pull "$new" || die "não consegui baixar $new"
+    mkdir -p "$(lab_cfg_dir)"
+    echo "$new" >"$f"
+    [[ -n $cur ]] && echo "$cur" >"$(lab_cfg_dir)/llm.image.previous"
+    if llm_running; then
+        local model
+        model=$("$(engine)" inspect -f '{{ index .Config.Labels "io.numapilot.model" }}' "$LLM_NAME")
+        "$(engine)" rm -f "$LLM_NAME" >/dev/null
+        if ! (LLM_MODEL=$model "$0" llm up "$model"); then
+            info "a build nova falhou: voltando para $cur"
+            echo "$cur" >"$f"
+            "$0" llm up "$model"
+            return 1
+        fi
+    fi
+    info "llama.cpp atualizado"
+}
+
+cmd_llm() {
+    local sub=${1:-info}
+    shift || true
+    case $sub in
+    models) llm_models ;;
+    up | start) llm_up "$@" ;;
+    _run) llm_run "$@" ;;
+    down | stop) "$(engine)" rm -f "$LLM_NAME" >/dev/null 2>&1 && info "servidor de IA parado" ;;
+    info | status) llm_info ;;
+    logs) exec "$(engine)" logs -f "$LLM_NAME" ;;
+    update) llm_update "$@" ;;
+    *) die "uso: gfx906-rocm llm models|up [modelo.gguf]|down|info|logs|update [--check]" ;;
+    esac
+}
+
+# ---------------------------------------------------------------- atualização automática
+auto_update() {
+    mkdir -p "$(dirname "$UPDATE_LOG")"
+    local ok=1 summary=()
+    {
+        echo "=== $(date '+%F %T') ==="
+        if "$(engine)" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1; then
+            if lab_update; then summary+=("laboratório OK"); else summary+=("laboratório FALHOU (mantida a versão anterior)"); ok=0; fi
+        fi
+        if [[ -s "$(lab_cfg_dir)/llm.image" ]] || "$(engine)" inspect "$LLM_NAME" >/dev/null 2>&1; then
+            if llm_update; then summary+=("llama.cpp OK"); else summary+=("llama.cpp FALHOU (mantida a versão anterior)"); ok=0; fi
+        fi
+        if "$(engine)" image inspect "$IMAGE" >/dev/null 2>&1; then
+            if "$(engine)" pull "$IMAGE"; then summary+=("imagem ROCm OK"); else summary+=("imagem ROCm FALHOU"); ok=0; fi
+        fi
+        [[ ${#summary[@]} -gt 0 ]] || summary+=("nada instalado para atualizar")
+        echo "resultado: ${summary[*]}"
+    } > >(tee -a "$UPDATE_LOG") 2>&1
+    printf '{"time":"%s","ok":%s,"summary":"%s"}\n' "$(date -Iseconds)" "$([[ $ok == 1 ]] && echo true || echo false)" \
+        "$(IFS=';'; echo "${summary[*]}")" >"$(dirname "$UPDATE_LOG")/last-update.json"
+    command -v notify-send >/dev/null && notify-send -a numapilot "Atualização das MI50" "$(IFS=$'\n'; echo "${summary[*]}")" || true
+    [[ $ok == 1 ]]
+}
+
+autoupdate_cmd() {
+    local d="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    case ${1:-status} in
+    enable)
+        mkdir -p "$d"
+        cat >"$d/gfx906-update.service" <<EOF
+[Unit]
+Description=Atualiza laboratório, llama.cpp e ROCm das MI50 (com teste e volta automática)
+
+[Service]
+Type=oneshot
+ExecStart=$(readlink -f "$0") auto-update
+EOF
+        cat >"$d/gfx906-update.timer" <<'EOF'
+[Unit]
+Description=Atualização semanal das MI50
+
+[Timer]
+OnCalendar=Sun 04:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+        systemctl --user daemon-reload
+        systemctl --user enable --now gfx906-update.timer
+        info "atualização semanal ligada (domingo de madrugada)"
+        ;;
+    disable)
+        systemctl --user disable --now gfx906-update.timer 2>/dev/null || true
+        info "atualização semanal desligada"
+        ;;
+    status)
+        if systemctl --user is-enabled gfx906-update.timer >/dev/null 2>&1; then
+            echo "atualização semanal: ligada"
+            systemctl --user list-timers gfx906-update.timer --no-pager 2>/dev/null | sed -n 2p
+        else
+            echo "atualização semanal: desligada (gfx906-rocm autoupdate enable)"
+        fi
+        cat "$(dirname "$UPDATE_LOG")/last-update.json" 2>/dev/null || true
+        ;;
+    *) die "uso: gfx906-rocm autoupdate enable|disable|status" ;;
+    esac
+}
+
 cmd_doctor() {
     echo "kernel: $(uname -r)"
     if lsmod 2>/dev/null | grep -q '^amdgpu'; then echo "amdgpu: carregado"; else echo "amdgpu: NÃO carregado"; fi
@@ -593,6 +848,9 @@ main() {
     exec) cmd_exec "$@" ;;
     container) cmd_container "$@" ;;
     lab) cmd_lab "$@" ;;
+    llm) cmd_llm "$@" ;;
+    auto-update) auto_update ;;
+    autoupdate) autoupdate_cmd "$@" ;;
     doctor) cmd_doctor ;;
     help | -h | --help) usage ;;
     *) usage; exit 1 ;;

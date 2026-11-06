@@ -1,0 +1,63 @@
+# Maintainer: Lucas Fracaro <lucasgfracaro@gmail.com>
+pkgname=numapilot-git
+pkgver=r0
+pkgrel=1
+pkgdesc="Processador (NUMA), memória e GPU por programa; ventoinhas das MI50, laboratório de IA e servidor llama.cpp"
+arch=('x86_64')
+url="https://github.com/lucasfracaro/numapilot"
+license=('MIT') # ajuste se escolher outra licença para o projeto
+depends=('gcc-libs' 'glibc' 'bash' 'python' 'curl' 'hwdata' 'libxkbcommon' 'wayland' 'libglvnd')
+makedepends=('cargo' 'git')
+optdepends=(
+  'podman: laboratório, servidor de IA e lista de containers'
+  'distrobox: abrir apps de containers distrobox pela interface'
+  'libva-utils: mostrar quais GPUs codificam vídeo (aba Streaming)'
+  'sunshine: streaming de jogos'
+  'code: abrir o VS Code do PC ligado ao laboratório'
+)
+provides=('numapilot')
+conflicts=('numapilot')
+backup=('etc/numapilot.toml' 'etc/gfx906-rocm.conf')
+install=numapilot.install
+source=("numapilot::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd numapilot
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+  cd numapilot
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd numapilot
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+check() {
+  cd numapilot
+  export RUSTUP_TOOLCHAIN=stable CARGO_TARGET_DIR=target
+  cargo test --frozen --release --lib
+}
+
+package() {
+  cd numapilot
+  install -Dm755 target/release/numapilot "$pkgdir/usr/bin/numapilot"
+  install -Dm755 target/release/numapilot-gui "$pkgdir/usr/bin/numapilot-gui"
+  install -Dm755 packaging/gfx906-rocm "$pkgdir/usr/bin/gfx906-rocm"
+  install -d "$pkgdir/usr/lib/systemd/system"
+  sed 's#/usr/local/bin/#/usr/bin/#' packaging/numapilot.service >"$pkgdir/usr/lib/systemd/system/numapilot.service"
+  install -Dm644 packaging/numapilot-gui.desktop "$pkgdir/usr/share/applications/numapilot.desktop"
+  install -Dm644 packaging/numapilot.toml "$pkgdir/etc/numapilot.toml"
+  sed 's#^ROCM_BASE=.*#ROCM_BASE=/opt/rocm-gfx906#' packaging/gfx906-rocm.conf >gfx906-rocm.conf.pkg
+  install -Dm644 gfx906-rocm.conf.pkg "$pkgdir/etc/gfx906-rocm.conf"
+  install -d "$pkgdir/usr/share/numapilot/container"
+  install -m644 container/Containerfile container/*.txt container/*.py "$pkgdir/usr/share/numapilot/container/"
+  install -m755 container/lab-start "$pkgdir/usr/share/numapilot/container/"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/numapilot/README.md"
+}

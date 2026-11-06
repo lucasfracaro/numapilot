@@ -7,6 +7,7 @@ edition = "2024"
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
 eframe = { version = "0.37.0", optional = true, default-features = false, features = ["glow", "default_fonts", "x11", "wayland", "clipboard"] }
+ksni = { version = "0.3.7", features = ["blocking"], optional = true }
 libc = "0.2.191"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -14,7 +15,7 @@ toml = "1.2.0"
 
 [features]
 default = ["gui"]
-gui = ["dep:eframe"]
+gui = ["dep:eframe", "dep:ksni"]
 
 [[bin]]
 name = "numapilot"
@@ -22,7 +23,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "numapilot-gui"
-path = "src/bin/numapilot-gui.rs"
+path = "src/bin/numapilot-gui/main.rs"
 required-features = ["gui"]
 
 [profile.release]

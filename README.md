@@ -10,6 +10,13 @@ no CachyOS, mas funciona em qualquer Linux.
   `/etc/numapilot.toml`.
 - **Interface gráfica (`numapilot-gui`):** lista os programas abertos e deixa escolher, por
   programa, o processador e a placa de vídeo. O padrão é tudo no automático.
+- **Placas de vídeo:** temperaturas, curva da ventoinha e limite de potência de cada MI50.
+- **Laboratório e containers:** Jupyter, VS Code e PyCharm com PyTorch nas MI50, abertos por um
+  clique; lista os containers e os apps instalados em cada um.
+- **Servidor de IA:** llama.cpp nas MI50 com API compatível com a da OpenAI.
+- **Streaming:** liga o Sunshine e escolhe qual GPU codifica o vídeo.
+- **Ícone na bandeja** com as temperaturas e atalhos, e **atualização semanal automática** que testa
+  nas GPUs e volta sozinha se algo quebrar.
 - **gfx906-rocm:** instala, atualiza, testa e faz rollback dos ROCm da comunidade para as MI50,
   sem mexer no ROCm do sistema.
 
@@ -30,6 +37,16 @@ numapilot topo        # nós, núcleos, RAM, GPUs e em qual socket cada GPU est�
 ```
 
 Para remover: `./uninstall.sh`.
+
+**Pelo pacman (Arch/CachyOS):** o `packaging/arch/PKGBUILD` gera o pacote `numapilot-git` a partir
+deste repositório, com o binário em `/usr/bin` e o serviço em `/usr/lib/systemd/system`:
+
+```bash
+cd packaging/arch && makepkg -si
+sudo systemctl enable --now numapilot
+```
+
+Para publicar no AUR, gere o `.SRCINFO` com `makepkg --printsrcinfo > .SRCINFO`.
 
 ## 3. Modo automático (o daemon)
 
@@ -75,6 +92,21 @@ aberto, e ele aparece na lista agrupado por programa. Os jogos da Steam são agr
 
 As escolhas ficam em `/var/lib/numapilot/profiles.json`. Na linha de comando, use
 `numapilot profile list|set|rm`.
+
+**Outras abas:**
+
+| Aba | O que faz |
+|---|---|
+| Placas de vídeo | temperaturas (borda/hotspot/memória), ventoinha automática, por curva ou fixa, e limite de potência |
+| Laboratório e containers | liga/atualiza o laboratório; abre JupyterLab, VS Code (navegador ou app do PC), PyCharm e terminal; lista os containers e os apps de cada um |
+| Servidor de IA | escolhe o modelo `.gguf`, as MI50 e o contexto; inicia/para; abre o chat e mostra o endereço da API |
+| Streaming | liga o Sunshine e escolhe a GPU que codifica o vídeo (mostra quem faz H.264/HEVC/AV1) |
+| Configurações | ícone na bandeja ao iniciar a sessão, atualização semanal, hardware detectado |
+
+Comandos demorados (ligar o laboratório, atualizar...) rodam em segundo plano, numa janela com a
+saída ao vivo. A interface continua usável enquanto isso.
+
+![Laboratório e containers](docs/laboratorio.png)
 
 ## 5. Escolher GPU e socket ao abrir um programa (linha de comando)
 
@@ -269,7 +301,59 @@ GPU e os CPUs do socket dela.
 Para acessar de outro computador da rede, use `LAB_BIND="0.0.0.0"`. O acesso continua protegido por
 token, senha e chave SSH.
 
-## 10. Limitações
+## 10. Ventoinha e potência das MI50
+
+Na aba **Placas de vídeo**, cada placa tem três modos de ventoinha: o automático da própria placa,
+uma **curva** (temperatura do hotspot → %) ou uma velocidade **fixa**. Também dá para limitar a
+**potência** em W, dentro do mínimo e do máximo da placa.
+
+- Quem aplica é o serviço numapilot. As escolhas ficam em `/var/lib/numapilot/gpu.json` e voltam
+  sozinhas depois de reiniciar.
+- Segurança: a 95 °C a ventoinha vai a 100%, qualquer que seja o modo. Se o serviço parar, as
+  ventoinhas voltam para o controle da placa.
+- Algumas VBIOS não expõem o controle da ventoinha. Nesse caso, a interface avisa.
+
+![Placas de vídeo](docs/gpus.png)
+
+## 11. Servidor de IA (`gfx906-rocm llm`)
+
+Roda o llama.cpp compilado para gfx906 (builds diárias do mixa3607/ML-gfx906) num container, com
+API compatível com a da OpenAI. Funciona com Open WebUI, Continue, LibreChat e scripts.
+
+```bash
+mkdir -p ~/models   # coloque os .gguf aqui
+gfx906-rocm llm models
+gfx906-rocm llm up Qwen3-32B-Q4_K_M.gguf   # ou escolha pela interface
+gfx906-rocm llm                            # endereço do chat e da API
+gfx906-rocm llm update                     # build nova do llama.cpp (volta se falhar)
+```
+
+- Padrão: as duas MI50, com o modelo dividido por camadas. Para usar só uma, escolha `gfx906-0` ou
+  `gfx906-1` na interface ou em `LLM_GPU`.
+- Ele passa pelo numapilot: o container recebe só as GPUs escolhidas e os processadores e a memória
+  do socket delas.
+- Os ajustes da interface ficam em `~/.config/gfx906-lab/settings.env`.
+
+## 12. Atualização automática e ícone na bandeja
+
+- `gfx906-rocm autoupdate enable` (ou o checkbox em Configurações) cria um timer semanal do systemd
+  do usuário. Ele atualiza o laboratório, o llama.cpp e a imagem ROCm, sempre testando nas GPUs e
+  voltando para a versão anterior se falhar. O resultado aparece numa notificação e em Configurações.
+- O **ícone na bandeja** (`numapilot-gui --tray`, ou ative em Configurações) mostra a temperatura,
+  o uso e a potência de cada GPU. Fica de outra cor acima de 90 °C. O menu dá acesso ao JupyterLab,
+  ao VS Code, ao PyCharm, ao terminal do laboratório, ao chat do servidor de IA e ao painel do Sunshine.
+- Para os containers voltarem depois de reiniciar o PC, o podman sem root usa o
+  `podman-restart.service` do usuário, que é ativado automaticamente. Para eles subirem mesmo sem
+  você fazer login: `sudo loginctl enable-linger $USER`.
+
+## 13. Detecção instantânea
+
+Como root, o daemon recebe do kernel um aviso a cada programa aberto (netlink "proc connector").
+Assim, a regra, o perfil ou o aprendizado é aplicado logo após o programa iniciar, antes de ele
+alocar memória, e a memória já nasce no socket certo. Sem essa permissão, ele volta para a
+verificação a cada segundo.
+
+## 14. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice
@@ -282,10 +366,14 @@ token, senha e chave SSH.
 ## Arquitetura do código
 
 ```
-src/bin/numapilot-gui.rs  interface gráfica (egui)
+src/bin/numapilot-gui/  interface gráfica (egui) e ícone na bandeja (ksni)
 src/ctl.rs      socket de controle do daemon (a interface fala por ele)
 src/profiles.rs escolhas por programa
 src/desktop.rs  atalhos do menu que abrem pelo numapilot
+src/gpuctl.rs   sensores, curva da ventoinha e limite de potência (hwmon)
+src/procevents.rs  aviso instantâneo de programas novos (proc connector)
+src/containers.rs  containers podman/docker e os apps de cada um
+src/labcfg.rs   ajustes do laboratório e do servidor de IA
 container/      imagem do laboratório (Containerfile, pacotes, lab-start)
 src/topo.rs     nós NUMA, núcleos, RAM, GPUs (PCI, socket, KFD/gfx, UUID ROCm, monitor)
 src/decide.rs   decisão de GPU + socket (usada pelo `run`)

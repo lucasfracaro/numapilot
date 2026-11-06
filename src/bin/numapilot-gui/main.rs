@@ -1,7 +1,18 @@
 //! numapilot-gui: escolha gráfica de CPU (socket) e GPU por programa.
 //! O daemon mapeia os programas abertos; aqui você troca o hardware de cada um.
 
+mod bg;
+mod gpus;
+mod jobs;
+mod lab;
+mod llm;
+mod settings;
+mod stream;
+mod tray;
+
 use eframe::egui::{self, Color32, RichText};
+use numapilot::gpuctl::{GpuControl, GpuControls};
+use numapilot::labcfg::LabSettings;
 use numapilot::config::Config;
 use numapilot::ctl::{self, Request};
 use numapilot::daemon::{self, Row};
@@ -91,11 +102,25 @@ fn group_rows(rows: &[Row]) -> Vec<Group> {
 enum Tab {
     Programs,
     Profiles,
-    Hardware,
+    Gpus,
+    Lab,
+    Llm,
+    Stream,
+    Settings,
 }
 
-struct App {
-    topo: Topology,
+pub(crate) struct App {
+    pub(crate) topo: Topology,
+    pub(crate) bg: bg::Shared,
+    pub(crate) job: Option<jobs::Job>,
+    pub(crate) show_job: bool,
+    pub(crate) gpu_saved: GpuControls,
+    pub(crate) gpu_edit: HashMap<String, GpuControl>,
+    pub(crate) pending_gpu: Option<(String, GpuControl)>,
+    pub(crate) filter: String,
+    pub(crate) llm_cfg: Option<LabSettings>,
+    pub(crate) models: Option<Vec<(String, u64)>>,
+    ctx: egui::Context,
     groups: Vec<Group>,
     profiles: Profiles,
     loads: HashMap<usize, f64>,
@@ -113,9 +138,11 @@ struct App {
 }
 
 impl App {
-    fn new() -> App {
+    fn new(ctx: egui::Context) -> App {
         let cfg = Config::load().unwrap_or_default();
         let topo = Topology::load(&cfg);
+        let renders: Vec<String> = topo.gpus.iter().filter_map(|g| g.render.clone()).collect();
+        let bg = bg::start(ctx.clone(), renders);
         let mut cpu_opts = vec![
             ("auto".to_string(), "Automático".to_string()),
             ("gpu".to_string(), "Socket da GPU escolhida".to_string()),
@@ -141,6 +168,16 @@ impl App {
         gpu_opts.push(("none".into(), "auto".into(), "Nenhuma GPU".into()));
         let mut app = App {
             topo,
+            bg,
+            job: None,
+            show_job: false,
+            gpu_saved: GpuControls::load(),
+            gpu_edit: HashMap::new(),
+            pending_gpu: None,
+            filter: String::new(),
+            llm_cfg: None,
+            models: None,
+            ctx,
             groups: vec![],
             profiles: Profiles::default(),
             loads: HashMap::new(),
@@ -183,11 +220,54 @@ impl App {
         }
     }
 
-    fn toast(&mut self, msg: impl Into<String>, ok: bool) {
+    pub(crate) fn toast(&mut self, msg: impl Into<String>, ok: bool) {
         self.toast = Some((msg.into(), ok, Instant::now()));
     }
 
-    fn send(&mut self, req: Request) {
+    /// Roda um comando em segundo plano e mostra a saída numa janelinha.
+    pub(crate) fn start_job(&mut self, title: impl Into<String>, argv: Vec<String>) {
+        if self.job.as_ref().is_some_and(|j| j.finished().is_none()) {
+            self.toast("Espere o comando anterior terminar", false);
+            self.show_job = true;
+            return;
+        }
+        self.job = Some(jobs::run(title, argv, self.ctx.clone()));
+        self.show_job = true;
+    }
+
+    fn job_window(&mut self, ctx: &egui::Context) {
+        let Some(job) = self.job.clone() else { return };
+        if !self.show_job {
+            return;
+        }
+        let mut open = true;
+        let status = match job.finished() {
+            None => "rodando…",
+            Some(true) => "concluído",
+            Some(false) => "com erro",
+        };
+        egui::Window::new(format!("{} — {status}", job.title))
+            .id(egui::Id::unique("numapilot-job"))
+            .open(&mut open)
+            .default_size([720.0, 360.0])
+            .resizable(true)
+            .show(ctx, |ui| {
+                if job.finished().is_none() {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("pode fechar esta janela; o comando continua em segundo plano");
+                    });
+                }
+                egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink([false, false]).show(ui, |ui| {
+                    ui.add(egui::Label::new(RichText::new(job.text()).monospace().small()).wrap());
+                });
+            });
+        if !open {
+            self.show_job = false;
+        }
+    }
+
+    pub(crate) fn send(&mut self, req: Request) {
         match ctl::send(&req) {
             Ok(r) => self.toast(r.message, r.ok),
             Err(e) => self.toast(format!("{e:#}"), false),
@@ -213,9 +293,16 @@ impl App {
         ui.horizontal(|ui| {
             ui.heading("numapilot");
             ui.separator();
-            ui.selectable_value(&mut self.tab, Tab::Programs, "Programas abertos");
+            ui.selectable_value(&mut self.tab, Tab::Programs, "Programas");
             ui.selectable_value(&mut self.tab, Tab::Profiles, "Escolhas salvas");
-            ui.selectable_value(&mut self.tab, Tab::Hardware, "Hardware");
+            ui.selectable_value(&mut self.tab, Tab::Gpus, "Placas de vídeo");
+            ui.selectable_value(&mut self.tab, Tab::Lab, "Laboratório e containers");
+            ui.selectable_value(&mut self.tab, Tab::Llm, "Servidor de IA");
+            ui.selectable_value(&mut self.tab, Tab::Stream, "Streaming");
+            ui.selectable_value(&mut self.tab, Tab::Settings, "Configurações");
+            if self.job.is_some() && !self.show_job && ui.small_button("último comando").clicked() {
+                self.show_job = true;
+            }
         });
         if !self.daemon_ok {
             ui.label(
@@ -234,7 +321,7 @@ impl App {
                 let busy = g.busy_percent().unwrap_or(0) as f32 / 100.0;
                 let vram = g
                     .vram_used_total()
-                    .map(|(u, t)| format!(" · {:.1}/{:.0} GB", u as f64 / 1e9, t as f64 / 1e9))
+                    .map(|(u, t)| format!(" · {:.1}/{:.0} GB", u as f64 / 1073741824.0, t as f64 / 1073741824.0))
                     .unwrap_or_default();
                 ui.label(&g.alias);
                 ui.add(egui::ProgressBar::new(busy).desired_width(110.0).text(format!("{:.0}%{vram}", busy * 100.0)));
@@ -355,7 +442,7 @@ impl App {
                 }
                 if let Some(d) = self.desktop_for(&g.exe) {
                     let on = desktop::is_overridden(&d);
-                    let txt = if on { "✔ Menu" } else { "Usar no menu" };
+                    let txt = if on { "No menu: sim" } else { "Usar no menu" };
                     if ui.button(txt).on_hover_text(if on {
                         "O atalho do menu já abre pelo numapilot. Clique para desfazer."
                     } else {
@@ -441,49 +528,6 @@ impl App {
             self.send(Request::DeleteProfile { key, pid: None });
         }
     }
-
-    fn hardware_tab(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.heading("Processadores (nós NUMA)");
-            for n in &self.topo.nodes {
-                ui.label(format!(
-                    "Socket {} — {} threads ({} núcleos físicos), RAM {:.0} GB, CPUs {}",
-                    n.id,
-                    n.cpus.len(),
-                    n.physical_cores,
-                    n.mem_total_kb as f64 / 1048576.0,
-                    numapilot::util::format_cpulist(&n.cpus)
-                ));
-            }
-            ui.add_space(8.0);
-            ui.heading("Placas de vídeo");
-            for g in &self.topo.gpus {
-                let role = match g.role {
-                    GpuRole::Display => "vídeo (monitor ligado)",
-                    GpuRole::Compute if g.display_connected => "computação + monitor ligado nela (joga direto)",
-                    GpuRole::Compute => "computação; também roda jogos via PRIME",
-                    GpuRole::Other => "outra",
-                };
-                ui.label(format!(
-                    "{} — {} — {} — socket {} — {}",
-                    g.alias,
-                    g.pci,
-                    g.name,
-                    g.numa_node.map(|n| n.to_string()).unwrap_or_else(|| "?".into()),
-                    role
-                ));
-            }
-            for w in self.topo.warnings() {
-                ui.label(RichText::new(format!("Aviso: {w}")).color(Color32::from_rgb(230, 160, 40)));
-            }
-            ui.add_space(8.0);
-            ui.heading("Dicas");
-            ui.label("• Jogo numa MI50: escolha \"MI50 — jogo/gráfico\". Ela renderiza e a imagem sai pela placa com monitor.");
-            ui.label("• Prefira a MI50 do mesmo socket da placa de vídeo: a imagem não precisa atravessar entre os processadores.");
-            ui.label("• Lossless Scaling (lsfg-vk): o oficial gera os quadros na mesma GPU do jogo (dual GPU ainda não suportado).");
-            ui.label("  Para dual GPU com um fork do lsfg-vk, escolha a outra GPU em \"Lossless Scaling\" (ligue o monitor nela).");
-        });
-    }
 }
 
 impl eframe::App for App {
@@ -511,8 +555,14 @@ impl eframe::App for App {
         egui::CentralPanel::default_margins().show(ui, |ui| match self.tab {
             Tab::Programs => self.programs(ui),
             Tab::Profiles => self.profiles_tab(ui),
-            Tab::Hardware => self.hardware_tab(ui),
+            Tab::Gpus => gpus::ui(self, ui),
+            Tab::Lab => lab::ui(self, ui),
+            Tab::Llm => llm::ui(self, ui),
+            Tab::Stream => stream::ui(self, ui),
+            Tab::Settings => settings::ui(self, ui),
         });
+        let ctx = ui.ctx().clone();
+        self.job_window(&ctx);
     }
 }
 
@@ -574,6 +624,13 @@ fn relaunch(g: &Group, msgs: Arc<Mutex<Vec<(String, bool)>>>) {
 }
 
 fn main() -> eframe::Result {
+    if std::env::args().any(|a| a == "--tray") {
+        if let Err(e) = tray::main_loop() {
+            eprintln!("numapilot: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("numapilot — processador e placa de vídeo por programa")
@@ -582,5 +639,5 @@ fn main() -> eframe::Result {
             .with_min_inner_size([800.0, 400.0]),
         ..Default::default()
     };
-    eframe::run_native("numapilot", options, Box::new(|_cc| Ok(Box::new(App::new()))))
+    eframe::run_native("numapilot", options, Box::new(|cc| Ok(Box::new(App::new(cc.egui_ctx.clone())))))
 }

@@ -1,0 +1,14 @@
+post_install() {
+  echo ">> Ative o serviço:      sudo systemctl enable --now numapilot"
+  echo ">> Interface gráfica:    numapilot (no menu) ou numapilot-gui"
+  echo ">> Laboratório/IA:       sudo pacman -S podman  e depois  gfx906-rocm lab up"
+}
+post_upgrade() {
+  systemctl daemon-reload >/dev/null 2>&1
+  systemctl try-restart numapilot.service >/dev/null 2>&1
+  return 0
+}
+pre_remove() {
+  systemctl disable --now numapilot.service >/dev/null 2>&1
+  return 0
+}

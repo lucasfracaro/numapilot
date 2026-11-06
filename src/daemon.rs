@@ -5,6 +5,8 @@
 use crate::config::{Config, CpuSpec, GpuSpec};
 use crate::ctl::{self, Request, Response};
 use crate::decide::{least_loaded_node, node_loads, pick_gpus, Kind};
+use crate::gpuctl::{self, FanMode, GpuControls};
+use crate::procevents;
 use crate::learned::{run_dir, Learned};
 use crate::procfs::{self, Stat};
 use crate::profiles::{program_key, Profile, Profiles};
@@ -245,6 +247,21 @@ pub fn run(cfg: Config) -> Result<()> {
     let listener = bind_ctl();
     let mut learned = Learned::load();
     let mut profiles = Profiles::load();
+    let mut gpuc = GpuControls::load();
+    let mut fan_last: HashMap<String, f64> = HashMap::new();
+    for (pci, c) in &gpuc.map {
+        if let Some(w) = c.power_cap_w {
+            match gpuctl::set_power_cap(pci, Some(w)) {
+                Ok(v) => eprintln!("[numapilot] GPU {pci}: limite de potência {v:.0} W"),
+                Err(e) => eprintln!("[numapilot] GPU {pci}: não consegui limitar a potência: {e}"),
+            }
+        }
+    }
+    let execs = procevents::start();
+    eprintln!(
+        "[numapilot] detecção de programas: {}",
+        if execs.is_some() { "instantânea (proc connector)" } else { "por varredura" }
+    );
     let tck = procfs::clk_tck();
     let me = std::process::id() as i32;
     let mut procs: HashMap<i32, Tracked> = HashMap::new();
@@ -266,10 +283,22 @@ pub fn run(cfg: Config) -> Result<()> {
         while wait_start.elapsed() < tick_dur && !STOP.load(Ordering::SeqCst) {
             if let Some(l) = &listener {
                 while let Ok((s, _)) = l.accept() {
-                    serve(s, &ctx, &mut procs, &mut profiles, tick);
+                    serve(s, &ctx, &mut procs, &mut profiles, &mut gpuc, &mut fan_last, tick);
                 }
             }
-            std::thread::sleep(Duration::from_millis(50));
+            if let Some(rx) = &execs {
+                while let Ok(pid) = rx.try_recv() {
+                    if pid == me {
+                        continue;
+                    }
+                    let Some(st) = procfs::read_stat(pid) else { continue };
+                    let known = procs.get(&pid).is_some_and(|t| t.starttime == st.starttime && t.comm == st.comm);
+                    if !st.is_kthread() && !known {
+                        admit(&ctx, &learned, &profiles, &mut procs, pid, &st, tick);
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(25));
         }
         tick += 1;
         let dt = prev_t.elapsed().as_secs_f64().max(0.001);
@@ -299,20 +328,7 @@ pub fn run(cfg: Config) -> Result<()> {
                 Some(t) => t.starttime != st.starttime || t.comm != st.comm,
             };
             if reclassify {
-                let parent = procs.get(&st.ppid).cloned();
-                let mut t = classify(&ctx, &learned, &profiles, pid, &st, parent.as_ref());
-                if t.state == St::Placed {
-                    let nodes = t.nodes.clone();
-                    let why = t.origin.clone();
-                    ctx.apply(pid, &mut t, nodes, true, &why, tick);
-                } else if let (St::Watching, Some(n), true) =
-                    (&t.state, learned.get(&t.key).and_then(|e| e.gpu_node), topo.nodes.len() > 1)
-                {
-                    // Já sabemos que este programa usa a GPU do nó n: começa lá (first touch local).
-                    ctx.apply(pid, &mut t, vec![n], true, "aprendido: usa a GPU deste socket", tick);
-                    t.origin = "aprendido".into();
-                }
-                procs.insert(pid, t);
+                admit(&ctx, &learned, &profiles, &mut procs, pid, &st, tick);
                 continue;
             }
 
@@ -341,6 +357,9 @@ pub fn run(cfg: Config) -> Result<()> {
             step(&ctx, &mut learned, pid, t, &loads, &reserved, tick);
         }
 
+        for (pci, c) in &gpuc.map {
+            gpu_tick(pci, c, &mut fan_last);
+        }
         write_state(&ctx, &procs, &ppids, &profiles);
         if last_save.elapsed() > Duration::from_secs(30) {
             if let Err(e) = learned.save() {
@@ -356,6 +375,10 @@ pub fn run(cfg: Config) -> Result<()> {
             procfs::set_affinity_all(*pid, &ctx.all_cpus);
         }
     }
+    // Ventoinhas voltam para o controle da placa.
+    for pci in fan_last.keys() {
+        let _ = gpuctl::set_fan_auto(pci);
+    }
     let _ = learned.save();
     let _ = std::fs::remove_file(state_path());
     let _ = std::fs::remove_file(ctl::sock_path());
@@ -364,7 +387,15 @@ pub fn run(cfg: Config) -> Result<()> {
 }
 
 /// Atende um pedido da interface gráfica / CLI.
-fn serve(s: UnixStream, ctx: &Ctx, procs: &mut HashMap<i32, Tracked>, profiles: &mut Profiles, tick: u64) {
+fn serve(
+    s: UnixStream,
+    ctx: &Ctx,
+    procs: &mut HashMap<i32, Tracked>,
+    profiles: &mut Profiles,
+    gpuc: &mut GpuControls,
+    fan_last: &mut HashMap<String, f64>,
+    tick: u64,
+) {
     let _ = s.set_nonblocking(false);
     let _ = s.set_read_timeout(Some(Duration::from_secs(1)));
     let uid = ctl::peer_uid(&s);
@@ -372,6 +403,7 @@ fn serve(s: UnixStream, ctx: &Ctx, procs: &mut HashMap<i32, Tracked>, profiles: 
     let mut reader = BufReader::new(&s);
     let resp = match (reader.read_line(&mut line), uid) {
         (Ok(_), Some(uid)) => match serde_json::from_str::<Request>(line.trim()) {
+            Ok(Request::SetGpuControl { pci, control }) => handle_gpu(uid, ctx, gpuc, fan_last, pci, control),
             Ok(req) => handle(req, uid, ctx, procs, profiles, tick),
             Err(e) => Response::err(format!("pedido inválido: {e}")),
         },
@@ -392,6 +424,7 @@ fn handle(
 ) -> Response {
     let (key, profile, pid) = match req {
         Request::Ping => return Response::ok("pong"),
+        Request::SetGpuControl { .. } => return Response::err("pedido de GPU no lugar errado"),
         Request::SetProfile { key, profile, pid } => (key, profile, pid),
         Request::DeleteProfile { key, pid } => (key, Profile::default(), pid),
     };
@@ -429,6 +462,110 @@ fn handle(
         }
     }
     Response::ok(format!("perfil salvo; {n} processo(s) ajustado(s) agora"))
+}
+
+/// Classifica um processo novo e já aplica a decisão (regra, perfil ou aprendizado).
+fn admit(
+    ctx: &Ctx,
+    learned: &Learned,
+    profiles: &Profiles,
+    procs: &mut HashMap<i32, Tracked>,
+    pid: i32,
+    st: &Stat,
+    tick: u64,
+) {
+    let parent = procs.get(&st.ppid).cloned();
+    let mut t = classify(ctx, learned, profiles, pid, st, parent.as_ref());
+    if t.state == St::Placed {
+        let nodes = t.nodes.clone();
+        let why = t.origin.clone();
+        ctx.apply(pid, &mut t, nodes, true, &why, tick);
+    } else if let (St::Watching, Some(n), true) =
+        (&t.state, learned.get(&t.key).and_then(|e| e.gpu_node), ctx.topo.nodes.len() > 1)
+    {
+        // Já sabemos que este programa usa a GPU do nó n: começa lá (first touch local).
+        ctx.apply(pid, &mut t, vec![n], true, "aprendido: usa a GPU deste socket", tick);
+        t.origin = "aprendido".into();
+    }
+    procs.insert(pid, t);
+}
+
+/// Aplica ventoinha/potência de uma GPU conforme a configuração salva.
+fn gpu_tick(pci: &str, c: &gpuctl::GpuControl, last: &mut HashMap<String, f64>) {
+    let s = gpuctl::read_sensors(pci);
+    if !s.fan_controllable {
+        return;
+    }
+    match c.target_pct(s.control_temp()) {
+        Some(pct) => {
+            let prev = last.get(pci).copied();
+            // Sobe na hora; desce só com 3% de diferença (evita a ventoinha "caçando").
+            if prev.is_none_or(|p| pct > p || p - pct >= 3.0 || s.fan_mode_raw != Some(1)) {
+                if let Err(e) = gpuctl::set_fan_pct(pci, pct) {
+                    eprintln!("[numapilot] ventoinha {pci}: {e}");
+                } else {
+                    last.insert(pci.to_string(), pct);
+                }
+            }
+        }
+        None => {
+            if c.fan == FanMode::Auto && last.remove(pci).is_some() {
+                let _ = gpuctl::set_fan_auto(pci);
+            }
+        }
+    }
+}
+
+fn handle_gpu(
+    uid: u32,
+    ctx: &Ctx,
+    gpuc: &mut GpuControls,
+    fan_last: &mut HashMap<String, f64>,
+    pci: String,
+    mut control: gpuctl::GpuControl,
+) -> Response {
+    if uid != 0 && uid < ctx.cfg.daemon.min_uid {
+        return Response::err("sem permissão");
+    }
+    if !ctx.topo.gpus.iter().any(|g| g.pci == pci) {
+        return Response::err(format!("GPU {pci} não existe"));
+    }
+    if let Err(e) = control.validate() {
+        return Response::err(e);
+    }
+    let s = gpuctl::read_sensors(&pci);
+    if control.fan != FanMode::Auto && !s.fan_controllable {
+        return Response::err("esta placa não permite controlar a ventoinha (sem pwm1 no hwmon)");
+    }
+    let old = gpuc.get(&pci);
+    let mut msg = Vec::new();
+    if control.power_cap_w != old.power_cap_w {
+        match gpuctl::set_power_cap(&pci, control.power_cap_w) {
+            Ok(v) => msg.push(format!("potência {v:.0} W")),
+            Err(e) => return Response::err(format!("não consegui mudar a potência: {e}")),
+        }
+    }
+    if control.fan == FanMode::Auto && old.fan != FanMode::Auto {
+        let _ = gpuctl::set_fan_auto(&pci);
+        fan_last.remove(&pci);
+        msg.push("ventoinha automática".into());
+    } else if control.fan != FanMode::Auto {
+        fan_last.remove(&pci); // força reaplicar no próximo tick
+        msg.push(match control.fan {
+            FanMode::Fixed => format!("ventoinha fixa em {:.0}%", control.fixed_pct),
+            _ => "ventoinha pela curva".to_string(),
+        });
+    }
+    if control == gpuctl::GpuControl::default() {
+        gpuc.map.remove(&pci);
+    } else {
+        gpuc.map.insert(pci.clone(), control);
+    }
+    if let Err(e) = gpuc.save() {
+        return Response::err(format!("não consegui salvar: {e}"));
+    }
+    eprintln!("[numapilot] GPU {pci}: {}", msg.join(", "));
+    Response::ok(if msg.is_empty() { "nada mudou".to_string() } else { msg.join(", ") })
 }
 
 fn reserved_nodes(procs: &HashMap<i32, Tracked>) -> Vec<usize> {

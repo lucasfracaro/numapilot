@@ -22,6 +22,8 @@ pub enum Request {
     /// em todos os processos desse programa (do mesmo usuário).
     SetProfile { key: String, profile: Profile, pid: Option<i32> },
     DeleteProfile { key: String, pid: Option<i32> },
+    /// Ventoinha / potência de uma GPU (por endereço PCI).
+    SetGpuControl { pci: String, control: crate::gpuctl::GpuControl },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
