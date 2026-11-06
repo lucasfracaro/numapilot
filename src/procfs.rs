@@ -307,3 +307,107 @@ mod tests {
         set_mempolicy(MPOL_DEFAULT, &[]).unwrap();
     }
 }
+
+// ---------- prioridade ----------
+
+/// "Nice" em todas as threads (-20 = mais prioridade, 19 = menos). Negativo exige root.
+pub fn set_nice_all(pid: i32, nice: i32) -> usize {
+    let mut ok = 0;
+    for tid in threads(pid) {
+        if unsafe { libc::setpriority(libc::PRIO_PROCESS, tid as libc::id_t, nice) } == 0 {
+            ok += 1;
+        }
+    }
+    ok
+}
+
+/// Prioridade de disco (classe "best effort", nível 0 = mais alta, 7 = mais baixa).
+pub fn set_ioprio_all(pid: i32, level: i32) -> usize {
+    const IOPRIO_WHO_PROCESS: i32 = 1;
+    const IOPRIO_CLASS_BE: i32 = 2;
+    let prio = (IOPRIO_CLASS_BE << 13) | level.clamp(0, 7);
+    let mut ok = 0;
+    for tid in threads(pid) {
+        if unsafe { libc::syscall(libc::SYS_ioprio_set, IOPRIO_WHO_PROCESS, tid, prio) } == 0 {
+            ok += 1;
+        }
+    }
+    ok
+}
+
+/// (nice, nível de E/S) para "low" | "normal" | "high"
+pub fn priority_values(p: &str) -> (i32, i32) {
+    match p {
+        "high" => (-5, 0),
+        "low" => (10, 7),
+        _ => (0, 4),
+    }
+}
+
+// ---------- onde está a memória ----------
+
+/// Bytes de memória do processo em cada nó NUMA, a partir de /proc/PID/numa_maps.
+pub fn mem_by_node(pid: i32) -> std::collections::BTreeMap<usize, u64> {
+    let mut out = std::collections::BTreeMap::new();
+    let Ok(s) = fs::read_to_string(format!("/proc/{pid}/numa_maps")) else { return out };
+    parse_numa_maps(&s, &mut out);
+    out
+}
+
+pub fn parse_numa_maps(s: &str, out: &mut std::collections::BTreeMap<usize, u64>) {
+    for line in s.lines() {
+        let mut page_kb = 4u64;
+        let mut counts: Vec<(usize, u64)> = Vec::new();
+        for tok in line.split_whitespace() {
+            if let Some(v) = tok.strip_prefix("kernelpagesize_kB=") {
+                page_kb = v.parse().unwrap_or(4);
+            } else if let Some(rest) = tok.strip_prefix('N')
+                && let Some((n, c)) = rest.split_once('=')
+                && let (Ok(n), Ok(c)) = (n.parse::<usize>(), c.parse::<u64>())
+            {
+                counts.push((n, c));
+            }
+        }
+        for (n, c) in counts {
+            *out.entry(n).or_insert(0) += c * page_kb * 1024;
+        }
+    }
+}
+
+/// Contadores do nó (numa_hit, numa_miss, local_node, other_node...).
+pub fn numastat(node: usize) -> std::collections::BTreeMap<String, u64> {
+    let p = crate::util::sys(&format!("devices/system/node/node{node}/numastat"));
+    fs::read_to_string(p)
+        .map(|s| {
+            s.lines()
+                .filter_map(|l| {
+                    let mut it = l.split_whitespace();
+                    Some((it.next()?.to_string(), it.next()?.parse().ok()?))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod numa_tests {
+    use super::*;
+
+    #[test]
+    fn numa_maps_parsing() {
+        let s = "7f00 default anon=10 dirty=10 N0=6 N1=4 kernelpagesize_kB=4\n\
+                 7f10 bind:1 file=/x mapped=3 N1=3 kernelpagesize_kB=2048\n\
+                 7f20 default stack anon=1\n";
+        let mut m = std::collections::BTreeMap::new();
+        parse_numa_maps(s, &mut m);
+        assert_eq!(m.get(&0), Some(&(6 * 4096)));
+        assert_eq!(m.get(&1), Some(&(4 * 4096 + 3 * 2048 * 1024)));
+        assert_eq!(priority_values("high"), (-5, 0));
+    }
+
+    #[test]
+    fn own_numa_maps_readable() {
+        let m = mem_by_node(std::process::id() as i32);
+        assert!(m.values().sum::<u64>() > 0, "deveria ler o próprio numa_maps");
+    }
+}

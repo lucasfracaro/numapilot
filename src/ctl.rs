@@ -22,6 +22,12 @@ pub enum Request {
     /// em todos os processos desse programa (do mesmo usuário).
     SetProfile { key: String, profile: Profile, pid: Option<i32> },
     DeleteProfile { key: String, pid: Option<i32> },
+    /// O `numapilot run` pede para aplicar no próprio processo o que exige root.
+    Adopt { pid: i32 },
+    /// Move a memória de um programa de volta para o(s) socket(s) dos núcleos dele.
+    FixMemory { key: String },
+    /// Governador de frequência dos CPUs de um socket (performance, schedutil, powersave...).
+    SetGovernor { node: usize, governor: String },
     /// Ventoinha / potência de uma GPU (por endereço PCI).
     SetGpuControl { pci: String, control: crate::gpuctl::GpuControl },
 }

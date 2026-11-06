@@ -44,6 +44,8 @@ pub struct DaemonCfg {
     pub migrate_memory: bool,
     /// Processos que o daemon nunca toca.
     pub ignore: Vec<String>,
+    /// Interrupções de cada GPU atendidas pelo socket onde ela está ligada.
+    pub gpu_irq: bool,
 }
 
 impl Default for DaemonCfg {
@@ -59,6 +61,7 @@ impl Default for DaemonCfg {
             demote_ticks: 120,
             migrate_memory: true,
             ignore: vec!["numapilot".into(), "systemd".into(), "dbus-*".into()],
+            gpu_irq: true,
         }
     }
 }

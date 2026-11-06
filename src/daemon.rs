@@ -2,6 +2,7 @@
 //! e expande para os dois sockets quando o programa satura o nó.
 //! Também atende a interface gráfica pelo socket de controle (perfis por programa).
 
+use crate::cgroup::{self, Limits};
 use crate::config::{Config, CpuSpec, GpuSpec};
 use crate::ctl::{self, Request, Response};
 use crate::decide::{least_loaded_node, node_loads, pick_gpus, Kind};
@@ -14,7 +15,7 @@ use crate::topo::Topology;
 use crate::util::{format_cpulist, glob_match, is_root};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -59,6 +60,12 @@ struct Tracked {
     gpus: Vec<String>,
     gpu_node: Option<usize>,
     reapply_at: Option<u64>,
+    /// CPUs exatos (quando o perfil escolhe núcleos); vazio = todos os dos nós.
+    cpus: Vec<usize>,
+    /// Perfil aplicado a este processo.
+    profile: Option<Profile>,
+    /// Memória por nó (MB), medida pelo numa_maps.
+    mem: Vec<u64>,
 }
 
 /// Linha do /run/numapilot/state.json (lida por `status` e pela interface gráfica).
@@ -78,6 +85,8 @@ pub struct Row {
     pub cpus: String,
     pub cores: f64,
     pub gpus: String,
+    /// Memória do processo em cada nó NUMA (MB), índice = nó.
+    pub mem: Vec<u64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -154,6 +163,12 @@ impl Ctx<'_> {
 
     fn apply(&self, pid: i32, t: &mut Tracked, nodes: Vec<usize>, migrate: bool, why: &str, tick: u64) {
         let cpus = self.topo.cpus_of(&nodes);
+        self.apply_cpus(pid, t, cpus, migrate, why, tick);
+    }
+
+    fn apply_cpus(&self, pid: i32, t: &mut Tracked, cpus: Vec<usize>, migrate: bool, why: &str, tick: u64) {
+        let nodes = self.topo.nodes_of(&cpus);
+        let migrate = migrate && t.profile.as_ref().is_none_or(|p| p.memory != "free");
         let n = procfs::set_affinity_all(pid, &cpus);
         if n == 0 {
             t.state = St::Ignored("sem permissão para mudar a afinidade".into());
@@ -175,17 +190,64 @@ impl Ctx<'_> {
             format_cpulist(&cpus)
         );
         t.nodes = nodes;
+        t.cpus = cpus;
         t.state = St::Placed;
         t.reapply_at = Some(tick + 2);
     }
 
+    /// CPUs que o perfil pede (None = deixar no automático).
+    fn plan_cpus(&self, p: &Profile, current_nodes: &[usize]) -> Option<Vec<usize>> {
+        if let Some(l) = &p.cpu_list {
+            let v: Vec<usize> =
+                crate::util::parse_cpulist(l).into_iter().filter(|c| self.all_cpus.contains(c)).collect();
+            if !v.is_empty() {
+                return Some(v);
+            }
+        }
+        if !p.has_cpu_choice() {
+            return None;
+        }
+        let nodes = self.profile_nodes(p).unwrap_or_else(|| {
+            if current_nodes.is_empty() { self.topo.node_ids() } else { current_nodes.to_vec() }
+        });
+        let v = self.topo.select_cpus(&nodes, p.cores, p.smt, &[]);
+        if v.is_empty() { None } else { Some(v) }
+    }
+
+    /// Prioridade e grupo de controle (memória, núcleos exclusivos) de um programa.
+    fn apply_extras(&self, pids: &[i32], t: &Tracked, p: &Profile, prev: Option<&Profile>) {
+        let prev_prio = prev.map(|x| x.priority.as_str()).unwrap_or("normal");
+        if p.priority != "normal" || prev_prio != "normal" {
+            let (nice, io) = procfs::priority_values(&p.priority);
+            for &pid in pids {
+                procfs::set_nice_all(pid, nice);
+                procfs::set_ioprio_all(pid, io);
+            }
+        }
+        let scope = cgroup::scope_name(&t.pkey);
+        if p.needs_scope() || cgroup::unit_active(&scope) {
+            let cpus = if t.cpus.is_empty() { self.topo.cpus_of(&t.nodes) } else { t.cpus.clone() };
+            let limits = Limits {
+                cpus: (p.has_cpu_choice() && !cpus.is_empty()).then(|| cpus.clone()),
+                mem_nodes: (p.memory == "strict" && !cpus.is_empty()).then(|| self.topo.nodes_of(&cpus)),
+                mem_max_bytes: p.mem_max_gb.map(|g| (g * 1073741824.0) as u64),
+            };
+            match cgroup::apply(&t.pkey, &t.label, pids, &limits) {
+                Ok(name) => eprintln!("[numapilot] {} → {name} {:?}", t.comm, limits),
+                Err(e) => eprintln!("[numapilot] {}: não consegui aplicar o grupo de controle: {e}", t.comm),
+            }
+        }
+    }
+
     /// Aplica (ao vivo) a escolha de CPU de um perfil num processo em execução.
     fn apply_profile_live(&self, pid: i32, t: &mut Tracked, p: &Profile, tick: u64) {
-        match self.profile_nodes(p) {
-            Some(nodes) => {
+        t.profile = if p.is_auto() { None } else { Some(p.clone()) };
+        let cur = t.nodes.clone();
+        match self.plan_cpus(p, &cur) {
+            Some(cpus) => {
                 t.fixed = true;
                 t.origin = "perfil".into();
-                self.apply(pid, t, nodes, true, "escolha feita na interface", tick);
+                self.apply_cpus(pid, t, cpus, true, "escolha feita na interface", tick);
             }
             None => {
                 // Voltou para o automático: libera e deixa o daemon decidir de novo.
@@ -195,6 +257,7 @@ impl Ctx<'_> {
                 t.state = St::Watching;
                 t.active = 0;
                 t.nodes.clear();
+                t.cpus.clear();
                 eprintln!("[numapilot] {} (pid {pid}) → automático (escolha feita na interface)", t.comm);
             }
         }
@@ -256,6 +319,23 @@ pub fn run(cfg: Config) -> Result<()> {
                 Err(e) => eprintln!("[numapilot] GPU {pci}: não consegui limitar a potência: {e}"),
             }
         }
+    }
+    if let Ok(s) = std::fs::read_to_string(governors_path())
+        && let Ok(m) = serde_json::from_str::<BTreeMap<usize, String>>(&s)
+    {
+        for (node, gov) in m {
+            let _ = write_governor(&ctx, node, &gov);
+        }
+    }
+    let reserved_flag = run_dir().join("reserved");
+    if reserved_flag.exists() {
+        // O daemon anterior parou com núcleos reservados: devolve tudo.
+        let _ = cgroup::set_reserved(&ctx.all_cpus, &[]);
+        let _ = std::fs::remove_file(&reserved_flag);
+    }
+    let mut reserved_now: Vec<usize> = vec![];
+    if cfg.daemon.gpu_irq {
+        gpu_irqs(&ctx);
     }
     let execs = procevents::start();
     eprintln!(
@@ -343,6 +423,11 @@ pub fn run(cfg: Config) -> Result<()> {
             t.cores = delta / tck / dt;
             // GPUs em uso (para a interface), a cada 5 amostras.
             let visible = !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual"));
+            if visible && tick.is_multiple_of(10) && (t.state == St::Placed || t.cores >= 0.05) {
+                let m = procfs::mem_by_node(pid);
+                let max = topo.nodes.iter().map(|n| n.id).max().unwrap_or(0);
+                t.mem = (0..=max).map(|n| m.get(&n).copied().unwrap_or(0) / 1048576).collect();
+            }
             if visible && tick.is_multiple_of(5) {
                 let drm = procfs::open_drm(pid);
                 let mut g: Vec<String> =
@@ -360,6 +445,35 @@ pub fn run(cfg: Config) -> Result<()> {
         for (pci, c) in &gpuc.map {
             gpu_tick(pci, c, &mut fan_last);
         }
+        // Núcleos exclusivos: união dos programas com "exclusivo" rodando agora.
+        let mut want: Vec<usize> = procs
+            .values()
+            .filter(|t| t.state == St::Placed && t.profile.as_ref().is_some_and(|p| p.exclusive))
+            .flat_map(|t| t.cpus.iter().copied())
+            .collect();
+        want.sort_unstable();
+        want.dedup();
+        if want != reserved_now {
+            match cgroup::set_reserved(&ctx.all_cpus, &want) {
+                Ok(()) => {
+                    if want.is_empty() {
+                        let _ = std::fs::remove_file(&reserved_flag);
+                        eprintln!("[numapilot] núcleos exclusivos liberados");
+                    } else {
+                        let _ = std::fs::write(&reserved_flag, format_cpulist(&want));
+                        eprintln!("[numapilot] núcleos {} reservados (o resto do sistema não usa)", format_cpulist(&want));
+                    }
+                    reserved_now = want;
+                }
+                Err(e) => {
+                    eprintln!("[numapilot] não consegui reservar núcleos: {e}");
+                    reserved_now = want;
+                }
+            }
+        }
+        if cfg.daemon.gpu_irq && tick.is_multiple_of(60) {
+            gpu_irqs(&ctx);
+        }
         write_state(&ctx, &procs, &ppids, &profiles);
         if last_save.elapsed() > Duration::from_secs(30) {
             if let Err(e) = learned.save() {
@@ -374,6 +488,10 @@ pub fn run(cfg: Config) -> Result<()> {
         if t.state == St::Placed && !t.fixed {
             procfs::set_affinity_all(*pid, &ctx.all_cpus);
         }
+    }
+    if !reserved_now.is_empty() {
+        let _ = cgroup::set_reserved(&ctx.all_cpus, &[]);
+        let _ = std::fs::remove_file(&reserved_flag);
     }
     // Ventoinhas voltam para o controle da placa.
     for pci in fan_last.keys() {
@@ -424,12 +542,18 @@ fn handle(
 ) -> Response {
     let (key, profile, pid) = match req {
         Request::Ping => return Response::ok("pong"),
+        Request::Adopt { pid } => return handle_adopt(uid, ctx, procs, profiles, pid),
+        Request::FixMemory { key } => return handle_fix_memory(uid, ctx, procs, &key),
+        Request::SetGovernor { node, governor } => return handle_governor(uid, ctx, node, &governor),
         Request::SetGpuControl { .. } => return Response::err("pedido de GPU no lugar errado"),
         Request::SetProfile { key, profile, pid } => (key, profile, pid),
         Request::DeleteProfile { key, pid } => (key, Profile::default(), pid),
     };
     if uid != 0 && uid < ctx.cfg.daemon.min_uid {
         return Response::err("sem permissão");
+    }
+    if let Err(e) = profile.validate() {
+        return Response::err(e);
     }
     if let Err(e) = CpuSpec::parse(&profile.cpu)
         .and(GpuSpec::parse(&profile.gpu).map(|_| ()))
@@ -453,13 +577,24 @@ fn handle(
     }
     // Aplica já a escolha de CPU em todos os processos desse programa.
     let mut n = 0;
+    let mut pids = Vec::new();
+    let mut sample: Option<(Tracked, Option<Profile>)> = None;
     for (p, t) in procs.iter_mut() {
         let mine = uid == 0 || t.uid == uid;
         let matches_key = t.pkey == key || Some(*p) == pid;
         if mine && matches_key && !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual")) {
+            let prev = t.profile.clone();
             ctx.apply_profile_live(*p, t, &profile, tick);
+            pids.push(*p);
+            if sample.is_none() {
+                sample = Some((t.clone(), prev));
+            }
             n += 1;
         }
+    }
+    // Prioridade e grupo de controle valem para o programa inteiro.
+    if let Some((t, prev)) = sample {
+        ctx.apply_extras(&pids, &t, &profile, prev.as_ref());
     }
     Response::ok(format!("perfil salvo; {n} processo(s) ajustado(s) agora"))
 }
@@ -477,9 +612,15 @@ fn admit(
     let parent = procs.get(&st.ppid).cloned();
     let mut t = classify(ctx, learned, profiles, pid, st, parent.as_ref());
     if t.state == St::Placed {
-        let nodes = t.nodes.clone();
+        let cpus = if t.cpus.is_empty() { ctx.topo.cpus_of(&t.nodes) } else { t.cpus.clone() };
         let why = t.origin.clone();
-        ctx.apply(pid, &mut t, nodes, true, &why, tick);
+        ctx.apply_cpus(pid, &mut t, cpus, true, &why, tick);
+    }
+    if !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual"))
+        && let Some(p) = t.profile.clone()
+        && (p.needs_daemon() || p.priority != "normal")
+    {
+        ctx.apply_extras(&[pid], &t, &p, None);
     } else if let (St::Watching, Some(n), true) =
         (&t.state, learned.get(&t.key).and_then(|e| e.gpu_node), ctx.topo.nodes.len() > 1)
     {
@@ -514,6 +655,104 @@ fn gpu_tick(pci: &str, c: &gpuctl::GpuControl, last: &mut HashMap<String, f64>) 
             }
         }
     }
+}
+
+/// O `numapilot run` pede, antes do exec, o que só o root faz (cgroup, prioridade alta).
+fn handle_adopt(uid: u32, ctx: &Ctx, procs: &mut HashMap<i32, Tracked>, profiles: &Profiles, pid: i32) -> Response {
+    if uid != 0 && procfs::uid(pid) != Some(uid) {
+        return Response::err("esse processo é de outro usuário");
+    }
+    let Some(st) = procfs::read_stat(pid) else { return Response::err("processo não existe") };
+    let learned = Learned::default();
+    let mut t = classify(ctx, &learned, profiles, pid, &st, None);
+    let Some(p) = profiles.get(&t.pkey).cloned() else { return Response::ok("sem perfil") };
+    t.profile = Some(p.clone());
+    t.cpus = procfs::allowed_cpus(pid).unwrap_or_default();
+    t.nodes = ctx.topo.nodes_of(&t.cpus);
+    ctx.apply_extras(&[pid], &t, &p, None);
+    procs.insert(pid, t);
+    Response::ok("perfil aplicado")
+}
+
+/// Traz de volta a memória que ficou no socket errado.
+fn handle_fix_memory(uid: u32, ctx: &Ctx, procs: &HashMap<i32, Tracked>, key: &str) -> Response {
+    let all = ctx.topo.node_ids();
+    let mut n = 0;
+    for (pid, t) in procs.iter().filter(|(_, t)| t.pkey == key && (uid == 0 || t.uid == uid)) {
+        let cpus = if t.cpus.is_empty() { procfs::allowed_cpus(*pid).unwrap_or_default() } else { t.cpus.clone() };
+        let to = ctx.topo.nodes_of(&cpus);
+        if to.is_empty() || to.len() == all.len() {
+            continue;
+        }
+        let from: Vec<usize> = all.iter().copied().filter(|x| !to.contains(x)).collect();
+        let pid = *pid;
+        std::thread::spawn(move || {
+            let _ = procfs::migrate_pages(pid, &from, &to);
+        });
+        n += 1;
+    }
+    if n == 0 {
+        Response::ok("nada a mover (o programa usa todos os sockets)")
+    } else {
+        Response::ok(format!("movendo a memória de {n} processo(s) para o socket certo"))
+    }
+}
+
+pub fn governors_path() -> std::path::PathBuf {
+    crate::learned::state_dir().join("governors.json")
+}
+
+fn write_governor(ctx: &Ctx, node: usize, gov: &str) -> Result<usize, String> {
+    let n = ctx.topo.node(node).ok_or("nó não existe")?;
+    let mut ok = 0;
+    for c in &n.cpus {
+        let p = crate::util::sys(&format!("devices/system/cpu/cpu{c}/cpufreq/scaling_governor"));
+        if std::fs::write(&p, gov).is_ok() {
+            ok += 1;
+        }
+    }
+    if ok == 0 { Err("não consegui mudar o governador (cpufreq indisponível?)".into()) } else { Ok(ok) }
+}
+
+fn handle_governor(uid: u32, ctx: &Ctx, node: usize, gov: &str) -> Response {
+    if uid != 0 && uid < ctx.cfg.daemon.min_uid {
+        return Response::err("sem permissão");
+    }
+    if !gov.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || gov.is_empty() {
+        return Response::err("governador inválido");
+    }
+    match write_governor(ctx, node, gov) {
+        Ok(n) => {
+            let mut m: BTreeMap<usize, String> = std::fs::read_to_string(governors_path())
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+            m.insert(node, gov.to_string());
+            let _ = std::fs::create_dir_all(crate::learned::state_dir());
+            let _ = std::fs::write(governors_path(), serde_json::to_string(&m).unwrap_or_default());
+            Response::ok(format!("socket {node}: {gov} em {n} CPUs"))
+        }
+        Err(e) => Response::err(e),
+    }
+}
+
+/// Interrupções de cada GPU atendidas pelos CPUs do socket dela.
+fn gpu_irqs(ctx: &Ctx) {
+    for g in &ctx.topo.gpus {
+        let Some(n) = g.numa_node else { continue };
+        let cpus = format_cpulist(&ctx.topo.cpus_of(&[n]));
+        let dir = crate::util::sys(&format!("bus/pci/devices/{}/msi_irqs", g.pci));
+        let irqs: Vec<String> = std::fs::read_dir(dir)
+            .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect())
+            .unwrap_or_default();
+        for irq in irqs {
+            let _ = std::fs::write(format!("{}/{irq}/smp_affinity_list", irq_root()), &cpus);
+        }
+    }
+}
+
+fn irq_root() -> String {
+    std::env::var("NUMAPILOT_IRQ_ROOT").unwrap_or_else(|_| "/proc/irq".into())
 }
 
 fn handle_gpu(
@@ -612,6 +851,9 @@ fn classify(
         gpus: vec![],
         gpu_node: None,
         reapply_at: None,
+        cpus: vec![],
+        profile: None,
+        mem: vec![],
     };
     let ignore = |t: &mut Tracked, why: &str| t.state = St::Ignored(why.to_string());
 
@@ -628,6 +870,8 @@ fn classify(
     if mode.as_deref() == Some("manual") {
         ignore(&mut t, "manual (numapilot run)");
         t.origin = "manual".into();
+        t.profile = profiles.get(&pkey).cloned();
+        t.cpus = allowed.clone();
         t.nodes = ctx
             .topo
             .nodes
@@ -644,14 +888,16 @@ fn classify(
     }
 
     // Perfil salvo pela interface gráfica tem prioridade sobre as regras.
-    if let Some(p) = profiles.get(&pkey)
-        && let Some(nodes) = ctx.profile_nodes(p)
-    {
-        t.origin = "perfil".into();
-        t.nodes = nodes;
-        t.fixed = true;
-        t.state = St::Placed;
-        return t;
+    if let Some(p) = profiles.get(&pkey).filter(|p| !p.is_auto()) {
+        t.profile = Some(p.clone());
+        if let Some(cpus) = ctx.plan_cpus(p, &[]) {
+            t.origin = "perfil".into();
+            t.nodes = ctx.topo.nodes_of(&cpus);
+            t.cpus = cpus;
+            t.fixed = true;
+            t.state = St::Placed;
+            return t;
+        }
     }
 
     if let Some(rule) = ctx.cfg.find_rule(&idents) {
@@ -706,7 +952,8 @@ fn step(
 
     if t.reapply_at == Some(tick) {
         // Pega threads criadas durante a primeira aplicação.
-        procfs::set_affinity_all(pid, &ctx.topo.cpus_of(&t.nodes));
+        let cpus = if t.cpus.is_empty() { ctx.topo.cpus_of(&t.nodes) } else { t.cpus.clone() };
+        procfs::set_affinity_all(pid, &cpus);
         t.reapply_at = None;
     }
 
@@ -827,7 +1074,8 @@ fn write_state(ctx: &Ctx, procs: &HashMap<i32, Tracked>, ppids: &HashMap<i32, i3
                 St::Ignored(r) => r.clone(),
             },
             nodes: t.nodes.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(","),
-            cpus: format_cpulist(&ctx.topo.cpus_of(&t.nodes)),
+            cpus: format_cpulist(&if t.cpus.is_empty() { ctx.topo.cpus_of(&t.nodes) } else { t.cpus.clone() }),
+            mem: t.mem.clone(),
             cores: (t.cores * 10.0).round() / 10.0,
             gpus: t.gpus.join(","),
         })

@@ -63,6 +63,15 @@ enum Cmd {
         #[arg(long)]
         no_migrate: bool,
     },
+    /// Mede a latência e a banda de memória entre os sockets.
+    Bench {
+        /// Tamanho do buffer por teste (MB).
+        #[arg(long, default_value_t = 128)]
+        size_mb: usize,
+        /// Threads no teste de banda.
+        #[arg(long, default_value_t = 8)]
+        threads: usize,
+    },
     /// Perfis por programa (os mesmos da interface gráfica).
     Profile {
         #[command(subcommand)]
@@ -119,6 +128,16 @@ fn real_main() -> Result<()> {
             cmd_run(&cfg, cpu, gpu, mem, usage, fg_gpu, dry_run, command)
         }
         Cmd::Profile { action } => cmd_profile(action),
+        Cmd::Bench { size_mb, threads } => {
+            let t = Topology::load(&cfg);
+            println!("Medindo {} nó(s); leva alguns segundos por par...", t.nodes.len());
+            let r = numapilot::bench::run(&t, size_mb, threads, |m| println!("  {m}"));
+            numapilot::bench::print(&r);
+            if let Some(p) = numapilot::bench::save(&r) {
+                println!("\nResultado salvo em {} (aparece na interface).", p.display());
+            }
+            Ok(())
+        }
         Cmd::Daemon => daemon::run(cfg),
         Cmd::Status => cmd_status(),
         Cmd::Pin { pid, cpu, no_migrate } => cmd_pin(&cfg, pid, &cpu, no_migrate),
@@ -227,6 +246,7 @@ fn cmd_run(
         eprintln!("modo     : {}", if d.manual { "manual" } else { "automático" });
         eprintln!("nós      : {:?}  CPUs {}", d.nodes, format_cpulist(&d.cpus));
         eprintln!("memória  : {:?}", d.mem);
+        eprintln!("prioridade: {}{}", d.priority, if d.needs_daemon { " (aplicada pelo serviço)" } else { "" });
         eprintln!(
             "uso GPU  : {}",
             match d.kind {
@@ -246,6 +266,9 @@ fn cmd_run(
         for r in &d.reasons {
             eprintln!("motivo   : {r}");
         }
+        for w in numapilot::decide::game_warnings(&topo, &d) {
+            eprintln!("atenção  : {w}");
+        }
         for (k, v) in &set {
             eprintln!("env      : {k}={v}");
         }
@@ -257,6 +280,21 @@ fn cmd_run(
         }
     }
 
+    // O que só o root faz (cgroup: memória/núcleos exclusivos; prioridade alta): pede ao serviço
+    // para aplicar neste processo antes do exec — vale também para o programa.
+    if d.needs_daemon {
+        let me = std::process::id() as i32;
+        match ctl::send(&ctl::Request::Adopt { pid: me }) {
+            Ok(r) if r.ok => {}
+            Ok(r) => eprintln!("numapilot: aviso: {}", r.message),
+            Err(e) => eprintln!("numapilot: aviso: limites de memória/prioridade não aplicados ({e:#})"),
+        }
+    }
+    if d.priority == "low" {
+        let (nice, io) = procfs::priority_values("low");
+        procfs::set_nice_all(std::process::id() as i32, nice);
+        procfs::set_ioprio_all(std::process::id() as i32, io);
+    }
     procfs::set_affinity(0, &d.cpus).context("sched_setaffinity")?;
     let wide = d.nodes.len() > 1;
     let pol = match d.mem {
@@ -271,7 +309,17 @@ fn cmd_run(
     let mut c = std::process::Command::new(prog);
     c.args(&command[1..]);
     for (k, v) in set {
+        if numapilot::decide::SOFT_THREAD_VARS.contains(&k.as_str()) && std::env::var_os(&k).is_some() {
+            continue;
+        }
         c.env(k, v);
+    }
+    if d.limit_visible {
+        let mut jto = std::env::var("JAVA_TOOL_OPTIONS").unwrap_or_default();
+        if !jto.contains("ActiveProcessorCount") {
+            jto = format!("{jto} -XX:ActiveProcessorCount={}", d.cpus.len()).trim().to_string();
+            c.env("JAVA_TOOL_OPTIONS", jto);
+        }
     }
     for k in unset {
         c.env_remove(k);

@@ -10,6 +10,11 @@ no CachyOS, mas funciona em qualquer Linux.
   `/etc/numapilot.toml`.
 - **Interface gráfica (`numapilot-gui`):** lista os programas abertos e deixa escolher, por
   programa, o processador e a placa de vídeo. O padrão é tudo no automático.
+- **Controle fino por programa:** quantos e quais núcleos, com ou sem hyper-threading, um ou dois
+  processadores, limite de memória, memória só do socket ou não, prioridade, núcleos exclusivos e
+  quantos núcleos o programa "enxerga". Tem perfis prontos (Jogo, IA, Renderização, Silencioso).
+- **Mapa e medições:** os núcleos de cada socket com o uso e quem está em cada um, a memória de cada
+  programa (% local), alocações no outro socket e a latência/banda medidas entre os sockets.
 - **Placas de vídeo:** temperaturas, curva da ventoinha e limite de potência de cada MI50.
 - **Laboratório e containers:** Jupyter, VS Code e PyCharm com PyTorch nas MI50, abertos por um
   clique; lista os containers e os apps instalados em cada um.
@@ -97,6 +102,7 @@ As escolhas ficam em `/var/lib/numapilot/profiles.json`. Na linha de comando, us
 
 | Aba | O que faz |
 |---|---|
+| Mapa e medições | núcleos de cada socket (uso, programas presos a cada um), memória por socket, alocações no outro socket, governador de frequência por socket, latência e banda medidas |
 | Placas de vídeo | temperaturas (borda/hotspot/memória), ventoinha automática, por curva ou fixa, e limite de potência |
 | Laboratório e containers | liga/atualiza o laboratório; abre JupyterLab, VS Code (navegador ou app do PC), PyCharm e terminal; lista os containers e os apps de cada um |
 | Servidor de IA | escolhe o modelo `.gguf`, as MI50 e o contexto; inicia/para; abre o chat e mostra o endereço da API |
@@ -353,7 +359,67 @@ Assim, a regra, o perfil ou o aprendizado é aplicado logo após o programa inic
 alocar memória, e a memória já nasce no socket certo. Sem essa permissão, ele volta para a
 verificação a cada segundo.
 
-## 14. Limitações
+## 14. Controle fino por programa (botão "Ajustar…")
+
+Em **Programas** (ou em **Escolhas salvas**), o botão **Ajustar…** abre o editor do programa:
+
+| Opção | O que faz | Quando vale |
+|---|---|---|
+| Processadores | socket 0, socket 1, os dois ou o socket da GPU | na hora |
+| Núcleos | limitar a N CPUs, com ou sem hyper-threading, ou escolher no mapa (clique = núcleo inteiro; botão direito = 1 thread) | na hora |
+| O programa enxerga | só os núcleos liberados: `WINE_CPU_TOPOLOGY` (Proton), `OMP/MKL/OPENBLAS/RAYON_NUM_THREADS`, `GOMAXPROCS`, .NET e Java | ao abrir |
+| Memória | automático, **só do socket** (estrito, menor latência), preferir a local, intercalar (mais banda) ou livre | na hora (intercalar: ao abrir) |
+| Limite de memória | teto em GB (cgroup `MemoryMax`) | na hora |
+| Prioridade | baixa, normal ou alta (CPU e disco) | na hora |
+| Núcleos exclusivos | o resto do sistema deixa de usar esses núcleos enquanto o programa roda | na hora |
+| Placa de vídeo | GPU e uso (jogo/IA) e GPU do Lossless Scaling | ao abrir |
+
+Embaixo, uma prévia mostra exatamente o que vai acontecer ("Vai usar 16 CPUs (0-15) no socket 0 ·
+GPU gfx906-0 · memória só do socket"), com avisos de compatibilidade.
+
+**Como funciona:** os limites de memória, a memória estrita e os núcleos exclusivos usam um grupo de
+controle (cgroup v2) por programa, criado pelo próprio systemd em `numapilot.slice`. Assim o
+numapilot não briga com o systemd e os processos filhos herdam tudo. Para núcleos exclusivos, o
+`user.slice` e o `system.slice` deixam de usar esses núcleos enquanto o programa roda. Se o serviço
+parar, tudo volta ao normal.
+
+![Editor de programa](docs/editor.png)
+
+## 15. Jogos em servidor com 2 processadores (DirectX e Vulkan)
+
+Os problemas típicos desse tipo de máquina, e o que o perfil **Jogo** faz:
+
+| Problema | Causa | O que o numapilot faz |
+|---|---|---|
+| Jogo não abre ou o Easy Anti-Cheat bloqueia | o jogo enxerga 88 threads; vários jogos e anti-cheats quebram acima de ~32 | `WINE_CPU_TOPOLOGY` faz o jogo do Proton enxergar só os núcleos liberados (o `taskset` sozinho não muda isso) |
+| FPS muito baixo (ex.: 20 em vez de 60) | threads e memória espalhados pelos 2 sockets: cada acesso remoto custa ~50% a mais | 1 socket só (o da GPU), núcleos físicos sem HT, memória só local, prioridade alta e núcleos reservados |
+| Jogo recusa abrir renderizando numa placa e exibindo em outra | a placa do jogo não tem o monitor (PRIME) ou está no outro socket | o jogo só enxerga a GPU escolhida e um aviso pede para ligar o monitor nela |
+
+**DirectX e Vulkan:** no Linux, jogos DirectX rodam pelo Proton, que traduz para Vulkan: o DXVK
+cuida do DirectX 9/10/11 e o VKD3D-Proton do DirectX 12. Então tudo que vale para Vulkan vale para
+os dois.
+- O numapilot define `DRI_PRIME=pci-...` e `MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE=1`. Com isso,
+  o jogo enxerga **só** a GPU escolhida e não escolhe sozinho outra placa (ex.: a outra MI50, com
+  mais VRAM).
+- Jogos OpenGL (e DirectX antigo pelo WineD3D) seguem o `DRI_PRIME`.
+- A parte de processador e memória vale para qualquer programa, independente da API gráfica.
+
+Receita para um jogo exigente (ex.: Elden Ring):
+1. Ligue o monitor na MI50 que vai rodar o jogo, ou use a RX470 se for o caso.
+2. Em **Ajustar…**, clique em **Jogo** e escolha essa placa como "jogo/gráfico".
+3. Na Steam, cole `numapilot run -- %command%` nas opções de inicialização.
+4. Em **Mapa e medições**, coloque o socket da placa em `performance`.
+
+## 16. Medições
+
+- `numapilot bench`, ou o botão **Medir agora** em Mapa e medições, mede a latência (pointer
+  chasing) e a banda de leitura de cada socket lendo a memória dele mesmo e a do outro.
+- A coluna de memória em **Programas** mostra quanto cada programa usa e quanto está no socket dos
+  núcleos dele (lido do `numa_maps`). Abaixo de 80% aparece em laranja, com o botão **corrigir**.
+- Em Mapa e medições, "alocações no outro socket" vem do `numastat` e mostra páginas criadas longe
+  de quem pediu.
+
+## 17. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice
@@ -374,6 +440,8 @@ src/gpuctl.rs   sensores, curva da ventoinha e limite de potência (hwmon)
 src/procevents.rs  aviso instantâneo de programas novos (proc connector)
 src/containers.rs  containers podman/docker e os apps de cada um
 src/labcfg.rs   ajustes do laboratório e do servidor de IA
+src/cgroup.rs   grupos de controle por programa via systemd (memória, núcleos exclusivos)
+src/bench.rs    medição de latência e banda de memória entre sockets
 container/      imagem do laboratório (Containerfile, pacotes, lab-start)
 src/topo.rs     nós NUMA, núcleos, RAM, GPUs (PCI, socket, KFD/gfx, UUID ROCm, monitor)
 src/decide.rs   decisão de GPU + socket (usada pelo `run`)

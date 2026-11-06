@@ -1,6 +1,8 @@
 //! numapilot: escolhe socket NUMA, memória e GPU para cada programa.
 pub mod config;
 pub mod containers;
+pub mod bench;
+pub mod cgroup;
 pub mod ctl;
 pub mod daemon;
 pub mod decide;

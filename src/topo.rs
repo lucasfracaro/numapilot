@@ -9,6 +9,8 @@ use std::fs;
 pub struct Node {
     pub id: usize,
     pub cpus: Vec<usize>,
+    /// Núcleos físicos, cada um com seus CPUs lógicos (irmãos de hyper-threading).
+    pub cores: Vec<Vec<usize>>,
     pub physical_cores: usize,
     pub sockets: BTreeSet<u32>,
     pub mem_total_kb: u64,
@@ -96,6 +98,7 @@ impl Topology {
             nodes.push(Node {
                 id: 0,
                 cpus: online_cpus.clone(),
+                cores: group_cores(&online_cpus),
                 physical_cores: count_physical(&online_cpus),
                 sockets: sockets_of(&online_cpus),
                 mem_total_kb: 0,
@@ -127,6 +130,61 @@ impl Topology {
 
     pub fn all_cpus(&self) -> Vec<usize> {
         self.cpus_of(&self.node_ids())
+    }
+
+    /// Escolhe CPUs dentro dos nós `nodes`.
+    /// - `count`: quantos CPUs lógicos (None = todos);
+    /// - `smt`: se pode usar os dois "threads" de cada núcleo (senão, 1 por núcleo físico);
+    /// - `avoid`: CPUs a evitar se houver alternativa (ex.: reservados por outro programa).
+    ///
+    /// Com vários nós, distribui os núcleos alternando entre eles.
+    pub fn select_cpus(&self, nodes: &[usize], count: Option<usize>, smt: bool, avoid: &[usize]) -> Vec<usize> {
+        let units_of = |n: &Node, free: bool| -> Vec<Vec<usize>> {
+            n.cores
+                .iter()
+                .filter(|core| core.iter().all(|c| !avoid.contains(c)) == free)
+                .map(|core| if smt { core.clone() } else { core[..1].to_vec() })
+                .collect()
+        };
+        let sel_nodes: Vec<&Node> = self.nodes.iter().filter(|n| nodes.contains(&n.id)).collect();
+        // Primeiro os núcleos livres, depois (se faltar) os evitados.
+        let per_node: Vec<Vec<Vec<usize>>> = sel_nodes
+            .iter()
+            .map(|n| {
+                let mut u = units_of(n, true);
+                u.extend(units_of(n, false));
+                u
+            })
+            .collect();
+        let total: usize = per_node.iter().map(|u| u.iter().map(Vec::len).sum::<usize>()).sum();
+        let want = count.unwrap_or(total).min(total);
+        let mut out = Vec::with_capacity(want);
+        let mut idx = vec![0usize; per_node.len()];
+        'outer: while out.len() < want {
+            let mut progressed = false;
+            for (i, units) in per_node.iter().enumerate() {
+                if let Some(u) = units.get(idx[i]) {
+                    idx[i] += 1;
+                    progressed = true;
+                    for &c in u {
+                        if out.len() >= want {
+                            break 'outer;
+                        }
+                        out.push(c);
+                    }
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+        out.sort_unstable();
+        out
+    }
+
+    /// Nós que contêm algum dos CPUs.
+    pub fn nodes_of(&self, cpus: &[usize]) -> Vec<usize> {
+        self.nodes.iter().filter(|n| n.cpus.iter().any(|c| cpus.contains(c))).map(|n| n.id).collect()
     }
 
     /// GPU para gráficos no automático: a do config; senão a placa de vídeo com
@@ -196,6 +254,24 @@ fn cpu_topo(cpu: usize, f: &str) -> Option<u32> {
     read_trim(sys(&format!("devices/system/cpu/cpu{cpu}/topology/{f}")))?.parse().ok()
 }
 
+/// Agrupa CPUs lógicos por núcleo físico (pacote + core_id), na ordem do 1º CPU de cada núcleo.
+pub fn group_cores(cpus: &[usize]) -> Vec<Vec<usize>> {
+    let mut map: std::collections::BTreeMap<(u32, u32), Vec<usize>> = std::collections::BTreeMap::new();
+    for &c in cpus {
+        let k = (cpu_topo(c, "physical_package_id").unwrap_or(0), cpu_topo(c, "core_id").unwrap_or(c as u32));
+        map.entry(k).or_default().push(c);
+    }
+    let mut v: Vec<Vec<usize>> = map
+        .into_values()
+        .map(|mut x| {
+            x.sort_unstable();
+            x
+        })
+        .collect();
+    v.sort_by_key(|x| x[0]);
+    v
+}
+
 fn count_physical(cpus: &[usize]) -> usize {
     let set: BTreeSet<(u32, u32)> = cpus
         .iter()
@@ -223,6 +299,7 @@ fn load_nodes() -> Vec<Node> {
             .unwrap_or_default();
         nodes.push(Node {
             id,
+            cores: group_cores(&cpus),
             physical_cores: count_physical(&cpus),
             sockets: sockets_of(&cpus),
             mem_total_kb: node_meminfo(id, "MemTotal").unwrap_or(0),
@@ -470,6 +547,22 @@ pub mod tests {
         assert_eq!(t.nodes[1].sockets.iter().copied().collect::<Vec<_>>(), vec![1]);
         assert!(t.warnings().is_empty(), "{:?}", t.warnings());
 
+        // Núcleos físicos com seus irmãos de HT (0 e 44 são o mesmo núcleo).
+        assert_eq!(t.nodes[0].cores.len(), 22);
+        assert_eq!(t.nodes[0].cores[0], vec![0, 44]);
+        // 8 CPUs no socket 1 com HT = 4 núcleos inteiros.
+        assert_eq!(t.select_cpus(&[1], Some(8), true, &[]), vec![22, 23, 24, 25, 66, 67, 68, 69]);
+        // 8 CPUs sem HT = 8 núcleos físicos diferentes.
+        assert_eq!(t.select_cpus(&[1], Some(8), false, &[]), vec![22, 23, 24, 25, 26, 27, 28, 29]);
+        // Nos dois sockets, alterna: 2 núcleos de cada.
+        assert_eq!(t.select_cpus(&[0, 1], Some(4), false, &[]), vec![0, 1, 22, 23]);
+        // Evita CPUs reservados quando possível.
+        assert_eq!(t.select_cpus(&[0], Some(2), false, &[0, 1]), vec![2, 3]);
+        // Sem quantidade: todos (ou só um por núcleo, sem HT).
+        assert_eq!(t.select_cpus(&[0], None, true, &[]).len(), 44);
+        assert_eq!(t.select_cpus(&[0], None, false, &[]).len(), 22);
+        assert_eq!(t.nodes_of(&[3, 70]), vec![0, 1]);
+
         assert_eq!(t.gpus.len(), 3);
         let a: Vec<_> = t.gpus.iter().map(|g| (g.alias.as_str(), g.role, g.numa_node)).collect();
         assert_eq!(a, vec![
@@ -574,6 +667,30 @@ pub mod tests {
         assert!(mi.display_connected && mi.role == GpuRole::Compute);
         assert_eq!(t2.compute_gpus().len(), 2);
         assert_eq!(t2.display_gpu().unwrap().alias, "gfx803-0");
+        // Perfil com 8 núcleos físicos no socket da GPU, memória estrita e "enxergar" só eles.
+        let mut profs2 = Profiles::default();
+        profs2.map.insert(
+            "steam:1091500".into(),
+            Profile { gpu: "gfx906-1".into(), usage: "graphics".into(), cpu: "gpu".into(), cores: Some(8), smt: false,
+                      memory: "strict".into(), priority: "high".into(), ..Default::default() },
+        );
+        let d = run_full(&["Game.exe"], None, None, None, &learned, &profs2);
+        assert_eq!(d.cpus, vec![22, 23, 24, 25, 26, 27, 28, 29]);
+        assert_eq!(d.mem, crate::config::MemSpec::Bind);
+        assert!(d.needs_daemon && d.limit_visible);
+        let (env, _) = gpu_env(&d, &t);
+        assert!(env.contains(&("WINE_CPU_TOPOLOGY".into(), "8:22,23,24,25,26,27,28,29".into())));
+        assert!(env.contains(&("OMP_NUM_THREADS".into(), "8".into())));
+        assert!(env.contains(&("MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE".into(), "1".into())));
+        // gfx906-1 sem monitor (no fake ainda) → aviso de renderizar numa placa e exibir em outra.
+        let w = crate::decide::game_warnings(&t, &d);
+        assert!(w.iter().any(|x| x.contains("monitor")), "{w:?}");
+        assert!(!w.iter().any(|x| x.contains("threads")), "8 threads não deveria avisar: {w:?}");
+        // Sem perfil, jogo em "all" → avisa dos 2 processadores e das 88 threads.
+        let d2 = run(&["meujogo"], Some("all"), Some("display"), &learned);
+        let w2 = crate::decide::game_warnings(&t, &d2);
+        assert!(w2.iter().any(|x| x.contains("dois processadores")) && w2.iter().any(|x| x.contains("88 threads")), "{w2:?}");
+
         let mut cfg2 = cfg.clone();
         cfg2.graphics_gpu = Some("gfx906-1".into());
         assert_eq!(Topology::load(&cfg2).display_gpu().unwrap().alias, "gfx906-1");

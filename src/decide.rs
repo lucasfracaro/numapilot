@@ -36,6 +36,12 @@ pub struct Decision {
     pub kind: Kind,
     pub mem: MemSpec,
     pub manual: bool,
+    /// Limitar o que o programa "enxerga" (WINE_CPU_TOPOLOGY, *_NUM_THREADS...).
+    pub limit_visible: bool,
+    /// "low" | "normal" | "high"
+    pub priority: String,
+    /// Precisa do serviço (cgroup / prioridade alta) antes do exec.
+    pub needs_daemon: bool,
     /// GPU do frame generation (lsfg-vk), se diferente da do jogo.
     pub fg_gpu: Option<Gpu>,
     pub reasons: Vec<String>,
@@ -181,9 +187,18 @@ pub fn decide_launch(
         Some(k) => Some(k),
         None => Kind::parse_usage(&pick(None, profile.map(|p| p.usage.as_str()), rule.map(|r| r.usage.as_str())))?,
     };
+    let prof_mem = profile.and_then(|p| match p.memory.as_str() {
+        "strict" => Some(MemSpec::Bind),
+        "interleave" => Some(MemSpec::Interleave),
+        "prefer" | "free" => Some(MemSpec::Local),
+        _ => None,
+    });
     let mem = match inp.mem {
         Some(m) => m,
-        None => rule.map(|r| MemSpec::parse(&r.mem)).transpose()?.unwrap_or(MemSpec::Local),
+        None => match prof_mem {
+            Some(m) => m,
+            None => rule.map(|r| MemSpec::parse(&r.mem)).transpose()?.unwrap_or(MemSpec::Local),
+        },
     };
     let hint = cfg.is_compute_hint(inp.idents);
     if gpu == GpuSpec::Auto && usage.is_none() && hint {
@@ -242,6 +257,23 @@ pub fn decide_launch(
             }
         }
     };
+    // Núcleos do perfil: lista feita no mapa, ou quantidade / sem hyper-threading.
+    let (nodes, cpus) = match profile {
+        Some(p) if inp.cpu.is_none() => {
+            if let Some(l) = &p.cpu_list {
+                let all = topo.all_cpus();
+                let v: Vec<usize> = crate::util::parse_cpulist(l).into_iter().filter(|c| all.contains(c)).collect();
+                if v.is_empty() { (nodes, cpus) } else { (topo.nodes_of(&v), v) }
+            } else if p.cores.is_some() || !p.smt {
+                let v = topo.select_cpus(&nodes, p.cores, p.smt, &[]);
+                reasons.push(format!("{} CPUs{} escolhidos no perfil", v.len(), if p.smt { "" } else { " (sem hyper-threading)" }));
+                (topo.nodes_of(&v), v)
+            } else {
+                (nodes, cpus)
+            }
+        }
+        _ => (nodes, cpus),
+    };
     if cpus.is_empty() {
         bail!("nenhum CPU selecionado");
     }
@@ -257,7 +289,20 @@ pub fn decide_launch(
             None => bail!("GPU de frame generation '{n}' não encontrada"),
         },
     };
-    Ok(Decision { nodes, cpus, gpus, kind, mem, manual: cpu != CpuSpec::Auto, fg_gpu, reasons })
+    let total = topo.all_cpus().len();
+    Ok(Decision {
+        manual: cpu != CpuSpec::Auto || profile.is_some_and(|p| p.has_cpu_choice()),
+        limit_visible: profile.is_none_or(|p| p.limit_visible) && cpus.len() < total,
+        priority: profile.map(|p| p.priority.clone()).unwrap_or_else(|| "normal".into()),
+        needs_daemon: profile.is_some_and(|p| p.needs_daemon()),
+        nodes,
+        cpus,
+        gpus,
+        kind,
+        mem,
+        fg_gpu,
+        reasons,
+    })
 }
 
 /// "0000:83:00.0" → "131:0.0" (formato de barramento PCI em decimal usado pelo lsfg-vk)
@@ -280,6 +325,9 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
             if let Some(g) = d.gpus.first() {
                 // OpenGL e Vulkan (Mesa) escolhem a placa por DRI_PRIME=pci-...
                 set.push(("DRI_PRIME".into(), g.dri_prime()));
+                // Vulkan (jogos nativos e DirectX via DXVK/VKD3D-Proton) só enxerga esta GPU:
+                // evita que o jogo escolha sozinho outra placa (ex.: a MI50 com mais VRAM).
+                set.push(("MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE".into(), "1".into()));
                 // vendor:device só serve se for único (as duas MI50 têm o mesmo ID).
                 let same = topo.gpus.iter().filter(|o| o.vendor == g.vendor && o.device == g.device).count();
                 if same == 1 {
@@ -305,6 +353,17 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
         }
         Kind::NoGpu => {}
     }
+    if d.limit_visible {
+        let n = d.cpus.len().to_string();
+        // Proton/Wine: o jogo Windows vê só estes CPUs (taskset sozinho não muda o que ele conta).
+        set.push((
+            "WINE_CPU_TOPOLOGY".into(),
+            format!("{n}:{}", d.cpus.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(",")),
+        ));
+        for k in SOFT_THREAD_VARS {
+            set.push((k.to_string(), n.clone()));
+        }
+    }
     let renders: Vec<String> =
         d.gpus.iter().filter_map(|g| g.render.as_ref().map(|r| format!("/dev/dri/{r}"))).collect();
     set.push(("NUMAPILOT_RENDER".into(), renders.join(" ")));
@@ -317,4 +376,51 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
     ));
     set.push(("NUMAPILOT_MODE".into(), if d.manual { "manual" } else { "auto" }.into()));
     (set, unset)
+}
+
+/// Variáveis de "quantos threads usar" de bibliotecas comuns. O `numapilot run` só as define
+/// se o usuário ainda não definiu (respeita a escolha dele).
+pub const SOFT_THREAD_VARS: &[&str] = &[
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "RAYON_NUM_THREADS",
+    "GOMAXPROCS",
+    "DOTNET_PROCESSOR_COUNT",
+];
+
+/// Avisos de compatibilidade para jogos (problemas comuns em servidores dual-socket).
+pub fn game_warnings(topo: &Topology, d: &Decision) -> Vec<String> {
+    let mut w = Vec::new();
+    if d.kind != Kind::Graphics {
+        return w;
+    }
+    let Some(g) = d.gpus.first() else { return w };
+    if !g.display_connected {
+        w.push(format!(
+            "O jogo vai renderizar na {} mas o monitor está em outra placa. Alguns jogos e anti-cheats \
+             recusam isso (ex.: Crimson Desert) e a cópia entre placas custa desempenho: ligue o monitor nesta placa.",
+            g.alias
+        ));
+    }
+    if let Some(n) = g.numa_node
+        && !d.nodes.contains(&n)
+    {
+        w.push(format!(
+            "A {} está no socket {n}, mas os núcleos escolhidos estão em {:?}: cada quadro atravessa entre os processadores.",
+            g.alias, d.nodes
+        ));
+    }
+    if d.nodes.len() > 1 && topo.nodes.len() > 1 {
+        w.push("O jogo vai usar os dois processadores: em jogos isso costuma derrubar o FPS (latência de NUMA).".into());
+    }
+    let visible = if d.limit_visible { d.cpus.len() } else { topo.all_cpus().len() };
+    if visible > 32 {
+        w.push(format!(
+            "O jogo vai enxergar {visible} threads. Vários jogos e o Easy Anti-Cheat falham com tantos núcleos: \
+             use o perfil \"Jogo\" (limita o que ele enxerga via WINE_CPU_TOPOLOGY)."
+        ));
+    }
+    w
 }

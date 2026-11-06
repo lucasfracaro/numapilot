@@ -2,10 +2,12 @@
 //! O daemon mapeia os programas abertos; aqui você troca o hardware de cada um.
 
 mod bg;
+mod editor;
 mod gpus;
 mod jobs;
 mod lab;
 mod llm;
+mod map;
 mod settings;
 mod stream;
 mod tray;
@@ -30,9 +32,11 @@ use std::time::{Duration, Instant, SystemTime};
 const STEAM_OPTION: &str = "numapilot run -- %command%";
 
 #[derive(Clone, Debug)]
-struct Group {
+pub(crate) struct Group {
+    cpus: String,
+    mem: Vec<u64>,
+    pub(crate) label: String,
     key: String,
-    label: String,
     exe: String,
     pids: Vec<i32>,
     main_pid: i32,
@@ -79,7 +83,18 @@ fn group_rows(rows: &[Row]) -> Vec<Group> {
                 rs.iter().flat_map(|r| r.gpus.split(',').filter(|g| !g.is_empty()).map(String::from)).collect();
             gpus.sort();
             gpus.dedup();
+            let mut mem: Vec<u64> = vec![];
+            for r in &rs {
+                if mem.len() < r.mem.len() {
+                    mem.resize(r.mem.len(), 0);
+                }
+                for (i, v) in r.mem.iter().enumerate() {
+                    mem[i] += v;
+                }
+            }
             Group {
+                cpus: rs.iter().find(|r| r.pid == main_pid).map(|r| r.cpus.clone()).unwrap_or_default(),
+                mem,
                 label,
                 exe: rs.iter().find(|r| r.pid == main_pid).map(|r| r.exe.clone()).unwrap_or_default(),
                 main_pid,
@@ -101,6 +116,7 @@ fn group_rows(rows: &[Row]) -> Vec<Group> {
 #[derive(PartialEq, Clone, Copy)]
 enum Tab {
     Programs,
+    Map,
     Profiles,
     Gpus,
     Lab,
@@ -111,6 +127,14 @@ enum Tab {
 
 pub(crate) struct App {
     pub(crate) topo: Topology,
+    pub(crate) cfg: Config,
+    pub(crate) editor: Option<editor::Editor>,
+    pub(crate) cpu_loads: BTreeMap<usize, f32>,
+    pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
+    prev_numa: BTreeMap<usize, (u64, u64)>,
+    prev_numa_t: Instant,
+    pub(crate) bench: Option<numapilot::bench::BenchResult>,
+    pub(crate) bench_checked: Option<Instant>,
     pub(crate) bg: bg::Shared,
     pub(crate) job: Option<jobs::Job>,
     pub(crate) show_job: bool,
@@ -118,12 +142,13 @@ pub(crate) struct App {
     pub(crate) gpu_edit: HashMap<String, GpuControl>,
     pub(crate) pending_gpu: Option<(String, GpuControl)>,
     pub(crate) filter: String,
+    pending_fix: Option<String>,
     pub(crate) llm_cfg: Option<LabSettings>,
     pub(crate) models: Option<Vec<(String, u64)>>,
     ctx: egui::Context,
-    groups: Vec<Group>,
+    pub(crate) groups: Vec<Group>,
     profiles: Profiles,
-    loads: HashMap<usize, f64>,
+    pub(crate) loads: HashMap<usize, f64>,
     prev_cpu: Vec<(usize, u64, u64)>,
     last: Instant,
     daemon_ok: bool,
@@ -133,8 +158,8 @@ pub(crate) struct App {
     only_mine: bool,
     desktop_cache: HashMap<String, Option<PathBuf>>,
     bg_msgs: Arc<Mutex<Vec<(String, bool)>>>,
-    cpu_opts: Vec<(String, String)>,
-    gpu_opts: Vec<(String, String, String)>,
+    pub(crate) cpu_opts: Vec<(String, String)>,
+    pub(crate) gpu_opts: Vec<(String, String, String)>,
 }
 
 impl App {
@@ -168,6 +193,14 @@ impl App {
         gpu_opts.push(("none".into(), "auto".into(), "Nenhuma GPU".into()));
         let mut app = App {
             topo,
+            cfg: cfg.clone(),
+            editor: None,
+            cpu_loads: BTreeMap::new(),
+            numa_rates: BTreeMap::new(),
+            prev_numa: BTreeMap::new(),
+            prev_numa_t: Instant::now(),
+            bench: numapilot::bench::load(),
+            bench_checked: Some(Instant::now()),
             bg,
             job: None,
             show_job: false,
@@ -175,6 +208,7 @@ impl App {
             gpu_edit: HashMap::new(),
             pending_gpu: None,
             filter: String::new(),
+            pending_fix: None,
             llm_cfg: None,
             models: None,
             ctx,
@@ -200,6 +234,33 @@ impl App {
     fn refresh(&mut self) {
         let cur = procfs::cpu_times();
         self.loads = node_loads(&self.topo, &self.prev_cpu, &cur);
+        let prev: HashMap<usize, (u64, u64)> = self.prev_cpu.iter().map(|&(c, b, t)| (c, (b, t))).collect();
+        self.cpu_loads = cur
+            .iter()
+            .filter_map(|&(c, b, t)| {
+                let (pb, pt) = prev.get(&c)?;
+                let dt = t.saturating_sub(*pt).max(1);
+                Some((c, b.saturating_sub(*pb) as f32 / dt as f32))
+            })
+            .collect();
+        // Alocações de memória no outro socket (numastat), por segundo.
+        let dt = self.prev_numa_t.elapsed().as_secs_f64().max(0.1);
+        self.prev_numa_t = Instant::now();
+        for n in &self.topo.nodes {
+            let st = procfs::numastat(n.id);
+            let other = st.get("other_node").copied().unwrap_or(0);
+            let hit = st.get("local_node").copied().unwrap_or(0) + other;
+            if let Some((po, ph)) = self.prev_numa.get(&n.id) {
+                let d_other = other.saturating_sub(*po) as f64;
+                let d_all = hit.saturating_sub(*ph).max(1) as f64;
+                self.numa_rates.insert(n.id, (d_other / dt, d_other / d_all));
+            }
+            self.prev_numa.insert(n.id, (other, hit));
+        }
+        if self.bench_checked.is_none_or(|t| t.elapsed() > Duration::from_secs(10)) {
+            self.bench = numapilot::bench::load();
+            self.bench_checked = Some(Instant::now());
+        }
         self.prev_cpu = cur;
         self.daemon_ok = std::fs::metadata(daemon::state_path())
             .and_then(|m| m.modified())
@@ -294,6 +355,7 @@ impl App {
             ui.heading("numapilot");
             ui.separator();
             ui.selectable_value(&mut self.tab, Tab::Programs, "Programas");
+            ui.selectable_value(&mut self.tab, Tab::Map, "Mapa e medições");
             ui.selectable_value(&mut self.tab, Tab::Profiles, "Escolhas salvas");
             ui.selectable_value(&mut self.tab, Tab::Gpus, "Placas de vídeo");
             ui.selectable_value(&mut self.tab, Tab::Lab, "Laboratório e containers");
@@ -379,9 +441,32 @@ impl App {
                 1 => format!("socket {}", g.nodes[0]),
                 _ => "os dois sockets".to_string(),
             };
-            ui.label(where_);
+            let ncpu = numapilot::util::parse_cpulist(&g.cpus).len();
+            let total = self.topo.all_cpus().len();
+            ui.label(if ncpu > 0 && ncpu < total && !g.nodes.is_empty() {
+                format!("{where_} · {ncpu} CPUs")
+            } else {
+                where_
+            });
             let gpu = if g.gpus.is_empty() { "sem GPU".to_string() } else { format!("GPU {}", g.gpus.join(", ")) };
             ui.label(RichText::new(format!("{gpu} · {}", g.origin)).small().weak());
+            let tot: u64 = g.mem.iter().sum();
+            if tot >= 64 {
+                let local: u64 = g.mem.iter().enumerate().filter(|(n, _)| g.nodes.contains(n)).map(|(_, v)| *v).sum();
+                let pct = if g.nodes.is_empty() { 100.0 } else { local as f64 * 100.0 / tot as f64 };
+                let txt = format!("memória {:.1} GB · {pct:.0}% local", tot as f64 / 1024.0);
+                if pct < 80.0 {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(txt).small().color(Color32::from_rgb(230, 160, 40)))
+                            .on_hover_text("Parte da memória está no outro socket: cada acesso a ela é mais lento.");
+                        if ui.small_button("corrigir").clicked() {
+                            self.pending_fix = Some(g.key.clone());
+                        }
+                    });
+                } else {
+                    ui.label(RichText::new(txt).small().weak());
+                }
+            }
         });
         // Processador
         let mut cpu = prof.cpu.clone();
@@ -426,6 +511,9 @@ impl App {
         // Ações
         let mut action: Option<&str> = None;
         ui.horizontal(|ui| {
+            if ui.button("Ajustar…").on_hover_text("Núcleos, memória, prioridade, GPU e perfis prontos").clicked() {
+                action = Some("edit");
+            }
             if g.steam {
                 if ui.button("Copiar opção Steam").on_hover_text(format!(
                     "Cole nas Propriedades do jogo → Opções de inicialização:\n{STEAM_OPTION}\n(uma vez por jogo; depois a GPU escolhida aqui vale sempre)"
@@ -455,10 +543,13 @@ impl App {
         });
 
         if cpu != prof.cpu || sel != cur || fg != prof.fg_gpu {
-            let profile = Profile { label: g.label.clone(), cpu, gpu: sel.0, usage: sel.1, fg_gpu: fg };
+            let profile = Profile { label: g.label.clone(), cpu, gpu: sel.0, usage: sel.1, fg_gpu: fg, ..prof.clone() };
             self.send(Request::SetProfile { key: g.key.clone(), profile, pid: Some(g.main_pid) });
         }
         match action {
+            Some("edit") => {
+                self.editor = Some(editor::Editor::new(&g.key, &g.label, Some(g.main_pid), &g.cpus, &g.mem, prof.clone()));
+            }
             Some("steam") => {
                 ui.ctx().copy_text(STEAM_OPTION.to_string());
                 self.toast("Copiado! Cole em Steam → Propriedades do jogo → Opções de inicialização.", true);
@@ -496,6 +587,7 @@ impl App {
         }
         let items: Vec<(String, Profile)> = self.profiles.map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         let mut delete = None;
+        let mut edit: Option<(String, Profile)> = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("profiles").striped(true).num_columns(6).spacing([14.0, 8.0]).show(ui, |ui| {
                 for h in ["Programa", "Processador", "Placa de vídeo", "Uso da GPU", "Lossless Scaling", ""] {
@@ -517,13 +609,22 @@ impl App {
                         _ => "automático",
                     });
                     ui.label(if p.fg_gpu == "same" { "mesma GPU".to_string() } else { p.fg_gpu.clone() });
-                    if ui.button("Voltar ao automático").clicked() {
-                        delete = Some(k.clone());
-                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("Ajustar…").clicked() {
+                            edit = Some((k.clone(), p.clone()));
+                        }
+                        if ui.button("Voltar ao automático").clicked() {
+                            delete = Some(k.clone());
+                        }
+                    });
                     ui.end_row();
                 }
             });
         });
+        if let Some((k, p)) = edit {
+            let label = if p.label.is_empty() { k.clone() } else { p.label.clone() };
+            self.editor = Some(editor::Editor::new(&k, &label, None, "", &[], p));
+        }
         if let Some(key) = delete {
             self.send(Request::DeleteProfile { key, pid: None });
         }
@@ -554,6 +655,7 @@ impl eframe::App for App {
         });
         egui::CentralPanel::default_margins().show(ui, |ui| match self.tab {
             Tab::Programs => self.programs(ui),
+            Tab::Map => map::ui(self, ui),
             Tab::Profiles => self.profiles_tab(ui),
             Tab::Gpus => gpus::ui(self, ui),
             Tab::Lab => lab::ui(self, ui),
@@ -563,6 +665,10 @@ impl eframe::App for App {
         });
         let ctx = ui.ctx().clone();
         self.job_window(&ctx);
+        editor::window(self, &ctx);
+        if let Some(key) = self.pending_fix.take() {
+            self.send(Request::FixMemory { key });
+        }
     }
 }
 
@@ -635,7 +741,7 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title("numapilot — processador e placa de vídeo por programa")
             .with_app_id("numapilot")
-            .with_inner_size([1180.0, 680.0])
+            .with_inner_size([1340.0, 780.0])
             .with_min_inner_size([800.0, 400.0]),
         ..Default::default()
     };
