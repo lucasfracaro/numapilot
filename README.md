@@ -339,9 +339,14 @@ uma **curva** (temperatura do hotspot → %) ou uma velocidade **fixa**. Também
   serviço a cada 30 s.
 - **Clock e voltagem (undervolt/overclock):** clock máximo da GPU e da memória e os 3 pontos da curva
   de voltagem. Os botões "reduzir 25 mV / 50 mV" fazem um undervolt a partir da curva atual (menos
-  calor e consumo, mesmo clock). Precisa de `amdgpu.ppfeaturemask=0xfffd7fff` na linha do kernel. O
-  serviço reaplica ao reiniciar; desmarcar "personalizar" volta ao padrão de fábrica. Se travar,
-  volte um passo.
+  calor e consumo, mesmo clock). O serviço reaplica ao reiniciar; desmarcar "personalizar" volta ao
+  padrão de fábrica. Se travar, volte um passo.
+- **Ativar o OverDrive** (necessário para clock/voltagem): botão na própria aba, ou Configurações →
+  Opções de boot, ou `sudo numapilot boot overdrive on`. Ele não mexe no bootloader: grava
+  `options amdgpu ppfeaturemask=...` em `/etc/modprobe.d/numapilot.conf` (o valor atual do driver
+  com só o bit do OverDrive ligado) e refaz a imagem de boot com a ferramenta da distro
+  (`limine-mkinitcpio`, `mkinitcpio -P`, `dracut` ou `update-initramfs`). Como o arquivo vale para
+  qualquer kernel, as atualizações do kernel mantêm a opção. Depois é só reiniciar.
 - **Resizable BAR:** a aba mostra se está ativo (VRAM inteira visível pela CPU). O diagnóstico diz o
   que tentar na BIOS.
 - **Alerta:** o ícone na bandeja manda uma notificação quando uma GPU passa de 90 °C por ~15 s.

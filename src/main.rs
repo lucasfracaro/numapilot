@@ -72,6 +72,13 @@ enum Cmd {
         #[arg(long)]
         report: bool,
     },
+    /// Opções de boot que sobrevivem às atualizações do kernel (precisa de sudo para mudar).
+    Boot {
+        /// status | overdrive
+        what: String,
+        /// on | off (para overdrive)
+        value: Option<String>,
+    },
     /// Painel web para o celular (rode como usuário; veja o link com o token).
     Web {
         #[arg(long, default_value_t = numapilot::web::DEFAULT_PORT)]
@@ -177,6 +184,7 @@ fn real_main() -> Result<()> {
         }
         Cmd::Steam { action } => cmd_steam(&action),
         Cmd::Tune { action, key } => cmd_tune(&cfg, &action, key),
+        Cmd::Boot { what, value } => cmd_boot(&what, value.as_deref()),
         Cmd::Web { port, bind, url } => {
             if url {
                 println!("{}", numapilot::web::url(port).context("sem rede")?);
@@ -513,6 +521,31 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
             Ok(())
         }
         _ => bail!("use: numapilot tune start|stop|apply CHAVE  ou  numapilot tune status [CHAVE]"),
+    }
+}
+
+fn cmd_boot(what: &str, value: Option<&str>) -> Result<()> {
+    use numapilot::bootcfg;
+    match (what, value) {
+        ("status", _) => {
+            let s = bootcfg::overdrive_state();
+            println!(
+                "OverDrive (clock/voltagem das placas AMD): {} agora, {} depois de reiniciar{}",
+                if s.active { "ligado" } else { "desligado" },
+                if s.on_next_boot { "ligado" } else { "desligado" },
+                if s.from_cmdline { " (definido na linha do kernel)" } else { "" }
+            );
+            println!("Arquivo: {}", bootcfg::conf_path().display());
+            match bootcfg::initramfs_tool() {
+                Some(t) => println!("Imagem de boot refeita com: {}", t.join(" ")),
+                None => println!("Nenhuma ferramenta de initramfs encontrada"),
+            }
+            Ok(())
+        }
+        ("overdrive", Some(v @ ("on" | "off"))) => {
+            bootcfg::set_overdrive(v == "on", &mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
+        }
+        _ => bail!("use: numapilot boot status  |  sudo numapilot boot overdrive on|off"),
     }
 }
 

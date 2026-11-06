@@ -32,6 +32,18 @@ pub fn sibling(bin: &str) -> String {
         .unwrap_or_else(|| bin.to_string())
 }
 
+/// Como `sibling`, mas sempre com caminho absoluto (o pkexec exige).
+pub fn sibling_abs(bin: &str) -> String {
+    let s = sibling(bin);
+    if s.contains('/') {
+        return s;
+    }
+    std::env::var_os("PATH")
+        .and_then(|p| std::env::split_paths(&p).map(|d| d.join(bin)).find(|p| p.is_file()))
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| format!("/usr/bin/{bin}"))
+}
+
 pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Context) -> Job {
     let job = Job { title: title.into(), out: Arc::new(Mutex::new(String::new())), status: Arc::new(Mutex::new(None)) };
     let j = job.clone();

@@ -96,6 +96,43 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         web_ui(app, ui);
 
         ui.add_space(8.0);
+        ui.heading("Opções de boot");
+        let od = numapilot::bootcfg::overdrive_state();
+        ui.horizontal(|ui| {
+            let mut on = od.on_next_boot;
+            if ui
+                .add_enabled(!od.from_cmdline, egui::Checkbox::new(&mut on, "OverDrive das placas AMD (undervolt/overclock)"))
+                .changed()
+            {
+                app.start_job(
+                    if on { "Ativando o OverDrive" } else { "Desativando o OverDrive" },
+                    vec![
+                        "pkexec".into(),
+                        crate::jobs::sibling_abs("numapilot"),
+                        "boot".into(),
+                        "overdrive".into(),
+                        if on { "on" } else { "off" }.into(),
+                    ],
+                );
+            }
+            let txt = match (od.active, od.on_next_boot) {
+                (true, true) => "ligado".to_string(),
+                (false, true) => "liga ao reiniciar".into(),
+                (true, false) => "desliga ao reiniciar".into(),
+                (false, false) => "desligado".into(),
+            };
+            ui.label(RichText::new(txt).weak());
+        });
+        if od.from_cmdline {
+            ui.label(RichText::new("Definido na linha do kernel (amdgpu.ppfeaturemask): mude no bootloader ou remova de lá para controlar por aqui.").small().weak());
+        }
+        ui.label(
+            RichText::new("Fica em /etc/modprobe.d/numapilot.conf e a imagem de boot é refeita: vale para qualquer kernel, inclusive depois de atualizar. Pede a senha.")
+                .small()
+                .weak(),
+        );
+
+        ui.add_space(8.0);
         ui.heading("Diagnóstico");
         ui.label("Testa cada parte no seu hardware (NUMA, cgroups, seleção de GPU no Vulkan, ROCm, ventoinhas, OverDrive, ReBAR, Steam) e diz o que corrigir.");
         ui.horizontal(|ui| {

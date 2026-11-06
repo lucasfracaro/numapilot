@@ -65,12 +65,14 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     }
     let sd = out(&["systemctl", "--version"], &[]).unwrap_or_default();
     add("Sistema", "systemd", Level::Info, sd.lines().next().unwrap_or("?").into(), None);
-    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
-    if cmdline.contains("amdgpu.ppfeaturemask") {
-        add("Sistema", "OverDrive (clock/voltagem)", Level::Ok, "amdgpu.ppfeaturemask definido".into(), None);
+    let od = crate::bootcfg::overdrive_state();
+    if od.active {
+        add("Sistema", "OverDrive (clock/voltagem)", Level::Ok, "ligado".into(), None);
+    } else if od.on_next_boot {
+        add("Sistema", "OverDrive (clock/voltagem)", Level::Info, "liga depois de reiniciar".into(), Some("Reinicie o computador"));
     } else {
         add("Sistema", "OverDrive (clock/voltagem)", Level::Info, "desligado".into(),
-            Some("Para undervolt/overclock: adicione amdgpu.ppfeaturemask=0xfffd7fff à linha do kernel e reinicie"));
+            Some("Para undervolt/overclock: Placas de vídeo → \"Ativar OverDrive\" (ou sudo numapilot boot overdrive on) e reinicie"));
     }
     if !out(&["pgrep", "-x", "irqbalance"], &[]).unwrap_or_default().trim().is_empty() {
         add("Sistema", "irqbalance", Level::Warn, "rodando: pode desfazer as interrupções das GPUs".into(), Some("sudo systemctl disable --now irqbalance"));
@@ -129,7 +131,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             s.power_cap_w.map(|w| format!("{w:.0} W")).unwrap_or_else(|| "indisponível".into()), None);
         match gpuctl::read_od(&g.pci) {
             Some(od) => add(&a, "clock/voltagem (OD)", Level::Ok, format!("GPU até {:?} MHz, curva {} pontos", od.range_sclk.map(|r| r.1), od.curve.len()), None),
-            None => add(&a, "clock/voltagem (OD)", Level::Info, "indisponível".into(), Some("Precisa de amdgpu.ppfeaturemask=0xfffd7fff")),
+            None => add(&a, "clock/voltagem (OD)", Level::Info, "indisponível".into(), Some("sudo numapilot boot overdrive on (ou o botão na aba Placas de vídeo) e reinicie")),
         }
         match gpuctl::bar_info(&g.pci) {
             Some((vis, tot)) if vis * 10 >= tot * 9 => add(&a, "Resizable BAR", Level::Ok, format!("ativo ({} MB visíveis)", vis >> 20), None),

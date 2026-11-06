@@ -2,6 +2,7 @@
 pub mod config;
 pub mod containers;
 pub mod bench;
+pub mod bootcfg;
 pub mod cgroup;
 pub mod ctl;
 pub mod daemon;

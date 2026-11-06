@@ -87,7 +87,7 @@ fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f6
 }
 
 /// OverDrive (clock e voltagem) e Resizable BAR.
-fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
+fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Option<bool>) {
     match gpuctl::rebar_active(pci) {
         Some(true) => {
             ui.label(RichText::new("Resizable BAR: ativo").color(Color32::from_rgb(110, 190, 120)));
@@ -98,11 +98,24 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
         None => {}
     }
     let Some(od) = gpuctl::read_od(pci) else {
-        ui.label(
-            RichText::new("Clock/voltagem: OverDrive desligado. Para undervolt: amdgpu.ppfeaturemask=0xfffd7fff na linha do kernel.")
-                .small()
-                .weak(),
-        );
+        let st = numapilot::bootcfg::overdrive_state();
+        ui.horizontal_wrapped(|ui| {
+            if st.on_next_boot {
+                ui.label(RichText::new("Clock/voltagem: o OverDrive liga quando você reiniciar o computador.").color(Color32::from_rgb(230, 160, 40)));
+            } else {
+                ui.label(RichText::new("Clock/voltagem (undervolt/overclock): o OverDrive do driver está desligado.").weak());
+                if ui
+                    .button("Ativar OverDrive")
+                    .on_hover_text(
+                        "Grava a opção do driver amdgpu em /etc/modprobe.d e refaz a imagem de boot. \
+                         Vale para qualquer kernel, inclusive depois de atualizar. Pede a senha; depois é só reiniciar.",
+                    )
+                    .clicked()
+                {
+                    *boot_job = Some(true);
+                }
+            }
+        });
         return;
     };
     ui.horizontal(|ui| {
@@ -195,6 +208,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     ui.separator();
     let gpus = app.topo.gpus.clone();
     let hist = app.hist.clone();
+    let mut boot_job: Option<bool> = None;
     egui::ScrollArea::vertical().show(ui, |ui| {
         for g in &gpus {
             let s = gpuctl::read_sensors(&g.pci);
@@ -306,7 +320,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     });
                 }
                 ui.add_space(4.0);
-                od_ui(ui, &g.pci, edit);
+                od_ui(ui, &g.pci, edit, &mut boot_job);
                 let changed = *edit != saved;
                 let edit_c = edit.clone();
                 ui.horizontal(|ui| {
@@ -321,6 +335,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(6.0);
         }
     });
+    if let Some(on) = boot_job {
+        app.start_job(
+            if on { "Ativando o OverDrive" } else { "Desativando o OverDrive" },
+            vec![
+                "pkexec".into(),
+                crate::jobs::sibling_abs("numapilot"),
+                "boot".into(),
+                "overdrive".into(),
+                if on { "on" } else { "off" }.into(),
+            ],
+        );
+    }
     if let Some((pci, control)) = app.pending_gpu.take() {
         app.send(Request::SetGpuControl { pci, control });
         app.gpu_saved = gpuctl::GpuControls::load();
