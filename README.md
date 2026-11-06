@@ -47,11 +47,31 @@ Na BIOS, **NUMA ligado / "Node Interleaving" desligado**. Se o `numapilot topo` 
 
 ```bash
 git clone <este repositório> numapilot && cd numapilot
-./install.sh          # compila, instala em /usr/local/bin, cria o atalho no menu e ativa o serviço
-numapilot topo        # nós, núcleos, RAM, GPUs e em qual socket cada GPU está
+./install.sh          # confere o sistema, instala o que falta, compila, ativa o serviço e roda o diagnóstico
 ```
 
-Para remover: `./uninstall.sh`.
+O instalador primeiro confere tudo: pacotes obrigatórios (Rust, bibliotecas da interface, polkit...),
+opcionais com a explicação de cada um (podman, MangoHud, gamescope, scx, lm_sensors, vulkan-tools...),
+cgroups v2, nós NUMA, driver amdgpu, `/dev/kfd`, se você está nos grupos `render` e `video` e o
+módulo do uncore. Depois instala o que falta pelo pacman (os opcionais ele pergunta), compila,
+ativa o serviço e termina com o `numapilot doctor`.
+
+| Comando | O que faz |
+|---|---|
+| `./install.sh --check` | só mostra o que falta, sem mudar nada |
+| `./install.sh --yes` | instala tudo sem perguntar |
+| `./install.sh --minimal` | só o obrigatório |
+| `./install.sh --restore ARQUIVO` | instala e restaura as configurações de um backup |
+
+**Antes de formatar:** `numapilot backup` (ou Configurações → Fazer backup) salva num `.tar.gz`
+os perfis dos programas, os ajustes da máquina, das ventoinhas e das GPUs (inclusive undervolt),
+o OverDrive, os parâmetros do kernel que o numapilot controla, o laboratório e o servidor de IA, o
+otimizador de FPS, os atalhos do menu e a atualização semanal. Guarde o arquivo fora do disco do
+sistema. Depois de reinstalar: `./install.sh --restore numapilot-backup-DATA.tar.gz` (se o arquivo
+estiver na sua pasta pessoal, o instalador acha sozinho e pergunta). Os modelos `.gguf` e a pasta
+`~/lab` são seus dados: copie à parte.
+
+Para remover: `./uninstall.sh`. Roteiro de testes no hardware: [docs/TESTES.md](docs/TESTES.md).
 
 **Pelo pacman (Arch/CachyOS):** o `packaging/arch/PKGBUILD` gera o pacote `numapilot-git` a partir
 deste repositório, com o binário em `/usr/bin` e o serviço em `/usr/lib/systemd/system`:
@@ -376,11 +396,32 @@ gfx906-rocm llm update                     # build nova do llama.cpp (volta se f
   do socket delas.
 - Os ajustes da interface ficam em `~/.config/gfx906-lab/settings.env`.
 
-## 12. Atualização automática e ícone na bandeja
+## 12. Atualizações do ROCm sem quebrar, e ícone na bandeja
 
-- `gfx906-rocm autoupdate enable` (ou o checkbox em Configurações) cria um timer semanal do systemd
-  do usuário. Ele atualiza o laboratório, o llama.cpp e a imagem ROCm, sempre testando nas GPUs e
-  voltando para a versão anterior se falhar. O resultado aparece numa notificação e em Configurações.
+O ROCm das MI50 vem da comunidade (mixa3607/ML-gfx906 e os tarballs do TheRock), que publica
+versões novas com frequência. Para saber **quando** atualizar e garantir que **não quebra**:
+
+- **Quando:** `gfx906-rocm check` (ou Configurações → Verificar agora) compara o que está em uso
+  com o que saiu, para o laboratório, o llama.cpp, a imagem ROCm e o ROCm nativo, sem mudar nada.
+  A verificação semanal (`gfx906-rocm autoupdate enable`, ou o checkbox em Configurações) faz isso
+  sozinha. Em "só me avisar" ela só manda uma notificação; em "instalar se passar na validação"
+  ela já atualiza.
+- **Sem quebrar:** cada versão nova é baixada ou construída **ao lado** da atual e validada num
+  container à parte, nas MI50, antes de trocar. A versão em uso continua rodando enquanto isso.
+  - PyTorch: em cada placa, matriz e convolução com o mesmo resultado que a CPU; metade da VRAM
+    escrita e lida sem erro; desempenho fp16; cópia entre as duas placas.
+  - llama.cpp: tokens/s com o menor modelo da pasta (`llama-bench`), ou, sem modelo, se enxerga as
+    gfx906.
+  - Imagem ROCm: `rocminfo` e um kernel HIP compilado e executado em cada placa.
+  - Desempenho comparado com a versão atual: mais de `REGRESS_PCT`% (padrão 10%) mais lenta é
+    recusada.
+  Se falhar, fica a versão atual, a nova não é tentada de novo e o motivo vai para o histórico.
+- **Travar:** `gfx906-rocm hold lab|llm|image|rocm` (ou a coluna "Travar" em Configurações) segura um
+  componente na versão atual, por exemplo durante um trabalho importante.
+- **Histórico:** `gfx906-rocm history` mostra cada atualização com o resultado e o desempenho.
+  `gfx906-rocm validate` mede as versões atuais e grava como referência.
+
+![Atualizações](docs/atualizacoes.png)
 - O **ícone na bandeja** (`numapilot-gui --tray`, ou ative em Configurações) mostra a temperatura,
   o uso e a potência de cada GPU. Fica de outra cor acima de 90 °C. O menu dá acesso ao JupyterLab,
   ao VS Code, ao PyCharm, ao terminal do laboratório, ao chat do servidor de IA e ao painel do Sunshine.

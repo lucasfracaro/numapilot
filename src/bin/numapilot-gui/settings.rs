@@ -68,7 +68,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.heading("Atualizações");
         let mut on = auto;
         if ui
-            .checkbox(&mut on, "Atualizar toda semana (laboratório, llama.cpp e ROCm), testando nas GPUs e voltando se falhar")
+            .checkbox(&mut on, "Verificar toda semana (laboratório, llama.cpp e ROCm)")
             .changed()
         {
             app.start_job(
@@ -87,9 +87,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 .color(if ok { Color32::from_rgb(90, 180, 110) } else { Color32::from_rgb(230, 160, 40) }),
             );
         }
-        if ui.button("Atualizar tudo agora").clicked() {
-            app.start_job("Atualizando tudo", gfx(&["auto-update"]));
-        }
+        updates_ui(app, ui);
 
         ui.add_space(8.0);
         ui.heading("Painel no celular");
@@ -138,6 +136,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui.button("Verificar tudo").clicked() {
                 app.start_job("Diagnóstico", vec![crate::jobs::sibling("numapilot"), "doctor".into()]);
+            }
+            if ui
+                .button("Fazer backup das configurações")
+                .on_hover_text("Salva ~/numapilot-backup-DATA.tar.gz com perfis, ajustes da máquina, ventoinhas, GPUs, laboratório e parâmetros do kernel. Guarde fora do disco do sistema; para restaurar: ./install.sh --restore ARQUIVO")
+                .clicked()
+            {
+                app.start_job("Backup das configurações", vec![crate::jobs::sibling("numapilot"), "backup".into()]);
             }
             if ui.button("Gerar relatório para enviar").on_hover_text("Salva ~/numapilot-relatorio.txt com o diagnóstico e as informações do sistema").clicked() {
                 app.start_job("Relatório de diagnóstico", vec![crate::jobs::sibling("numapilot"), "doctor".into(), "--report".into()]);
@@ -240,5 +245,120 @@ fn web_ui(app: &mut App, ui: &mut egui::Ui) {
                 ui.label("Sem rede local detectada.");
             }
         }
+    }
+}
+
+fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
+    use numapilot::labcfg::{self, LabSettings};
+    let st = labcfg::state_dir();
+    let avail: serde_json::Value = std::fs::read_to_string(st.join("available.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let mut cfg = LabSettings::load();
+    ui.horizontal(|ui| {
+        ui.label("Quando houver versão nova:");
+        let mut mode = cfg.get("UPDATE_MODE");
+        let before = mode.clone();
+        ui.radio_value(&mut mode, "auto".to_string(), "instalar se passar na validação");
+        ui.radio_value(&mut mode, "aviso".to_string(), "só me avisar");
+        if mode != before {
+            cfg.set("UPDATE_MODE", &mode);
+            match cfg.save_keys(&["UPDATE_MODE"]) {
+                Ok(()) => app.toast("Preferência de atualização salva", true),
+                Err(e) => app.toast(e.to_string(), false),
+            }
+        }
+    });
+    ui.label(
+        RichText::new(format!(
+            "Antes de trocar, cada versão nova roda num container à parte e precisa: dar o mesmo resultado da CPU em cada MI50 \
+             (matrizes e convolução), ler e escrever metade da VRAM sem erro, copiar entre as placas e não ficar mais de {}% \
+             mais lenta que a atual (o llama.cpp é medido em tokens/s). Se falhar, fica a versão atual e a nova não é tentada de novo.",
+            cfg.get("REGRESS_PCT")
+        ))
+        .small()
+        .weak(),
+    );
+    let comps = [("lab", "Laboratório (PyTorch)"), ("llm", "Servidor de IA (llama.cpp)"), ("image", "Imagem ROCm"), ("rocm", "ROCm nativo")];
+    egui::Grid::new("upd").striped(true).num_columns(4).spacing([14.0, 4.0]).show(ui, |ui| {
+        for h in ["", "Em uso", "Disponível", "Travar"] {
+            ui.label(RichText::new(h).strong());
+        }
+        ui.end_row();
+        for (k, label) in comps {
+            let a = &avail[k];
+            if a.is_null() {
+                continue;
+            }
+            let short = |v: &serde_json::Value| v.as_str().unwrap_or("?").rsplit(':').next().unwrap_or("?").to_string();
+            let (cur, new) = (short(&a["current"]), short(&a["new"]));
+            ui.label(label);
+            ui.label(&cur);
+            if new != cur {
+                ui.label(RichText::new(format!("{new} (nova)")).color(Color32::from_rgb(230, 160, 40)));
+            } else {
+                ui.label(RichText::new("em dia").color(Color32::from_rgb(90, 180, 110)));
+            }
+            let hold = labcfg::cfg_dir().join(format!("hold-{k}"));
+            let mut held = hold.exists();
+            if ui.checkbox(&mut held, "").on_hover_text("Mantém a versão atual mesmo com atualização automática").changed() {
+                let _ = std::fs::create_dir_all(labcfg::cfg_dir());
+                let _ = if held { std::fs::write(&hold, "interface\n") } else { std::fs::remove_file(&hold) };
+            }
+            ui.end_row();
+        }
+    });
+    if avail.is_null() {
+        ui.label(RichText::new("Ainda não verificado.").weak());
+    } else if let Some(t) = avail["time"].as_str() {
+        ui.label(RichText::new(format!("Verificado em {}", t.get(..16).unwrap_or(t).replace('T', " "))).small().weak());
+    }
+    ui.horizontal(|ui| {
+        if ui.button("Verificar agora").clicked() {
+            app.start_job("Procurando versões novas", gfx(&["check"]));
+        }
+        if ui.button("Atualizar agora (com validação)").clicked() {
+            app.start_job("Atualizando com validação", gfx(&["update-all"]));
+        }
+        if ui.button("Validar as versões atuais").on_hover_text("Roda os testes nas GPUs e grava o desempenho de agora como referência").clicked() {
+            app.start_job("Validando as versões atuais", gfx(&["validate"]));
+        }
+        if let Some(u) = avail["releases"].as_str()
+            && ui.button("Novidades da comunidade").clicked()
+        {
+            let _ = crate::jobs::open_url(u);
+        }
+    });
+    // histórico
+    let hist = std::fs::read_to_string(st.join("history.jsonl")).unwrap_or_default();
+    let rows: Vec<serde_json::Value> = hist.lines().rev().take(8).filter_map(|l| serde_json::from_str(l).ok()).collect();
+    if !rows.is_empty() {
+        ui.collapsing("Histórico das atualizações", |ui| {
+            egui::Grid::new("updh").striped(true).num_columns(5).show(ui, |ui| {
+                for h in ["Data", "O quê", "Versão", "Resultado", "Desempenho"] {
+                    ui.label(RichText::new(h).strong());
+                }
+                ui.end_row();
+                for r in rows {
+                    let s = |k: &str| r[k].as_str().unwrap_or("").rsplit(':').next().unwrap_or("").to_string();
+                    ui.label(r["time"].as_str().unwrap_or("").get(..10).unwrap_or(""));
+                    ui.label(r["comp"].as_str().unwrap_or(""));
+                    ui.label(format!("{} → {}", s("from"), s("to")));
+                    let res = r["result"].as_str().unwrap_or("");
+                    ui.label(RichText::new(res).color(if res == "ok" { Color32::from_rgb(90, 180, 110) } else { Color32::from_rgb(230, 160, 40) }));
+                    let m = &r["metrics"];
+                    let perf = if let Some(t) = m["tflops"].as_array() {
+                        format!("fp16 {} TFLOPS", t.iter().filter_map(|x| x.as_f64()).map(|x| format!("{x:.1}")).collect::<Vec<_>>().join(" / "))
+                    } else if m["tg"].is_number() {
+                        format!("{} / {} tok/s", m["pp"], m["tg"])
+                    } else {
+                        String::new()
+                    };
+                    ui.label(perf);
+                    ui.end_row();
+                }
+            });
+        });
     }
 }

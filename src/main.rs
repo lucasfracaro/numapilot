@@ -79,6 +79,19 @@ enum Cmd {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
+    /// Guarda todas as configurações num .tar.gz (para reinstalar depois de formatar).
+    Backup {
+        /// Arquivo ou pasta de destino (padrão: sua pasta pessoal). Guarde fora do disco do sistema.
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
+    /// Restaura um backup (use sudo). Também reaplica OverDrive e parâmetros do kernel.
+    Restore {
+        file: std::path::PathBuf,
+        /// Não mexe no boot (OverDrive e parâmetros do kernel).
+        #[arg(long)]
+        no_boot: bool,
+    },
     /// Ajustes da máquina: status | mode jogo|ia|silencioso|normal
     Machine {
         action: String,
@@ -191,6 +204,16 @@ fn real_main() -> Result<()> {
         Cmd::Tune { action, key } => cmd_tune(&cfg, &action, key),
         Cmd::Boot { what, args } => cmd_boot(&what, &args),
         Cmd::Machine { action, value } => cmd_machine(&cfg, &action, value.as_deref()),
+        Cmd::Backup { out } => {
+            let f = numapilot::backup::create(out.as_deref()).map_err(|e| anyhow::anyhow!(e))?;
+            println!("Backup salvo em {}", f.display());
+            println!("Copie para fora do disco do sistema (pendrive, outro disco, nuvem) antes de formatar.");
+            println!("Para restaurar: ./install.sh --restore {}", f.display());
+            Ok(())
+        }
+        Cmd::Restore { file, no_boot } => {
+            numapilot::backup::restore(&file, !no_boot, &mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
+        }
         Cmd::Web { port, bind, url } => {
             if url {
                 println!("{}", numapilot::web::url(port).context("sem rede")?);

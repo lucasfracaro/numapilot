@@ -37,6 +37,8 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("LLM_CTX", "16384"),
     ("LLM_PORT", "8080"),
     ("LLM_ARGS", ""),
+    ("UPDATE_MODE", "auto"),
+    ("REGRESS_PCT", "10"),
 ];
 
 /// Lê KEY="valor" (o formato que o script também lê). Ignora o resto.

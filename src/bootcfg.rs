@@ -97,7 +97,7 @@ pub fn initramfs_tool() -> Option<Vec<&'static str>> {
     }
 }
 
-fn regenerate(log: &mut dyn FnMut(&str)) -> Result<(), String> {
+pub fn regenerate(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     let Some(cmd) = initramfs_tool() else {
         log("Nenhuma ferramenta de initramfs encontrada; o arquivo vale quando o módulo carregar do disco.");
         return Ok(());

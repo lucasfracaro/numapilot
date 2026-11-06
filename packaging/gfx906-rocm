@@ -39,6 +39,10 @@ LLM_PORT=8080
 LLM_BIND="127.0.0.1"
 LLM_ARGS=""            # argumentos extras do llama-server
 UPDATE_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/gfx906-lab/updates.log"
+# Atualização: "auto" = instala sozinho o que passar na validação; "aviso" = só avisa que há versão nova.
+UPDATE_MODE="auto"
+REGRESS_PCT=10         # recusa a versão nova se ficar mais lenta que isto (%) em relação à atual
+LLM_BENCH_MODEL=""     # .gguf usado para medir o llama.cpp; vazio = o menor da pasta de modelos
 # shellcheck source=/dev/null
 [[ -r $CONF ]] && source "$CONF"
 # Ajustes do usuário feitos pela interface gráfica (sobrepõem o /etc).
@@ -85,9 +89,15 @@ Uso: gfx906-rocm <comando> [args]
                                  update [--check|--force] (testa nas GPUs e volta se falhar) | rollback | pycharm
   llm [comando]                servidor de IA (llama.cpp nas MI50, API compatível com OpenAI):
                                  models | up [modelo.gguf] | down | info | logs | update [--check]
+  check                        procura versões novas sem mudar nada
+  validate [lab|llm|image]     valida as versões em uso nas GPUs e grava como referência
+  update-all                   atualiza o que tiver versão nova: cada uma é validada ANTES de trocar
+                               (resultado certo nas GPUs, memória, cópia entre placas e desempenho
+                               no máximo $REGRESS_PCT% abaixo da atual); se falhar, fica a atual
+  hold|unhold lab|llm|image|rocm  trava/destrava um componente na versão atual
+  history                      histórico das atualizações com o desempenho de cada versão
   autoupdate enable|disable|status
-                               atualização semanal automática (laboratório, llama.cpp, ROCm)
-  auto-update                  roda a atualização agora (o que o timer semanal executa)
+                               verificação semanal (UPDATE_MODE=auto instala, aviso só avisa)
   doctor                       checa driver, permissões, GPUs e conflitos
 
 Base: $ROCM_BASE   Config: $CONF
@@ -432,12 +442,12 @@ lab_keys() { # chaves públicas do usuário para o SSH do container
 }
 
 lab_build() {
-    local base=${1:-}
+    local base=${1:-} tag=${2:-latest}
     [[ -n $base ]] || base=$(lab_base)
     local eng src
     eng=$(engine)
     src=$(lab_src)
-    if "$eng" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1; then
+    if [[ $tag == latest ]] && "$eng" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1; then
         "$eng" tag "$LAB_IMAGE:latest" "$LAB_IMAGE:previous"
     fi
     info "construindo $LAB_IMAGE sobre $base (a primeira vez demora: a base tem vários GB)"
@@ -445,7 +455,7 @@ lab_build() {
     [[ $eng == podman ]] && pull=(--pull=newer)
     "$eng" build "${pull[@]}" -f "$src/Containerfile" \
         --build-arg BASE="$base" --build-arg INSTALL_PYCHARM="$LAB_PYCHARM" \
-        -t "$LAB_IMAGE:latest" "$src"
+        -t "$LAB_IMAGE:$tag" "$src"
 }
 
 lab_running() { [[ $("$(engine)" inspect -f '{{.State.Running}}' "$LAB_NAME" 2>/dev/null) == true ]]; }
@@ -512,7 +522,8 @@ lab_update() {
     for a in "$@"; do
         case $a in --check) check=1 ;; --force) force=1 ;; esac
     done
-    local cur new
+    local cur new eng
+    eng=$(engine)
     cur=$(lab_image_base)
     new=$(lab_base)
     echo "imagem atual: ${cur:-nenhuma}"
@@ -522,18 +533,31 @@ lab_update() {
         return 0
     fi
     [[ $check == 1 ]] && return 0
-    lab_build "$new"
-    lab_down >/dev/null 2>&1 || true
-    lab_up >/dev/null
-    sleep 5
-    if lab_test; then
-        info "atualizado para $new"
-        lab_info
-    else
-        info "a imagem nova falhou no teste de GPU: voltando para a anterior"
-        lab_rollback
+    if was_refused lab "$new" && [[ $force == 0 ]]; then
+        info "esta versão já foi testada e recusada antes (use --force para testar de novo)"
         return 1
     fi
+    # Constrói ao lado (:candidate) e valida antes de trocar: o laboratório atual continua rodando.
+    lab_build "$new" candidate
+    local rc=0
+    run_validation lab "$LAB_IMAGE:candidate" || rc=$?
+    if [[ $rc != 0 ]]; then
+        local why=falhou
+        [[ $rc == 2 ]] && why=lenta
+        record_history lab "${cur:-nenhuma}" "$new" "$why" "$VALID_METRICS"
+        info "a versão nova não passou ($why): o laboratório continua em ${cur:-?}. Ela fica como $LAB_IMAGE:candidate para investigar."
+        return 1
+    fi
+    "$eng" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1 && "$eng" tag "$LAB_IMAGE:latest" "$LAB_IMAGE:previous"
+    "$eng" tag "$LAB_IMAGE:candidate" "$LAB_IMAGE:latest"
+    "$eng" rmi "$LAB_IMAGE:candidate" >/dev/null 2>&1 || true
+    save_baseline lab "$VALID_METRICS"
+    record_history lab "${cur:-nenhuma}" "$new" ok "$VALID_METRICS"
+    if lab_running; then
+        lab_down >/dev/null 2>&1 || true
+        lab_up >/dev/null
+    fi
+    info "laboratório atualizado para $new"
 }
 
 lab_rollback() {
@@ -703,22 +727,57 @@ llm_update() {
     echo "llama.cpp novo : $new"
     [[ $new == "$cur" ]] && { info "já está na build mais nova"; return 0; }
     [[ $check == 1 ]] && return 0
+    if was_refused llm "$new"; then
+        info "esta build já foi testada e recusada antes; espera a próxima"
+        return 1
+    fi
     "$(engine)" pull "$new" || die "não consegui baixar $new"
+    local rc=0
+    run_validation llm "$new" || rc=$?
+    if [[ $rc != 0 ]]; then
+        local why=falhou
+        [[ $rc == 2 ]] && why=lenta
+        record_history llm "${cur:-nenhum}" "$new" "$why" "$VALID_METRICS"
+        info "a build nova não passou ($why): continua ${cur:-a atual}"
+        return 1
+    fi
     mkdir -p "$(lab_cfg_dir)"
-    echo "$new" >"$f"
     [[ -n $cur ]] && echo "$cur" >"$(lab_cfg_dir)/llm.image.previous"
+    echo "$new" >"$f"
+    save_baseline llm "$VALID_METRICS"
+    record_history llm "${cur:-nenhum}" "$new" ok "$VALID_METRICS"
     if llm_running; then
         local model
         model=$("$(engine)" inspect -f '{{ index .Config.Labels "io.numapilot.model" }}' "$LLM_NAME")
         "$(engine)" rm -f "$LLM_NAME" >/dev/null
         if ! (LLM_MODEL=$model "$0" llm up "$model"); then
-            info "a build nova falhou: voltando para $cur"
+            info "a build nova não subiu com $model: voltando para $cur"
             echo "$cur" >"$f"
+            record_history llm "$new" "$cur" voltou null
             "$0" llm up "$model"
             return 1
         fi
     fi
     info "llama.cpp atualizado"
+}
+
+image_update() { # imagem ROCm base (tag fixa que recebe builds novas)
+    local eng before after prev="localhost/gfx906-rocm-image:previous"
+    eng=$(engine)
+    before=$("$eng" image inspect -f '{{.Id}}' "$IMAGE" 2>/dev/null || true)
+    [[ -n $before ]] && "$eng" tag "$IMAGE" "$prev"
+    "$eng" pull "$IMAGE" >/dev/null || { info "não consegui baixar $IMAGE"; return 1; }
+    after=$("$eng" image inspect -f '{{.Id}}' "$IMAGE")
+    if [[ $before == "$after" ]]; then info "imagem ROCm já é a mais nova"; return 0; fi
+    if run_validation image "$IMAGE"; then
+        record_history image "${before:0:12}" "${after:0:12}" ok "$VALID_METRICS"
+        info "imagem ROCm atualizada"
+    else
+        [[ -n $before ]] && "$eng" tag "$prev" "$IMAGE"
+        record_history image "${before:0:12}" "${after:0:12}" falhou "$VALID_METRICS"
+        info "a imagem nova falhou na validação: voltei para a anterior"
+        return 1
+    fi
 }
 
 cmd_llm() {
@@ -736,26 +795,326 @@ cmd_llm() {
     esac
 }
 
+# ---------------------------------------------------------------- validação antes de trocar de versão
+STATE_DIR="$(dirname "$UPDATE_LOG")"
+RELEASES_URL="https://github.com/mixa3607/ML-gfx906/releases"
+
+gpu_args() { # argumentos de GPU para um container de teste (uma linha cada)
+    local r eng
+    eng=$(engine)
+    printf '%s\n' --device=/dev/kfd --ipc=host --security-opt seccomp=unconfined
+    for r in $(compgen -G '/dev/dri/renderD*' || true); do printf -- '--device=%s\n' "$r"; done
+    if [[ $eng == podman && $EUID -ne 0 ]]; then
+        printf '%s\n' --group-add keep-groups
+    else
+        host_gid_args
+    fi
+}
+
+expected_gpus() { # quantas gfx906 o KFD enxerga
+    local n=0 p
+    for p in /sys/class/kfd/kfd/topology/nodes/*/properties; do
+        [[ -r $p ]] && awk '/gfx_target_version/{exit !($2==90006)}' "$p" && n=$((n + 1))
+    done
+    echo "$n"
+}
+
+baseline_file() { echo "$STATE_DIR/baseline-$1.json"; }
+
+# compara RESULT (json) com a referência da versão atual; sai 1 se ficou mais lenta que REGRESS_PCT
+compare_baseline() {
+    local comp=$1 result=$2
+    BASE_FILE=$(baseline_file "$comp") REGRESS="$REGRESS_PCT" COMP="$comp" RESULT="$result" python3 - <<'PY'
+import json, os, sys
+comp, regress = os.environ["COMP"], float(os.environ["REGRESS"])
+new = json.loads(os.environ["RESULT"])
+try:
+    old = json.load(open(os.environ["BASE_FILE"]))
+except Exception:
+    print("sem referência anterior: esta vira a referência"); sys.exit(0)
+def pairs():
+    if comp == "lab":
+        for i, (a, b) in enumerate(zip(old.get("tflops", []), new.get("tflops", []))):
+            yield f"GPU {i} fp16 TFLOPS", a, b
+        if old.get("copy_gbs") and new.get("copy_gbs"):
+            yield "cópia entre GPUs GB/s", old["copy_gbs"], new["copy_gbs"]
+    elif comp == "llm" and old.get("model") == new.get("model"):
+        for k, label in (("pp", "processar prompt tok/s"), ("tg", "gerar tok/s")):
+            if old.get(k) and new.get(k):
+                yield label, old[k], new[k]
+bad = False
+for label, a, b in pairs():
+    pct = (b - a) / a * 100 if a else 0
+    flag = ""
+    if pct < -regress:
+        flag, bad = "  <- mais lenta", True
+    print(f"  {label}: {a:g} -> {b:g} ({pct:+.0f}%){flag}")
+sys.exit(1 if bad else 0)
+PY
+}
+
+save_baseline() { mkdir -p "$STATE_DIR"; printf '%s\n' "$2" >"$(baseline_file "$1")"; }
+
+record_history() { # comp de para resultado metrics_json
+    mkdir -p "$STATE_DIR"
+    printf '{"time":"%s","comp":"%s","from":"%s","to":"%s","result":"%s","metrics":%s}\n' \
+        "$(date -Iseconds)" "$1" "$2" "$3" "$4" "${5:-null}" >>"$STATE_DIR/history.jsonl"
+}
+
+# valida o laboratório (PyTorch) numa imagem; imprime METRICS {json} no fim
+validate_lab_image() {
+    local img=$1 eng out src args
+    eng=$(engine)
+    src=$(lab_src)
+    mapfile -t args < <(gpu_args)
+    info "validando $img nas GPUs (correção, memória, desempenho)"
+    out=$("$eng" run --rm "${args[@]}" -v "$src/gpu-validate.py:/tmp/gpu-validate.py:ro" --entrypoint python3 "$img" /tmp/gpu-validate.py 2>&1) || {
+        echo "$out" | tail -n 15
+        return 1
+    }
+    echo "$out" | grep -v '^RESULT ' | tail -n 8
+    local result
+    result=$(echo "$out" | sed -n 's/^RESULT //p' | tail -n1)
+    python3 -c '
+import json, sys
+r = json.loads(sys.argv[1])
+print("METRICS " + json.dumps({"tflops": [g.get("tflops_fp16", 0) for g in r["gpus"]], "copy_gbs": r.get("copy_gbs"), "gpus": len(r["gpus"]), "torch": r.get("torch")}))
+' "$result"
+}
+
+bench_model() { # .gguf usado para medir o llama.cpp
+    if [[ -n $LLM_BENCH_MODEL ]]; then echo "$LLM_BENCH_MODEL"; return; fi
+    [[ -d $LLM_MODELS ]] || return 0
+    find -L "$LLM_MODELS" -type f -name '*.gguf' ! -name '*-of-*' -printf '%s\t%P\n' 2>/dev/null | sort -n | head -n1 | cut -f2
+}
+
+validate_llm_image() {
+    local img=$1 eng args model out
+    eng=$(engine)
+    mapfile -t args < <(gpu_args)
+    model=$(bench_model)
+    "$eng" image inspect "$img" >/dev/null 2>&1 || "$eng" pull "$img" >/dev/null || return 1
+    if [[ -z $model ]]; then
+        info "validando $img (sem modelo em $LLM_MODELS: só confere se enxerga as GPUs)"
+        # shellcheck disable=SC2016
+        out=$("$eng" run --rm "${args[@]}" --entrypoint sh "$img" -c \
+            '$(command -v llama-server || echo /app/llama-server) --list-devices' 2>&1) || { echo "$out" | tail -n 10; return 1; }
+        local n
+        n=$(echo "$out" | grep -ci 'gfx906' || true)
+        echo "$out" | grep -i 'rocm\|gfx' | head -n 4
+        ((n >= 1)) || { echo "FALHOU: o llama.cpp não listou nenhuma gfx906"; return 1; }
+        echo "METRICS {\"gpus\": $n}"
+        return 0
+    fi
+    info "validando $img com $model (llama-bench)"
+    # shellcheck disable=SC2016
+    out=$("$eng" run --rm "${args[@]}" -v "$LLM_MODELS:/models:ro" --entrypoint sh "$img" -c \
+        'b=$(command -v llama-bench || echo /app/llama-bench); exec "$b" -m "/models/$1" -ngl 999 -p 512 -n 128 -r 2 -o json' sh "$model" 2>/dev/null) || {
+        echo "FALHOU: o llama-bench não rodou"
+        return 1
+    }
+    MODEL="$model" python3 -c '
+import json, os, sys
+data = json.loads(sys.stdin.read())
+pp = [r["avg_ts"] for r in data if r.get("n_prompt", 0) > 0 and r.get("n_gen", 0) == 0]
+tg = [r["avg_ts"] for r in data if r.get("n_gen", 0) > 0 and r.get("n_prompt", 0) == 0]
+m = {"model": os.environ["MODEL"], "pp": round(pp[0], 1) if pp else None, "tg": round(tg[0], 1) if tg else None}
+print("  processar prompt: %s tok/s, gerar: %s tok/s" % (m["pp"], m["tg"]))
+print("METRICS " + json.dumps(m))
+' <<<"$out"
+}
+
+validate_rocm_image() {
+    local img=$1 eng args out want t
+    eng=$(engine)
+    mapfile -t args < <(gpu_args)
+    want=$(expected_gpus)
+    info "validando $img (rocminfo e um kernel HIP em cada GPU)"
+    t=$(mktemp -d)
+    cat >"$t/t.hip" <<'HIP'
+#include <hip/hip_runtime.h>
+#include <cstdio>
+__global__ void k(float* a){ int i=threadIdx.x; a[i]=i*2.0f; }
+int main(){
+  int n=0; if(hipGetDeviceCount(&n)!=hipSuccess||n==0){printf("nenhuma GPU HIP\n");return 1;}
+  int bad=0;
+  for(int d=0; d<n; d++){
+    hipDeviceProp_t p; hipGetDeviceProperties(&p,d); hipSetDevice(d);
+    float *g,h[64]; hipMalloc(&g,sizeof h); hipLaunchKernelGGL(k,1,64,0,0,g);
+    hipMemcpy(h,g,sizeof h,hipMemcpyDeviceToHost); hipFree(g);
+    int ok=1; for(int i=0;i<64;i++) if(h[i]!=i*2.0f) ok=0;
+    printf("GPU %d %s: %s\n",d,p.gcnArchName,ok?"OK":"ERRO"); bad+=!ok;
+  }
+  return bad;
+}
+HIP
+    # shellcheck disable=SC2016
+    out=$("$eng" run --rm "${args[@]}" -v "$t:/t" --entrypoint sh "$img" -c \
+        'rocminfo | grep -c "gfx906" ; hipcc --offload-arch=gfx906 -O1 /t/t.hip -o /t/t && /t/t' 2>&1) || {
+        echo "$out" | tail -n 10
+        rm -rf "$t"
+        return 1
+    }
+    rm -rf "$t"
+    echo "$out" | grep -E '^GPU ' || true
+    local seen
+    seen=$(echo "$out" | head -n1 | tr -dc '0-9')
+    if [[ ${want:-0} -gt 0 && ${seen:-0} -lt 1 ]]; then echo "FALHOU: rocminfo não viu as gfx906"; return 1; fi
+    echo "METRICS {\"gpus\": $(echo "$out" | grep -c '^GPU .*OK')}"
+}
+
+# valida e compara; uso: run_validation comp imagem  (imprime o resumo; METRICS fica em $VALID_METRICS)
+VALID_METRICS=""
+run_validation() {
+    local comp=$1 img=$2 out
+    case $comp in
+    lab) out=$(validate_lab_image "$img") || { echo "$out"; return 1; } ;;
+    llm) out=$(validate_llm_image "$img") || { echo "$out"; return 1; } ;;
+    image) out=$(validate_rocm_image "$img") || { echo "$out"; return 1; } ;;
+    esac
+    echo "$out" | grep -v '^METRICS '
+    VALID_METRICS=$(echo "$out" | sed -n 's/^METRICS //p' | tail -n1)
+    [[ -n $VALID_METRICS ]] || VALID_METRICS=null
+    if [[ $comp != image ]]; then
+        compare_baseline "$comp" "$VALID_METRICS" || { echo "a versão nova ficou mais lenta que a atual (limite: $REGRESS_PCT%)"; return 2; }
+    fi
+    return 0
+}
+
+cmd_validate() { # valida as versões em uso agora e grava como referência
+    local comp=${1:-all} rc=0 img
+    for c in lab llm image; do
+        [[ $comp == all || $comp == "$c" ]] || continue
+        case $c in
+        lab) "$(engine)" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1 || continue; img="$LAB_IMAGE:latest" ;;
+        llm) img=$(cat "$(lab_cfg_dir)/llm.image" 2>/dev/null || true); [[ -n $img ]] || continue ;;
+        image) "$(engine)" image inspect "$IMAGE" >/dev/null 2>&1 || continue; img=$IMAGE ;;
+        esac
+        echo "== $c ($img)"
+        if run_validation "$c" "$img"; then
+            [[ $c != image ]] && save_baseline "$c" "$VALID_METRICS"
+            echo "OK (gravado como referência)"
+        else
+            rc=1
+        fi
+    done
+    return $rc
+}
+
+# ---------------------------------------------------------------- versões disponíveis / travas
+hold_file() { echo "$(lab_cfg_dir)/hold-$1"; }
+was_refused() { # comp versão: já foi testada e recusada antes?
+    [[ -s $STATE_DIR/history.jsonl ]] && grep -F "\"comp\":\"$1\"" "$STATE_DIR/history.jsonl" | grep -F "\"to\":\"$2\"" | grep -qE '"result":"(falhou|lenta)"'
+}
+is_held() { [[ -e $(hold_file "$1") ]]; }
+
+cmd_hold() {
+    local c=${1:-} on=$2
+    [[ $c =~ ^(lab|llm|image|rocm)$ ]] || die "uso: gfx906-rocm hold|unhold lab|llm|image|rocm"
+    mkdir -p "$(lab_cfg_dir)"
+    if [[ $on == 1 ]]; then date -Iseconds >"$(hold_file "$c")"; info "$c travado na versão atual"; else rm -f "$(hold_file "$c")"; info "$c destravado"; fi
+}
+
+hub_digest() { # digest de uma tag no Docker Hub
+    local repo=${1%:*} tag=${1##*:}
+    repo=${repo#docker.io/}
+    curl -fsSL "https://hub.docker.com/v2/repositories/$repo/tags/$tag" 2>/dev/null |
+        python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("digest",""))
+except Exception: print("")'
+}
+
+# Procura versões novas sem mudar nada. Grava available.json para a interface.
+cmd_check() {
+    local eng lines=() any=0 cur new
+    eng=$(engine)
+    mkdir -p "$STATE_DIR"
+    if "$eng" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1; then
+        cur=$(lab_image_base); new=$(lab_base 2>/dev/null || true)
+        if [[ -n $new && $new != "$cur" ]]; then any=1; fi
+        lines+=("$(printf '"lab":{"current":"%s","new":"%s","held":%s}' "$cur" "${new:-?}" "$(is_held lab && echo true || echo false)")")
+        echo "laboratório: ${cur:-?}  ->  ${new:-sem informação}$( [[ -n $new && $new != "$cur" ]] && echo '  (NOVA)')$(is_held lab && echo '  [travado]')"
+    fi
+    cur=$(cat "$(lab_cfg_dir)/llm.image" 2>/dev/null || true)
+    if [[ -n $cur ]]; then
+        new=$(llm_latest_tag 2>/dev/null || true)
+        [[ -n $new ]] && new="$LLM_IMAGE_REPO:$new"
+        [[ -n $LLM_IMAGE ]] && new=$LLM_IMAGE
+        if [[ -n $new && $new != "$cur" ]]; then any=1; fi
+        lines+=("$(printf '"llm":{"current":"%s","new":"%s","held":%s}' "${cur##*:}" "${new##*:}" "$(is_held llm && echo true || echo false)")")
+        echo "llama.cpp  : ${cur##*:}  ->  ${new##*:}$( [[ -n $new && $new != "$cur" ]] && echo '  (NOVA)')$(is_held llm && echo '  [travado]')"
+    fi
+    if "$eng" image inspect "$IMAGE" >/dev/null 2>&1; then
+        local ld rd
+        ld=$("$eng" image inspect -f '{{.Digest}}' "$IMAGE" 2>/dev/null || true)
+        rd=$(hub_digest "$IMAGE")
+        local upd=false
+        [[ -n $rd && $rd != "$ld" ]] && { upd=true; any=1; }
+        lines+=("$(printf '"image":{"current":"%s","new":"%s","held":%s}' "${IMAGE##*:}" "$($upd && echo "${IMAGE##*:} (nova build)" || echo "${IMAGE##*:}")" "$(is_held image && echo true || echo false)")")
+        echo "imagem ROCm: ${IMAGE##*:}$($upd && echo '  (NOVA build)')$(is_held image && echo '  [travado]')"
+    fi
+    if [[ -L $ROCM_BASE/current ]]; then
+        cur=$(readlink "$ROCM_BASE/current"); new=$(latest_remote 2>/dev/null | sed -E 's#.*/##; s/\.tar\.(gz|xz)$//' || true)
+        if [[ -n $new && $new != "$cur" ]]; then any=1; fi
+        lines+=("$(printf '"rocm":{"current":"%s","new":"%s","held":%s}' "$cur" "${new:-?}" "$(is_held rocm && echo true || echo false)")")
+        echo "ROCm nativo: $cur  ->  ${new:-sem informação}"
+    fi
+    printf '{"time":"%s","any":%s,"releases":"%s",%s}\n' "$(date -Iseconds)" "$([[ $any == 1 ]] && echo true || echo false)" \
+        "$RELEASES_URL" "$(IFS=,; echo "${lines[*]:-\"_\":null}")" >"$STATE_DIR/available.json"
+    [[ $any == 1 ]] && echo "Novidades da comunidade: $RELEASES_URL"
+    return 0
+}
+
+cmd_history() {
+    [[ -s $STATE_DIR/history.jsonl ]] || { echo "nenhuma atualização registrada ainda"; return 0; }
+    python3 - "$STATE_DIR/history.jsonl" <<'PY'
+import json, sys
+for l in open(sys.argv[1]).read().splitlines()[-30:]:
+    try: h = json.loads(l)
+    except Exception: continue
+    m = h.get("metrics") or {}
+    perf = ""
+    if m.get("tflops"): perf = "fp16 " + "/".join(f"{x:g}" for x in m["tflops"]) + " TFLOPS"
+    if m.get("tg"): perf = f"{m.get('pp')} / {m.get('tg')} tok/s"
+    print(f"{h['time'][:16]}  {h['comp']:<6} {h['from'].split(':')[-1][-26:]:>26} -> {h['to'].split(':')[-1][-26:]:<26} {h['result']:<8} {perf}")
+PY
+}
+
 # ---------------------------------------------------------------- atualização automática
 auto_update() {
-    mkdir -p "$(dirname "$UPDATE_LOG")"
-    local ok=1 summary=()
+    mkdir -p "$STATE_DIR"
+    local ok=1 summary=() eng
+    eng=$(engine)
     {
-        echo "=== $(date '+%F %T') ==="
-        if "$(engine)" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1; then
-            if lab_update; then summary+=("laboratório OK"); else summary+=("laboratório FALHOU (mantida a versão anterior)"); ok=0; fi
+        echo "=== $(date '+%F %T') (modo: $UPDATE_MODE) ==="
+        cmd_check
+        if [[ $UPDATE_MODE == aviso ]]; then
+            if grep -q '"any":true' "$STATE_DIR/available.json" 2>/dev/null; then summary+=("há versões novas: abra o numapilot para atualizar"); fi
+        else
+            if "$eng" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1; then
+                if is_held lab; then summary+=("laboratório travado")
+                elif (lab_update); then summary+=("laboratório OK")
+                else summary+=("laboratório: versão nova recusada (mantida a atual)"); ok=0; fi
+            fi
+            if [[ -s "$(lab_cfg_dir)/llm.image" ]]; then
+                if is_held llm; then summary+=("llama.cpp travado")
+                elif (llm_update); then summary+=("llama.cpp OK")
+                else summary+=("llama.cpp: build nova recusada (mantida a atual)"); ok=0; fi
+            fi
+            if "$eng" image inspect "$IMAGE" >/dev/null 2>&1; then
+                if is_held image; then summary+=("imagem ROCm travada")
+                elif (image_update); then summary+=("imagem ROCm OK")
+                else summary+=("imagem ROCm: build nova recusada"); ok=0; fi
+            fi
+            if [[ -L $ROCM_BASE/current ]] && ! is_held rocm; then
+                if (cmd_update); then summary+=("ROCm nativo OK"); else summary+=("ROCm nativo: versão nova recusada"); ok=0; fi
+            fi
         fi
-        if [[ -s "$(lab_cfg_dir)/llm.image" ]] || "$(engine)" inspect "$LLM_NAME" >/dev/null 2>&1; then
-            if llm_update; then summary+=("llama.cpp OK"); else summary+=("llama.cpp FALHOU (mantida a versão anterior)"); ok=0; fi
-        fi
-        if "$(engine)" image inspect "$IMAGE" >/dev/null 2>&1; then
-            if "$(engine)" pull "$IMAGE"; then summary+=("imagem ROCm OK"); else summary+=("imagem ROCm FALHOU"); ok=0; fi
-        fi
-        [[ ${#summary[@]} -gt 0 ]] || summary+=("nada instalado para atualizar")
+        [[ ${#summary[@]} -gt 0 ]] || summary+=("tudo em dia")
         echo "resultado: ${summary[*]}"
     } > >(tee -a "$UPDATE_LOG") 2>&1
     printf '{"time":"%s","ok":%s,"summary":"%s"}\n' "$(date -Iseconds)" "$([[ $ok == 1 ]] && echo true || echo false)" \
-        "$(IFS=';'; echo "${summary[*]}")" >"$(dirname "$UPDATE_LOG")/last-update.json"
+        "$(IFS=';'; echo "${summary[*]}")" >"$STATE_DIR/last-update.json"
     command -v notify-send >/dev/null && notify-send -a numapilot "Atualização das MI50" "$(IFS=$'\n'; echo "${summary[*]}")" || true
     [[ $ok == 1 ]]
 }
@@ -849,7 +1208,12 @@ main() {
     container) cmd_container "$@" ;;
     lab) cmd_lab "$@" ;;
     llm) cmd_llm "$@" ;;
-    auto-update) auto_update ;;
+    auto-update | update-all) auto_update ;;
+    check) cmd_check ;;
+    validate) cmd_validate "$@" ;;
+    hold) cmd_hold "${1:-}" 1 ;;
+    unhold) cmd_hold "${1:-}" 0 ;;
+    history) cmd_history ;;
     autoupdate) autoupdate_cmd "$@" ;;
     doctor) cmd_doctor ;;
     help | -h | --help) usage ;;
