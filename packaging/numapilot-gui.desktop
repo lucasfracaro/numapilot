@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=numapilot
+GenericName=Processador e placa de vídeo por programa
+Comment=Escolha em qual socket e em qual GPU cada programa roda
+Exec=numapilot-gui
+Icon=preferences-system-performance
+Terminal=false
+Categories=System;Settings;
+Keywords=NUMA;GPU;MI50;ROCm;CPU;

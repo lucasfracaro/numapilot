@@ -1,0 +1,376 @@
+#!/usr/bin/env bash
+# gfx906-rocm — instala, atualiza e faz rollback de builds comunitários do ROCm
+# para MI50 / MI60 / Radeon VII (gfx906) no CachyOS / Arch, sem mexer no ROCm do sistema.
+#
+# Cada versão fica lado a lado em $ROCM_BASE/<nome>; "current" aponta para a ativa
+# e "previous" para a anterior. Nada é colocado no PATH global: use `env` ou `exec`.
+set -euo pipefail
+
+CONF=${GFX906_ROCM_CONF:-/etc/gfx906-rocm.conf}
+# Valores padrão (sobrescreva em $CONF)
+ROCM_BASE=/opt/rocm-gfx906
+INDEX_URL="https://rocm.nightlies.amd.com/tarball/"
+FILTER="gfx906"
+KEEP=3
+IMAGE="docker.io/mixa3607/rocm-gfx906:7.14-complete"
+ENGINE=""
+# shellcheck source=/dev/null
+[[ -r $CONF ]] && source "$CONF"
+ROCM_BASE=${GFX906_ROCM_BASE:-$ROCM_BASE}
+CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/gfx906-rocm
+
+die() { echo "gfx906-rocm: erro: $*" >&2; exit 1; }
+info() { echo "==> $*" >&2; }
+need_write() {
+    mkdir -p "$ROCM_BASE" 2>/dev/null || true
+    [[ -w $ROCM_BASE ]] || die "sem permissão em $ROCM_BASE (use sudo, ou GFX906_ROCM_BASE=~/rocm-gfx906)"
+}
+resolve() { # nome|current|previous -> caminho
+    local n=${1:-current}
+    local p="$ROCM_BASE/$n"
+    [[ -e $p ]] || die "versão '$n' não encontrada (veja: gfx906-rocm list)"
+    readlink -f "$p"
+}
+
+usage() {
+    cat <<EOF
+Uso: gfx906-rocm <comando> [args]
+
+  list                         versões instaladas (* = ativa)
+  install <url|arquivo> [nome] baixa/extrai um tarball do ROCm lado a lado (não ativa)
+  use <nome>                   ativa uma versão (a atual vira "previous")
+  rollback                     volta para a versão anterior
+  test [nome]                  verifica se a versão enxerga e executa nas gfx906
+  update [--check]             procura o tarball mais novo em INDEX_URL (filtro: $FILTER),
+                               instala, testa e só ativa se o teste passar
+  prune [N]                    mantém só as N versões mais novas (padrão $KEEP) + ativa/anterior
+  remove <nome>                apaga uma versão
+  env [nome]                   imprime os exports:  eval "\$(gfx906-rocm env)"
+  exec [-r nome] -- cmd ...    roda um programa com esse ROCm (sem afetar o sistema)
+  container pull [imagem]      baixa/atualiza a imagem ($IMAGE)
+  container run [-i imagem] -- cmd ...
+                               roda no container com /dev/kfd e só as GPUs escolhidas
+                               pelo numapilot (NUMAPILOT_RENDER / NUMAPILOT_CPUS)
+  doctor                       checa driver, permissões, GPUs e conflitos
+
+Base: $ROCM_BASE   Config: $CONF
+EOF
+}
+
+find_root() { # acha a raiz do ROCm dentro de um diretório extraído
+    local d=$1 hit
+    hit=$(find "$d" -maxdepth 4 \( -name 'libamdhip64.so*' -o -name 'rocminfo' \) -print -quit 2>/dev/null || true)
+    [[ -n $hit ]] || return 1
+    hit=$(dirname "$hit") # .../lib ou .../bin
+    dirname "$hit"
+}
+
+cmd_list() {
+    local cur prev
+    cur=$(readlink "$ROCM_BASE/current" 2>/dev/null || true)
+    prev=$(readlink "$ROCM_BASE/previous" 2>/dev/null || true)
+    shopt -s nullglob
+    local any=0
+    for d in "$ROCM_BASE"/*/; do
+        local n
+        n=$(basename "$d")
+        [[ $n == current || $n == previous ]] && continue
+        any=1
+        local mark="  "
+        [[ $n == "$cur" ]] && mark="* "
+        [[ $n == "$prev" ]] && mark="< "
+        printf '%s%-60s %s\n' "$mark" "$n" "$(du -sh "$d" 2>/dev/null | cut -f1)"
+    done
+    [[ $any == 1 ]] || echo "(nenhuma versão em $ROCM_BASE)"
+}
+
+cmd_install() {
+    local src=${1:-} name=${2:-}
+    [[ -n $src ]] || die "informe a URL ou o arquivo .tar.gz/.tar.xz"
+    need_write
+    mkdir -p "$CACHE"
+    local file
+    if [[ $src =~ ^https?:// ]]; then
+        file="$CACHE/$(basename "${src%%\?*}")"
+        if [[ ! -s $file ]]; then
+            info "baixando $src"
+            curl -fL --progress-bar --retry 3 -o "$file.part" "$src"
+            mv "$file.part" "$file"
+        fi
+        # Confere o checksum se o servidor publicar um .sha256 ao lado.
+        if curl -fsSL "$src.sha256" -o "$file.sha256" 2>/dev/null; then
+            info "conferindo sha256"
+            (cd "$(dirname "$file")" && sha256sum -c <(awk -v f="$(basename "$file")" '{print $1"  "f}' "$file.sha256")) \
+                || die "checksum não confere; apague $file e tente de novo"
+        fi
+    else
+        file=$(readlink -f "$src")
+        [[ -f $file ]] || die "arquivo não encontrado: $src"
+    fi
+    [[ -n $name ]] || name=$(basename "$file" | sed -E 's/\.tar\.(gz|xz|zst)$//; s/\.tgz$//')
+    local dest="$ROCM_BASE/$name"
+    [[ -e $dest ]] && die "'$name' já está instalada (remova antes ou dê outro nome)"
+    local tmp
+    tmp=$(mktemp -d "$ROCM_BASE/.extract.XXXXXX")
+    trap 'rm -rf "$tmp"' EXIT
+    info "extraindo para $dest"
+    tar -xf "$file" -C "$tmp"
+    local root
+    root=$(find_root "$tmp") || die "não parece um tarball do ROCm (não achei libamdhip64.so nem rocminfo)"
+    mv "$root" "$dest"
+    rm -rf "$tmp"
+    trap - EXIT
+    info "instalado: $name"
+    echo "$name"
+}
+
+cmd_use() {
+    local n=${1:-}
+    [[ -n $n ]] || die "informe o nome (veja: gfx906-rocm list)"
+    [[ -d $ROCM_BASE/$n ]] || die "versão '$n' não existe"
+    need_write
+    local cur
+    cur=$(readlink "$ROCM_BASE/current" 2>/dev/null || true)
+    if [[ -n $cur && $cur != "$n" ]]; then
+        ln -sfn "$cur" "$ROCM_BASE/previous"
+    fi
+    ln -sfn "$n" "$ROCM_BASE/current"
+    info "ativa: $n${cur:+ (anterior: $cur)}"
+}
+
+cmd_rollback() {
+    local prev
+    prev=$(readlink "$ROCM_BASE/previous" 2>/dev/null || true)
+    [[ -n $prev ]] || die "não há versão anterior registrada"
+    cmd_use "$prev"
+}
+
+print_env() {
+    local r=$1
+    cat <<EOF
+export ROCM_PATH="$r"
+export HIP_PATH="$r"
+export PATH="$r/bin:$r/lib/llvm/bin:\${PATH}"
+export LD_LIBRARY_PATH="$r/lib:$r/lib/llvm/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+EOF
+}
+
+cmd_env() { print_env "$(resolve "${1:-current}")"; }
+
+cmd_exec() {
+    local n=current
+    if [[ ${1:-} == -r || ${1:-} == --rocm ]]; then n=$2; shift 2; fi
+    [[ ${1:-} == -- ]] && shift
+    [[ $# -gt 0 ]] || die "uso: gfx906-rocm exec [-r nome] -- programa args"
+    local r
+    r=$(resolve "$n")
+    eval "$(print_env "$r")"
+    exec "$@"
+}
+
+cmd_test() {
+    local r
+    r=$(resolve "${1:-current}")
+    eval "$(print_env "$r")"
+    local ok=1
+    info "testando $r"
+    # Testa só as gfx906 (a RX470/gfx803 não é suportada por ROCm recente).
+    if [[ -z ${ROCR_VISIBLE_DEVICES:-} ]] && command -v numapilot >/dev/null; then
+        local ids
+        ids=$(numapilot rocr-ids 2>/dev/null || true)
+        [[ -n $ids ]] && export ROCR_VISIBLE_DEVICES=$ids
+    fi
+    if [[ -x $r/bin/rocminfo ]]; then
+        local agents
+        agents=$("$r/bin/rocminfo" 2>/dev/null | grep -oE 'gfx906[^ ]*' | sort | uniq -c || true)
+        if [[ -n $agents ]]; then
+            echo "rocminfo enxerga: $agents"
+        else
+            echo "FALHOU: rocminfo não listou nenhuma gfx906"; ok=0
+        fi
+    else
+        echo "aviso: rocminfo não está nesta versão"
+    fi
+    local hipcc=""
+    [[ -x $r/bin/hipcc ]] && hipcc=$r/bin/hipcc
+    [[ -z $hipcc && -x $r/lib/llvm/bin/clang++ ]] && hipcc="$r/lib/llvm/bin/clang++ -x hip"
+    if [[ -n $hipcc ]]; then
+        local t
+        t=$(mktemp -d)
+        cat >"$t/t.hip" <<'EOF'
+#include <hip/hip_runtime.h>
+#include <cstdio>
+__global__ void k(float* a){ int i=threadIdx.x; a[i]=i*2.0f; }
+int main(){
+  int n=0; if(hipGetDeviceCount(&n)!=hipSuccess||n==0){printf("nenhuma GPU HIP\n");return 1;}
+  int bad=0;
+  for(int d=0; d<n; d++){
+    hipDeviceProp_t p; hipGetDeviceProperties(&p,d); hipSetDevice(d);
+    float *g,h[64]; hipMalloc(&g,sizeof h); hipLaunchKernelGGL(k,1,64,0,0,g);
+    hipMemcpy(h,g,sizeof h,hipMemcpyDeviceToHost); hipFree(g);
+    int ok=1; for(int i=0;i<64;i++) if(h[i]!=i*2.0f) ok=0;
+    printf("GPU %d %s (%s): %s\n",d,p.name,p.gcnArchName,ok?"OK":"ERRO"); bad+=!ok;
+  }
+  return bad;
+}
+EOF
+        # shellcheck disable=SC2086
+        if $hipcc --offload-arch=gfx906 -O1 "$t/t.hip" -o "$t/t" -L"$r/lib" -lamdhip64 2>"$t/err"; then
+            "$t/t" || ok=0
+        else
+            echo "FALHOU: compilação HIP para gfx906"; sed -n 1,10p "$t/err"; ok=0
+        fi
+        rm -rf "$t"
+    else
+        echo "aviso: sem hipcc nesta versão; só o rocminfo foi testado"
+    fi
+    [[ $ok == 1 ]] && { info "teste OK"; return 0; }
+    info "teste FALHOU"; return 1
+}
+
+latest_remote() {
+    curl -fsSL "$INDEX_URL" \
+        | grep -oE 'href="[^"]+\.tar\.(gz|xz)"' \
+        | sed -E 's/^href="//; s/"$//' \
+        | grep -E "$FILTER" \
+        | sort -V | tail -n1
+}
+
+cmd_update() {
+    local check=0
+    [[ ${1:-} == --check ]] && check=1
+    info "procurando em $INDEX_URL (filtro: $FILTER)"
+    local f
+    f=$(latest_remote) || true
+    [[ -n $f ]] || die "nada encontrado; ajuste INDEX_URL/FILTER em $CONF ou use: gfx906-rocm install <url>"
+    local url
+    if [[ $f =~ ^https?:// ]]; then url=$f; else url="${INDEX_URL%/}/${f#/}"; fi
+    local name
+    name=$(basename "$f" | sed -E 's/\.tar\.(gz|xz)$//')
+    local cur
+    cur=$(readlink "$ROCM_BASE/current" 2>/dev/null || true)
+    if [[ $name == "$cur" ]]; then
+        info "já está na mais nova: $name"; return 0
+    fi
+    echo "disponível: $name  (ativa: ${cur:-nenhuma})"
+    [[ $check == 1 ]] && return 0
+    [[ -d $ROCM_BASE/$name ]] || cmd_install "$url" "$name" >/dev/null
+    if cmd_test "$name"; then
+        cmd_use "$name"
+        cmd_prune "$KEEP"
+    else
+        info "a nova versão não passou no teste: continua ativa ${cur:-nenhuma}. Ela fica instalada para você investigar."
+        return 1
+    fi
+}
+
+cmd_prune() {
+    local keep=${1:-$KEEP}
+    need_write
+    local cur prev
+    cur=$(readlink "$ROCM_BASE/current" 2>/dev/null || true)
+    prev=$(readlink "$ROCM_BASE/previous" 2>/dev/null || true)
+    local all=()
+    while IFS= read -r d; do all+=("$d"); done < <(
+        find "$ROCM_BASE" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%T@ %f\n' | sort -rn | cut -d' ' -f2-)
+    local i=0
+    for n in "${all[@]}"; do
+        i=$((i + 1))
+        [[ $n == "$cur" || $n == "$prev" ]] && continue
+        if (( i > keep )); then info "removendo $n"; rm -rf "${ROCM_BASE:?}/$n"; fi
+    done
+}
+
+cmd_remove() {
+    local n=${1:-}
+    [[ -n $n && -d $ROCM_BASE/$n ]] || die "versão '$n' não existe"
+    [[ $(readlink "$ROCM_BASE/current" 2>/dev/null) == "$n" ]] && die "'$n' está ativa; ative outra antes"
+    need_write
+    rm -rf "${ROCM_BASE:?}/$n"
+    info "removida: $n"
+}
+
+engine() {
+    if [[ -n $ENGINE ]]; then echo "$ENGINE"; return; fi
+    command -v podman >/dev/null && { echo podman; return; }
+    command -v docker >/dev/null && { echo docker; return; }
+    die "instale podman ou docker (sudo pacman -S podman)"
+}
+
+cmd_container() {
+    local sub=${1:-}; shift || true
+    local eng
+    eng=$(engine)
+    case $sub in
+    pull) "$eng" pull "${1:-$IMAGE}" ;;
+    run)
+        local img=$IMAGE
+        if [[ ${1:-} == -i || ${1:-} == --image ]]; then img=$2; shift 2; fi
+        [[ ${1:-} == -- ]] && shift
+        local args=(run --rm -it --device=/dev/kfd --ipc=host --security-opt seccomp=unconfined
+            -v "$PWD:$PWD" -w "$PWD")
+        # Só as GPUs escolhidas pelo numapilot; sem ele, todas.
+        local renders=${NUMAPILOT_RENDER:-}
+        if [[ -z $renders ]]; then renders=$(ls /dev/dri/renderD* 2>/dev/null | tr '\n' ' '); fi
+        for r in $renders; do args+=(--device="$r"); done
+        if [[ $eng == podman && $EUID -ne 0 ]]; then
+            args+=(--group-add keep-groups)
+            # Podman sem root herda a afinidade do numapilot (cpuset via cgroup costuma não estar delegado).
+        else
+            args+=(--group-add video --group-add render)
+            [[ -n ${NUMAPILOT_CPUS:-} ]] && args+=(--cpuset-cpus "$NUMAPILOT_CPUS")
+            [[ -n ${NUMAPILOT_MEMS:-} ]] && args+=(--cpuset-mems "$NUMAPILOT_MEMS")
+        fi
+        exec "$eng" "${args[@]}" "$img" "$@"
+        ;;
+    *) die "uso: gfx906-rocm container pull|run" ;;
+    esac
+}
+
+cmd_doctor() {
+    echo "kernel: $(uname -r)"
+    if lsmod 2>/dev/null | grep -q '^amdgpu'; then echo "amdgpu: carregado"; else echo "amdgpu: NÃO carregado"; fi
+    if [[ -e /dev/kfd ]]; then
+        echo "/dev/kfd: $(stat -c '%A %G' /dev/kfd)"
+        [[ -r /dev/kfd && -w /dev/kfd ]] || echo "  → sem acesso: sudo usermod -aG render,video $USER (e saia/entre na sessão)"
+    else
+        echo "/dev/kfd: ausente (driver amdgpu sem KFD?)"
+    fi
+    echo "grupos: $(id -nG)"
+    local n=0
+    for p in /sys/class/kfd/kfd/topology/nodes/*/properties; do
+        local v
+        v=$(awk '/gfx_target_version/{print $2}' "$p")
+        [[ $v == 90006 ]] && n=$((n + 1))
+    done
+    echo "GPUs gfx906 no KFD: $n"
+    command -v numapilot >/dev/null && numapilot topo | sed -n '/^GPUs/,$p'
+    if command -v pacman >/dev/null; then
+        local sys
+        sys=$(pacman -Qq 2>/dev/null | grep -E '^(rocm-|hip-runtime|rocblas|miopen)' | tr '\n' ' ' || true)
+        [[ -n $sys ]] && echo "ROCm do sistema (pacman): $sys
+  → pode conviver; só não misture LD_LIBRARY_PATH dos dois no mesmo programa."
+    fi
+    echo "versão ativa: $(readlink "$ROCM_BASE/current" 2>/dev/null || echo nenhuma)"
+}
+
+main() {
+    local c=${1:-help}; shift || true
+    case $c in
+    list | ls) cmd_list ;;
+    install) cmd_install "$@" ;;
+    use) cmd_use "$@" ;;
+    rollback) cmd_rollback ;;
+    test) cmd_test "$@" ;;
+    update) cmd_update "$@" ;;
+    prune) cmd_prune "$@" ;;
+    remove | rm) cmd_remove "$@" ;;
+    env) cmd_env "$@" ;;
+    exec) cmd_exec "$@" ;;
+    container) cmd_container "$@" ;;
+    doctor) cmd_doctor ;;
+    help | -h | --help) usage ;;
+    *) usage; exit 1 ;;
+    esac
+}
+main "$@"

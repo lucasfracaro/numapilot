@@ -1,0 +1,60 @@
+# /etc/numapilot.toml — configuração do numapilot
+# Tudo aqui é opcional: sem este arquivo o modo automático funciona sozinho.
+# Rode `numapilot topo` para ver os endereços PCI, apelidos e nós das suas GPUs.
+
+[daemon]
+tick_ms = 1000          # intervalo entre amostras
+min_uid = 1000          # só gerencia processos de usuários (não os do sistema)
+watch_cores = 0.5       # a partir de quantos núcleos em uso o processo é posicionado
+watch_ticks = 3         # ...por quantas amostras seguidas
+promote_frac = 0.85     # usou >= 85% dos CPUs do nó...
+promote_ticks = 10      # ...por 10 amostras → expande para os 2 sockets
+demote_frac = 0.30      # usando < 30% de um nó...
+demote_ticks = 120      # ...por 2 minutos → volta para 1 socket
+migrate_memory = true   # move a RAM já alocada junto com o processo
+ignore = ["numapilot", "systemd", "dbus-*"]
+
+# Apelidos para as GPUs (PCI → nome). Sem isto elas viram gfx906-0, gfx906-1, gfx803-0.
+[aliases]
+# "0000:03:00.0" = "rx470"
+# "0000:04:00.0" = "mi50a"
+# "0000:83:00.0" = "mi50b"
+
+# Se `numapilot topo` mostrar "nó ?" para alguma GPU, informe aqui o socket dela.
+[gpu_node]
+# "0000:83:00.0" = 1
+
+# Programas que, no automático, vão para uma MI50 em vez da placa de vídeo.
+# (Se ficar vazio, usa uma lista padrão: llama-*, ollama, comfyui, vllm, whisper*...)
+# compute_hints = ["llama-*", "ollama", "comfyui", "main.py", "my-trainer"]
+
+# ---------------------------------------------------------------------------
+# Regras manuais. A primeira que casar vence. Campos:
+#   match   = globs comparados com o nome do processo, executável e argumentos
+#   cpu     = "auto" | "all" | "gpu" (socket da GPU) | "0" | "1" | "0,1" | "cpus:0-21"
+#   gpu     = "auto" | "display" | "compute" | "compute:2" | "compute:all" | "none" | apelido/PCI
+#   mem     = "local" | "interleave" | "bind"
+#   reserve = true → o automático evita pôr outros processos pesados no mesmo socket
+# Obs.: o daemon só muda CPU/memória de processos já abertos. A escolha da GPU
+# vale quando o programa é aberto com `numapilot run` (variáveis de ambiente).
+# ---------------------------------------------------------------------------
+
+[[rule]]
+name = "jogos"
+match = ["steam", "*.exe", "gamescope", "lutris", "heroic"]
+cpu = "gpu"
+gpu = "display"
+reserve = true
+
+[[rule]]
+name = "render/compilação"
+match = ["blender", "ffmpeg", "handbrake*", "make", "ninja", "cargo", "rustc", "cc1plus"]
+cpu = "all"
+gpu = "auto"
+mem = "local"
+
+[[rule]]
+name = "IA nas MI50"
+match = ["llama-server", "llama-cli", "comfyui"]
+cpu = "gpu"
+gpu = "compute"

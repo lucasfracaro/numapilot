@@ -1,0 +1,16 @@
+[Unit]
+Description=numapilot - escolhe o socket NUMA e a memória de cada programa automaticamente
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/numapilot daemon
+Restart=on-failure
+RestartSec=3
+Nice=-5
+RuntimeDirectory=numapilot
+RuntimeDirectoryMode=0755
+StateDirectory=numapilot
+
+[Install]
+WantedBy=multi-user.target
