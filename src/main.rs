@@ -73,10 +73,15 @@ enum Cmd {
         report: bool,
     },
     /// Opções de boot que sobrevivem às atualizações do kernel (precisa de sudo para mudar).
+    /// status | overdrive on|off | cmdline [add|remove PARAM...]
     Boot {
-        /// status | overdrive
         what: String,
-        /// on | off (para overdrive)
+        #[arg(trailing_var_arg = true)]
+        args: Vec<String>,
+    },
+    /// Ajustes da máquina: status | mode jogo|ia|silencioso|normal
+    Machine {
+        action: String,
         value: Option<String>,
     },
     /// Painel web para o celular (rode como usuário; veja o link com o token).
@@ -184,7 +189,8 @@ fn real_main() -> Result<()> {
         }
         Cmd::Steam { action } => cmd_steam(&action),
         Cmd::Tune { action, key } => cmd_tune(&cfg, &action, key),
-        Cmd::Boot { what, value } => cmd_boot(&what, value.as_deref()),
+        Cmd::Boot { what, args } => cmd_boot(&what, &args),
+        Cmd::Machine { action, value } => cmd_machine(&cfg, &action, value.as_deref()),
         Cmd::Web { port, bind, url } => {
             if url {
                 println!("{}", numapilot::web::url(port).context("sem rede")?);
@@ -524,9 +530,109 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
     }
 }
 
-fn cmd_boot(what: &str, value: Option<&str>) -> Result<()> {
+fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
+    use numapilot::{cpuctl, machine::Machine};
+    let topo = Topology::load(cfg);
+    match (action, value) {
+        ("status", _) => {
+            let m = Machine::load();
+            println!("Modo: {}", m.mode);
+            println!("Turbo: {}", cpuctl::turbo().map(|t| if t { "ligado" } else { "desligado" }).unwrap_or("?"));
+            let hw: serde_json::Value = std::fs::read_to_string(numapilot::learned::run_dir().join("hw.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+            let temps = cpuctl::package_temps();
+            let unc = cpuctl::uncores();
+            let rapl = cpuctl::rapl_zones();
+            for n in &topo.nodes {
+                let pkg = n.sockets.iter().next().copied().unwrap_or(n.id as u32);
+                let c = n.cpus.first().copied().unwrap_or(0);
+                let f = cpuctl::freq(c).unwrap_or_default();
+                println!(
+                    "Socket {}: governor {} · EPB {} · {}-{} MHz (agora {}) · uncore {} · {} · limite {} · {}",
+                    n.id,
+                    cpuctl::governor(c).unwrap_or("?".into()),
+                    cpuctl::epb(c).map(|e| e.to_string()).unwrap_or("?".into()),
+                    f.min_khz / 1000,
+                    f.max_khz / 1000,
+                    f.cur_khz / 1000,
+                    unc.iter().find(|u| u.package == pkg).map(|u| format!("{}-{} MHz", u.min_khz / 1000, u.max_khz / 1000)).unwrap_or("indisponível".into()),
+                    temps.get(&pkg).map(|t| format!("{t:.0} °C")).unwrap_or("-".into()),
+                    rapl.iter().find(|r| r.package == pkg).and_then(|r| r.limit_w).map(|w| format!("{w:.0} W")).unwrap_or("-".into()),
+                    hw["power"][pkg.to_string()].as_f64().map(|w| format!("consumo {w:.0} W")).unwrap_or_default(),
+                );
+            }
+            println!("Estados de economia (cpu0): {}", cpuctl::cstates(0).iter().map(|s| format!("{} {}µs{}", s.name, s.latency_us, if s.disabled { " (desligado)" } else { "" })).collect::<Vec<_>>().join(", "));
+            if let Some(l) = hw["lowlat"].as_str().filter(|s| !s.is_empty()) {
+                println!("Baixa latência agora nos núcleos {l}");
+            }
+            println!("THP: {}", numapilot::machine::thp().unwrap_or("?".into()));
+            if let Some((cur, list)) = numapilot::machine::scx_status() {
+                println!("Escalonador: {} (disponíveis: {})", if cur.is_empty() { "padrão do kernel".into() } else { cur }, list.join(", "));
+            }
+            Ok(())
+        }
+        ("mode", Some(name @ ("jogo" | "ia" | "silencioso" | "normal"))) => {
+            let game_node = cfg
+                .graphics_gpu
+                .as_deref()
+                .and_then(|a| topo.gpus.iter().find(|g| g.alias == a || g.pci == a))
+                .or_else(|| topo.display_gpu())
+                .and_then(|g| g.numa_node);
+            let m = Machine::preset(name, &topo, game_node, &Machine::load());
+            let r = ctl::send(&ctl::Request::SetMachine { machine: m })?;
+            println!("{}", r.message);
+            if r.ok { Ok(()) } else { bail!("falhou") }
+        }
+        _ => bail!("use: numapilot machine status  |  numapilot machine mode jogo|ia|silencioso|normal"),
+    }
+}
+
+fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
     use numapilot::bootcfg;
+    let value = args.first().map(String::as_str);
     match (what, value) {
+        ("cmdline", None | Some("list")) => {
+            use numapilot::cmdline;
+            match cmdline::configured() {
+                Some((l, p)) => println!("Bootloader: {} ({})\nConfigurado: {p}", l.name(), l.path.display()),
+                None => println!("Bootloader não reconhecido"),
+            }
+            println!("Em uso agora: {}", cmdline::running());
+            println!("\nParâmetros conhecidos:");
+            for (p, t, d) in cmdline::KNOWN {
+                println!("  {p:<26} {t}: {d}");
+            }
+            let v = cmdline::vulnerabilities();
+            println!("\nMitigações que se aplicam a este processador:");
+            for m in cmdline::relevant_mitigations(&v) {
+                println!("  {:<44} risco {} · ganho {} · {}", m.title, m.risk, m.gain, m.params.join(" "));
+            }
+            println!("  (tudo de uma vez: mitigations=off)");
+            Ok(())
+        }
+        ("cmdline", Some("apply")) => {
+            // +param liga, -param tira (vários de uma vez, um único backup e uma regravação)
+            let mut add = vec![];
+            let mut rm = vec![];
+            for a in &args[1..] {
+                match a.split_at(1) {
+                    ("+", p) => add.push(p.to_string()),
+                    ("-", p) => rm.push(p.to_string()),
+                    _ => bail!("use +PARAM para adicionar e -PARAM para tirar (recebido {a})"),
+                }
+            }
+            numapilot::cmdline::apply(&add, &rm, &mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
+        }
+        ("cmdline", Some(op @ ("add" | "remove"))) => {
+            let ps: Vec<String> = args[1..].to_vec();
+            if ps.is_empty() {
+                bail!("faltou o parâmetro");
+            }
+            let (add, rm) = if op == "add" { (ps, vec![]) } else { (vec![], ps) };
+            numapilot::cmdline::apply(&add, &rm, &mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
+        }
         ("status", _) => {
             let s = bootcfg::overdrive_state();
             println!(
@@ -545,7 +651,7 @@ fn cmd_boot(what: &str, value: Option<&str>) -> Result<()> {
         ("overdrive", Some(v @ ("on" | "off"))) => {
             bootcfg::set_overdrive(v == "on", &mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
         }
-        _ => bail!("use: numapilot boot status  |  sudo numapilot boot overdrive on|off"),
+        _ => bail!("use: numapilot boot status | sudo numapilot boot overdrive on|off | numapilot boot cmdline [add|remove PARAM...]"),
     }
 }
 

@@ -7,6 +7,7 @@ mod gpus;
 mod jobs;
 mod lab;
 mod llm;
+mod machine;
 mod map;
 mod settings;
 mod stream;
@@ -119,6 +120,7 @@ enum Tab {
     Map,
     Profiles,
     Gpus,
+    Machine,
     Lab,
     Llm,
     Stream,
@@ -147,6 +149,7 @@ pub(crate) struct App {
     pub(crate) hist_at: Option<Instant>,
     pub(crate) hist_secs: u64,
     pub(crate) web_active: bool,
+    pub(crate) mach: machine::MachineUi,
     pub(crate) web_checked: Option<Instant>,
     pub(crate) filter: String,
     pending_fix: Option<String>,
@@ -220,6 +223,7 @@ impl App {
             hist_at: None,
             hist_secs: 3600,
             web_active: false,
+            mach: Default::default(),
             web_checked: None,
             filter: String::new(),
             pending_fix: None,
@@ -372,6 +376,7 @@ impl App {
             ui.selectable_value(&mut self.tab, Tab::Map, "Mapa e medições");
             ui.selectable_value(&mut self.tab, Tab::Profiles, "Escolhas salvas");
             ui.selectable_value(&mut self.tab, Tab::Gpus, "Placas de vídeo");
+            ui.selectable_value(&mut self.tab, Tab::Machine, "Máquina");
             ui.selectable_value(&mut self.tab, Tab::Lab, "Laboratório e containers");
             ui.selectable_value(&mut self.tab, Tab::Llm, "Servidor de IA");
             ui.selectable_value(&mut self.tab, Tab::Stream, "Streaming");
@@ -688,6 +693,7 @@ impl eframe::App for App {
             Tab::Map => map::ui(self, ui),
             Tab::Profiles => self.profiles_tab(ui),
             Tab::Gpus => gpus::ui(self, ui),
+            Tab::Machine => machine::ui(self, ui),
             Tab::Lab => lab::ui(self, ui),
             Tab::Llm => llm::ui(self, ui),
             Tab::Stream => stream::ui(self, ui),

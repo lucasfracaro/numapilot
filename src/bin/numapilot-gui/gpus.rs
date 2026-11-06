@@ -249,6 +249,22 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.label(format!("VRAM {:.1}/{:.0} GB", u as f64 / 1073741824.0, t as f64 / 1073741824.0));
                     }
                 });
+                ui.horizontal_wrapped(|ui| {
+                    if let Some(l) = gpuctl::pcie_link(&g.pci) {
+                        let txt = format!("PCIe Gen{} x{} (máx. Gen{} x{})", l.generation, l.width, l.max_gen, l.max_width);
+                        if l.width < l.max_width {
+                            ui.label(RichText::new(format!("{txt}: link mais estreito que o possível; confira o slot e a BIOS")).color(Color32::from_rgb(230, 160, 40)));
+                        } else {
+                            ui.label(RichText::new(txt).weak()).on_hover_text("A geração cai quando a placa está parada (economia); confira com ela em uso.");
+                        }
+                    }
+                    if let Some((list, Some(a))) = gpuctl::power_profiles(&g.pci)
+                        && let Some((_, n)) = list.iter().find(|(i, _)| *i == a)
+                    {
+                        ui.label(RichText::new(format!("· perfil de energia {n}")).weak())
+                            .on_hover_text("Muda sozinho conforme o programa (Ajustar… → Perfil de energia da placa).");
+                    }
+                });
                 if let Some(h) = &hist
                     && let Some(idx) = h.gpus.iter().position(|a| *a == g.alias)
                 {

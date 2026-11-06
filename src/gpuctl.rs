@@ -407,3 +407,151 @@ mod od_tests {
         assert!(od_commands(&od, &bad).unwrap_err().contains("fora da faixa"));
     }
 }
+
+// ---------- perfil de energia (pp_power_profile_mode) ----------
+
+/// (índice, nome) dos perfis da placa e o índice ativo.
+/// Perfis (índice, nome) e o índice ativo.
+pub type PowerProfiles = (Vec<(u32, String)>, Option<u32>);
+
+pub fn power_profiles(pci: &str) -> Option<PowerProfiles> {
+    let s = fs::read_to_string(sys(&format!("bus/pci/devices/{pci}/pp_power_profile_mode"))).ok()?;
+    Some(parse_power_profiles(&s))
+}
+
+pub fn parse_power_profiles(s: &str) -> PowerProfiles {
+    let mut v = Vec::new();
+    let mut active = None;
+    for l in s.lines() {
+        let mut it = l.split_whitespace();
+        let (Some(a), Some(b)) = (it.next(), it.next()) else { continue };
+        let Ok(i) = a.parse::<u32>() else { continue };
+        let star = b.contains('*');
+        let name = b.trim_end_matches(':').trim_end_matches('*').trim_end_matches(':').to_string();
+        if !name.chars().any(|c| c.is_ascii_uppercase()) || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        if star {
+            active = Some(i);
+        }
+        if !v.iter().any(|(j, _)| *j == i) {
+            v.push((i, name));
+        }
+    }
+    (v, active)
+}
+
+/// Nome curto usado nos perfis do numapilot → nome do driver.
+pub fn profile_driver_name(short: &str) -> Option<&'static str> {
+    Some(match short {
+        "3d" => "3D_FULL_SCREEN",
+        "compute" => "COMPUTE",
+        "vr" => "VR",
+        "video" => "VIDEO",
+        "economia" => "POWER_SAVING",
+        "padrao" => "BOOTUP_DEFAULT",
+        _ => return None,
+    })
+}
+
+/// Escolhe um perfil pelo nome curto ("3d", "compute", "padrao"...).
+pub fn set_power_profile(pci: &str, short: &str) -> Result<(), String> {
+    let want = profile_driver_name(short).ok_or("perfil desconhecido")?;
+    let (list, active) = power_profiles(pci).ok_or("a placa não tem pp_power_profile_mode")?;
+    let (idx, _) = list.iter().find(|(_, n)| n == want).ok_or(format!("a placa não tem o perfil {want}"))?;
+    if active == Some(*idx) {
+        return Ok(());
+    }
+    let lvl = sys(&format!("bus/pci/devices/{pci}/power_dpm_force_performance_level"));
+    // Fora do padrão o driver exige o nível "manual"; no padrão, volta para "auto".
+    if want != "BOOTUP_DEFAULT" {
+        let _ = fs::write(&lvl, "manual");
+    }
+    let r = fs::write(sys(&format!("bus/pci/devices/{pci}/pp_power_profile_mode")), idx.to_string()).map_err(|e| e.to_string());
+    if want == "BOOTUP_DEFAULT" {
+        let _ = fs::write(&lvl, "auto");
+    }
+    r
+}
+
+// ---------- link PCIe ----------
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PcieLink {
+    /// Geração e largura atuais do trecho mais lento entre a placa e o processador.
+    pub generation: u32,
+    pub width: u32,
+    /// O máximo que o slot/placa negociariam.
+    pub max_gen: u32,
+    pub max_width: u32,
+}
+
+fn gen_of(speed: &str) -> Option<u32> {
+    let gt: f64 = speed.split_whitespace().next()?.parse().ok()?;
+    Some(match gt {
+        x if x < 3.0 => 1,
+        x if x < 6.0 => 2,
+        x if x < 10.0 => 3,
+        x if x < 20.0 => 4,
+        x if x < 40.0 => 5,
+        _ => 6,
+    })
+}
+
+/// Percorre o caminho PCI da placa até a raiz (as MI50 têm um switch PCIe interno: o link que
+/// importa é o do slot) e devolve o trecho mais limitado.
+pub fn pcie_link(pci: &str) -> Option<PcieLink> {
+    let dev = fs::canonicalize(sys(&format!("bus/pci/devices/{pci}"))).ok()?;
+    let mut best: Option<PcieLink> = None;
+    let mut p = Some(dev.as_path());
+    while let Some(d) = p {
+        let name = d.file_name()?.to_string_lossy().to_string();
+        if !name.contains(':') || name.starts_with("pci") {
+            break;
+        }
+        let r = |f: &str| read_trim(d.join(f));
+        if let (Some(cs), Some(cw), Some(ms), Some(mw)) = (r("current_link_speed"), r("current_link_width"), r("max_link_speed"), r("max_link_width")) {
+            let l = PcieLink {
+                generation: gen_of(&cs).unwrap_or(0),
+                width: cw.parse().unwrap_or(0),
+                max_gen: gen_of(&ms).unwrap_or(0),
+                max_width: mw.parse().unwrap_or(0),
+            };
+            if l.width > 0 {
+                best = Some(match best {
+                    None => l,
+                    Some(b) => PcieLink {
+                        generation: b.generation.min(l.generation),
+                        width: b.width.min(l.width),
+                        max_gen: b.max_gen.min(l.max_gen),
+                        max_width: b.max_width.min(l.max_width),
+                    },
+                });
+            }
+        }
+        p = d.parent();
+    }
+    best
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    #[test]
+    fn vega20_profiles() {
+        let s = "NUM        MODE_NAME     BUSY_SET_POINT      FPS     USE_RLC_BUSY    MIN_ACTIVE_LEVEL\n  0 BOOTUP_DEFAULT*:             0        0               0                0\n  1 3D_FULL_SCREEN :            70       60               1                3\n  2   POWER_SAVING :            90       60               0                0\n  3          VIDEO :            70       60               0                0\n  4             VR :            70       90               0                0\n  5        COMPUTE :            30       60               0                6\n  6         CUSTOM :             0        0               0                0\n";
+        let (v, a) = parse_power_profiles(s);
+        assert_eq!(a, Some(0));
+        assert_eq!(v.len(), 7);
+        assert_eq!(v[5], (5, "COMPUTE".to_string()));
+        // formato das placas mais novas (uma linha por perfil + tabela)
+        let n = "PROFILE_INDEX(NAME) CLOCK_TYPE(NAME) FPS MinActiveFreqType\n 0 BOOTUP_DEFAULT :\n 1 3D_FULL_SCREEN*:\n                    0(       GFXCLK)       1\n";
+        let (v, a) = parse_power_profiles(n);
+        assert_eq!(a, Some(1));
+        assert_eq!(v.len(), 2);
+        assert_eq!(gen_of("8.0 GT/s PCIe"), Some(3));
+        assert_eq!(gen_of("2.5 GT/s PCIe"), Some(1));
+        assert_eq!(gen_of("16.0 GT/s PCIe"), Some(4));
+    }
+}

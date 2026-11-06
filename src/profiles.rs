@@ -52,6 +52,12 @@ pub struct Profile {
     /// Faz o programa "enxergar" só os núcleos liberados (Proton/Wine, OpenMP, MKL, .NET, Java...).
     #[serde(default = "yes")]
     pub limit_visible: bool,
+    /// Enquanto roda: núcleos dele sem os estados de economia profundos e uncore no máximo.
+    #[serde(default)]
+    pub low_latency: bool,
+    /// Perfil de energia da GPU enquanto roda: "auto" (não mexe) | "3d" | "compute" | "vr" | "video" | "economia"
+    #[serde(default = "auto")]
+    pub gpu_power: String,
     /// Abre o jogo dentro do gamescope (resolução interna, FSR, limite de FPS).
     #[serde(default)]
     pub gamescope: Option<Gamescope>,
@@ -136,6 +142,8 @@ impl Default for Profile {
             priority: normal(),
             exclusive: false,
             limit_visible: true,
+            low_latency: false,
+            gpu_power: auto(),
             gamescope: None,
         }
     }
@@ -158,6 +166,10 @@ impl Profile {
     }
 
     /// Precisa do serviço (root) para aplicar: cgroup ou prioridade alta.
+    pub fn needs_daemon_hw(&self) -> bool {
+        self.low_latency || self.gpu_power != "auto"
+    }
+
     pub fn needs_daemon(&self) -> bool {
         self.needs_scope() || self.priority == "high"
     }
@@ -168,6 +180,9 @@ impl Profile {
         }
         if !["low", "normal", "high"].contains(&self.priority.as_str()) {
             return Err(format!("prioridade inválida: {}", self.priority));
+        }
+        if !["auto", "3d", "compute", "vr", "video", "economia"].contains(&self.gpu_power.as_str()) {
+            return Err(format!("perfil de energia da GPU inválido: {}", self.gpu_power));
         }
         if self.cores == Some(0) {
             return Err("núcleos: pelo menos 1".into());
@@ -198,6 +213,8 @@ impl Profile {
                 p.memory = "strict".into();
                 p.priority = "high".into();
                 p.exclusive = true;
+                p.low_latency = true;
+                p.gpu_power = "3d".into();
                 if p.usage == "auto" {
                     p.usage = "graphics".into();
                 }
@@ -206,6 +223,7 @@ impl Profile {
             "ia" => {
                 p.cpu = "gpu".into();
                 p.memory = "prefer".into();
+                p.gpu_power = "compute".into();
                 if p.usage == "auto" {
                     p.usage = "compute".into();
                 }

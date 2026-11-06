@@ -537,7 +537,7 @@ pub mod tests {
     fn fake_machine_end_to_end() {
         let root = std::env::temp_dir().join("numapilot-fake-sysfs");
         fake_sysfs(&root);
-        unsafe { std::env::set_var("NUMAPILOT_SYSFS", &root) };
+        let _g = crate::util::test_sysfs_lock(&root);
         let cfg: Config = toml::from_str(include_str!("../packaging/numapilot.toml")).unwrap();
         let t = Topology::load(&cfg);
 

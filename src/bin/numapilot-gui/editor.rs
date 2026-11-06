@@ -273,6 +273,10 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         ui.separator();
                         ui.checkbox(&mut ed.p.exclusive, "núcleos exclusivos")
                             .on_hover_text("Enquanto ele roda, o resto do sistema não usa esses núcleos.");
+                        ui.checkbox(&mut ed.p.low_latency, "baixa latência").on_hover_text(
+                            "Enquanto ele roda: os núcleos dele não entram nos estados de economia profundos e o uncore do socket \
+                             fica no máximo (menos travadinhas). Ajuste em Máquina → Latência em jogos.",
+                        );
                     });
                     ui.end_row();
 
@@ -295,6 +299,23 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             ed.p.gpu = sel.0;
                             ed.p.usage = sel.1;
                         }
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Perfil de energia da placa:").small());
+                            let names = [
+                                ("auto", "não mexer"),
+                                ("3d", "3D tela cheia (jogo)"),
+                                ("compute", "computação (IA/ROCm)"),
+                                ("vr", "VR"),
+                                ("video", "vídeo"),
+                                ("economia", "economia"),
+                            ];
+                            let cur = names.iter().find(|n| n.0 == ed.p.gpu_power).map(|n| n.1).unwrap_or("?");
+                            egui::ComboBox::from_id_salt("ed-gpow").selected_text(cur).show_ui(ui, |ui| {
+                                for (k, l) in names {
+                                    ui.selectable_value(&mut ed.p.gpu_power, k.to_string(), l);
+                                }
+                            });
+                        });
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("Lossless Scaling:").small());
                             egui::ComboBox::from_id_salt("ed-fg").selected_text(if ed.p.fg_gpu == "same" { "mesma GPU".to_string() } else { ed.p.fg_gpu.clone() }).show_ui(ui, |ui| {

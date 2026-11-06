@@ -74,6 +74,37 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         add("Sistema", "OverDrive (clock/voltagem)", Level::Info, "desligado".into(),
             Some("Para undervolt/overclock: Placas de vídeo → \"Ativar OverDrive\" (ou sudo numapilot boot overdrive on) e reinicie"));
     }
+    // ---- processador ----
+    let unc = crate::cpuctl::uncores();
+    if unc.is_empty() {
+        add("Processador", "uncore", Level::Info, "controle indisponível".into(), Some("sudo modprobe intel_uncore_frequency (e echo intel_uncore_frequency | sudo tee /etc/modules-load.d/uncore.conf)"));
+    } else {
+        add("Processador", "uncore", Level::Ok, format!("{} socket(s) controláveis", unc.len()), None);
+    }
+    let rapl = crate::cpuctl::rapl_zones();
+    add("Processador", "potência (RAPL)", if rapl.is_empty() { Level::Info } else { Level::Ok },
+        if rapl.is_empty() { "indisponível".into() } else { rapl.iter().map(|r| format!("socket {}: {}", r.package, r.limit_w.map(|w| format!("{w:.0} W")).unwrap_or("?".into()))).collect::<Vec<_>>().join(", ") }, None);
+    let cs = crate::cpuctl::cstates(0);
+    add("Processador", "estados de economia", if cs.is_empty() { Level::Info } else { Level::Ok },
+        if cs.is_empty() { "cpuidle indisponível".into() } else { cs.iter().map(|s| format!("{} {}µs", s.name, s.latency_us)).collect::<Vec<_>>().join(", ") }, None);
+    match crate::machine::scx_status() {
+        Some((cur, _)) => add("Processador", "escalonador sched_ext", Level::Ok, if cur.is_empty() { "padrão do kernel".into() } else { cur }, None),
+        None => add("Processador", "escalonador sched_ext", Level::Info, "scx_loader não instalado".into(), Some("sudo pacman -S scx-scheds scx-tools")),
+    }
+    let vulns = crate::cmdline::vulnerabilities();
+    let mitig: Vec<&str> = crate::cmdline::relevant_mitigations(&vulns).iter().map(|m| m.title).collect();
+    if !mitig.is_empty() {
+        add("Processador", "mitigações ativas", Level::Info, mitig.join(", "), Some("Máquina → Mitigações do processador"));
+    }
+    match crate::cmdline::detect() {
+        Some(l) => add("Sistema", "bootloader", Level::Ok, format!("{} ({})", l.name(), l.path.display()), None),
+        None => add("Sistema", "bootloader", Level::Info, "não reconhecido: parâmetros do kernel só à mão".into(), None),
+    }
+    let bf = crate::fans::list();
+    let ipmi = crate::fans::ipmi_fans();
+    add("Sistema", "ventoinhas da placa-mãe", if bf.is_empty() && ipmi.is_empty() { Level::Info } else { Level::Ok },
+        format!("{} controláveis (hwmon), {} pelo IPMI", bf.len(), ipmi.len()),
+        if bf.is_empty() { Some("sudo sensors-detect (pacote lm_sensors) diz qual driver carregar, ex.: sudo modprobe nct6775") } else { None });
     if !out(&["pgrep", "-x", "irqbalance"], &[]).unwrap_or_default().trim().is_empty() {
         add("Sistema", "irqbalance", Level::Warn, "rodando: pode desfazer as interrupções das GPUs".into(), Some("sudo systemctl disable --now irqbalance"));
     }
@@ -132,6 +163,14 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         match gpuctl::read_od(&g.pci) {
             Some(od) => add(&a, "clock/voltagem (OD)", Level::Ok, format!("GPU até {:?} MHz, curva {} pontos", od.range_sclk.map(|r| r.1), od.curve.len()), None),
             None => add(&a, "clock/voltagem (OD)", Level::Info, "indisponível".into(), Some("sudo numapilot boot overdrive on (ou o botão na aba Placas de vídeo) e reinicie")),
+        }
+        if let Some(l) = gpuctl::pcie_link(&g.pci) {
+            let d = format!("Gen{} x{} (máx. Gen{} x{})", l.generation, l.width, l.max_gen, l.max_width);
+            if l.width < l.max_width {
+                add(&a, "link PCIe", Level::Warn, d, Some("Link mais estreito que o possível: confira o slot (alguns são x8 ou dividem linhas) e a BIOS"));
+            } else {
+                add(&a, "link PCIe", Level::Ok, format!("{d}; a geração cai com a placa parada"), None);
+            }
         }
         match gpuctl::bar_info(&g.pci) {
             Some((vis, tot)) if vis * 10 >= tot * 9 => add(&a, "Resizable BAR", Level::Ok, format!("ativo ({} MB visíveis)", vis >> 20), None),

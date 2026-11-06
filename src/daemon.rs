@@ -6,7 +6,9 @@ use crate::cgroup::{self, Limits};
 use crate::config::{Config, CpuSpec, GpuSpec};
 use crate::ctl::{self, Request, Response};
 use crate::decide::{least_loaded_node, node_loads, pick_gpus, Kind};
+use crate::fans::{self, BoardFan, BoardFans};
 use crate::gpuctl::{self, FanMode, GpuControls};
+use crate::machine::{self, LowLatency, Machine, Orig};
 use crate::history::{self, History, Sample, Status};
 use crate::procevents;
 use crate::learned::{run_dir, Learned};
@@ -24,6 +26,146 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 static STOP: AtomicBool = AtomicBool::new(false);
+
+/// Estado dos controles de hardware da máquina (fora das GPUs).
+struct Hw {
+    machine: Machine,
+    orig: Orig,
+    lowlat: LowLatency,
+    board: BoardFans,
+    board_fans: Vec<BoardFan>,
+    board_orig: HashMap<String, Option<u8>>,
+    board_manual: HashMap<String, f64>,
+    gpu_prof: BTreeMap<String, String>,
+    power: crate::cpuctl::PowerMeter,
+    cpu_power: BTreeMap<u32, f64>,
+}
+
+fn base_governors() -> BTreeMap<usize, String> {
+    std::fs::read_to_string(governors_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
+
+impl Hw {
+    fn new(topo: &Topology) -> Hw {
+        let board_fans = fans::list();
+        let board_orig = board_fans.iter().map(|f| (f.id.clone(), f.enable)).collect();
+        Hw {
+            machine: Machine::load(),
+            orig: Orig::capture(topo),
+            lowlat: LowLatency::default(),
+            board: BoardFans::load(),
+            board_fans,
+            board_orig,
+            board_manual: HashMap::new(),
+            gpu_prof: BTreeMap::new(),
+            power: Default::default(),
+            cpu_power: BTreeMap::new(),
+        }
+    }
+
+    fn apply_machine(&mut self, topo: &Topology, prev: Option<&Machine>) -> Vec<String> {
+        let errs = machine::apply(&self.machine, prev, &self.orig, topo, &base_governors());
+        // O uncore dos programas de baixa latência tem prioridade sobre o do modo.
+        let cpus = std::mem::take(&mut self.lowlat.cpus);
+        self.lowlat = LowLatency::default();
+        self.lowlat.set(cpus, &self.machine, topo);
+        for e in &errs {
+            eprintln!("[numapilot] máquina: {e}");
+        }
+        errs
+    }
+
+    fn board_tick(&mut self, topo: &Topology) {
+        if self.board.map.is_empty() && self.board_manual.is_empty() {
+            return;
+        }
+        let cpu_max = crate::cpuctl::package_temps().values().copied().fold(None, |a: Option<f64>, t| Some(a.map_or(t, |a| a.max(t))));
+        for f in &self.board_fans {
+            let c = self.board.map.get(&f.id).cloned().unwrap_or_default();
+            match fans::target(&c, fans::source_temp(&c.source, topo), cpu_max) {
+                Some(pct) => {
+                    let prev = self.board_manual.get(&f.id).copied();
+                    if prev.is_none_or(|p| pct > p || p - pct >= 3.0) {
+                        match fans::set_pct(f, pct) {
+                            Ok(()) => {
+                                self.board_manual.insert(f.id.clone(), pct);
+                            }
+                            Err(e) => eprintln!("[numapilot] ventoinha {}: {e}", f.id),
+                        }
+                    }
+                }
+                None => {
+                    if self.board_manual.remove(&f.id).is_some() {
+                        let _ = fans::set_auto(f, self.board_orig.get(&f.id).copied().flatten());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Perfil de energia de cada GPU conforme os programas que a usam agora.
+    fn gpu_profiles_tick(&mut self, topo: &Topology, procs: &HashMap<i32, Tracked>) {
+        let mut want: BTreeMap<String, String> = BTreeMap::new();
+        for t in procs.values() {
+            let Some(p) = t.profile.as_ref().filter(|p| p.gpu_power != "auto") else { continue };
+            for a in &t.gpus {
+                if let Some(g) = topo.gpus.iter().find(|g| g.alias == *a) {
+                    // compute ganha de 3d se dois programas disputarem a mesma placa
+                    let e = want.entry(g.pci.clone()).or_insert_with(|| p.gpu_power.clone());
+                    if p.gpu_power == "compute" {
+                        *e = p.gpu_power.clone();
+                    }
+                }
+            }
+        }
+        for (pci, prof) in &want {
+            let name = gpuctl::profile_driver_name(prof).unwrap_or("");
+            let active = gpuctl::power_profiles(pci).and_then(|(l, a)| a.and_then(|a| l.into_iter().find(|(i, _)| *i == a).map(|x| x.1)));
+            if active.as_deref() != Some(name) {
+                match gpuctl::set_power_profile(pci, prof) {
+                    Ok(()) => eprintln!("[numapilot] GPU {pci}: perfil de energia {name}"),
+                    Err(e) => eprintln!("[numapilot] GPU {pci}: perfil de energia: {e}"),
+                }
+            }
+        }
+        for pci in self.gpu_prof.keys() {
+            if !want.contains_key(pci) {
+                let _ = gpuctl::set_power_profile(pci, "padrao");
+            }
+        }
+        self.gpu_prof = want;
+    }
+
+    fn lowlat_tick(&mut self, topo: &Topology, procs: &HashMap<i32, Tracked>) {
+        let mut want: Vec<usize> = procs
+            .iter()
+            .filter(|(_, t)| t.profile.as_ref().is_some_and(|p| p.low_latency) && (t.state == St::Placed || t.origin == "manual"))
+            .flat_map(|(pid, t)| if t.cpus.is_empty() { procfs::allowed_cpus(*pid).unwrap_or_default() } else { t.cpus.clone() })
+            .collect();
+        want.sort_unstable();
+        want.dedup();
+        if want.len() == topo.all_cpus().len() {
+            // Programa sem núcleos definidos: não desliga a economia da máquina inteira.
+            want.clear();
+        }
+        self.lowlat.set(want, &self.machine, topo);
+    }
+
+    fn restore(&mut self, topo: &Topology) {
+        self.lowlat.set(vec![], &self.machine, topo);
+        let prev = std::mem::take(&mut self.machine);
+        let normal = Machine { game_latency_us: prev.game_latency_us, ..Default::default() };
+        let _ = machine::apply(&normal, Some(&prev), &self.orig, topo, &base_governors());
+        for f in &self.board_fans {
+            if self.board_manual.contains_key(&f.id) {
+                let _ = fans::set_auto(f, self.board_orig.get(&f.id).copied().flatten());
+            }
+        }
+        for pci in self.gpu_prof.keys() {
+            let _ = gpuctl::set_power_profile(pci, "padrao");
+        }
+    }
+}
 static STATUS: std::sync::Mutex<Option<Status>> = std::sync::Mutex::new(None);
 
 fn status_update(f: impl FnOnce(&mut Status)) {
@@ -323,6 +465,8 @@ pub fn run(cfg: Config) -> Result<()> {
         node_sets: topo.nodes.iter().map(|n| n.cpus.clone()).collect(),
     };
     let _ = std::fs::create_dir_all(run_dir());
+    // Valores originais antes de qualquer mudança (para devolver depois).
+    let mut hw = Hw::new(&topo);
     let listener = bind_ctl();
     let mut learned = Learned::load();
     let mut profiles = Profiles::load();
@@ -342,6 +486,10 @@ pub fn run(cfg: Config) -> Result<()> {
         for (node, gov) in m {
             let _ = write_governor(&ctx, node, &gov);
         }
+    }
+    if hw.machine != Machine::default() {
+        let errs = hw.apply_machine(&topo, None);
+        eprintln!("[numapilot] modo da máquina: {} ({} erro(s))", hw.machine.mode, errs.len());
     }
     let reserved_flag = run_dir().join("reserved");
     if reserved_flag.exists() {
@@ -397,7 +545,7 @@ pub fn run(cfg: Config) -> Result<()> {
         while wait_start.elapsed() < tick_dur && !STOP.load(Ordering::SeqCst) {
             if let Some(l) = &listener {
                 while let Ok((s, _)) = l.accept() {
-                    serve(s, &ctx, &mut procs, &mut profiles, &mut gpuc, &mut fan_last, tick);
+                    serve(s, &ctx, &mut procs, &mut profiles, &mut gpuc, &mut fan_last, &mut hw, tick);
                 }
             }
             if let Some(rx) = &execs {
@@ -479,6 +627,25 @@ pub fn run(cfg: Config) -> Result<()> {
         for (pci, c) in &gpuc.map {
             gpu_tick(pci, c, &mut fan_last);
         }
+        hw.board_tick(&topo);
+        hw.lowlat_tick(&topo, &procs);
+        if tick.is_multiple_of(5) {
+            hw.gpu_profiles_tick(&topo, &procs);
+        }
+        if tick.is_multiple_of(2) {
+            let p = hw.power.sample();
+            if !p.is_empty() {
+                hw.cpu_power = p;
+            }
+            let live = serde_json::json!({
+                "power": hw.cpu_power,
+                "temp": crate::cpuctl::package_temps(),
+                "lowlat": format_cpulist(&hw.lowlat.cpus),
+                "gpu_profiles": hw.gpu_prof,
+                "board_fans": hw.board_manual,
+            });
+            let _ = std::fs::write(run_dir().join("hw.json"), live.to_string());
+        }
         // Núcleos exclusivos: união dos programas com "exclusivo" rodando agora.
         let mut want: Vec<usize> = procs
             .values()
@@ -524,7 +691,11 @@ pub fn run(cfg: Config) -> Result<()> {
                 })
                 .collect();
             let n = topo.nodes.iter().map(|n| loads.get(&n.id).copied().unwrap_or(0.0) as f32).collect();
-            hist.push(Sample { t: history::now(), g, n });
+            let temps = crate::cpuctl::package_temps();
+            let pkg = |n: &crate::topo::Node| n.sockets.iter().next().copied().unwrap_or(n.id as u32);
+            let p = topo.nodes.iter().map(|n| hw.cpu_power.get(&pkg(n)).copied().unwrap_or(0.0) as f32).collect();
+            let ct = topo.nodes.iter().map(|n| temps.get(&pkg(n)).copied().unwrap_or(0.0) as f32).collect();
+            hist.push(Sample { t: history::now(), g, n, p, ct });
             let _ = hist.save();
             let r = format_cpulist(&reserved_now);
             status_update(|s| s.reserved = r);
@@ -548,6 +719,8 @@ pub fn run(cfg: Config) -> Result<()> {
         let _ = cgroup::set_reserved(&ctx.all_cpus, &[]);
         let _ = std::fs::remove_file(&reserved_flag);
     }
+    hw.restore(&topo);
+    let _ = std::fs::remove_file(run_dir().join("hw.json"));
     // Ventoinhas voltam para o controle da placa.
     for pci in fan_last.keys() {
         let _ = gpuctl::set_fan_auto(pci);
@@ -560,6 +733,7 @@ pub fn run(cfg: Config) -> Result<()> {
 }
 
 /// Atende um pedido da interface gráfica / CLI.
+#[allow(clippy::too_many_arguments)]
 fn serve(
     s: UnixStream,
     ctx: &Ctx,
@@ -567,6 +741,7 @@ fn serve(
     profiles: &mut Profiles,
     gpuc: &mut GpuControls,
     fan_last: &mut HashMap<String, f64>,
+    hw: &mut Hw,
     tick: u64,
 ) {
     let _ = s.set_nonblocking(false);
@@ -577,6 +752,8 @@ fn serve(
     let resp = match (reader.read_line(&mut line), uid) {
         (Ok(_), Some(uid)) => match serde_json::from_str::<Request>(line.trim()) {
             Ok(Request::SetGpuControl { pci, control }) => handle_gpu(uid, ctx, gpuc, fan_last, pci, control),
+            Ok(Request::SetMachine { machine }) => handle_machine(uid, ctx, hw, machine),
+            Ok(Request::SetBoardFan { id, control }) => handle_board_fan(uid, ctx, hw, id, control),
             Ok(req) => handle(req, uid, ctx, procs, profiles, tick),
             Err(e) => Response::err(format!("pedido inválido: {e}")),
         },
@@ -600,7 +777,9 @@ fn handle(
         Request::Adopt { pid, profile } => return handle_adopt(uid, ctx, procs, profiles, pid, profile),
         Request::FixMemory { key } => return handle_fix_memory(uid, ctx, procs, &key),
         Request::SetGovernor { node, governor } => return handle_governor(uid, ctx, node, &governor),
-        Request::SetGpuControl { .. } => return Response::err("pedido de GPU no lugar errado"),
+        Request::SetGpuControl { .. } | Request::SetMachine { .. } | Request::SetBoardFan { .. } => {
+            return Response::err("pedido no lugar errado");
+        }
         Request::SetProfile { key, profile, pid } => (key, profile, pid),
         Request::DeleteProfile { key, pid } => (key, Profile::default(), pid),
     };
@@ -873,6 +1052,59 @@ fn handle_gpu(
     }
     eprintln!("[numapilot] GPU {pci}: {}", msg.join(", "));
     Response::ok(if msg.is_empty() { "nada mudou".to_string() } else { msg.join(", ") })
+}
+
+fn handle_machine(uid: u32, ctx: &Ctx, hw: &mut Hw, m: Machine) -> Response {
+    if uid != 0 && uid < ctx.cfg.daemon.min_uid {
+        return Response::err("sem permissão");
+    }
+    if let Err(e) = m.validate() {
+        return Response::err(e);
+    }
+    let prev = std::mem::replace(&mut hw.machine, m);
+    if let Err(e) = hw.machine.save() {
+        return Response::err(format!("não consegui salvar: {e}"));
+    }
+    let errs = hw.apply_machine(ctx.topo, Some(&prev));
+    eprintln!("[numapilot] modo da máquina: {}", hw.machine.mode);
+    if errs.is_empty() {
+        Response::ok(format!("modo {} aplicado", hw.machine.mode))
+    } else {
+        Response::ok(format!("aplicado com avisos: {}", errs.join("; ")))
+    }
+}
+
+fn handle_board_fan(uid: u32, ctx: &Ctx, hw: &mut Hw, id: String, mut c: fans::BoardFanControl) -> Response {
+    if uid != 0 && uid < ctx.cfg.daemon.min_uid {
+        return Response::err("sem permissão");
+    }
+    if !hw.board_fans.iter().any(|f| f.id == id) {
+        return Response::err(format!("ventoinha {id} não existe"));
+    }
+    if let Err(e) = c.validate() {
+        return Response::err(e);
+    }
+    let msg = match c.fan {
+        FanMode::Auto => "automática (chip da placa)".to_string(),
+        FanMode::Fixed => format!("fixa em {:.0}%", c.fixed_pct),
+        FanMode::Curve => format!("pela curva ({})", c.source),
+    };
+    if c.fan == FanMode::Auto && c.label.is_empty() {
+        hw.board.map.remove(&id);
+    } else {
+        hw.board.map.insert(id.clone(), c);
+    }
+    hw.board_manual.remove(&id);
+    if let Some(f) = hw.board_fans.iter().find(|f| f.id == id)
+        && hw.board.map.get(&id).is_none_or(|c| c.fan == FanMode::Auto)
+    {
+        let _ = fans::set_auto(f, hw.board_orig.get(&id).copied().flatten());
+    }
+    if let Err(e) = hw.board.save() {
+        return Response::err(format!("não consegui salvar: {e}"));
+    }
+    eprintln!("[numapilot] ventoinha {id}: {msg}");
+    Response::ok(format!("ventoinha {msg}"))
 }
 
 fn reserved_nodes(procs: &HashMap<i32, Tracked>) -> Vec<usize> {

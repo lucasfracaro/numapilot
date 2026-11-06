@@ -10,6 +10,17 @@ pub fn sys_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/sys"))
 }
 
+/// Testes que trocam o NUMAPILOT_SYSFS rodam um de cada vez.
+#[cfg(test)]
+static SYSFS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
+pub fn test_sysfs_lock(root: &Path) -> std::sync::MutexGuard<'static, ()> {
+    let g = SYSFS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe { std::env::set_var("NUMAPILOT_SYSFS", root) };
+    g
+}
+
 pub fn sys(rel: &str) -> PathBuf {
     sys_root().join(rel.trim_start_matches('/'))
 }

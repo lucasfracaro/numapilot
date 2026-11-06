@@ -15,6 +15,12 @@ pub struct Sample {
     pub g: Vec<[f32; 4]>,
     /// uso de cada nó (0..1)
     pub n: Vec<f32>,
+    /// potência de cada socket (W)
+    #[serde(default)]
+    pub p: Vec<f32>,
+    /// temperatura de cada socket (°C)
+    #[serde(default)]
+    pub ct: Vec<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -30,6 +30,10 @@ no CachyOS, mas funciona em qualquer Linux.
 - **Otimizador de FPS:** testa configurações num jogo (medindo com o MangoHud) e escolhe a melhor.
 - **Painel no celular**, **undervolt/overclock das MI50**, gráficos de temperatura e alertas, e
   **gamescope por jogo**.
+- **Máquina:** modos de um clique (Jogo, IA, Silencioso, Normal); governor, viés de energia,
+  frequências, uncore e limite de potência por socket; latência baixa só enquanto o jogo roda;
+  memória (balanceamento NUMA, THP, hugepages); escalonador sched_ext; ventoinhas da placa-mãe;
+  mitigações do processador uma a uma; parâmetros do kernel sem editar o bootloader à mão.
 
 ![Interface](docs/interface.png)
 
@@ -501,7 +505,60 @@ mostra o comando que resolve.
 `~/numapilot-relatorio.txt` com o diagnóstico e as informações do sistema (lscpu, numactl, lspci,
 topologia, log do serviço, dispositivos Vulkan).
 
-## 20. Limitações
+## 20. Máquina (processadores, memória, ventoinhas, boot)
+
+A aba **Máquina** junta o controle do resto do hardware. Quem aplica é o serviço; se ele parar, tudo
+volta ao que o sistema tinha quando ele iniciou.
+
+- **Modos de um clique** (também `numapilot machine mode jogo|ia|silencioso|normal`):
+  - *Jogo*: socket da placa de vídeo em `performance`, EPB desempenho, uncore no máximo, turbo,
+    balanceamento NUMA do kernel desligado e escalonador LAVD em modo jogo (se o `scx_loader`
+    estiver instalado).
+  - *IA*: os dois sockets em `performance`, uncore no máximo, THP `always`.
+  - *Silencioso*: sem turbo, governor econômico, EPB economia, potência de cada socket limitada a
+    60% e LAVD em economia.
+  - *Normal*: devolve tudo.
+- **Por socket:** governor, viés de energia (EPB), frequência mínima e máxima, **uncore** (cache L3 e
+  controlador de memória; mais alto = menos latência de memória; precisa do módulo
+  `intel_uncore_frequency`) e **limite de potência** (RAPL), com consumo e temperatura ao vivo.
+- **Latência em jogos:** programas com **Baixa latência** (o perfil Jogo liga; também no
+  "Ajustar…") fazem os núcleos deles pararem de usar os estados de economia profundos (acordar deles
+  causa travadinhas) e o uncore do socket ir ao máximo, só enquanto rodam. O resto da máquina
+  continua economizando.
+- **Perfil de energia da GPU por programa** (no "Ajustar…"): 3D tela cheia, computação, VR, vídeo
+  ou economia, trocado sozinho quando o programa usa a placa. Jogo usa 3D; IA usa computação.
+- **Memória:** balanceamento NUMA automático do kernel, `zone_reclaim`, Transparent Huge Pages e
+  hugepages reservadas por socket (estas só servem para quem usa hugetlbfs, como máquinas virtuais;
+  o llama.cpp e o PyTorch se beneficiam de THP e da memória no socket certo).
+- **Escalonador sched_ext:** escolhe o escalonador e o modo pelo `scxctl` do CachyOS.
+- **Ventoinhas da placa-mãe:** cada saída PWM do chip de sensores (nct67xx, it87...) em automático,
+  curva (seguindo a CPU mais quente, uma CPU, as GPUs ou tudo) ou fixa; acima de 90 °C na CPU vão a
+  100%. Em placas de servidor, as ventoinhas do IPMI aparecem e, em Supermicro, dá para escolher o
+  modo do BMC.
+- **Link PCIe** de cada GPU na aba Placas de vídeo e no diagnóstico (avisa se o slot está em x8).
+
+### Mitigações do processador
+
+Lista só as que afetam o seu processador (lidas de `/sys/devices/system/cpu/vulnerabilities`), com
+o risco de desligar e o ganho típico. Botões prontos: **Desligar as leves (mantém Spectre e
+Meltdown)**, **Desligar todas** (`mitigations=off`) e **Todas ligadas**. MDS, TAA, MMIO e RFDS
+aparecem juntas porque usam a mesma limpeza de buffers: só há ganho desligando as quatro. Valem
+depois de reiniciar.
+
+### Parâmetros do kernel
+
+O numapilot reconhece o bootloader (Limine em `/etc/default/limine`, systemd-boot pelo
+`/etc/sdboot-manage.conf`, GRUB ou rEFInd), edita a linha dos parâmetros com backup e regrava as
+entradas (`limine-mkinitcpio`, `sdboot-manage gen`, `grub-mkconfig`). Como é o arquivo que o
+próprio sistema usa para gerar as entradas, as atualizações do kernel mantêm tudo. A entrada de
+emergência (fallback) do Limine não é mexida. Pede a senha; pela linha de comando:
+`sudo numapilot boot cmdline apply +pci=realloc -nowatchdog`.
+
+![Máquina](docs/maquina.png)
+
+![Mitigações](docs/mitigacoes.png)
+
+## 21. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice
@@ -529,6 +586,11 @@ src/steam.rs    leitura/escrita de VDF da Steam, jogos instalados, opções de i
 src/tuner.rs    otimizador de FPS (variações, CSV do MangoHud)
 src/web.rs      painel web para o celular
 src/history.rs  histórico das GPUs e estado do serviço
+src/cpuctl.rs   C-states, turbo, frequência, EPB, uncore, RAPL, temperatura dos sockets
+src/machine.rs  ajustes da máquina, modos, sched_ext, baixa latência por programa
+src/fans.rs     ventoinhas da placa-mãe (hwmon) e IPMI
+src/cmdline.rs  parâmetros do kernel no bootloader e mitigações do processador
+src/bootcfg.rs  opções de módulo (OverDrive) em /etc/modprobe.d
 container/      imagem do laboratório (Containerfile, pacotes, lab-start)
 src/topo.rs     nós NUMA, núcleos, RAM, GPUs (PCI, socket, KFD/gfx, UUID ROCm, monitor)
 src/decide.rs   decisão de GPU + socket (usada pelo `run`)

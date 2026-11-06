@@ -23,6 +23,10 @@ pub enum Request {
     SetProfile { key: String, profile: Profile, pid: Option<i32> },
     DeleteProfile { key: String, pid: Option<i32> },
     /// O `numapilot run` pede para aplicar no próprio processo o que exige root.
+    /// Ajustes da máquina (modos, processadores, memória, escalonador).
+    SetMachine { machine: crate::machine::Machine },
+    /// Ventoinha da placa-mãe.
+    SetBoardFan { id: String, control: crate::fans::BoardFanControl },
     Adopt {
         pid: i32,
         /// Perfil a usar só neste processo (otimizador de FPS); None = o salvo.
