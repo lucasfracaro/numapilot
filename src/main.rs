@@ -63,6 +63,20 @@ enum Cmd {
         #[arg(long)]
         no_migrate: bool,
     },
+    /// Testa cada parte no hardware real e diz o que corrigir.
+    Doctor {
+        /// Saída em JSON.
+        #[arg(long)]
+        json: bool,
+        /// Gera ~/numapilot-relatorio.txt (diagnóstico + sistema) para enviar.
+        #[arg(long)]
+        report: bool,
+    },
+    /// Steam: coloca (ou tira) o numapilot nas opções de inicialização de todos os jogos.
+    Steam {
+        /// enable | disable | list
+        action: String,
+    },
     /// Mede a latência e a banda de memória entre os sockets.
     Bench {
         /// Tamanho do buffer por teste (MB).
@@ -128,6 +142,22 @@ fn real_main() -> Result<()> {
             cmd_run(&cfg, cpu, gpu, mem, usage, fg_gpu, dry_run, command)
         }
         Cmd::Profile { action } => cmd_profile(action),
+        Cmd::Doctor { json, report } => {
+            let checks = numapilot::doctor::run(&cfg);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&checks)?);
+            } else {
+                numapilot::doctor::print(&checks);
+            }
+            if report {
+                let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+                let p = home.join("numapilot-relatorio.txt");
+                std::fs::write(&p, numapilot::doctor::report(&checks))?;
+                println!("\nRelatório salvo em {}: é só me mandar esse arquivo.", p.display());
+            }
+            Ok(())
+        }
+        Cmd::Steam { action } => cmd_steam(&action),
         Cmd::Bench { size_mb, threads } => {
             let t = Topology::load(&cfg);
             println!("Medindo {} nó(s); leva alguns segundos por par...", t.nodes.len());
@@ -351,6 +381,29 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
             println!("{}", r.message);
             if r.ok { Ok(()) } else { bail!("falhou") }
         }
+    }
+}
+
+fn cmd_steam(action: &str) -> Result<()> {
+    use numapilot::steam;
+    let games = steam::installed_games();
+    let lc = steam::find_localconfigs();
+    let Some(path) = lc.first() else { bail!("não achei a configuração da Steam (localconfig.vdf)") };
+    match action {
+        "list" => {
+            let opts = steam::read_launch_options(path).unwrap_or_default();
+            for (id, name) in &games {
+                let o = opts.get(id).cloned().unwrap_or_default();
+                println!("{} {id:>8}  {name}  {}", if steam::has_numapilot(&o) { "[x]" } else { "[ ]" }, o);
+            }
+            Ok(())
+        }
+        "enable" | "disable" => {
+            let n = steam::apply_all(path, &games, action == "enable").map_err(|e| anyhow::anyhow!(e))?;
+            println!("{n} jogo(s) alterado(s) em {} (backup ao lado).", path.display());
+            Ok(())
+        }
+        _ => bail!("use: numapilot steam enable | disable | list"),
     }
 }
 

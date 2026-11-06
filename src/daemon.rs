@@ -7,6 +7,7 @@ use crate::config::{Config, CpuSpec, GpuSpec};
 use crate::ctl::{self, Request, Response};
 use crate::decide::{least_loaded_node, node_loads, pick_gpus, Kind};
 use crate::gpuctl::{self, FanMode, GpuControls};
+use crate::history::{self, History, Sample, Status};
 use crate::procevents;
 use crate::learned::{run_dir, Learned};
 use crate::procfs::{self, Stat};
@@ -23,6 +24,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 static STOP: AtomicBool = AtomicBool::new(false);
+static STATUS: std::sync::Mutex<Option<Status>> = std::sync::Mutex::new(None);
+
+fn status_update(f: impl FnOnce(&mut Status)) {
+    if let Ok(mut g) = STATUS.lock() {
+        let st = g.get_or_insert_with(Status::default);
+        f(st);
+        let _ = std::fs::write(history::status_path(), serde_json::to_string_pretty(st).unwrap_or_default());
+    }
+}
 
 extern "C" fn on_signal(_: libc::c_int) {
     STOP.store(true, Ordering::SeqCst);
@@ -233,8 +243,14 @@ impl Ctx<'_> {
                 mem_max_bytes: p.mem_max_gb.map(|g| (g * 1073741824.0) as u64),
             };
             match cgroup::apply(&t.pkey, &t.label, pids, &limits) {
-                Ok(name) => eprintln!("[numapilot] {} → {name} {:?}", t.comm, limits),
-                Err(e) => eprintln!("[numapilot] {}: não consegui aplicar o grupo de controle: {e}", t.comm),
+                Ok(name) => {
+                    eprintln!("[numapilot] {} → {name} {:?}", t.comm, limits);
+                    status_update(|s| s.cgroup_ok_count += 1);
+                }
+                Err(e) => {
+                    eprintln!("[numapilot] {}: não consegui aplicar o grupo de controle: {e}", t.comm);
+                    status_update(|s| s.cgroup_last_error = Some(e.clone()));
+                }
             }
         }
     }
@@ -337,7 +353,25 @@ pub fn run(cfg: Config) -> Result<()> {
     if cfg.daemon.gpu_irq {
         gpu_irqs(&ctx);
     }
+    for (pci, c) in &gpuc.map {
+        if let Some(od) = &c.od
+            && let Err(e) = gpuctl::apply_od(pci, Some(od))
+        {
+            eprintln!("[numapilot] GPU {pci}: clock/voltagem não aplicados: {e}");
+            status_update(|s| s.od_errors.push(format!("{pci}: {e}")));
+        }
+    }
+    let mut hist = History::load().unwrap_or_default();
+    hist.gpus = topo.gpus.iter().map(|g| g.alias.clone()).collect();
+    hist.nodes = topo.node_ids();
+    let mut last_hist = Instant::now() - Duration::from_secs(60);
     let execs = procevents::start();
+    status_update(|s| {
+        s.version = env!("CARGO_PKG_VERSION").into();
+        s.root = is_root();
+        s.proc_connector = execs.is_some();
+        s.started = history::now();
+    });
     eprintln!(
         "[numapilot] detecção de programas: {}",
         if execs.is_some() { "instantânea (proc connector)" } else { "por varredura" }
@@ -473,6 +507,27 @@ pub fn run(cfg: Config) -> Result<()> {
         }
         if cfg.daemon.gpu_irq && tick.is_multiple_of(60) {
             gpu_irqs(&ctx);
+        }
+        if last_hist.elapsed() >= Duration::from_secs(30) {
+            last_hist = Instant::now();
+            let g = topo
+                .gpus
+                .iter()
+                .map(|g| {
+                    let s = gpuctl::read_sensors(&g.pci);
+                    [
+                        s.control_temp().unwrap_or(0.0) as f32,
+                        s.power_w.unwrap_or(0.0) as f32,
+                        s.fan_pct.unwrap_or(0.0) as f32,
+                        g.busy_percent().unwrap_or(0) as f32,
+                    ]
+                })
+                .collect();
+            let n = topo.nodes.iter().map(|n| loads.get(&n.id).copied().unwrap_or(0.0) as f32).collect();
+            hist.push(Sample { t: history::now(), g, n });
+            let _ = hist.save();
+            let r = format_cpulist(&reserved_now);
+            status_update(|s| s.reserved = r);
         }
         write_state(&ctx, &procs, &ppids, &profiles);
         if last_save.elapsed() > Duration::from_secs(30) {
@@ -782,6 +837,16 @@ fn handle_gpu(
         match gpuctl::set_power_cap(&pci, control.power_cap_w) {
             Ok(v) => msg.push(format!("potência {v:.0} W")),
             Err(e) => return Response::err(format!("não consegui mudar a potência: {e}")),
+        }
+    }
+    if control.od != old.od {
+        let od = control.od.as_ref().filter(|o| !o.is_default());
+        match gpuctl::apply_od(&pci, od) {
+            Ok(()) => msg.push(if od.is_some() { "clock/voltagem aplicados".into() } else { "clock/voltagem de fábrica".into() }),
+            Err(e) => return Response::err(format!("clock/voltagem: {e}")),
+        }
+        if od.is_none() {
+            control.od = None;
         }
     }
     if control.fan == FanMode::Auto && old.fan != FanMode::Auto {

@@ -96,6 +96,8 @@ pub struct GpuControl {
     pub fixed_pct: f64,
     /// Limite de potência em W (None = padrão da placa).
     pub power_cap_w: Option<f64>,
+    /// Clock/voltagem (OverDrive). None = padrão de fábrica.
+    pub od: Option<OdSettings>,
 }
 
 pub fn default_curve() -> Vec<(f64, f64)> {
@@ -104,7 +106,7 @@ pub fn default_curve() -> Vec<(f64, f64)> {
 
 impl Default for GpuControl {
     fn default() -> Self {
-        GpuControl { fan: FanMode::Auto, curve: default_curve(), fixed_pct: 50.0, power_cap_w: None }
+        GpuControl { fan: FanMode::Auto, curve: default_curve(), fixed_pct: 50.0, power_cap_w: None, od: None }
     }
 }
 
@@ -236,5 +238,172 @@ mod tests {
         let mut bad = GpuControl { curve: vec![(70.0, 150.0), (30.0, 10.0)], ..Default::default() };
         bad.validate().unwrap();
         assert_eq!(bad.curve, vec![(30.0, 10.0), (70.0, 100.0)]);
+    }
+}
+
+// ---------- clock e voltagem (OverDrive) ----------
+
+/// Tabela do pp_od_clk_voltage (Vega 20 / MI50).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct Od {
+    /// (índice, MHz) — 0 = mínimo, 1 = máximo
+    pub sclk: Vec<(u32, u32)>,
+    pub mclk: Vec<(u32, u32)>,
+    /// (índice, MHz, mV) — os 3 pontos da curva de voltagem
+    pub curve: Vec<(u32, u32, u32)>,
+    pub range_sclk: Option<(u32, u32)>,
+    pub range_mclk: Option<(u32, u32)>,
+    /// por ponto: faixa de MHz e de mV
+    pub range_curve_sclk: Vec<(u32, u32)>,
+    pub range_curve_volt: Vec<(u32, u32)>,
+}
+
+fn nums(s: &str) -> Vec<u32> {
+    s.split(|c: char| !c.is_ascii_digit()).filter(|x| !x.is_empty()).filter_map(|x| x.parse().ok()).collect()
+}
+
+pub fn parse_od(s: &str) -> Od {
+    let mut od = Od::default();
+    let mut sec = "";
+    for line in s.lines() {
+        let l = line.trim();
+        if l.ends_with(':') && !l.contains(' ') {
+            sec = match l {
+                "OD_SCLK:" => "s",
+                "OD_MCLK:" => "m",
+                "OD_VDDC_CURVE:" => "v",
+                "OD_RANGE:" => "r",
+                _ => "",
+            };
+            continue;
+        }
+        let n = nums(l);
+        match sec {
+            "s" if n.len() >= 2 => od.sclk.push((n[0], n[1])),
+            "m" if n.len() >= 2 => od.mclk.push((n[0], n[1])),
+            "v" if n.len() >= 3 => od.curve.push((n[0], n[1], n[2])),
+            "r" => {
+                if l.starts_with("SCLK:") && n.len() >= 2 {
+                    od.range_sclk = Some((n[0], n[1]));
+                } else if l.starts_with("MCLK:") && n.len() >= 2 {
+                    od.range_mclk = Some((n[0], n[1]));
+                } else if l.starts_with("VDDC_CURVE_SCLK[") && n.len() >= 3 {
+                    od.range_curve_sclk.push((n[1], n[2]));
+                } else if (l.starts_with("VDDC_CURVE_VOLT[") || l.starts_with("VDDC_CURVE_VOFF[")) && n.len() >= 3 {
+                    od.range_curve_volt.push((n[1], n[2]));
+                }
+            }
+            _ => {}
+        }
+    }
+    od
+}
+
+pub fn od_path(pci: &str) -> PathBuf {
+    sys(&format!("bus/pci/devices/{pci}/pp_od_clk_voltage"))
+}
+
+/// None = OverDrive desligado (falta amdgpu.ppfeaturemask com o bit 0x4000).
+pub fn read_od(pci: &str) -> Option<Od> {
+    let s = fs::read_to_string(od_path(pci)).ok()?;
+    let od = parse_od(&s);
+    if od.sclk.is_empty() && od.curve.is_empty() { None } else { Some(od) }
+}
+
+/// O que o usuário escolheu (None/vazio = manter o padrão da placa).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct OdSettings {
+    pub sclk_max: Option<u32>,
+    pub mclk_max: Option<u32>,
+    /// (MHz, mV) para cada um dos 3 pontos
+    pub curve: Vec<(u32, u32)>,
+}
+
+impl OdSettings {
+    pub fn is_default(&self) -> bool {
+        self.sclk_max.is_none() && self.mclk_max.is_none() && self.curve.is_empty()
+    }
+}
+
+/// Comandos para o pp_od_clk_voltage, validando as faixas da placa.
+pub fn od_commands(od: &Od, s: &OdSettings) -> Result<Vec<String>, String> {
+    let mut v = Vec::new();
+    let check = |val: u32, r: Option<(u32, u32)>, what: &str| -> Result<(), String> {
+        match r {
+            Some((lo, hi)) if val < lo || val > hi => Err(format!("{what} {val} fora da faixa {lo}–{hi}")),
+            _ => Ok(()),
+        }
+    };
+    if let Some(x) = s.sclk_max {
+        check(x, od.range_sclk, "clock da GPU (MHz)")?;
+        v.push(format!("s 1 {x}"));
+    }
+    if let Some(x) = s.mclk_max {
+        check(x, od.range_mclk, "clock da memória (MHz)")?;
+        v.push(format!("m 1 {x}"));
+    }
+    for (i, (mhz, mv)) in s.curve.iter().enumerate() {
+        check(*mhz, od.range_curve_sclk.get(i).copied(), &format!("ponto {i} (MHz)"))?;
+        check(*mv, od.range_curve_volt.get(i).copied(), &format!("ponto {i} (mV)"))?;
+        v.push(format!("vc {i} {mhz} {mv}"));
+    }
+    v.push("c".into());
+    Ok(v)
+}
+
+/// Aplica (ou, com `None`, volta ao padrão de fábrica).
+pub fn apply_od(pci: &str, s: Option<&OdSettings>) -> Result<(), String> {
+    let p = od_path(pci);
+    let lvl = sys(&format!("bus/pci/devices/{pci}/power_dpm_force_performance_level"));
+    let write = |cmd: &str| fs::write(&p, cmd).map_err(|e| format!("'{cmd}': {e}"));
+    match s {
+        None => {
+            write("r")?;
+            write("c")?;
+        }
+        Some(s) => {
+            let od = read_od(pci).ok_or("OverDrive desligado (veja o diagnóstico)")?;
+            let cmds = od_commands(&od, s)?;
+            let _ = fs::write(&lvl, "manual");
+            for c in &cmds {
+                write(c)?;
+            }
+        }
+    }
+    let _ = fs::write(&lvl, "auto");
+    Ok(())
+}
+
+// ---------- Resizable BAR ----------
+
+/// (VRAM visível pela CPU, VRAM total) em bytes. Se forem ~iguais, o Resizable BAR está ativo.
+pub fn bar_info(pci: &str) -> Option<(u64, u64)> {
+    let r = |f: &str| read_trim(sys(&format!("bus/pci/devices/{pci}/{f}")))?.parse::<u64>().ok();
+    Some((r("mem_info_vis_vram_total")?, r("mem_info_vram_total")?))
+}
+
+pub fn rebar_active(pci: &str) -> Option<bool> {
+    bar_info(pci).map(|(vis, tot)| tot > 0 && vis * 10 >= tot * 9)
+}
+
+#[cfg(test)]
+mod od_tests {
+    use super::*;
+
+    const SAMPLE: &str = "OD_SCLK:\n0:        808Mhz\n1:       1801Mhz\nOD_MCLK:\n1:       1000Mhz\nOD_VDDC_CURVE:\n0:        808Mhz        721mV\n1:       1304Mhz        822mV\n2:       1801Mhz       1078mV\nOD_RANGE:\nSCLK:     808Mhz       2200Mhz\nMCLK:     800Mhz       1200Mhz\nVDDC_CURVE_SCLK[0]:     808Mhz       2200Mhz\nVDDC_CURVE_VOLT[0]:     738mV        1218mV\nVDDC_CURVE_SCLK[1]:     808Mhz       2200Mhz\nVDDC_CURVE_VOLT[1]:     738mV        1218mV\nVDDC_CURVE_SCLK[2]:     808Mhz       2200Mhz\nVDDC_CURVE_VOLT[2]:     738mV        1218mV\n";
+
+    #[test]
+    fn parse_and_commands() {
+        let od = parse_od(SAMPLE);
+        assert_eq!(od.sclk, vec![(0, 808), (1, 1801)]);
+        assert_eq!(od.mclk, vec![(1, 1000)]);
+        assert_eq!(od.curve[2], (2, 1801, 1078));
+        assert_eq!(od.range_sclk, Some((808, 2200)));
+        assert_eq!(od.range_curve_volt.len(), 3);
+        let s = OdSettings { sclk_max: Some(1700), mclk_max: None, curve: vec![(808, 740), (1304, 800), (1700, 1000)] };
+        assert_eq!(od_commands(&od, &s).unwrap(), vec!["s 1 1700", "vc 0 808 740", "vc 1 1304 800", "vc 2 1700 1000", "c"]);
+        let bad = OdSettings { curve: vec![(808, 600)], ..Default::default() };
+        assert!(od_commands(&od, &bad).unwrap_err().contains("fora da faixa"));
     }
 }

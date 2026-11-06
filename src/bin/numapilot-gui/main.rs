@@ -401,6 +401,22 @@ impl App {
                     .weak(),
             );
         });
+        ui.horizontal(|ui| {
+            ui.label("Steam:");
+            if ui
+                .button("Aplicar em todos os jogos")
+                .on_hover_text("Coloca \"numapilot run -- %command%\" nas opções de inicialização de todos os jogos instalados (mantém o que já existia). Feche a Steam antes.")
+                .clicked()
+            {
+                self.start_job("Steam: aplicar em todos os jogos", vec![jobs::sibling("numapilot"), "steam".into(), "enable".into()]);
+            }
+            if ui.button("Remover de todos").clicked() {
+                self.start_job("Steam: remover de todos os jogos", vec![jobs::sibling("numapilot"), "steam".into(), "disable".into()]);
+            }
+            if ui.button("Ver lista").clicked() {
+                self.start_job("Steam: jogos", vec![jobs::sibling("numapilot"), "steam".into(), "list".into()]);
+            }
+        });
         ui.separator();
         if self.groups.is_empty() {
             ui.label("Nenhum programa sendo usado agora. Abra algo (um jogo, o Blender, o llama-server...) e ele aparece aqui.");

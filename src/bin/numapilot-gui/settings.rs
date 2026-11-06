@@ -92,6 +92,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
 
         ui.add_space(8.0);
+        ui.heading("Diagnóstico");
+        ui.label("Testa cada parte no seu hardware (NUMA, cgroups, seleção de GPU no Vulkan, ROCm, ventoinhas, OverDrive, ReBAR, Steam) e diz o que corrigir.");
+        ui.horizontal(|ui| {
+            if ui.button("Verificar tudo").clicked() {
+                app.start_job("Diagnóstico", vec![crate::jobs::sibling("numapilot"), "doctor".into()]);
+            }
+            if ui.button("Gerar relatório para enviar").on_hover_text("Salva ~/numapilot-relatorio.txt com o diagnóstico e as informações do sistema").clicked() {
+                app.start_job("Relatório de diagnóstico", vec![crate::jobs::sibling("numapilot"), "doctor".into(), "--report".into()]);
+            }
+        });
+
+        ui.add_space(8.0);
         ui.heading("Hardware");
         for n in &app.topo.nodes {
             ui.label(format!(
