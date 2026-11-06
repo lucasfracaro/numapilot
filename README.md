@@ -160,7 +160,7 @@ mantidos pela comunidade, e o script cuida dos dois:
 
 ### a) Container: o mais fácil de manter
 
-Usa a imagem do projeto **mixa3607/ML-gfx906** (ROCm 7.14 para gfx906, compilado via TheRock).
+Usa a imagem do projeto **mixa3607/ML-gfx906** (ROCm 10.1 para gfx906, compilado via TheRock; 7.14 e 10.0 também existem: troque `IMAGE` no config).
 Isso não depende das bibliotecas do CachyOS. O host só precisa do driver `amdgpu`, que já vem no kernel.
 
 ```bash
@@ -206,7 +206,70 @@ Dicas da comunidade para gfx906:
   para gfx906 não precisam.
 - Usuário nos grupos `render` e `video` (o `doctor` verifica).
 
-## 9. Limitações
+## 9. Laboratório de ciência de dados e ML nas MI50 (`gfx906-rocm lab`)
+
+Um container com tudo pronto para usar as MI50. É construído sobre o PyTorch compilado para gfx906
+pela comunidade (mixa3607/ML-gfx906) e ganha:
+
+- **Dados/ciência:** numpy, scipy, pandas, polars, pyarrow, duckdb, numba, scikit-learn,
+  scikit-image, statsmodels, sympy, networkx
+- **Visualização:** matplotlib, seaborn, plotly, altair, ipywidgets
+- **ML clássico:** xgboost, lightgbm, catboost, optuna, shap, mlflow, tensorboard. Esses rodam na
+  CPU, que aqui são 88 threads; o PyPI não tem builds deles para ROCm.
+- **Deep learning (na GPU, via PyTorch):** transformers, datasets, accelerate, peft, lightning,
+  torchmetrics, timm, kornia
+- **Ferramentas:** JupyterLab, VS Code no navegador (code-server, com as extensões Python e Jupyter),
+  SSH, ruff, pytest, nvtop, git, opcionalmente o PyCharm
+
+O PyTorch gfx906 da imagem fica **travado** no build: nenhum pacote pode trocá-lo por um build CUDA do PyPI.
+
+```bash
+sudo pacman -S podman          # recomendado (sem root); docker também funciona
+gfx906-rocm lab up             # constrói na 1ª vez (a base tem vários GB) e sobe
+gfx906-rocm lab                # mostra os endereços, o token e a senha
+gfx906-rocm lab test           # PyTorch enxerga as MI50? faz conta em cada uma?
+gfx906-rocm lab shell          # terminal dentro do container
+gfx906-rocm lab down
+```
+
+| Serviço | Endereço |
+|---|---|
+| JupyterLab | `http://127.0.0.1:8888/lab?token=...` |
+| VS Code (navegador) | `http://127.0.0.1:8443` (a senha é o mesmo token) |
+| SSH | `ssh -p 2222 root@127.0.0.1` (usa as suas chaves de `~/.ssh`) |
+
+Os projetos ficam em `~/lab` (no container: `/workspace`). Os modelos baixados ficam no cache do
+Hugging Face do host (`~/.cache/huggingface`), então não são baixados de novo.
+
+**Editores no host:**
+- **VS Code (desktop):** use a extensão *Remote - SSH* com `Host gfx906-lab`, `HostName 127.0.0.1`,
+  `Port 2222`, `User root`. Outra opção é *Dev Containers → Attach to Running Container*; com podman,
+  configure `"dev.containers.dockerPath": "podman"`.
+- **PyCharm:** o interpretador remoto por SSH (`/usr/bin/python3` em `127.0.0.1:2222`) é recurso da
+  versão paga. Sem ela, defina `LAB_PYCHARM=1` em `/etc/gfx906-rocm.conf`, rode `gfx906-rocm lab build`
+  e depois `gfx906-rocm lab pycharm`: o PyCharm roda **dentro** do container e a janela abre na sua tela.
+
+**Atualizar com segurança:**
+
+```bash
+gfx906-rocm lab update --check   # há base nova (PyTorch/ROCm)?
+gfx906-rocm lab update           # reconstrói, testa nas GPUs e volta sozinho se falhar
+gfx906-rocm lab update --force   # mesma base, mas atualiza todos os pacotes Python
+gfx906-rocm lab rollback         # volta para a imagem anterior
+```
+
+Por padrão, o update usa sempre a tag mais nova (`vX.Y.Z-rocm-A.B`). Para ficar numa versão,
+defina `LAB_BASE` no config. Há relatos de falha em multi-GPU com ROCm novo em algumas máquinas
+(issue #28 do ML-gfx906). Se acontecer, fixe uma base 7.2.x.
+
+**Com o numapilot:** para dedicar uma MI50 ao laboratório e deixar a outra livre para jogos, use
+`numapilot run --gpu gfx906-1 --use compute -- gfx906-rocm lab up`. O container recebe só aquela
+GPU e os CPUs do socket dela.
+
+Para acessar de outro computador da rede, use `LAB_BIND="0.0.0.0"`. O acesso continua protegido por
+token, senha e chave SSH.
+
+## 10. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice
@@ -223,6 +286,7 @@ src/bin/numapilot-gui.rs  interface gráfica (egui)
 src/ctl.rs      socket de controle do daemon (a interface fala por ele)
 src/profiles.rs escolhas por programa
 src/desktop.rs  atalhos do menu que abrem pelo numapilot
+container/      imagem do laboratório (Containerfile, pacotes, lab-start)
 src/topo.rs     nós NUMA, núcleos, RAM, GPUs (PCI, socket, KFD/gfx, UUID ROCm, monitor)
 src/decide.rs   decisão de GPU + socket (usada pelo `run`)
 src/daemon.rs   modo automático (observa /proc, aplica afinidade, migra memória)

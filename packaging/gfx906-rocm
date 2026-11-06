@@ -12,8 +12,20 @@ ROCM_BASE=/opt/rocm-gfx906
 INDEX_URL="https://rocm.nightlies.amd.com/tarball/"
 FILTER="gfx906"
 KEEP=3
-IMAGE="docker.io/mixa3607/rocm-gfx906:7.14-complete"
+IMAGE="docker.io/mixa3607/rocm-gfx906:10.1-complete"
 ENGINE=""
+# Laboratório (gfx906-rocm lab): imagem própria construída sobre o PyTorch gfx906.
+LAB_BASE_REPO="docker.io/mixa3607/pytorch-gfx906"
+LAB_BASE=""            # vazio = a tag mais nova do LAB_BASE_REPO (vX.Y.Z-rocm-A.B)
+LAB_IMAGE="localhost/gfx906-lab"
+LAB_NAME="gfx906-lab"
+LAB_DIR="$HOME/lab"    # pasta do host que vira /workspace
+LAB_BIND="127.0.0.1"   # 0.0.0.0 para acessar de outro computador da rede
+LAB_PORT_JUPYTER=8888
+LAB_PORT_CODE=8443
+LAB_PORT_SSH=2222
+LAB_PYCHARM=0          # 1 = instala o PyCharm dentro da imagem
+LAB_SRC="/usr/local/share/numapilot/container"
 # shellcheck source=/dev/null
 [[ -r $CONF ]] && source "$CONF"
 ROCM_BASE=${GFX906_ROCM_BASE:-$ROCM_BASE}
@@ -51,6 +63,9 @@ Uso: gfx906-rocm <comando> [args]
   container run [-i imagem] -- cmd ...
                                roda no container com /dev/kfd e só as GPUs escolhidas
                                pelo numapilot (NUMAPILOT_RENDER / NUMAPILOT_CPUS)
+  lab [comando]                laboratório de ciência de dados/ML nas MI50 (Jupyter, VS Code, PyCharm):
+                                 up | down | info | shell | logs | test | build
+                                 update [--check|--force] (testa nas GPUs e volta se falhar) | rollback | pycharm
   doctor                       checa driver, permissões, GPUs e conflitos
 
 Base: $ROCM_BASE   Config: $CONF
@@ -290,6 +305,15 @@ cmd_remove() {
     info "removida: $n"
 }
 
+host_gid_args() { # --group-add com os GIDs do host (os nomes podem ter outro GID no container)
+    local g gid
+    for g in video render; do
+        gid=$(getent group "$g" | cut -d: -f3)
+        [[ -n $gid ]] && printf -- '--group-add\n%s\n' "$gid"
+    done
+    return 0
+}
+
 engine() {
     if [[ -n $ENGINE ]]; then echo "$ENGINE"; return; fi
     command -v podman >/dev/null && { echo podman; return; }
@@ -311,19 +335,219 @@ cmd_container() {
             -v "$PWD:$PWD" -w "$PWD")
         # Só as GPUs escolhidas pelo numapilot; sem ele, todas.
         local renders=${NUMAPILOT_RENDER:-}
-        if [[ -z $renders ]]; then renders=$(ls /dev/dri/renderD* 2>/dev/null | tr '\n' ' '); fi
+        if [[ -z $renders ]]; then renders=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true); fi
         for r in $renders; do args+=(--device="$r"); done
         if [[ $eng == podman && $EUID -ne 0 ]]; then
             args+=(--group-add keep-groups)
             # Podman sem root herda a afinidade do numapilot (cpuset via cgroup costuma não estar delegado).
         else
-            args+=(--group-add video --group-add render)
+            local gids
+            mapfile -t gids < <(host_gid_args)
+            args+=("${gids[@]}")
             [[ -n ${NUMAPILOT_CPUS:-} ]] && args+=(--cpuset-cpus "$NUMAPILOT_CPUS")
             [[ -n ${NUMAPILOT_MEMS:-} ]] && args+=(--cpuset-mems "$NUMAPILOT_MEMS")
         fi
         exec "$eng" "${args[@]}" "$img" "$@"
         ;;
     *) die "uso: gfx906-rocm container pull|run" ;;
+    esac
+}
+
+# ---------------------------------------------------------------- laboratório
+lab_cfg_dir() { echo "${XDG_CONFIG_HOME:-$HOME/.config}/gfx906-lab"; }
+
+lab_src() {
+    local d self
+    self=$(dirname "$(readlink -f "$0")")
+    for d in "$LAB_SRC" "$self/../container" "$self/../share/numapilot/container"; do
+        [[ -f $d/Containerfile ]] && { readlink -f "$d"; return; }
+    done
+    die "não achei o Containerfile do laboratório (LAB_SRC=$LAB_SRC)"
+}
+
+lab_latest_base() { # tag mais nova vX.Y.Z-rocm-A.B no Docker Hub
+    curl -fsSL "https://hub.docker.com/v2/repositories/${LAB_BASE_REPO#docker.io/}/tags?page_size=100&ordering=last_updated" |
+        python3 -c '
+import json, re, sys
+tags = [t["name"] for t in json.load(sys.stdin).get("results", [])]
+ok = [t for t in tags if re.fullmatch(r"v[0-9.]+-rocm-[0-9.]+", t)]
+key = lambda t: [int(x) for x in re.findall(r"[0-9]+", t)]
+print(sorted(ok, key=key)[-1] if ok else "")'
+}
+
+lab_base() {
+    if [[ -n $LAB_BASE ]]; then echo "$LAB_BASE"; return; fi
+    local t
+    t=$(lab_latest_base) || true
+    [[ -n $t ]] || die "não consegui consultar as tags de $LAB_BASE_REPO; defina LAB_BASE em $CONF"
+    echo "$LAB_BASE_REPO:$t"
+}
+
+lab_image_base() { # base usada na imagem :latest atual
+    "$(engine)" image inspect -f '{{ index .Config.Labels "io.numapilot.base" }}' "$LAB_IMAGE:latest" 2>/dev/null || true
+}
+
+lab_token() {
+    local f
+    f="$(lab_cfg_dir)/token"
+    if [[ ! -s $f ]]; then
+        mkdir -p "$(lab_cfg_dir)"
+        (umask 077; head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' >"$f")
+    fi
+    cat "$f"
+}
+
+lab_keys() { # chaves públicas do usuário para o SSH do container
+    local f
+    f="$(lab_cfg_dir)/authorized_keys"
+    mkdir -p "$(lab_cfg_dir)"
+    cat "$HOME"/.ssh/*.pub "$HOME/.ssh/authorized_keys" 2>/dev/null | sort -u >"$f" || true
+    chmod 600 "$f"
+    echo "$f"
+}
+
+lab_build() {
+    local base=${1:-}
+    [[ -n $base ]] || base=$(lab_base)
+    local eng src
+    eng=$(engine)
+    src=$(lab_src)
+    if "$eng" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1; then
+        "$eng" tag "$LAB_IMAGE:latest" "$LAB_IMAGE:previous"
+    fi
+    info "construindo $LAB_IMAGE sobre $base (a primeira vez demora: a base tem vários GB)"
+    local pull=(--pull)
+    [[ $eng == podman ]] && pull=(--pull=newer)
+    "$eng" build "${pull[@]}" -f "$src/Containerfile" \
+        --build-arg BASE="$base" --build-arg INSTALL_PYCHARM="$LAB_PYCHARM" \
+        -t "$LAB_IMAGE:latest" "$src"
+}
+
+lab_running() { [[ $("$(engine)" inspect -f '{{.State.Running}}' "$LAB_NAME" 2>/dev/null) == true ]]; }
+
+lab_up() {
+    local eng
+    eng=$(engine)
+    if lab_running; then lab_info; return; fi
+    "$eng" rm -f "$LAB_NAME" >/dev/null 2>&1 || true
+    "$eng" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1 || lab_build
+    mkdir -p "$LAB_DIR" "$HOME/.cache/huggingface"
+    local args=(run -d --name "$LAB_NAME" --hostname "$LAB_NAME" --restart unless-stopped
+        --device=/dev/kfd --ipc=host --security-opt seccomp=unconfined
+        -e LAB_TOKEN="$(lab_token)"
+        -p "$LAB_BIND:$LAB_PORT_JUPYTER:8888" -p "$LAB_BIND:$LAB_PORT_CODE:8443" -p "$LAB_BIND:$LAB_PORT_SSH:2222"
+        -v "$LAB_DIR:/workspace" -v "$LAB_NAME-home:/root"
+        -v "$HOME/.cache/huggingface:/root/.cache/huggingface"
+        -v "$(lab_keys):/lab/authorized_keys:ro")
+    # GPUs: as escolhidas pelo numapilot (numapilot run --gpu ... -- gfx906-rocm lab up); senão todas.
+    local renders=${NUMAPILOT_RENDER:-} r
+    [[ -n $renders ]] || renders=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true)
+    for r in $renders; do args+=(--device="$r"); done
+    if [[ $eng == podman && $EUID -ne 0 ]]; then
+        args+=(--group-add keep-groups)
+    else
+        local gids
+        mapfile -t gids < <(host_gid_args)
+        args+=("${gids[@]}")
+        [[ -n ${NUMAPILOT_CPUS:-} ]] && args+=(--cpuset-cpus "$NUMAPILOT_CPUS")
+        [[ -n ${NUMAPILOT_MEMS:-} ]] && args+=(--cpuset-mems "$NUMAPILOT_MEMS")
+    fi
+    # Tela (para abrir o PyCharm do container): X11/XWayland e Wayland.
+    [[ -d /tmp/.X11-unix ]] && args+=(-v /tmp/.X11-unix:/tmp/.X11-unix:ro)
+    [[ -n ${XAUTHORITY:-} && -f ${XAUTHORITY:-} ]] && args+=(-v "$XAUTHORITY:/lab/Xauthority:ro")
+    if [[ -n ${XDG_RUNTIME_DIR:-} && -n ${WAYLAND_DISPLAY:-} && -S $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY ]]; then
+        args+=(-v "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/lab/wayland-0")
+    fi
+    "$eng" "${args[@]}" "$LAB_IMAGE:latest" >/dev/null
+    sleep 3
+    lab_info
+}
+
+lab_down() { "$(engine)" rm -f "$LAB_NAME" >/dev/null 2>&1 && info "laboratório parado"; }
+
+lab_info() {
+    local t host=$LAB_BIND
+    [[ $host == 0.0.0.0 ]] && host=$(hostname)
+    if ! lab_running; then echo "laboratório parado (gfx906-rocm lab up)"; return 1; fi
+    t=$(lab_token)
+    cat <<EOF
+Laboratório rodando ($(lab_image_base))
+  JupyterLab : http://$host:$LAB_PORT_JUPYTER/lab?token=$t
+  VS Code    : http://$host:$LAB_PORT_CODE   (senha: $t)
+  SSH        : ssh -p $LAB_PORT_SSH root@$host   (PyCharm/VS Code: interpretador /usr/bin/python3)
+  Arquivos   : $LAB_DIR  ->  /workspace
+EOF
+}
+
+lab_test() { "$(engine)" exec "$LAB_NAME" python3 /opt/lab/gpu-check.py; }
+
+lab_update() {
+    local check=0 force=0 a
+    for a in "$@"; do
+        case $a in --check) check=1 ;; --force) force=1 ;; esac
+    done
+    local cur new
+    cur=$(lab_image_base)
+    new=$(lab_base)
+    echo "imagem atual: ${cur:-nenhuma}"
+    echo "base nova   : $new"
+    if [[ $new == "$cur" && $force == 0 ]]; then
+        info "a base já é a mais nova (use --force para reconstruir e atualizar os pacotes Python)"
+        return 0
+    fi
+    [[ $check == 1 ]] && return 0
+    lab_build "$new"
+    lab_down >/dev/null 2>&1 || true
+    lab_up >/dev/null
+    sleep 5
+    if lab_test; then
+        info "atualizado para $new"
+        lab_info
+    else
+        info "a imagem nova falhou no teste de GPU: voltando para a anterior"
+        lab_rollback
+        return 1
+    fi
+}
+
+lab_rollback() {
+    local eng
+    eng=$(engine)
+    "$eng" image inspect "$LAB_IMAGE:previous" >/dev/null 2>&1 || die "não há imagem anterior"
+    "$eng" tag "$LAB_IMAGE:previous" "$LAB_IMAGE:latest"
+    lab_down >/dev/null 2>&1 || true
+    lab_up
+}
+
+lab_pycharm() {
+    local eng
+    eng=$(engine)
+    lab_running || die "suba o laboratório antes: gfx906-rocm lab up"
+    "$eng" exec "$LAB_NAME" sh -c 'test -x /opt/pycharm/bin/pycharm || test -x /opt/pycharm/bin/pycharm.sh' ||
+        die "a imagem não tem PyCharm: defina LAB_PYCHARM=1 em $CONF e rode gfx906-rocm lab build"
+    local env=(-e DISPLAY="${DISPLAY:-:0}" -e XAUTHORITY=/lab/Xauthority)
+    [[ -n ${WAYLAND_DISPLAY:-} ]] && env+=(-e XDG_RUNTIME_DIR=/lab -e WAYLAND_DISPLAY=wayland-0)
+    # shellcheck disable=SC2016
+    "$eng" exec -d "${env[@]}" "$LAB_NAME" sh -c 'exec "$(ls /opt/pycharm/bin/pycharm /opt/pycharm/bin/pycharm.sh 2>/dev/null | head -n1)"'
+    info "PyCharm abrindo (interpretador: /usr/bin/python3 do container; projetos em /workspace)"
+}
+
+cmd_lab() {
+    local sub=${1:-info}
+    shift || true
+    case $sub in
+    build) lab_build "$@" ;;
+    up | start) lab_up ;;
+    down | stop) lab_down ;;
+    restart) lab_down; lab_up ;;
+    info | status) lab_info ;;
+    shell) exec "$(engine)" exec -it "$LAB_NAME" bash ;;
+    logs) exec "$(engine)" logs -f "$LAB_NAME" ;;
+    test) lab_test ;;
+    update) lab_update "$@" ;;
+    rollback) lab_rollback ;;
+    pycharm) lab_pycharm ;;
+    *) die "uso: gfx906-rocm lab build|up|down|restart|info|shell|logs|test|update [--check|--force]|rollback|pycharm" ;;
     esac
 }
 
@@ -368,6 +592,7 @@ main() {
     env) cmd_env "$@" ;;
     exec) cmd_exec "$@" ;;
     container) cmd_container "$@" ;;
+    lab) cmd_lab "$@" ;;
     doctor) cmd_doctor ;;
     help | -h | --help) usage ;;
     *) usage; exit 1 ;;

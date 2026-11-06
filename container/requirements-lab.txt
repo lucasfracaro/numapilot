@@ -1,0 +1,65 @@
+# Pacotes do laboratório (ciência de dados + machine learning) para as MI50.
+# O torch/torchvision/torchaudio da imagem base (compilados para gfx906) são
+# travados por constraints no build: nada aqui pode trocá-los por builds CUDA do PyPI.
+
+# --- dados e computação ---
+numpy
+scipy
+pandas
+polars
+pyarrow
+duckdb
+numba
+scikit-learn
+scikit-image
+statsmodels
+sympy
+networkx
+sqlalchemy
+openpyxl
+requests
+tqdm
+rich
+
+# --- visualização ---
+matplotlib
+seaborn
+plotly
+altair
+ipympl
+ipywidgets
+
+# --- ML clássico e otimização ---
+xgboost-cpu   # o xgboost "normal" do PyPI arrasta bibliotecas CUDA (inúteis nas MI50)
+lightgbm
+catboost
+optuna
+shap
+mlflow-skinny
+tensorboard
+
+# --- deep learning (usa o torch da imagem) ---
+transformers
+datasets
+accelerate
+peft
+safetensors
+tokenizers
+sentencepiece
+evaluate
+huggingface_hub
+einops
+torchmetrics
+lightning
+
+# --- notebooks e desenvolvimento ---
+jupyterlab
+notebook
+ipykernel
+jupyterlab-git
+jupyter-resource-usage
+ruff
+black
+pytest
+debugpy
+ipdb

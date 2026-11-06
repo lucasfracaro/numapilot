@@ -16,6 +16,9 @@ sudo install -Dm755 target/release/numapilot /usr/local/bin/numapilot
 sudo install -Dm755 target/release/numapilot-gui /usr/local/bin/numapilot-gui
 sudo install -Dm644 packaging/numapilot-gui.desktop /usr/local/share/applications/numapilot.desktop
 sudo install -Dm755 packaging/gfx906-rocm /usr/local/bin/gfx906-rocm
+sudo install -d /usr/local/share/numapilot/container
+sudo install -m644 container/Containerfile container/*.txt container/*.py /usr/local/share/numapilot/container/
+sudo install -m755 container/lab-start /usr/local/share/numapilot/container/
 sudo install -Dm644 packaging/numapilot.service /etc/systemd/system/numapilot.service
 # Configs: não sobrescreve as suas.
 [[ -e /etc/numapilot.toml ]] || sudo install -Dm644 packaging/numapilot.toml /etc/numapilot.toml

@@ -1,0 +1,75 @@
+# Laboratório de ciência de dados / ML para MI50 (gfx906).
+# Base: PyTorch compilado para gfx906 pelo projeto comunitário mixa3607/ML-gfx906.
+# Construído e atualizado por:  gfx906-rocm lab build | lab update
+ARG BASE=docker.io/mixa3607/pytorch-gfx906:v2.14.1-rocm-10.1
+FROM ${BASE}
+
+ARG BASE
+ARG INSTALL_PYCHARM=0
+LABEL io.numapilot.base="${BASE}" \
+      org.opencontainers.image.title="gfx906-lab" \
+      org.opencontainers.image.description="Jupyter + VS Code + PyCharm + ciência de dados para MI50 (ROCm gfx906)"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    HF_HOME=/root/.cache/huggingface
+
+# Ferramentas do sistema (nvtop mostra uso das GPUs AMD também).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl wget git git-lfs openssh-server tini jq \
+        build-essential cmake ninja-build pkg-config \
+        htop nvtop tmux less nano vim-tiny unzip zip rsync \
+        graphviz ffmpeg libgl1 libglib2.0-0 fonts-dejavu fontconfig \
+        libxrender1 libxtst6 libxi6 libfreetype6 libxkbcommon0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pacotes Python, sem deixar o pip trocar o PyTorch gfx906 da imagem.
+COPY torch-constraints.py gpu-check.py requirements-lab.txt requirements-vision.txt /opt/lab/
+RUN python3 /opt/lab/torch-constraints.py > /opt/lab/torch-constraints.txt \
+    && echo "PyTorch travado:" && cat /opt/lab/torch-constraints.txt \
+    && python3 -m pip install -c /opt/lab/torch-constraints.txt -r /opt/lab/requirements-lab.txt \
+    && if grep -q '^torchvision==' /opt/lab/torch-constraints.txt; then \
+           python3 -m pip install -c /opt/lab/torch-constraints.txt -r /opt/lab/requirements-vision.txt; \
+       else echo "aviso: imagem sem torchvision; pulando timm/kornia"; fi \
+    && python3 /opt/lab/torch-constraints.py | diff - /opt/lab/torch-constraints.txt \
+    && if python3 -m pip list 2>/dev/null | grep -qi '^nvidia-'; then \
+           echo "aviso: algum pacote puxou bibliotecas CUDA (inúteis aqui):"; python3 -m pip list | grep -i '^nvidia-'; fi \
+    && python3 -c "import torch; assert torch.version.hip, 'torch sem ROCm'; print('torch', torch.__version__, 'HIP', torch.version.hip)"
+
+# VS Code no navegador (code-server) + extensões Python/Jupyter (Open VSX).
+RUN curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local \
+    && mkdir -p /opt/code-server/extensions \
+    && for ext in ms-python.python ms-toolsai.jupyter charliermarsh.ruff; do \
+           code-server --extensions-dir /opt/code-server/extensions --install-extension "$ext" \
+             || echo "aviso: extensão $ext não instalada"; \
+       done
+
+# PyCharm (opcional: --build-arg INSTALL_PYCHARM=1) para rodar a interface dele pelo container.
+RUN if [ "$INSTALL_PYCHARM" = "1" ]; then \
+        url=$(curl -fsSL 'https://data.services.jetbrains.com/products/releases?code=PCP&latest=true&type=release' \
+              | jq -r '.PCP[0].downloads.linux.link // empty'); \
+        [ -n "$url" ] || { echo "não achei o download do PyCharm"; exit 1; }; \
+        mkdir -p /opt/pycharm && curl -fL "$url" | tar -xz -C /opt/pycharm --strip-components=1; \
+    fi
+
+# SSH (para PyCharm/VS Code no host usarem o Python daqui): só chave, porta 2222.
+RUN printf '%s\n' \
+        'Port 2222' \
+        'PermitRootLogin prohibit-password' \
+        'PasswordAuthentication no' \
+        'KbdInteractiveAuthentication no' \
+        'HostKey /root/.lab/ssh/ssh_host_ed25519_key' \
+        'AuthorizedKeysFile /root/.lab/authorized_keys .ssh/authorized_keys' \
+        'X11Forwarding no' \
+        > /etc/ssh/sshd_config.d/lab.conf \
+    && mkdir -p /run/sshd /workspace
+
+COPY --chmod=755 lab-start /usr/local/bin/lab-start
+WORKDIR /workspace
+EXPOSE 8888 8443 2222
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/usr/local/bin/lab-start"]

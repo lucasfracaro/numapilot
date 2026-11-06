@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Inicia os serviços do laboratório: JupyterLab (8888), VS Code no navegador (8443) e SSH (2222).
+set -u
+
+mkdir -p /root/.lab/ssh /workspace /run/sshd
+
+# Chave de host persistente (não muda a cada recriação do container).
+[[ -f /root/.lab/ssh/ssh_host_ed25519_key ]] ||
+    ssh-keygen -q -t ed25519 -N '' -f /root/.lab/ssh/ssh_host_ed25519_key
+if [[ -f /lab/authorized_keys ]]; then
+    install -m600 /lab/authorized_keys /root/.lab/authorized_keys
+fi
+
+# Sessões SSH (PyCharm, VS Code Remote-SSH) recebem o mesmo ambiente ROCm do container.
+env | grep -E '^(PATH|LD_LIBRARY_PATH|ROCM_PATH|HIP_PATH|PYTHONPATH|HSA_[A-Z_]*|HIP_[A-Z_]*|ROCR_[A-Z_]*|PYTORCH_[A-Z_]*|HF_[A-Z_]*|LANG|LC_ALL)=' \
+    >/etc/environment
+
+TOKEN=${LAB_TOKEN:-}
+if [[ -z $TOKEN ]]; then
+    echo "LAB_TOKEN não definido; gerando um aleatório (veja nos logs)" >&2
+    TOKEN=$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')
+    echo "token: $TOKEN" >&2
+fi
+
+pids=()
+if [[ ${LAB_SSH:-1} == 1 ]]; then
+    /usr/sbin/sshd -D -e &
+    pids+=($!)
+fi
+if [[ ${LAB_JUPYTER:-1} == 1 ]]; then
+    jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root \
+        --ServerApp.token="$TOKEN" --ServerApp.root_dir=/workspace &
+    pids+=($!)
+fi
+if [[ ${LAB_CODE:-1} == 1 ]]; then
+    PASSWORD="$TOKEN" code-server --bind-addr 0.0.0.0:8443 --auth password \
+        --extensions-dir /opt/code-server/extensions --disable-telemetry /workspace &
+    pids+=($!)
+fi
+
+trap 'kill "${pids[@]}" 2>/dev/null' TERM INT
+# Se algum serviço cair, o container termina (e o podman/docker reinicia).
+wait -n "${pids[@]}"
+code=$?
+kill "${pids[@]}" 2>/dev/null
+exit "$code"

@@ -1,0 +1,4 @@
+# Só é instalado se a imagem base já tiver o torchvision compilado para ROCm
+# (senão o pip puxaria um torchvision CUDA do PyPI).
+timm
+kornia

@@ -4,5 +4,6 @@ set -euo pipefail
 sudo systemctl disable --now numapilot.service 2>/dev/null || true
 sudo rm -f /etc/systemd/system/numapilot.service /usr/local/bin/numapilot /usr/local/bin/numapilot-gui \
     /usr/local/share/applications/numapilot.desktop /usr/local/bin/gfx906-rocm
+sudo rm -rf /usr/local/share/numapilot
 sudo systemctl daemon-reload
 echo "Removido. Configs e versões do ROCm foram mantidas (apague à mão se quiser)."
