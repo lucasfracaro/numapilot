@@ -14,6 +14,10 @@ optdepends=(
   'libva-utils: mostrar quais GPUs codificam vídeo (aba Streaming)'
   'sunshine: streaming de jogos'
   'code: abrir o VS Code do PC ligado ao laboratório'
+  'mangohud: otimizador de FPS'
+  'gamescope: gamescope por jogo (resolução interna, FSR, limite de FPS)'
+  'vulkan-tools: numapilot doctor testa a seleção de GPU no Vulkan'
+  'libnotify: alerta de GPU quente na bandeja'
 )
 provides=('numapilot')
 conflicts=('numapilot')
@@ -52,6 +56,8 @@ package() {
   install -Dm755 packaging/gfx906-rocm "$pkgdir/usr/bin/gfx906-rocm"
   install -d "$pkgdir/usr/lib/systemd/system"
   sed 's#/usr/local/bin/#/usr/bin/#' packaging/numapilot.service >"$pkgdir/usr/lib/systemd/system/numapilot.service"
+  install -d "$pkgdir/usr/lib/systemd/user"
+  sed 's#/usr/local/bin/#/usr/bin/#' packaging/numapilot-web.service >"$pkgdir/usr/lib/systemd/user/numapilot-web.service"
   install -Dm644 packaging/numapilot-gui.desktop "$pkgdir/usr/share/applications/numapilot.desktop"
   install -Dm644 packaging/numapilot.toml "$pkgdir/etc/numapilot.toml"
   sed 's#^ROCM_BASE=.*#ROCM_BASE=/opt/rocm-gfx906#' packaging/gfx906-rocm.conf >gfx906-rocm.conf.pkg

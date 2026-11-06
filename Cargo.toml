@@ -1,6 +1,6 @@
 [package]
 name = "numapilot"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
@@ -9,13 +9,15 @@ clap = { version = "4.6.7", features = ["derive"] }
 eframe = { version = "0.37.0", optional = true, default-features = false, features = ["glow", "default_fonts", "x11", "wayland", "clipboard"] }
 ksni = { version = "0.3.7", features = ["blocking"], optional = true }
 libc = "0.2.191"
+qrcode = { version = "0.14", optional = true, default-features = false }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+tiny_http = "0.12"
 toml = "1.2.0"
 
 [features]
 default = ["gui"]
-gui = ["dep:eframe", "dep:ksni"]
+gui = ["dep:eframe", "dep:ksni", "dep:qrcode"]
 
 [[bin]]
 name = "numapilot"

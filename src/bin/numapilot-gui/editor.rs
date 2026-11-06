@@ -47,6 +47,103 @@ const MEM_OPTS: &[(&str, &str, &str)] = &[
     ("free", "Livre", "não move a memória"),
 ];
 
+fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
+    use numapilot::tuner::{self, Tuner};
+    let mut t = Tuner::load();
+    ui.label(RichText::new("Otimizar FPS").strong());
+    let steam_id = ed.key.strip_prefix("steam:").map(String::from);
+    let mut save = false;
+    let mut apply_best = None;
+    match t.sessions.get(&ed.key).cloned() {
+        None => {
+            ui.label(
+                RichText::new(
+                    "Testa algumas configurações (núcleos, HT, socket, placa), uma a cada vez que você abre o jogo, \
+                     mede com o MangoHud (FPS médio e 1% low) e mostra a melhor.",
+                )
+                .weak(),
+            );
+            if !app.has_mangohud {
+                ui.label(RichText::new("Precisa do MangoHud: sudo pacman -S mangohud").color(Color32::from_rgb(230, 160, 40)));
+            }
+            if ui.button("Começar a otimização").clicked() {
+                let v = tuner::variants(&app.topo, &ed.p);
+                t.start(&ed.key, &ed.label, v);
+                save = true;
+            }
+        }
+        Some(s) => {
+            let best = s.best();
+            egui::Grid::new("ed-tune").striped(true).num_columns(4).spacing([12.0, 3.0]).show(ui, |ui| {
+                for h in ["", "Configuração", "FPS médio", "1% low"] {
+                    ui.label(RichText::new(h).strong());
+                }
+                ui.end_row();
+                for (i, v) in s.variants.iter().enumerate() {
+                    ui.label(if best == Some(i) { "melhor" } else if i == s.next { "próximo" } else { "" });
+                    ui.label(&v.label);
+                    match &v.result {
+                        Some(r) => {
+                            ui.label(format!("{:.1}", r.avg));
+                            ui.label(format!("{:.1}", r.low1));
+                        }
+                        None => {
+                            ui.label("—");
+                            ui.label("—");
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+            if let Some(v) = s.current() {
+                ui.label(format!(
+                    "Próximo teste ({}/{}): {}. Abra o jogo, vá para uma cena pesada e jogue uns {} s; depois feche.",
+                    s.next + 1,
+                    s.variants.len(),
+                    v.label,
+                    s.seconds + 10
+                ));
+            } else {
+                ui.label(RichText::new("Todos os testes terminaram.").strong());
+            }
+            ui.horizontal(|ui| {
+                if let Some(id) = &steam_id
+                    && !s.done()
+                    && ui.button("Abrir o jogo").clicked()
+                {
+                    let _ = crate::jobs::spawn_detached(&["xdg-open".into(), format!("steam://rungameid/{id}")]);
+                }
+                if let Some(b) = best
+                    && ui.button(RichText::new("Usar a melhor").strong()).clicked()
+                {
+                    apply_best = Some(s.variants[b].profile.clone());
+                }
+                if ui.button("Recomeçar").clicked() {
+                    let v = tuner::variants(&app.topo, &ed.p);
+                    t.start(&ed.key, &ed.label, v);
+                    save = true;
+                }
+                if ui.button("Cancelar").clicked() {
+                    t.sessions.remove(&ed.key);
+                    save = true;
+                }
+            });
+            if steam_id.is_none() {
+                ui.label(RichText::new("Abra pelo atalho do menu (numapilot run) para o teste valer.").small().weak());
+            }
+        }
+    }
+    if save && let Err(e) = t.save() {
+        app.toast(format!("otimizador: {e}"), false);
+    }
+    if let Some(mut p) = apply_best {
+        p.label = ed.label.clone();
+        p.gamescope = ed.p.gamescope.clone();
+        ed.p = p.clone();
+        app.send(Request::SetProfile { key: ed.key.clone(), profile: p, pid: ed.main_pid });
+    }
+}
+
 pub fn window(app: &mut App, ctx: &egui::Context) {
     let Some(mut ed) = app.editor.take() else { return };
     let mut open = true;
@@ -220,6 +317,63 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 } else {
                     ed.p.cpu_list = None;
                 }
+
+                // gamescope
+                ui.separator();
+                let mut gs_on = ed.p.gamescope.is_some();
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut gs_on, RichText::new("Abrir dentro do gamescope").strong());
+                    if !app.has_gamescope {
+                        ui.label(RichText::new("(não instalado: sudo pacman -S gamescope)").small().color(Color32::from_rgb(230, 160, 40)));
+                    }
+                });
+                if gs_on != ed.p.gamescope.is_some() {
+                    ed.p.gamescope = gs_on.then(numapilot::profiles::Gamescope::default);
+                }
+                if let Some(g) = ed.p.gamescope.as_mut() {
+                    let opt_num = |ui: &mut egui::Ui, v: &mut Option<u32>, def: u32, max: u32| {
+                        let mut on = v.is_some();
+                        let mut x = v.unwrap_or(def);
+                        ui.checkbox(&mut on, "");
+                        ui.add_enabled(on, egui::DragValue::new(&mut x).range(1..=max));
+                        *v = on.then_some(x);
+                    };
+                    egui::Grid::new("ed-gs").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                        ui.label("Resolução do jogo");
+                        ui.horizontal(|ui| {
+                            opt_num(ui, &mut g.render_w, 1920, 7680);
+                            ui.label("x");
+                            opt_num(ui, &mut g.render_h, 1080, 4320);
+                            ui.label(RichText::new("desmarcado = a da tela").small().weak());
+                        });
+                        ui.end_row();
+                        ui.label("Resolução de saída");
+                        ui.horizontal(|ui| {
+                            opt_num(ui, &mut g.out_w, 2560, 7680);
+                            ui.label("x");
+                            opt_num(ui, &mut g.out_h, 1440, 4320);
+                        });
+                        ui.end_row();
+                        ui.label("Limite de FPS");
+                        ui.horizontal(|ui| opt_num(ui, &mut g.fps_limit, 60, 1000));
+                        ui.end_row();
+                        ui.label("");
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut g.fullscreen, "Tela cheia");
+                            ui.checkbox(&mut g.fsr, "Ampliar com FSR");
+                        });
+                        ui.end_row();
+                    });
+                    ui.label(
+                        RichText::new("O gamescope usa a mesma placa escolhida acima. Bom para rodar o jogo em resolução menor e ampliar com FSR, ou travar o FPS.")
+                            .small()
+                            .weak(),
+                    );
+                }
+
+                // Otimizador de FPS
+                ui.separator();
+                tuner_ui(app, ui, &mut ed);
 
                 // Prévia: o que vai acontecer ao abrir (mesma lógica do numapilot run).
                 ui.separator();

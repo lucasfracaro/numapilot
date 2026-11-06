@@ -138,9 +138,16 @@ pub(crate) struct App {
     pub(crate) bg: bg::Shared,
     pub(crate) job: Option<jobs::Job>,
     pub(crate) show_job: bool,
+    pub(crate) has_gamescope: bool,
+    pub(crate) has_mangohud: bool,
     pub(crate) gpu_saved: GpuControls,
     pub(crate) gpu_edit: HashMap<String, GpuControl>,
     pub(crate) pending_gpu: Option<(String, GpuControl)>,
+    pub(crate) hist: Option<numapilot::history::History>,
+    pub(crate) hist_at: Option<Instant>,
+    pub(crate) hist_secs: u64,
+    pub(crate) web_active: bool,
+    pub(crate) web_checked: Option<Instant>,
     pub(crate) filter: String,
     pending_fix: Option<String>,
     pub(crate) llm_cfg: Option<LabSettings>,
@@ -204,9 +211,16 @@ impl App {
             bg,
             job: None,
             show_job: false,
+            has_gamescope: in_path("gamescope"),
+            has_mangohud: in_path("mangohud"),
             gpu_saved: GpuControls::load(),
             gpu_edit: HashMap::new(),
             pending_gpu: None,
+            hist: None,
+            hist_at: None,
+            hist_secs: 3600,
+            web_active: false,
+            web_checked: None,
             filter: String::new(),
             pending_fix: None,
             llm_cfg: None,
@@ -762,4 +776,8 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native("numapilot", options, Box::new(|cc| Ok(Box::new(App::new(cc.egui_ctx.clone())))))
+}
+
+pub(crate) fn in_path(bin: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
 }

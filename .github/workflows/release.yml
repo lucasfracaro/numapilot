@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Ubuntu 22.04 = glibc mais antiga: o binário roda em qualquer distro atual (CachyOS/Arch incluídos).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Dependências do sistema
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl-dev libdbus-1-dev
+      - name: Compilar
+        run: cargo build --release --locked
+      - name: Empacotar
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          d="numapilot-$v-x86_64-linux"
+          mkdir -p "$d/target/release"
+          cp target/release/numapilot target/release/numapilot-gui "$d/target/release/"
+          cp -r packaging container docs README.md install.sh uninstall.sh "$d/"
+          # O install.sh pula a compilação quando os binários já vêm prontos.
+          touch "$d/.prebuilt"
+          tar czf "$d.tar.gz" "$d"
+          sha256sum "$d.tar.gz" > "$d.tar.gz.sha256"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            numapilot-*.tar.gz
+            numapilot-*.tar.gz.sha256
+          generate_release_notes: true
+
+  aur:
+    # Publica no AUR quando existir o segredo AUR_SSH_KEY (o repositório precisa ser público).
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.AUR_SSH_KEY != ''
+      - name: Versão no PKGBUILD
+        if: env.AUR_SSH_KEY != ''
+        run: sed -i "s/^pkgver=.*/pkgver=${GITHUB_REF_NAME#v}/; s/^pkgrel=.*/pkgrel=1/" packaging/arch/release/PKGBUILD
+      - uses: KSXGitHub/github-actions-deploy-aur@v3
+        if: env.AUR_SSH_KEY != ''
+        with:
+          pkgname: numapilot
+          pkgbuild: packaging/arch/release/PKGBUILD
+          assets: packaging/arch/numapilot.install
+          updpkgsums: true
+          commit_username: Lucas Fracaro
+          commit_email: lucasgfracaro@gmail.com
+          ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
+          commit_message: "numapilot ${{ github.ref_name }}"

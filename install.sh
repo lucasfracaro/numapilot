@@ -8,8 +8,12 @@ if ! command -v cargo >/dev/null; then
     sudo pacman -S --needed --noconfirm rust
 fi
 
-echo "==> compilando"
-cargo build --release
+if [[ -e .prebuilt ]]; then
+  echo "==> usando os binários prontos do pacote"
+else
+  echo "==> compilando"
+  cargo build --release
+fi
 
 echo "==> instalando arquivos"
 sudo install -Dm755 target/release/numapilot /usr/local/bin/numapilot
@@ -20,6 +24,7 @@ sudo install -d /usr/local/share/numapilot/container
 sudo install -m644 container/Containerfile container/*.txt container/*.py /usr/local/share/numapilot/container/
 sudo install -m755 container/lab-start /usr/local/share/numapilot/container/
 sudo install -Dm644 packaging/numapilot.service /etc/systemd/system/numapilot.service
+sudo install -Dm644 packaging/numapilot-web.service /etc/systemd/user/numapilot-web.service
 # Configs: não sobrescreve as suas.
 [[ -e /etc/numapilot.toml ]] || sudo install -Dm644 packaging/numapilot.toml /etc/numapilot.toml
 [[ -e /etc/gfx906-rocm.conf ]] || sudo install -Dm644 packaging/gfx906-rocm.conf /etc/gfx906-rocm.conf

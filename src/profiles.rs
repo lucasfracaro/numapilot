@@ -52,6 +52,62 @@ pub struct Profile {
     /// Faz o programa "enxergar" só os núcleos liberados (Proton/Wine, OpenMP, MKL, .NET, Java...).
     #[serde(default = "yes")]
     pub limit_visible: bool,
+    /// Abre o jogo dentro do gamescope (resolução interna, FSR, limite de FPS).
+    #[serde(default)]
+    pub gamescope: Option<Gamescope>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Gamescope {
+    /// Resolução em que o jogo renderiza (None = a da tela).
+    #[serde(default)]
+    pub render_w: Option<u32>,
+    #[serde(default)]
+    pub render_h: Option<u32>,
+    /// Resolução de saída (None = a da tela).
+    #[serde(default)]
+    pub out_w: Option<u32>,
+    #[serde(default)]
+    pub out_h: Option<u32>,
+    #[serde(default = "yes")]
+    pub fullscreen: bool,
+    /// Amplia com FSR 1 quando a resolução interna é menor.
+    #[serde(default)]
+    pub fsr: bool,
+    #[serde(default)]
+    pub fps_limit: Option<u32>,
+}
+
+impl Default for Gamescope {
+    fn default() -> Self {
+        Gamescope { render_w: None, render_h: None, out_w: None, out_h: None, fullscreen: true, fsr: false, fps_limit: None }
+    }
+}
+
+impl Gamescope {
+    /// Argumentos do gamescope (sem o "--" final).
+    pub fn argv(&self) -> Vec<String> {
+        let mut a = vec!["gamescope".to_string()];
+        let mut push = |f: &str, v: Option<u32>| {
+            if let Some(v) = v {
+                a.push(f.into());
+                a.push(v.to_string());
+            }
+        };
+        push("-w", self.render_w);
+        push("-h", self.render_h);
+        push("-W", self.out_w);
+        push("-H", self.out_h);
+        push("-r", self.fps_limit);
+        if self.fullscreen {
+            a.push("-f".into());
+        }
+        if self.fsr {
+            a.push("-F".into());
+            a.push("fsr".into());
+        }
+        a
+    }
 }
 
 fn same() -> String {
@@ -80,6 +136,7 @@ impl Default for Profile {
             priority: normal(),
             exclusive: false,
             limit_visible: true,
+            gamescope: None,
         }
     }
 }
@@ -130,7 +187,7 @@ impl Profile {
 
     /// Perfis prontos de um clique.
     pub fn preset(name: &str, base: &Profile) -> Profile {
-        let mut p = Profile { label: base.label.clone(), gpu: base.gpu.clone(), usage: base.usage.clone(), fg_gpu: base.fg_gpu.clone(), ..Default::default() };
+        let mut p = Profile { label: base.label.clone(), gpu: base.gpu.clone(), usage: base.usage.clone(), fg_gpu: base.fg_gpu.clone(), gamescope: base.gamescope.clone(), ..Default::default() };
         match name {
             // Jogo: socket da GPU, núcleos físicos (sem dividir núcleo), memória só local,
             // prioridade alta e núcleos reservados.

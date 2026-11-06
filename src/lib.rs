@@ -17,4 +17,6 @@ pub mod procfs;
 pub mod profiles;
 pub mod steam;
 pub mod topo;
+pub mod tuner;
 pub mod util;
+pub mod web;

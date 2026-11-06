@@ -72,6 +72,24 @@ enum Cmd {
         #[arg(long)]
         report: bool,
     },
+    /// Painel web para o celular (rode como usuário; veja o link com o token).
+    Web {
+        #[arg(long, default_value_t = numapilot::web::DEFAULT_PORT)]
+        port: u16,
+        /// Endereço de escuta (0.0.0.0 = rede local; 127.0.0.1 = só esta máquina).
+        #[arg(long, default_value = "0.0.0.0")]
+        bind: String,
+        /// Só mostra o link e sai.
+        #[arg(long)]
+        url: bool,
+    },
+    /// Otimizador de FPS: testa configurações a cada abertura do jogo (mede com o MangoHud).
+    Tune {
+        /// start | status | stop | apply
+        action: String,
+        /// Chave do programa (ex.: steam:1245620); em status, opcional.
+        key: Option<String>,
+    },
     /// Steam: coloca (ou tira) o numapilot nas opções de inicialização de todos os jogos.
     Steam {
         /// enable | disable | list
@@ -158,6 +176,14 @@ fn real_main() -> Result<()> {
             Ok(())
         }
         Cmd::Steam { action } => cmd_steam(&action),
+        Cmd::Tune { action, key } => cmd_tune(&cfg, &action, key),
+        Cmd::Web { port, bind, url } => {
+            if url {
+                println!("{}", numapilot::web::url(port).context("sem rede")?);
+                return Ok(());
+            }
+            numapilot::web::serve(&cfg, &bind, port)
+        }
         Cmd::Bench { size_mb, threads } => {
             let t = Topology::load(&cfg);
             println!("Medindo {} nó(s); leva alguns segundos por par...", t.nodes.len());
@@ -249,13 +275,23 @@ fn cmd_run(
 ) -> Result<()> {
     let topo = Topology::load(cfg);
     let learned = Learned::load();
-    let profiles = Profiles::load();
+    let mut profiles = Profiles::load();
     let prog = command.first().context("faltou o programa")?;
     let exe = which(prog);
     let idents = procfs::idents(basename(prog), exe.as_deref(), &command);
     let key = procfs::learn_key(exe.as_deref(), &command, basename(prog));
     let steam = std::env::var("SteamAppId").ok();
     let pkey = program_key(steam.as_deref(), &key);
+    // Otimizador de FPS: nesta abertura usa a próxima configuração da lista.
+    let tuning = numapilot::tuner::Tuner::load()
+        .sessions
+        .get(&pkey)
+        .filter(|s| !s.done())
+        .and_then(|s| s.current().cloned().map(|v| (s.next, s.variants.len(), s.seconds, v)));
+    if let Some((i, n, secs, v)) = &tuning {
+        eprintln!("numapilot: otimizador de FPS, teste {}/{n}: {} (jogue ~{} s numa cena parecida)", i + 1, v.label, secs + 10);
+        profiles.map.insert(pkey.clone(), v.profile.clone());
+    }
     let loads = sample_node_loads(&topo, Duration::from_millis(200));
     let inp = LaunchInput {
         idents: &idents,
@@ -314,7 +350,8 @@ fn cmd_run(
     // para aplicar neste processo antes do exec — vale também para o programa.
     if d.needs_daemon {
         let me = std::process::id() as i32;
-        match ctl::send(&ctl::Request::Adopt { pid: me }) {
+        let profile = tuning.as_ref().map(|t| t.3.profile.clone());
+        match ctl::send(&ctl::Request::Adopt { pid: me, profile }) {
             Ok(r) if r.ok => {}
             Ok(r) => eprintln!("numapilot: aviso: {}", r.message),
             Err(e) => eprintln!("numapilot: aviso: limites de memória/prioridade não aplicados ({e:#})"),
@@ -336,8 +373,26 @@ fn cmd_run(
     if let Err(e) = procfs::set_mempolicy(pol.0, &pol.1) {
         eprintln!("numapilot: aviso: set_mempolicy falhou ({e}); seguindo só com a afinidade de CPU");
     }
-    let mut c = std::process::Command::new(prog);
-    c.args(&command[1..]);
+    // MangoHud (medição) e gamescope envolvem o comando.
+    let mut argv = command.clone();
+    if tuning.is_some() && which("mangohud").is_some() && basename(&argv[0]) != "mangohud" {
+        argv.insert(0, "mangohud".into());
+    }
+    if let Some(g) = profiles.get(&pkey).and_then(|p| p.gamescope.clone())
+        && std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_none()
+        && basename(&command[0]) != "gamescope"
+    {
+        if which("gamescope").is_some() {
+            let mut a = g.argv();
+            a.push("--".into());
+            a.append(&mut argv);
+            argv = a;
+        } else {
+            eprintln!("numapilot: aviso: gamescope não instalado (sudo pacman -S gamescope); abrindo sem ele");
+        }
+    }
+    let mut c = std::process::Command::new(&argv[0]);
+    c.args(&argv[1..]);
     for (k, v) in set {
         if numapilot::decide::SOFT_THREAD_VARS.contains(&k.as_str()) && std::env::var_os(&k).is_some() {
             continue;
@@ -354,8 +409,34 @@ fn cmd_run(
     for k in unset {
         c.env_remove(k);
     }
+    if let Some((i, _, secs, _)) = tuning {
+        for (k, v) in numapilot::tuner::mangohud_env(&pkey, secs) {
+            c.env(k, v);
+        }
+        let start = numapilot::history::now();
+        let st = c.status().with_context(|| format!("não consegui executar '{}'", argv[0]))?;
+        let dir = numapilot::tuner::log_dir(&pkey);
+        let res = numapilot::tuner::newest_csv(&dir, start)
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|s| numapilot::tuner::parse_csv(&s));
+        let mut t = numapilot::tuner::Tuner::load();
+        match (res, t.sessions.get_mut(&pkey)) {
+            (Some(r), Some(s)) if s.next == i => {
+                eprintln!("numapilot: teste {}: {:.1} FPS médio, 1% low {:.1}", i + 1, r.avg, r.low1);
+                s.variants[i].result = Some(r);
+                s.next += 1;
+                let _ = t.save();
+            }
+            (None, _) => eprintln!(
+                "numapilot: o MangoHud não gravou este teste (jogou menos de ~{} s? MangoHud instalado?). Ele se repete na próxima abertura.",
+                secs + 10
+            ),
+            _ => {}
+        }
+        std::process::exit(st.code().unwrap_or(1));
+    }
     let err = c.exec();
-    bail!("não consegui executar '{prog}': {err}")
+    bail!("não consegui executar '{}': {err}", argv[0])
 }
 
 fn cmd_profile(action: ProfileCmd) -> Result<()> {
@@ -381,6 +462,57 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
             println!("{}", r.message);
             if r.ok { Ok(()) } else { bail!("falhou") }
         }
+    }
+}
+
+fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
+    use numapilot::tuner::{self, Tuner};
+    let mut t = Tuner::load();
+    match (action, key) {
+        ("start", Some(k)) => {
+            let base = Profiles::load().get(&k).cloned().unwrap_or_default();
+            let topo = Topology::load(cfg);
+            let v = tuner::variants(&topo, &base);
+            let label = if base.label.is_empty() { k.clone() } else { base.label.clone() };
+            println!("{} configurações a testar em {label}:", v.len());
+            for (i, x) in v.iter().enumerate() {
+                println!("  {}. {}", i + 1, x.label);
+            }
+            t.start(&k, &label, v);
+            t.save()?;
+            println!("Abra o jogo {} vezes (pelo numapilot run ou pela Steam com o numapilot) e jogue ~70 s em cada.", t.sessions[&k].variants.len());
+            if which("mangohud").is_none() {
+                println!("Atenção: instale o MangoHud (sudo pacman -S mangohud), ele faz a medição.");
+            }
+            Ok(())
+        }
+        ("status", k) => {
+            for s in t.sessions.values().filter(|s| k.as_deref().is_none_or(|k| k == s.key)) {
+                println!("{} ({}) — {}/{} testados", s.label, s.key, s.variants.iter().filter(|v| v.result.is_some()).count(), s.variants.len());
+                let best = s.best();
+                for (i, v) in s.variants.iter().enumerate() {
+                    let r = v.result.as_ref().map(|r| format!("{:6.1} FPS  1% low {:6.1}  0,1% {:6.1}", r.avg, r.low1, r.low01)).unwrap_or_else(|| "      —".into());
+                    println!("  {} {}. {:<45} {r}", if best == Some(i) { "*" } else if i == s.next { ">" } else { " " }, i + 1, v.label);
+                }
+            }
+            Ok(())
+        }
+        ("stop", Some(k)) => {
+            t.sessions.remove(&k);
+            t.save()?;
+            println!("Otimização de {k} cancelada.");
+            Ok(())
+        }
+        ("apply", Some(k)) => {
+            let s = t.sessions.get(&k).context("não há otimização para esse programa")?;
+            let b = s.best().context("nenhum teste terminou ainda")?;
+            let mut profile = s.variants[b].profile.clone();
+            profile.label = s.label.clone();
+            let r = ctl::send(&ctl::Request::SetProfile { key: k.clone(), profile, pid: None })?;
+            println!("Usando \"{}\": {}", s.variants[b].label, r.message);
+            Ok(())
+        }
+        _ => bail!("use: numapilot tune start|stop|apply CHAVE  ou  numapilot tune status [CHAVE]"),
     }
 }
 

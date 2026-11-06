@@ -1,0 +1,11 @@
+[Unit]
+Description=numapilot: painel web para o celular
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/numapilot web
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

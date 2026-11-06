@@ -92,6 +92,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
 
         ui.add_space(8.0);
+        ui.heading("Painel no celular");
+        web_ui(app, ui);
+
+        ui.add_space(8.0);
         ui.heading("Diagnóstico");
         ui.label("Testa cada parte no seu hardware (NUMA, cgroups, seleção de GPU no Vulkan, ROCm, ventoinhas, OverDrive, ReBAR, Steam) e diz o que corrigir.");
         ui.horizontal(|ui| {
@@ -140,4 +144,64 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.label("• Lossless Scaling (lsfg-vk): o oficial gera os quadros na mesma GPU do jogo.");
         ui.label("• Configurações avançadas: /etc/numapilot.toml (regras) e /etc/gfx906-rocm.conf (laboratório/ROCm).");
     });
+}
+
+/// Desenha um QR code (para abrir o painel no celular apontando a câmera).
+fn qr(ui: &mut egui::Ui, text: &str) {
+    let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else { return };
+    let w = code.width();
+    let colors = code.to_colors();
+    let quiet = 2;
+    let px = 4.0;
+    let side = (w + 2 * quiet) as f32 * px;
+    let (resp, p) = ui.allocate_painter(egui::vec2(side, side), egui::Sense::hover());
+    let r = resp.rect;
+    p.rect_filled(r, 0.0, Color32::WHITE);
+    for (i, c) in colors.iter().enumerate() {
+        if *c == qrcode::Color::Dark {
+            let (x, y) = ((i % w + quiet) as f32, (i / w + quiet) as f32);
+            p.rect_filled(egui::Rect::from_min_size(r.min + egui::vec2(x * px, y * px), egui::vec2(px, px)), 0.0, Color32::BLACK);
+        }
+    }
+}
+
+fn web_ui(app: &mut App, ui: &mut egui::Ui) {
+    if app.web_checked.is_none_or(|t| t.elapsed().as_secs() >= 5) {
+        app.web_active = crate::jobs::quick(&["systemctl", "--user", "is-active", "numapilot-web.service"]) == "active";
+        app.web_checked = Some(std::time::Instant::now());
+    }
+    ui.label("Veja temperaturas e uso, troque o perfil de um programa e ligue o laboratório/servidor de IA pelo celular (mesma rede).");
+    let mut on = app.web_active;
+    if ui.checkbox(&mut on, "Ligar o painel (inicia junto com a sessão)").changed() {
+        let verb = if on { "enable" } else { "disable" };
+        app.start_job(
+            "Painel no celular",
+            vec!["systemctl".into(), "--user".into(), verb.into(), "--now".into(), "numapilot-web.service".into()],
+        );
+        app.web_checked = None;
+    }
+    if app.web_active {
+        match numapilot::web::url(numapilot::web::DEFAULT_PORT) {
+            Some(u) => {
+                ui.horizontal(|ui| {
+                    qr(ui, &u);
+                    ui.vertical(|ui| {
+                        ui.label("Aponte a câmera do celular ou abra:");
+                        ui.monospace(&u);
+                        if ui.button("Copiar link").clicked() {
+                            ui.ctx().copy_text(u.clone());
+                        }
+                        ui.label(
+                            RichText::new("O link tem a senha de acesso; não compartilhe. Fora de casa, use uma VPN (ex.: Tailscale).")
+                                .small()
+                                .weak(),
+                        );
+                    });
+                });
+            }
+            None => {
+                ui.label("Sem rede local detectada.");
+            }
+        }
+    }
 }

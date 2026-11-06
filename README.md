@@ -24,6 +24,12 @@ no CachyOS, mas funciona em qualquer Linux.
   nas GPUs e volta sozinha se algo quebrar.
 - **gfx906-rocm:** instala, atualiza, testa e faz rollback dos ROCm da comunidade para as MI50,
   sem mexer no ROCm do sistema.
+- **Diagnóstico (`numapilot doctor`):** testa cada parte no seu hardware e diz o que corrigir; gera um
+  relatório para enviar.
+- **Steam com um clique:** coloca o numapilot nas opções de inicialização de todos os jogos.
+- **Otimizador de FPS:** testa configurações num jogo (medindo com o MangoHud) e escolhe a melhor.
+- **Painel no celular**, **undervolt/overclock das MI50**, gráficos de temperatura e alertas, e
+  **gamescope por jogo**.
 
 ![Interface](docs/interface.png)
 
@@ -51,7 +57,18 @@ cd packaging/arch && makepkg -si
 sudo systemctl enable --now numapilot
 ```
 
-Para publicar no AUR, gere o `.SRCINFO` com `makepkg --printsrcinfo > .SRCINFO`.
+Versão estável: `packaging/arch/release/PKGBUILD` (pacote `numapilot`, a partir das tags `vX.Y.Z`).
+
+**Binários prontos:** cada tag `v*` gera uma release no GitHub com
+`numapilot-X.Y.Z-x86_64-linux.tar.gz`. Extraia e rode `./install.sh` (ele detecta os binários
+prontos e pula a compilação).
+
+**CI:** cada push roda testes, clippy, compilação sem interface e shellcheck
+(`.github/workflows/ci.yml`). **AUR:** o workflow de release publica o pacote `numapilot` no AUR se
+existir o segredo `AUR_SSH_KEY` (chave SSH cadastrada na sua conta do AUR). O AUR baixa o código do
+GitHub, então o repositório precisa estar público para isso.
+
+Depois de instalar, rode **`numapilot doctor`** (ou Configurações → Verificar tudo).
 
 ## 3. Modo automático (o daemon)
 
@@ -318,6 +335,16 @@ uma **curva** (temperatura do hotspot → %) ou uma velocidade **fixa**. Também
 - Segurança: a 95 °C a ventoinha vai a 100%, qualquer que seja o modo. Se o serviço parar, as
   ventoinhas voltam para o controle da placa.
 - Algumas VBIOS não expõem o controle da ventoinha. Nesse caso, a interface avisa.
+- **Histórico:** gráfico de temperatura e potência de cada placa (1 h, 6 h ou 24 h), gravado pelo
+  serviço a cada 30 s.
+- **Clock e voltagem (undervolt/overclock):** clock máximo da GPU e da memória e os 3 pontos da curva
+  de voltagem. Os botões "reduzir 25 mV / 50 mV" fazem um undervolt a partir da curva atual (menos
+  calor e consumo, mesmo clock). Precisa de `amdgpu.ppfeaturemask=0xfffd7fff` na linha do kernel. O
+  serviço reaplica ao reiniciar; desmarcar "personalizar" volta ao padrão de fábrica. Se travar,
+  volte um passo.
+- **Resizable BAR:** a aba mostra se está ativo (VRAM inteira visível pela CPU). O diagnóstico diz o
+  que tentar na BIOS.
+- **Alerta:** o ícone na bandeja manda uma notificação quando uma GPU passa de 90 °C por ~15 s.
 
 ![Placas de vídeo](docs/gpus.png)
 
@@ -407,8 +434,23 @@ os dois.
 Receita para um jogo exigente (ex.: Elden Ring):
 1. Ligue o monitor na MI50 que vai rodar o jogo, ou use a RX470 se for o caso.
 2. Em **Ajustar…**, clique em **Jogo** e escolha essa placa como "jogo/gráfico".
-3. Na Steam, cole `numapilot run -- %command%` nas opções de inicialização.
+3. Em **Programas → Steam: Aplicar em todos os jogos** (com a Steam fechada), ou cole
+   `numapilot run -- %command%` nas opções de inicialização de um jogo.
 4. Em **Mapa e medições**, coloque o socket da placa em `performance`.
+5. Opcional: **Otimizar FPS** (seção 17) para achar a melhor combinação nesse jogo.
+
+### Steam em todos os jogos
+
+`numapilot steam enable` (ou o botão em **Programas**) coloca `numapilot run --` antes do
+`%command%` de todos os jogos instalados, mantendo o que já existia (ex.: `PROTON_LOG=1 %command%
+-dx12` vira `PROTON_LOG=1 numapilot run -- %command% -dx12`). Edita o `localconfig.vdf` da Steam,
+que precisa estar fechada, e guarda um backup ao lado. `numapilot steam disable` desfaz e
+`numapilot steam list` mostra quais jogos já estão com o numapilot.
+
+### gamescope por jogo
+
+No **Ajustar…**, "Abrir dentro do gamescope" com resolução do jogo, resolução de saída, limite de FPS,
+tela cheia e FSR. O `numapilot run` monta `gamescope … -- jogo` na mesma GPU escolhida.
 
 ## 16. Medições
 
@@ -419,7 +461,42 @@ Receita para um jogo exigente (ex.: Elden Ring):
 - Em Mapa e medições, "alocações no outro socket" vem do `numastat` e mostra páginas criadas longe
   de quem pediu.
 
-## 17. Limitações
+## 17. Otimizador de FPS
+
+No **Ajustar…** de um jogo, **Otimizar FPS → Começar** cria uma lista de configurações para testar:
+16, 8 e 8 com HT núcleos no socket da GPU, o socket inteiro, os dois sockets (para comparar) e as
+outras placas. A cada vez que o jogo é aberto pelo numapilot, ele usa a próxima da lista e mede com o
+MangoHud (`sudo pacman -S mangohud`): espera 10 s, grava 60 s do tempo de cada quadro e calcula o FPS
+médio e o 1% low. Jogue sempre a mesma cena pesada. No fim, **Usar a melhor** salva a vencedora
+(a nota valoriza mais o 1% low, que é o que se sente como travada).
+
+Pela linha de comando: `numapilot tune start steam:1245620`, `numapilot tune status`,
+`numapilot tune apply steam:1245620`.
+
+![Otimizador de FPS](docs/otimizar.png)
+
+## 18. Painel no celular
+
+Configurações → **Painel no celular** liga o `numapilot web` (serviço do usuário
+`numapilot-web.service`) e mostra um QR code. No celular, na mesma rede, aparecem as temperaturas,
+o uso de cada socket e de cada GPU, os programas abertos com os perfis de um toque (Jogo, IA, Render,
+Silencioso, Auto) e os atalhos do laboratório e do servidor de IA. O link leva um token (em
+`~/.config/numapilot/web-token`); sem ele, nada é acessível. Para usar fora de casa, use uma VPN como
+o Tailscale em vez de abrir a porta 8577 no roteador.
+
+## 19. Diagnóstico
+
+`numapilot doctor` testa no hardware real o que não dá para testar em outra máquina: NUMA, cgroups v2
+e systemd, serviço e socket de controle, OverDrive, irqbalance, cada GPU (socket, monitor, ROCm,
+ventoinha, potência, clock/voltagem, Resizable BAR, se só ela aparece no Vulkan com a seleção do
+numapilot, OpenGL), grupos `render`/`video`, `/dev/kfd`, ferramentas e Steam. Para cada problema
+mostra o comando que resolve.
+
+`numapilot doctor --report` (ou Configurações → **Gerar relatório para enviar**) salva
+`~/numapilot-relatorio.txt` com o diagnóstico e as informações do sistema (lscpu, numactl, lspci,
+topologia, log do serviço, dispositivos Vulkan).
+
+## 20. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice
@@ -436,12 +513,17 @@ src/bin/numapilot-gui/  interface gráfica (egui) e ícone na bandeja (ksni)
 src/ctl.rs      socket de controle do daemon (a interface fala por ele)
 src/profiles.rs escolhas por programa
 src/desktop.rs  atalhos do menu que abrem pelo numapilot
-src/gpuctl.rs   sensores, curva da ventoinha e limite de potência (hwmon)
+src/gpuctl.rs   sensores, ventoinha, potência, clock/voltagem (OverDrive) e Resizable BAR
 src/procevents.rs  aviso instantâneo de programas novos (proc connector)
 src/containers.rs  containers podman/docker e os apps de cada um
 src/labcfg.rs   ajustes do laboratório e do servidor de IA
 src/cgroup.rs   grupos de controle por programa via systemd (memória, núcleos exclusivos)
 src/bench.rs    medição de latência e banda de memória entre sockets
+src/doctor.rs   diagnóstico e relatório
+src/steam.rs    leitura/escrita de VDF da Steam, jogos instalados, opções de inicialização
+src/tuner.rs    otimizador de FPS (variações, CSV do MangoHud)
+src/web.rs      painel web para o celular
+src/history.rs  histórico das GPUs e estado do serviço
 container/      imagem do laboratório (Containerfile, pacotes, lab-start)
 src/topo.rs     nós NUMA, núcleos, RAM, GPUs (PCI, socket, KFD/gfx, UUID ROCm, monitor)
 src/decide.rs   decisão de GPU + socket (usada pelo `run`)

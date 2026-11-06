@@ -597,7 +597,7 @@ fn handle(
 ) -> Response {
     let (key, profile, pid) = match req {
         Request::Ping => return Response::ok("pong"),
-        Request::Adopt { pid } => return handle_adopt(uid, ctx, procs, profiles, pid),
+        Request::Adopt { pid, profile } => return handle_adopt(uid, ctx, procs, profiles, pid, profile),
         Request::FixMemory { key } => return handle_fix_memory(uid, ctx, procs, &key),
         Request::SetGovernor { node, governor } => return handle_governor(uid, ctx, node, &governor),
         Request::SetGpuControl { .. } => return Response::err("pedido de GPU no lugar errado"),
@@ -713,14 +713,17 @@ fn gpu_tick(pci: &str, c: &gpuctl::GpuControl, last: &mut HashMap<String, f64>) 
 }
 
 /// O `numapilot run` pede, antes do exec, o que só o root faz (cgroup, prioridade alta).
-fn handle_adopt(uid: u32, ctx: &Ctx, procs: &mut HashMap<i32, Tracked>, profiles: &Profiles, pid: i32) -> Response {
+fn handle_adopt(uid: u32, ctx: &Ctx, procs: &mut HashMap<i32, Tracked>, profiles: &Profiles, pid: i32, given: Option<Profile>) -> Response {
     if uid != 0 && procfs::uid(pid) != Some(uid) {
         return Response::err("esse processo é de outro usuário");
     }
     let Some(st) = procfs::read_stat(pid) else { return Response::err("processo não existe") };
     let learned = Learned::default();
     let mut t = classify(ctx, &learned, profiles, pid, &st, None);
-    let Some(p) = profiles.get(&t.pkey).cloned() else { return Response::ok("sem perfil") };
+    let Some(p) = given.or_else(|| profiles.get(&t.pkey).cloned()) else { return Response::ok("sem perfil") };
+    if let Err(e) = p.validate() {
+        return Response::err(e);
+    }
     t.profile = Some(p.clone());
     t.cpus = procfs::allowed_cpus(pid).unwrap_or_default();
     t.nodes = ctx.topo.nodes_of(&t.cpus);

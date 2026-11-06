@@ -4,6 +4,7 @@ use crate::App;
 use eframe::egui::{self, Color32, RichText, Stroke};
 use numapilot::ctl::Request;
 use numapilot::gpuctl::{self, default_curve, FanMode, GpuControl, Sensors};
+use numapilot::history::History;
 
 fn temp_color(t: f64) -> Color32 {
     if t >= 90.0 {
@@ -55,7 +56,129 @@ fn draw_curve(ui: &mut egui::Ui, c: &GpuControl, temp: Option<f64>) {
     p.text(r.left_top() + egui::vec2(3.0, 2.0), egui::Align2::LEFT_TOP, "100%", small, weak);
 }
 
+/// Gráfico do histórico: temperatura (0–100 °C) e potência (0–máx W) de uma GPU.
+fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f64) {
+    let samples = h.since(secs);
+    let (resp, p) = ui.allocate_painter(egui::vec2(ui.available_width().min(620.0), 124.0), egui::Sense::hover());
+    let full = resp.rect;
+    let r = egui::Rect::from_min_max(full.min, egui::pos2(full.right(), full.bottom() - 14.0));
+    p.rect_stroke(r, 4.0, Stroke::new(1.0, ui.visuals().weak_text_color()), egui::StrokeKind::Inside);
+    let small = egui::FontId::proportional(10.0);
+    let weak = ui.visuals().weak_text_color();
+    if samples.len() < 2 {
+        p.text(r.center(), egui::Align2::CENTER_CENTER, "sem histórico ainda (o serviço grava a cada 30 s)", small, weak);
+        return;
+    }
+    let t1 = samples.last().map(|s| s.t).unwrap_or(0) as f64;
+    let t0 = t1 - secs as f64;
+    let x = |t: u64| r.left() + (((t as f64 - t0) / secs as f64).clamp(0.0, 1.0) as f32) * r.width();
+    let y = |v: f64, max: f64| r.bottom() - ((v / max).clamp(0.0, 1.0) as f32) * r.height();
+    let temp: Vec<egui::Pos2> = samples.iter().filter_map(|s| s.g.get(idx).map(|g| egui::pos2(x(s.t), y(g[0] as f64, 100.0)))).collect();
+    let pow: Vec<egui::Pos2> = samples.iter().filter_map(|s| s.g.get(idx).map(|g| egui::pos2(x(s.t), y(g[1] as f64, max_w)))).collect();
+    let y90 = y(90.0, 100.0);
+    p.line_segment([egui::pos2(r.left(), y90), egui::pos2(r.right(), y90)], Stroke::new(1.0, Color32::from_rgb(190, 70, 60)));
+    p.add(egui::Shape::line(pow, Stroke::new(1.5, Color32::from_rgb(90, 140, 220))));
+    p.add(egui::Shape::line(temp, Stroke::new(1.5, Color32::from_rgb(230, 120, 60))));
+    let maxt = samples.iter().filter_map(|s| s.g.get(idx).map(|g| g[0])).fold(0.0f32, f32::max);
+    let maxp = samples.iter().filter_map(|s| s.g.get(idx).map(|g| g[1])).fold(0.0f32, f32::max);
+    p.text(full.left_bottom() + egui::vec2(2.0, 0.0), egui::Align2::LEFT_BOTTOM, format!("temperatura (máx {maxt:.0} °C)"), small.clone(), Color32::from_rgb(230, 120, 60));
+    p.text(full.center_bottom(), egui::Align2::CENTER_BOTTOM, format!("linha vermelha = 90 °C · últimas {} h", secs / 3600), small.clone(), weak);
+    p.text(full.right_bottom() + egui::vec2(-2.0, 0.0), egui::Align2::RIGHT_BOTTOM, format!("potência (máx {maxp:.0} W)"), small, Color32::from_rgb(90, 140, 220));
+}
+
+/// OverDrive (clock e voltagem) e Resizable BAR.
+fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
+    match gpuctl::rebar_active(pci) {
+        Some(true) => {
+            ui.label(RichText::new("Resizable BAR: ativo").color(Color32::from_rgb(110, 190, 120)));
+        }
+        Some(false) => {
+            ui.label(RichText::new("Resizable BAR: inativo (veja o diagnóstico em Configurações)").weak());
+        }
+        None => {}
+    }
+    let Some(od) = gpuctl::read_od(pci) else {
+        ui.label(
+            RichText::new("Clock/voltagem: OverDrive desligado. Para undervolt: amdgpu.ppfeaturemask=0xfffd7fff na linha do kernel.")
+                .small()
+                .weak(),
+        );
+        return;
+    };
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Clock e voltagem:").strong());
+        let mut on = edit.od.is_some();
+        if ui.checkbox(&mut on, "personalizar").changed() {
+            edit.od = on.then(gpuctl::OdSettings::default);
+        }
+        ui.label(
+            RichText::new(format!(
+                "atual: GPU até {} MHz, memória {} MHz, curva {}",
+                od.sclk.iter().map(|x| x.1).max().unwrap_or(0),
+                od.mclk.iter().map(|x| x.1).max().unwrap_or(0),
+                od.curve.iter().map(|c| format!("{} MHz/{} mV", c.1, c.2)).collect::<Vec<_>>().join(", ")
+            ))
+            .small()
+            .weak(),
+        );
+    });
+    let Some(s) = edit.od.as_mut() else { return };
+    let opt = |ui: &mut egui::Ui, v: &mut Option<u32>, cur: u32, range: Option<(u32, u32)>, label: &str| {
+        let mut on = v.is_some();
+        ui.checkbox(&mut on, label);
+        let mut x = v.unwrap_or(cur);
+        let (lo, hi) = range.unwrap_or((cur / 2, cur * 2));
+        ui.add_enabled(on, egui::DragValue::new(&mut x).range(lo..=hi).suffix(" MHz"));
+        *v = on.then_some(x);
+    };
+    ui.horizontal(|ui| {
+        opt(ui, &mut s.sclk_max, od.sclk.iter().map(|x| x.1).max().unwrap_or(1801), od.range_sclk, "GPU máx.");
+        ui.add_space(10.0);
+        opt(ui, &mut s.mclk_max, od.mclk.iter().map(|x| x.1).max().unwrap_or(1000), od.range_mclk, "memória máx.");
+    });
+    ui.horizontal(|ui| {
+        let mut custom = !s.curve.is_empty();
+        if ui.checkbox(&mut custom, "curva de voltagem").changed() {
+            s.curve = if custom { od.curve.iter().map(|c| (c.1, c.2)).collect() } else { vec![] };
+        }
+        for mv in [25u32, 50] {
+            if ui.small_button(format!("reduzir {mv} mV")).on_hover_text("Undervolt: mesma frequência com menos voltagem (menos calor e consumo). Teste a estabilidade.").clicked() {
+                s.curve = od
+                    .curve
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        let lo = od.range_curve_volt.get(i).map(|r| r.0).unwrap_or(700);
+                        (c.1, c.2.saturating_sub(mv).max(lo))
+                    })
+                    .collect();
+            }
+        }
+    });
+    if !s.curve.is_empty() {
+        egui::Grid::new(format!("od-{pci}")).num_columns(3).show(ui, |ui| {
+            for (i, pt) in s.curve.iter_mut().enumerate() {
+                ui.label(format!("ponto {}", i + 1));
+                let rs = od.range_curve_sclk.get(i).copied().unwrap_or((500, 2500));
+                let rv = od.range_curve_volt.get(i).copied().unwrap_or((700, 1250));
+                ui.add(egui::DragValue::new(&mut pt.0).range(rs.0..=rs.1).suffix(" MHz"));
+                ui.add(egui::DragValue::new(&mut pt.1).range(rv.0..=rv.1).suffix(" mV"));
+                ui.end_row();
+            }
+        });
+    }
+    ui.label(
+        RichText::new("Se a placa travar ou o jogo fechar sozinho, volte um passo. Ao reiniciar o PC o serviço reaplica; desmarcar \"personalizar\" volta ao padrão.")
+            .small()
+            .color(Color32::from_rgb(230, 160, 40)),
+    );
+}
+
 pub fn ui(app: &mut App, ui: &mut egui::Ui) {
+    if app.hist_at.is_none_or(|t| t.elapsed().as_secs() >= 30) {
+        app.hist = History::load();
+        app.hist_at = Some(std::time::Instant::now());
+    }
     ui.label(
         RichText::new(
             "Temperatura, ventoinha e potência de cada placa. Quem aplica é o serviço numapilot; \
@@ -63,8 +186,15 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         )
         .weak(),
     );
+    ui.horizontal(|ui| {
+        ui.label("Histórico:");
+        for (s, l) in [(3600u64, "1 h"), (6 * 3600, "6 h"), (24 * 3600, "24 h")] {
+            ui.selectable_value(&mut app.hist_secs, s, l);
+        }
+    });
     ui.separator();
     let gpus = app.topo.gpus.clone();
+    let hist = app.hist.clone();
     egui::ScrollArea::vertical().show(ui, |ui| {
         for g in &gpus {
             let s = gpuctl::read_sensors(&g.pci);
@@ -105,7 +235,12 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.label(format!("VRAM {:.1}/{:.0} GB", u as f64 / 1073741824.0, t as f64 / 1073741824.0));
                     }
                 });
-                if !s.fan_controllable && s.power_cap_max_w.is_none() {
+                if let Some(h) = &hist
+                    && let Some(idx) = h.gpus.iter().position(|a| *a == g.alias)
+                {
+                    history_plot(ui, h, idx, app.hist_secs, s.power_cap_max_w.unwrap_or(300.0));
+                }
+                if !s.fan_controllable && s.power_cap_max_w.is_none() && gpuctl::read_od(&g.pci).is_none() {
                     ui.label(RichText::new("O driver não expõe controles de ventoinha/potência para esta placa.").weak());
                     return;
                 }
@@ -170,6 +305,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         }
                     });
                 }
+                ui.add_space(4.0);
+                od_ui(ui, &g.pci, edit);
                 let changed = *edit != saved;
                 let edit_c = edit.clone();
                 ui.horizontal(|ui| {

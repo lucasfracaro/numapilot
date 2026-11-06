@@ -95,6 +95,45 @@ impl Tray for NumaTray {
     }
 }
 
+/// Avisa (notificação do sistema) quando uma GPU passa de 90 °C por 3 leituras seguidas;
+/// no máximo uma vez a cada 10 minutos por placa.
+#[derive(Default)]
+struct Alerts {
+    streak: std::collections::HashMap<String, u32>,
+    last: std::collections::HashMap<String, std::time::Instant>,
+}
+
+impl Alerts {
+    fn check(&mut self, topo: &Topology) {
+        for g in &topo.gpus {
+            let s = gpuctl::read_sensors(&g.pci);
+            let Some(t) = s.control_temp() else { continue };
+            let n = self.streak.entry(g.pci.clone()).or_default();
+            *n = if t >= 90.0 { *n + 1 } else { 0 };
+            let recent = self.last.get(&g.pci).is_some_and(|l| l.elapsed() < Duration::from_secs(600));
+            if *n >= 3 && !recent {
+                self.last.insert(g.pci.clone(), std::time::Instant::now());
+                let body = format!(
+                    "{} está a {t:.0} °C (ventoinha {}). Confira a ventilação ou reduza o limite de potência.",
+                    g.alias,
+                    s.fan_pct.map(|p| format!("{p:.0}%")).unwrap_or_else(|| "?".into())
+                );
+                let _ = spawn_detached(&[
+                    "notify-send".into(),
+                    "-u".into(),
+                    "critical".into(),
+                    "-a".into(),
+                    "numapilot".into(),
+                    "-i".into(),
+                    "dialog-warning".into(),
+                    format!("GPU quente: {}", g.alias),
+                    body,
+                ]);
+            }
+        }
+    }
+}
+
 fn summary(topo: &Topology) -> (String, bool) {
     let mut lines = Vec::new();
     let mut hot = false;
@@ -120,8 +159,10 @@ pub fn main_loop() -> Result<(), String> {
         .assume_sni_available(true)
         .spawn()
         .map_err(|e| format!("bandeja indisponível: {e}"))?;
+    let mut alerts = Alerts::default();
     loop {
         std::thread::sleep(Duration::from_secs(5));
+        alerts.check(&topo);
         let (tip, hot) = summary(&topo);
         if handle.update(|t| {
             t.tip = tip;
