@@ -25,7 +25,11 @@ impl Limits {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        for (n, v) in [("STAPM", self.stapm_w), ("PPT rápido", self.fast_w), ("PPT lento", self.slow_w)] {
+        for (n, v) in [
+            ("STAPM", self.stapm_w),
+            ("PPT rápido", self.fast_w),
+            ("PPT lento", self.slow_w),
+        ] {
             if let Some(v) = v
                 && !(5.0..=200.0).contains(&v)
             {
@@ -53,7 +57,10 @@ impl Limits {
     /// Diferença relevante (meio watt / meio grau) entre o pedido e o lido.
     pub fn differs(&self, now: &Limits) -> bool {
         let d = |a: Option<f64>, b: Option<f64>| matches!((a, b), (Some(a), Some(b)) if (a - b).abs() > 0.5);
-        d(self.stapm_w, now.stapm_w) || d(self.fast_w, now.fast_w) || d(self.slow_w, now.slow_w) || d(self.tctl_c, now.tctl_c)
+        d(self.stapm_w, now.stapm_w)
+            || d(self.fast_w, now.fast_w)
+            || d(self.slow_w, now.slow_w)
+            || d(self.tctl_c, now.tctl_c)
     }
 }
 
@@ -68,14 +75,19 @@ pub fn available() -> bool {
 /// Só faz sentido em Ryzen de notebook/APU (o ryzenadj não mexe em Ryzen de desktop nem em EPYC).
 pub fn applicable() -> bool {
     let m = crate::recipes::cpu_model();
-    m.contains("AMD") && (crate::notebook::is_laptop() || m.contains("with Radeon") || m.contains("APU"))
+    m.contains("AMD")
+        && (crate::notebook::is_laptop() || m.contains("with Radeon") || m.contains("APU"))
 }
 
 /// Tabela do `ryzenadj -i`: "| STAPM LIMIT | 45.000 | stapm-limit |" -> nome -> valor.
 pub fn parse_info(s: &str) -> BTreeMap<String, f64> {
     let mut m = BTreeMap::new();
     for l in s.lines() {
-        let cols: Vec<&str> = l.split('|').map(str::trim).filter(|c| !c.is_empty()).collect();
+        let cols: Vec<&str> = l
+            .split('|')
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+            .collect();
         if cols.len() >= 2
             && let Ok(v) = cols[1].parse::<f64>()
             && v.is_finite()
@@ -97,11 +109,17 @@ pub fn limits_from(info: &BTreeMap<String, f64>) -> Limits {
 
 /// Lê a tabela (precisa de root; usa o módulo ryzen_smu ou /dev/mem).
 pub fn info() -> Result<BTreeMap<String, f64>, String> {
-    let o = Command::new(bin()).arg("-i").output().map_err(|e| format!("ryzenadj: {e}"))?;
+    let o = Command::new(bin())
+        .arg("-i")
+        .output()
+        .map_err(|e| format!("ryzenadj: {e}"))?;
     let m = parse_info(&String::from_utf8_lossy(&o.stdout));
     if m.is_empty() {
         let err = String::from_utf8_lossy(&o.stderr);
-        return Err(format!("ryzenadj -i não leu nada: {}", err.lines().last().unwrap_or("")));
+        return Err(format!(
+            "ryzenadj -i não leu nada: {}",
+            err.lines().next_back().unwrap_or("")
+        ));
     }
     Ok(m)
 }
@@ -130,10 +148,20 @@ pub fn apply(l: &Limits) -> Result<(), String> {
     if a.is_empty() {
         return Ok(());
     }
-    let o = Command::new(bin()).args(&a).output().map_err(|e| format!("ryzenadj: {e}"))?;
-    let out = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+    let o = Command::new(bin())
+        .args(&a)
+        .output()
+        .map_err(|e| format!("ryzenadj: {e}"))?;
+    let out = format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    );
     if !o.status.success() || out.contains("not supported") || out.contains("Failed") {
-        return Err(format!("ryzenadj recusou: {}", out.lines().filter(|l| !l.trim().is_empty()).last().unwrap_or("?")));
+        return Err(format!(
+            "ryzenadj recusou: {}",
+            out.lines().rfind(|l| !l.trim().is_empty()).unwrap_or("?")
+        ));
     }
     Ok(())
 }
@@ -148,12 +176,37 @@ mod tests {
         let i = parse_info(s);
         assert!(!i.contains_key("StapmTimeConst"));
         let l = limits_from(&i);
-        assert_eq!(l, Limits { stapm_w: Some(45.0), fast_w: Some(65.0), slow_w: Some(54.0), tctl_c: Some(95.0) });
         assert_eq!(
-            args(&Limits { stapm_w: Some(35.0), tctl_c: Some(85.0), ..Default::default() }),
+            l,
+            Limits {
+                stapm_w: Some(45.0),
+                fast_w: Some(65.0),
+                slow_w: Some(54.0),
+                tctl_c: Some(95.0)
+            }
+        );
+        assert_eq!(
+            args(&Limits {
+                stapm_w: Some(35.0),
+                tctl_c: Some(85.0),
+                ..Default::default()
+            }),
             vec!["--stapm-limit=35000", "--tctl-temp=85"]
         );
-        assert!(Limits { fast_w: Some(500.0), ..Default::default() }.validate().is_err());
-        assert!(Limits { stapm_w: Some(35.0), ..Default::default() }.differs(&l));
+        assert!(
+            Limits {
+                fast_w: Some(500.0),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            Limits {
+                stapm_w: Some(35.0),
+                ..Default::default()
+            }
+            .differs(&l)
+        );
     }
 }

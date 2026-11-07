@@ -626,9 +626,11 @@ balanceamento NUMA) some.
   para cada kernel instalado, removendo a outra série se for preciso). No CachyOS o driver é
   atualizado junto com o sistema: atualizar só ele quebraria as dependências. Pela linha de comando:
   `numapilot driver status`, `sudo numapilot driver install`, `sudo numapilot driver update`.
-- Temperatura, consumo, uso e VRAM pelo `nvidia-smi`; limite de potência e **clock máximo
-  travado** (o driver não permite mexer na voltagem pelo Linux; potência e clock limitados são o
-  mais próximo de um undervolt).
+- Temperatura, consumo, uso e VRAM pelo `nvidia-smi`; limite de potência, **clock máximo
+  travado** e **deslocamento da curva** clock/voltagem da GPU e da memória (pela NVML do próprio
+  driver, sem X). Undervolt na NVIDIA = travar o clock (ex.: 1800 MHz) e deslocar a curva para cima
+  (+100 a +200 MHz): o clock travado é alcançado com voltagem menor. O serviço reaplica quando a
+  placa do notebook acorda.
 - Escolher a NVIDIA para um programa usa o PRIME render offload oficial
   (`__NV_PRIME_RENDER_OFFLOAD`, `__GLX_VENDOR_LIBRARY_NAME`, `__VK_LAYER_NV_optimus`); escolher a
   outra placa num PC com NVIDIA esconde a NVIDIA. Para computação, `CUDA_VISIBLE_DEVICES`.
@@ -638,7 +640,16 @@ balanceamento NUMA) some.
 - Máquina → Notebook: bateria (carga, consumo, saúde), **modo automático na tomada e na bateria**
   (ex.: Jogo na tomada, Silencioso na bateria), **parar de carregar em 80%** quando o notebook
   permite, perfil de energia do fabricante (ACPI), deixar a placa dedicada **dormir** quando ninguém
-  usa (o numapilot não acorda a placa para ler sensores) e o Dynamic Boost da NVIDIA.
+  usa (o numapilot não acorda a placa para ler sensores), **quais programas estão mantendo a placa
+  acordada** e o Dynamic Boost da NVIDIA.
+- **Ryzen de notebook**: limites de potência pelo `ryzenadj` (STAPM/sustentado, PPT lento e rápido,
+  temperatura máxima), o equivalente do PL1/PL2 da Intel. O serviço reaplica quando o firmware volta
+  os valores (ao trocar tomada/bateria). A preferência de energia (EPP do amd-pstate) fica na tabela
+  de processadores.
+- **Acer Predator/Nitro** com o módulo da comunidade
+  [Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense): ventoinhas (automático, máximo ou
+  % da CPU e da GPU), limite de carga em 80%, overdrive da tela, luz do teclado, carga USB desligado,
+  som ao ligar e RGB de 4 zonas. O Turbo vem pelo perfil de energia do notebook.
 
 **Intel**: frequência máxima da GPU integrada (i915). Os controles de processador (turbo,
 frequências, RAPL/limites de potência, C-states) da aba Máquina valem para Intel e AMD.
@@ -661,6 +672,16 @@ Processadores com limite de curto prazo ganham o **pico de potência (PL2)** na 
   de clock e `amd_iommu=off`. Na aba Placas de vídeo: dicas, instalar/ligar o governor e **editar
   a configuração dele** (frequências, voltagens, pontos), salvando com backup e reiniciando o
   serviço (volta a anterior se ele não subir); link para o overclock da CPU pela SMU.
+  Mostra quantos **núcleos (6 ou 8) e CUs (24 ou 40)** estão ligados e os **programas da
+  comunidade** para desbloquear sem trocar o kernel, com instalar (AUR) e abrir: o
+  [BC250 Control Center](https://github.com/movacx/bc250-control-center) (governor e laboratório de
+  voltagem, overclock da CPU, ventoinha, 40 CUs ao vivo, 8 núcleos), o `umr` e os scripts
+  [bc250-core-cu-unlock](https://github.com/GabriWar/bc250-core-cu-unlock). Depois de desbloquear,
+  refaça os testes de overclock: CPU e GPU dividem a mesma energia.
+  **Memória para a GPU (IA)**: o kernel deixa a GPU usar só metade dos 16 GB; o controle grava
+  `ttm.pages_limit` em `/etc/modprobe.d` (e aplica na hora), o que deixa modelos de até ~14B
+  carregarem. O servidor de IA (Vulkan) já liga o `GGML_VK_PREFER_HOST_MEMORY` (+5 a 12%).
+  `sudo numapilot boot gpu-memory 14` ou `padrao`. Vale também para PCs só com APU.
 - **BC-160**: placa sem saída de vídeo (renderiza nela e mostra pela outra, como as MI50).
 - Cada placa mostra a arquitetura e o que serve para IA (ROCm, ROCm da comunidade, Vulkan, CUDA)
   e para upscaling. Dicas por processador (i7-5775C, CC150, E5-2696 v4).
@@ -706,7 +727,32 @@ Não use o OptiScaler em jogos online (anti-cheat). FSR 1 pelo gamescope e gera�
 lsfg-vk continuam valendo para qualquer placa.
 Linha de comando: `numapilot upscale fetch | status|install|remove APPID [--int8]`.
 
-## 23. Limitações
+## 23. Undervolt automático, ligar pela rede e saúde do hardware
+
+**Undervolt automático** (botão **Achar o undervolt sozinho** em cada placa, ou
+`numapilot undervolt GPU`): sobe a curva da NVIDIA com o clock travado (passos de 15 MHz) ou desce a
+voltagem da AMD (deslocamento nas RDNA 2/3/4, ponto mais alto da curva na MI50/RDNA 1, passos de
+10 mV). Cada passo roda 1 min de carga (`vkmark` sem janela, ou `glmark2`) e falha se o teste cair
+ou se o kernel registrar travamento/reset da GPU (amdgpu: ring timeout, GPU reset; NVIDIA: Xid).
+No fim volta um passo de margem, confirma por 2 min e grava. Durante o teste os valores não são
+gravados no disco: se o PC travar, ele volta com o último valor bom. Ctrl+C para e devolve o que era.
+Opções: `--secs`, `--margin`, `--clock` (NVIDIA), `--step`.
+
+**Ligar pela rede (Wake-on-LAN)**: Máquina → Ligar pela rede liga o WoL na placa de rede com fio (o
+serviço reaplica a cada boot; também grava no NetworkManager). Ligue também na BIOS. Com o PC ligado
+uma vez, o painel do outro aprende o endereço; desligado, o card dele em **Meus PCs** ganha o botão
+**Ligar** (também `numapilot peers wake NOME`).
+
+**Streaming**: a aba Streaming escolhe o codificador do Sunshine (VA-API, NVENC, Quick Sync ou
+**software**, com a velocidade do x264). A BC-250 não tem codificador de vídeo: use software, ou o
+driver VA-API da comunidade pelo BC250 Control Center.
+
+**Saúde do hardware** (Máquina → Saúde do hardware, diagnóstico e alertas no painel do celular): a
+cada 30 min o serviço lê o SMART dos discos (vida útil usada, setores ruins, erros, temperatura,
+TB escritos; precisa do `smartmontools`), os erros da memória ECC (EDAC), os erros corrigidos e não
+corrigidos das placas AMD com ECC (HBM2 das MI50) e o desgaste da bateria.
+
+## 24. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice
@@ -715,6 +761,8 @@ Linha de comando: `numapilot upscale fetch | status|install|remove APPID [--int8
   respeitam a afinidade de CPU. Vale medir com e sem.
 - Ganho esperado em jogos: frametime mais estável e menos stutter. O teto continua sendo o clock
   do Broadwell.
+- Frequência e timings da **RAM do sistema** só mudam na BIOS: a memória é treinada no boot e o
+  Ryzen e os Xeon não deixam mudar com o sistema rodando (dá só para ler).
 
 ## Arquitetura do código
 

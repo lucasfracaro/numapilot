@@ -39,11 +39,14 @@ fn lib() -> Result<&'static Lib, String> {
         let c = CString::new(name.clone()).map_err(|e| e.to_string())?;
         let h = unsafe { libc::dlopen(c.as_ptr(), libc::RTLD_NOW) };
         if h.is_null() {
-            return Err(format!("{name} não encontrada (driver da NVIDIA instalado?)"));
+            return Err(format!(
+                "{name} não encontrada (driver da NVIDIA instalado?)"
+            ));
         }
         let l = Lib {
             init: sym(h, "nvmlInit_v2").ok_or("nvmlInit_v2 ausente")?,
-            by_pci: sym(h, "nvmlDeviceGetHandleByPciBusId_v2").ok_or("nvmlDeviceGetHandleByPciBusId_v2 ausente")?,
+            by_pci: sym(h, "nvmlDeviceGetHandleByPciBusId_v2")
+                .ok_or("nvmlDeviceGetHandleByPciBusId_v2 ausente")?,
             err: sym(h, "nvmlErrorString").ok_or("nvmlErrorString ausente")?,
             get_gpc: sym(h, "nvmlDeviceGetGpcClkVfOffset"),
             set_gpc: sym(h, "nvmlDeviceSetGpcClkVfOffset"),
@@ -118,14 +121,18 @@ pub fn offsets(pci: &str) -> Result<Offsets, String> {
 /// Deslocamento do clock da GPU (MHz). 0 = de fábrica.
 pub fn set_gpc_offset(pci: &str, mhz: i32) -> Result<(), String> {
     let l = lib()?;
-    let f = l.set_gpc.ok_or("este driver não tem nvmlDeviceSetGpcClkVfOffset")?;
+    let f = l
+        .set_gpc
+        .ok_or("este driver não tem nvmlDeviceSetGpcClkVfOffset")?;
     check(l, unsafe { f(dev(l, pci)?, mhz as c_int) })
 }
 
 /// Deslocamento do clock da memória (MHz). 0 = de fábrica.
 pub fn set_mem_offset(pci: &str, mhz: i32) -> Result<(), String> {
     let l = lib()?;
-    let f = l.set_mem.ok_or("este driver não tem nvmlDeviceSetMemClkVfOffset")?;
+    let f = l
+        .set_mem
+        .ok_or("este driver não tem nvmlDeviceSetMemClkVfOffset")?;
     check(l, unsafe { f(dev(l, pci)?, mhz as c_int) })
 }
 

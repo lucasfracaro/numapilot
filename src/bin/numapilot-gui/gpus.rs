@@ -433,7 +433,11 @@ fn nv_clock_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
             edit.nv_mem_offset_mhz = on.then_some(0);
         }
         if let Some(v) = edit.nv_mem_offset_mhz.as_mut() {
-            ui.add(egui::Slider::new(v, -500..=1500).suffix(" MHz").step_by(50.0));
+            ui.add(
+                egui::Slider::new(v, -500..=1500)
+                    .suffix(" MHz")
+                    .step_by(50.0),
+            );
         }
     });
     auto_undervolt_button(ui, pci);
@@ -964,7 +968,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         );
     }
     if let Some((pci, control)) = app.pending_gpu.take() {
-        app.send(Request::SetGpuControl { pci, control, trial: false });
+        app.send(Request::SetGpuControl {
+            pci,
+            control,
+            trial: false,
+        });
         app.gpu_saved = gpuctl::GpuControls::load();
         app.gpu_edit.clear();
     }
@@ -973,8 +981,12 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 /// Memória que a GPU integrada (APU/BC-250) pode usar: padrão do kernel = metade da RAM, o que
 /// limita modelos de IA grandes. Grava em /etc/modprobe.d (ttm.pages_limit) e aplica já.
 fn apu_memory_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
-    let bc = numapilot::recipes::load().board_for(g).is_some_and(|b| b.cus.is_some());
-    if g.vendor != 0x1002 || !(g.is_integrated() || bc) {
+    let bc = numapilot::recipes::load()
+        .board_for(g)
+        .is_some_and(|b| b.cus.is_some());
+    // Só na BC-250 ou num PC sem placa dedicada (onde a integrada é quem roda a IA).
+    let only_igpu = !app.topo.gpus.iter().any(|o| !o.is_integrated());
+    if g.vendor != 0x1002 || !(bc || g.is_integrated() && only_igpu) {
         return;
     }
     use numapilot::bootcfg;

@@ -426,14 +426,21 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
                 "wake" => {
-                    let m = peers::wake(&arg.context("faltou o nome")?).map_err(|e| anyhow::anyhow!(e))?;
+                    let m = peers::wake(&arg.context("faltou o nome")?)
+                        .map_err(|e| anyhow::anyhow!(e))?;
                     println!("{m}");
                     Ok(())
                 }
                 _ => bail!("use: numapilot peers list | add LINK [NOME] | remove NOME | wake NOME"),
             }
         }
-        Cmd::Undervolt { gpu, secs, margin, clock, step } => {
+        Cmd::Undervolt {
+            gpu,
+            secs,
+            margin,
+            clock,
+            step,
+        } => {
             let cfg = Config::load()?;
             let topo = Topology::load(&cfg);
             let g = topo
@@ -444,10 +451,18 @@ fn real_main() -> Result<()> {
                 .clone();
             numapilot::undervolt::catch_ctrl_c();
             println!("Deixe o PC parado durante o teste. Ctrl+C para parar e voltar ao que era.");
-            let opts = numapilot::undervolt::Opts { secs, margin, clock, step };
+            let opts = numapilot::undervolt::Opts {
+                secs,
+                margin,
+                clock,
+                step,
+            };
             match numapilot::undervolt::run(&topo, &g, &opts, &mut |l| println!("{l}")) {
                 Ok(o) => {
-                    println!("\nPronto: {} ({} passo(s) estáveis).", o.description, o.steps_ok);
+                    println!(
+                        "\nPronto: {} ({} passo(s) estáveis).",
+                        o.description, o.steps_ok
+                    );
                     Ok(())
                 }
                 Err(e) => bail!(e),
@@ -1173,8 +1188,12 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
             let gib = |p: u64| p as f64 * 4096.0 / 1073741824.0;
             println!(
                 "Memória da GPU integrada (ttm): {} agora, {} no boot",
-                bootcfg::ttm_now().map(|p| format!("{:.1} GiB", gib(p))).unwrap_or("?".into()),
-                bootcfg::saved_ttm().map(|p| format!("{:.1} GiB", gib(p))).unwrap_or("padrão (metade da RAM)".into())
+                bootcfg::ttm_now()
+                    .map(|p| format!("{:.1} GiB", gib(p)))
+                    .unwrap_or("?".into()),
+                bootcfg::saved_ttm()
+                    .map(|p| format!("{:.1} GiB", gib(p)))
+                    .unwrap_or("padrão (metade da RAM)".into())
             );
             println!("Arquivo: {}", bootcfg::conf_path().display());
             match bootcfg::initramfs_tool() {
@@ -1191,7 +1210,12 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
             let gib = if v == "padrao" || v == "default" || v == "off" {
                 None
             } else {
-                Some(v.trim_end_matches(['G', 'g']).replace(',', ".").parse::<f64>().context("use um número em GiB (ex.: 14) ou padrao")?)
+                Some(
+                    v.trim_end_matches(['G', 'g'])
+                        .replace(',', ".")
+                        .parse::<f64>()
+                        .context("use um número em GiB (ex.: 14) ou padrao")?,
+                )
             };
             bootcfg::set_gpu_memory(gib, &mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
         }

@@ -228,7 +228,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 );
             }
             if !crate::notebook::dgpu_state(&g.pci).starts_with("dormindo") {
-                let mut users: Vec<String> = crate::notebook::dgpu_users(&g.pci).into_iter().map(|u| u.1).collect();
+                let mut users: Vec<String> = crate::notebook::dgpu_users(&g.pci)
+                    .into_iter()
+                    .map(|u| u.1)
+                    .collect();
                 users.sort();
                 users.dedup();
                 if !users.is_empty() {
@@ -261,15 +264,33 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                             None,
                         )
                     }
-                    Err(e) => add("Notebook", "limites do Ryzen", Level::Info, e, Some("rode com sudo para ler (o ryzenadj precisa de root)")),
+                    Err(e) => add(
+                        "Notebook",
+                        "limites do Ryzen",
+                        Level::Info,
+                        e,
+                        Some("rode com sudo para ler (o ryzenadj precisa de root)"),
+                    ),
                 }
             } else {
-                add("Notebook", "limites do Ryzen", Level::Info, "ryzenadj não instalado".into(), Some("paru -S ryzenadj"));
+                add(
+                    "Notebook",
+                    "limites do Ryzen",
+                    Level::Info,
+                    "ryzenadj não instalado".into(),
+                    Some("paru -S ryzenadj"),
+                );
             }
         }
         if crate::acer::is_acer() {
             if crate::acer::sense_dir().is_some() || crate::acer::kb_dir().is_some() {
-                add("Notebook", "Acer (Linuwu-Sense)", Level::Ok, format!("{} ajustes disponíveis", crate::acer::knobs().len()), None);
+                add(
+                    "Notebook",
+                    "Acer (Linuwu-Sense)",
+                    Level::Ok,
+                    format!("{} ajustes disponíveis", crate::acer::knobs().len()),
+                    None,
+                );
             } else {
                 add(
                     "Notebook",
@@ -433,7 +454,13 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     match rep {
         Some(r) => {
             if !r.smartctl {
-                add("Saúde", "discos (SMART)", Level::Info, "smartctl não instalado".into(), Some("sudo pacman -S smartmontools"));
+                add(
+                    "Saúde",
+                    "discos (SMART)",
+                    Level::Info,
+                    "smartctl não instalado".into(),
+                    Some("sudo pacman -S smartmontools"),
+                );
             }
             let probs = crate::health::problems(&r);
             if probs.is_empty() {
@@ -441,15 +468,31 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     "Saúde",
                     "geral",
                     Level::Ok,
-                    format!("{} disco(s), {} controlador(es) de memória ECC, nenhum problema", r.disks.len(), r.mem.len()),
+                    format!(
+                        "{} disco(s), {} controlador(es) de memória ECC, nenhum problema",
+                        r.disks.len(),
+                        r.mem.len()
+                    ),
                     None,
                 );
             }
             for (lvl, p) in probs {
-                add("Saúde", "alerta", if lvl >= 2 { Level::Fail } else { Level::Warn }, p, None);
+                add(
+                    "Saúde",
+                    "alerta",
+                    if lvl >= 2 { Level::Fail } else { Level::Warn },
+                    p,
+                    None,
+                );
             }
         }
-        None => add("Saúde", "geral", Level::Info, "ainda sem coleta (o serviço coleta 1 min depois de iniciar)".into(), Some("sudo numapilot doctor")),
+        None => add(
+            "Saúde",
+            "geral",
+            Level::Info,
+            "ainda sem coleta (o serviço coleta 1 min depois de iniciar)".into(),
+            Some("sudo numapilot doctor"),
+        ),
     }
     // ---- processador ----
     let unc = crate::cpuctl::uncores();

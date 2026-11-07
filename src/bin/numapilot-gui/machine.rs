@@ -283,7 +283,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 let now = &mu.hw["ryzen"];
                 let r = m.ryzen.get_or_insert_with(Default::default);
                 egui::Grid::new("ryzen").num_columns(3).spacing([14.0, 6.0]).show(ui, |ui| {
-                    let rows: [(&str, &str, &str, &mut Option<f64>, f64, f64); 4] = [
+                    type Row<'a> = (&'a str, &'a str, &'a str, &'a mut Option<f64>, f64, f64);
+                    let rows: [Row; 4] = [
                         ("Sustentado (STAPM)", "STAPM LIMIT", " W", &mut r.stapm_w, 5.0, 120.0),
                         ("Média curta (PPT lento)", "PPT LIMIT SLOW", " W", &mut r.slow_w, 5.0, 150.0),
                         ("Picos (PPT rápido)", "PPT LIMIT FAST", " W", &mut r.fast_w, 5.0, 150.0),

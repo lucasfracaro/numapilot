@@ -117,7 +117,9 @@ impl Hw {
         if !(crate::ryzen::available() && crate::ryzen::applicable()) {
             return;
         }
-        let Ok(info) = crate::ryzen::info() else { return };
+        let Ok(info) = crate::ryzen::info() else {
+            return;
+        };
         if let Some(w) = self.machine.ryzen.as_ref().filter(|l| !l.is_empty())
             && w.differs(&crate::ryzen::limits_from(&info))
         {
@@ -821,11 +823,16 @@ pub fn run(cfg: Config) -> Result<()> {
                     && crate::nvctl::is_nvidia(pci)
                     && !crate::nvctl::asleep(pci)
                     && let Ok(o) = crate::nvml::offsets(pci)
-                    && (c.nv_gpc_offset_mhz.is_some_and(|v| Some(crate::nvml::clamp(v, o.gpc_range, 300)) != o.gpc_mhz)
-                        || c.nv_mem_offset_mhz.is_some_and(|v| Some(crate::nvml::clamp(v, o.mem_range, 1500)) != o.mem_mhz))
+                    && (c.nv_gpc_offset_mhz.is_some_and(|v| {
+                        Some(crate::nvml::clamp(v, o.gpc_range, 300)) != o.gpc_mhz
+                    }) || c.nv_mem_offset_mhz.is_some_and(|v| {
+                        Some(crate::nvml::clamp(v, o.mem_range, 1500)) != o.mem_mhz
+                    }))
                 {
                     match nv_offsets(pci, c) {
-                        Ok(()) => eprintln!("[numapilot] GPU {pci}: deslocamento de clock reaplicado"),
+                        Ok(()) => {
+                            eprintln!("[numapilot] GPU {pci}: deslocamento de clock reaplicado")
+                        }
                         Err(e) => eprintln!("[numapilot] GPU {pci}: deslocamento de clock: {e}"),
                     }
                 }
@@ -1017,9 +1024,20 @@ fn serve(
     let mut reader = BufReader::new(&s);
     let resp = match (reader.read_line(&mut line), uid) {
         (Ok(_), Some(uid)) => match serde_json::from_str::<Request>(line.trim()) {
-            Ok(Request::SetGpuControl { pci, control, trial }) => {
-                handle_gpu(uid, ctx, gpuc, fan_last, &mut hw.gpu_trial, pci, control, trial)
-            }
+            Ok(Request::SetGpuControl {
+                pci,
+                control,
+                trial,
+            }) => handle_gpu(
+                uid,
+                ctx,
+                gpuc,
+                fan_last,
+                &mut hw.gpu_trial,
+                pci,
+                control,
+                trial,
+            ),
             Ok(Request::SetMachine { machine }) => handle_machine(uid, ctx, hw, machine),
             Ok(Request::SetBoardFan { id, control }) => handle_board_fan(uid, ctx, hw, id, control),
             Ok(req) => handle(req, uid, ctx, procs, profiles, tick),
@@ -1371,7 +1389,9 @@ fn handle_gpu(
             Err(e) => return Response::err(format!("clock: {e}")),
         }
     }
-    if (control.nv_gpc_offset_mhz, control.nv_mem_offset_mhz) != (old.nv_gpc_offset_mhz, old.nv_mem_offset_mhz) {
+    if (control.nv_gpc_offset_mhz, control.nv_mem_offset_mhz)
+        != (old.nv_gpc_offset_mhz, old.nv_mem_offset_mhz)
+    {
         if !crate::nvctl::is_nvidia(&pci) {
             return Response::err("deslocamento de clock por aqui é só para NVIDIA");
         }
@@ -1428,7 +1448,9 @@ fn handle_gpu(
         gpuc.map.insert(pci.clone(), control);
     }
     // No disco, as placas em teste ficam com o último valor bom.
-    let mut disk = GpuControls { map: gpuc.map.clone() };
+    let mut disk = GpuControls {
+        map: gpuc.map.clone(),
+    };
     for (p, good) in trials.iter() {
         if *good == gpuctl::GpuControl::default() {
             disk.map.remove(p);

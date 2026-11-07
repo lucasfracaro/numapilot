@@ -74,7 +74,11 @@ pub fn disks() -> Vec<String> {
         .map(|rd| {
             rd.flatten()
                 .map(|e| e.file_name().to_string_lossy().to_string())
-                .filter(|n| n.starts_with("nvme") && !n[4..].contains(['p', 'c']) || n.starts_with("sd") || n.starts_with("hd"))
+                .filter(|n| {
+                    n.starts_with("nvme") && !n[4..].contains(['p', 'c'])
+                        || n.starts_with("sd")
+                        || n.starts_with("hd")
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -125,7 +129,10 @@ pub fn parse_smart(dev: &str, j: &Value) -> Disk {
 }
 
 fn smart(dev: &str) -> Option<Disk> {
-    let o = Command::new("smartctl").args(["-j", "-a", &format!("/dev/{dev}")]).output().ok()?;
+    let o = Command::new("smartctl")
+        .args(["-j", "-a", &format!("/dev/{dev}")])
+        .output()
+        .ok()?;
     let j: Value = serde_json::from_slice(&o.stdout).ok()?;
     if j["smart_status"].is_null() && j["model_name"].is_null() {
         return None;
@@ -134,7 +141,9 @@ fn smart(dev: &str) -> Option<Disk> {
 }
 
 pub fn edac() -> Vec<MemCtl> {
-    let Ok(rd) = std::fs::read_dir(sys("devices/system/edac/mc")) else { return vec![] };
+    let Ok(rd) = std::fs::read_dir(sys("devices/system/edac/mc")) else {
+        return vec![];
+    };
     let mut v: Vec<MemCtl> = rd
         .flatten()
         .filter(|e| e.file_name().to_string_lossy().starts_with("mc"))
@@ -174,14 +183,21 @@ pub fn parse_ras(s: &str) -> (u64, u64) {
 
 pub fn gpu_ras(pci: &str) -> Vec<GpuRas> {
     let d = sys(&format!("bus/pci/devices/{pci}/ras"));
-    let Ok(rd) = std::fs::read_dir(&d) else { return vec![] };
+    let Ok(rd) = std::fs::read_dir(&d) else {
+        return vec![];
+    };
     let mut v: Vec<GpuRas> = rd
         .flatten()
         .filter_map(|e| {
             let n = e.file_name().to_string_lossy().to_string();
             let block = n.strip_suffix("_err_count")?.to_string();
             let (ce, ue) = parse_ras(&std::fs::read_to_string(e.path()).ok()?);
-            Some(GpuRas { pci: pci.into(), block, ce, ue })
+            Some(GpuRas {
+                pci: pci.into(),
+                block,
+                ce,
+                ue,
+            })
         })
         .collect();
     v.sort_by(|a, b| a.block.cmp(&b.block));
@@ -190,7 +206,11 @@ pub fn gpu_ras(pci: &str) -> Vec<GpuRas> {
 
 pub fn collect(topo: &crate::topo::Topology) -> Report {
     let smartctl = crate::containers::which("smartctl");
-    let disks = if smartctl { disks().iter().filter_map(|d| smart(d)).collect() } else { vec![] };
+    let disks = if smartctl {
+        disks().iter().filter_map(|d| smart(d)).collect()
+    } else {
+        vec![]
+    };
     let batteries = crate::notebook::battery_info()
         .into_iter()
         .map(|b| Bat {
@@ -224,23 +244,49 @@ pub fn load() -> Option<Report> {
 pub fn problems(r: &Report) -> Vec<(u8, String)> {
     let mut v = vec![];
     for d in &r.disks {
-        let n = if d.model.is_empty() { d.dev.clone() } else { format!("{} ({})", d.dev, d.model) };
+        let n = if d.model.is_empty() {
+            d.dev.clone()
+        } else {
+            format!("{} ({})", d.dev, d.model)
+        };
         if d.passed == Some(false) {
-            v.push((2, format!("{n}: o próprio disco diz que vai falhar (SMART). Faça backup e troque.")));
+            v.push((
+                2,
+                format!("{n}: o próprio disco diz que vai falhar (SMART). Faça backup e troque."),
+            ));
         }
         if d.media_errors.unwrap_or(0) > 0 {
-            v.push((2, format!("{n}: {} erros de mídia", d.media_errors.unwrap_or(0))));
+            v.push((
+                2,
+                format!("{n}: {} erros de mídia", d.media_errors.unwrap_or(0)),
+            ));
         }
         if d.uncorrectable.unwrap_or(0) > 0 || d.pending.unwrap_or(0) > 0 {
-            v.push((2, format!("{n}: setores ruins pendentes/incorrigíveis ({}/{})", d.pending.unwrap_or(0), d.uncorrectable.unwrap_or(0))));
+            v.push((
+                2,
+                format!(
+                    "{n}: setores ruins pendentes/incorrigíveis ({}/{})",
+                    d.pending.unwrap_or(0),
+                    d.uncorrectable.unwrap_or(0)
+                ),
+            ));
         }
         if d.realloc.unwrap_or(0) > 0 {
-            v.push((1, format!("{n}: {} setores realocados (acompanhe se aumenta)", d.realloc.unwrap_or(0))));
+            v.push((
+                1,
+                format!(
+                    "{n}: {} setores realocados (acompanhe se aumenta)",
+                    d.realloc.unwrap_or(0)
+                ),
+            ));
         }
         if let Some(p) = d.used_pct
             && p >= 80
         {
-            v.push((if p >= 100 { 2 } else { 1 }, format!("{n}: {p}% da vida útil usada")));
+            v.push((
+                if p >= 100 { 2 } else { 1 },
+                format!("{n}: {p}% da vida útil usada"),
+            ));
         }
         if let Some(s) = d.spare_pct
             && s < 20
@@ -255,23 +301,47 @@ pub fn problems(r: &Report) -> Vec<(u8, String)> {
     }
     for m in &r.mem {
         if m.ue > 0 {
-            v.push((2, format!("memória {}: {} erros NÃO corrigidos (pente com defeito?)", m.name, m.ue)));
+            v.push((
+                2,
+                format!(
+                    "memória {}: {} erros NÃO corrigidos (pente com defeito?)",
+                    m.name, m.ue
+                ),
+            ));
         } else if m.ce > 0 {
-            v.push((1, format!("memória {}: {} erros corrigidos pelo ECC (se crescer, troque o pente)", m.name, m.ce)));
+            v.push((
+                1,
+                format!(
+                    "memória {}: {} erros corrigidos pelo ECC (se crescer, troque o pente)",
+                    m.name, m.ce
+                ),
+            ));
         }
     }
     for g in &r.gpu {
         if g.ue > 0 {
-            v.push((2, format!("GPU {} ({}): {} erros não corrigidos", g.pci, g.block, g.ue)));
+            v.push((
+                2,
+                format!("GPU {} ({}): {} erros não corrigidos", g.pci, g.block, g.ue),
+            ));
         } else if g.ce > 0 {
-            v.push((1, format!("GPU {} ({}): {} erros corrigidos pelo ECC", g.pci, g.block, g.ce)));
+            v.push((
+                1,
+                format!(
+                    "GPU {} ({}): {} erros corrigidos pelo ECC",
+                    g.pci, g.block, g.ce
+                ),
+            ));
         }
     }
     for b in &r.batteries {
         if let Some(h) = b.health_pct
             && h < 70.0
         {
-            v.push((1, format!("bateria {}: {h:.0}% da capacidade original", b.name)));
+            v.push((
+                1,
+                format!("bateria {}: {h:.0}% da capacidade original", b.name),
+            ));
         }
     }
     v
@@ -286,13 +356,22 @@ mod tests {
         let j: Value = serde_json::from_str(r#"{"model_name":"Samsung 980","smart_status":{"passed":true},"temperature":{"current":41},"power_on_time":{"hours":1234},
             "nvme_smart_health_information_log":{"percentage_used":85,"available_spare":100,"media_errors":0,"data_units_written":20000000}}"#).unwrap();
         let d = parse_smart("nvme0n1", &j);
-        assert_eq!((d.kind.as_str(), d.used_pct, d.hours), ("nvme", Some(85), Some(1234)));
+        assert_eq!(
+            (d.kind.as_str(), d.used_pct, d.hours),
+            ("nvme", Some(85), Some(1234))
+        );
         assert!((d.written_tb.unwrap() - 10.24).abs() < 0.01);
         let j: Value = serde_json::from_str(r#"{"model_name":"WD","rotation_rate":7200,"smart_status":{"passed":true},
             "ata_smart_attributes":{"table":[{"id":5,"raw":{"value":8}},{"id":197,"raw":{"value":0}}]}}"#).unwrap();
         let s = parse_smart("sda", &j);
-        assert_eq!((s.kind.as_str(), s.realloc, s.pending), ("hdd", Some(8), Some(0)));
-        let r = Report { disks: vec![d, s], ..Default::default() };
+        assert_eq!(
+            (s.kind.as_str(), s.realloc, s.pending),
+            ("hdd", Some(8), Some(0))
+        );
+        let r = Report {
+            disks: vec![d, s],
+            ..Default::default()
+        };
         let p = problems(&r);
         assert_eq!(p.len(), 2, "{p:?}");
         assert_eq!(parse_ras("ue: 1\nce: 7\n"), (7, 1));

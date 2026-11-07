@@ -71,6 +71,8 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 - [ ] Alerta de GPU quente na bandeja
 - [ ] `numapilot backup` e guardar o arquivo fora do disco do sistema
 - [ ] Meus PCs: colar o link do painel da BC-250 e do notebook no servidor; no celular, ver os três e abrir cada um
+- [ ] Wake-on-LAN: ligar na BC-250 (Máquina → Ligar pela rede e na BIOS), desligar e ligar pelo botão do painel
+- [ ] Undervolt automático numa MI50 e na RX 9060 XT; saúde mostra o ECC das MI50
 
 ## Notebook (NVIDIA)
 
@@ -80,14 +82,24 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 - [ ] Placa dedicada dorme parada (Máquina → Notebook mostra "dormindo") e acorda ao abrir um jogo
 - [ ] Modo automático: Silencioso na bateria, Jogo/Normal na tomada; limite de carga em 80%
 - [ ] Limite de potência e clock máximo da NVIDIA aplicam (se o notebook permitir)
+- [ ] Rodar `bash ~/Projetos/numapilot-teste/testar.sh` e mandar o relatório (Ryzen 6800H + RTX 3070 Ti, Acer)
+- [ ] Máquina → Notebook: "Acordada por" lista quem segura a NVIDIA; fechar e ver "dormindo"
+- [ ] Limites do Ryzen (ryzenadj): STAPM 35 W e 85 °C aplicam; voltam sozinhos depois de tirar/pôr na tomada
+- [ ] EPP (power/balance_power) aplica no modo Silencioso
+- [ ] Acer: módulo Linuwu-Sense carregado; ventoinha máximo/automático, limite de 80%, RGB
+- [ ] NVIDIA: clock travado 1800 MHz + curva +150 MHz; consumo menor no mesmo FPS; volta a 0 ao desmarcar
+- [ ] Undervolt automático na NVIDIA (`sudo pacman -S vkmark`; botão "Achar o undervolt sozinho"); Ctrl+C devolve
+- [ ] Saúde do hardware: SSD e bateria aparecem (sudo pacman -S smartmontools)
 
 ## Outros PCs
 
 - [ ] PC i7-5775C + BC-160 e PC CC150 + RX 9060 XT: `./install.sh`, `numapilot doctor`, aba Máquina
 - [ ] BC-250: `numapilot doctor` (kernel, Mesa, governor, IOMMU); instalar/ligar o governor; editar a
       configuração pela aba Placas de vídeo e conferir o clock subindo (`cat .../pp_dpm_sclk`)
-- [ ] BC-250: descobrir a interface de CUs do kernel com patch (para ligar/desligar pela interface)
-      e o caminho de configuração do bc250_smu_oc (para aplicar o overclock da CPU pelo app)
+- [ ] BC-250: instalar o BC250 Control Center pelo botão; desbloquear 8 núcleos e 40 CUs por ele;
+      o numapilot mostra 8/8 núcleos e (depois de reiniciar) 40/40 CUs
+- [ ] BC-250: Memória para a GPU 14 GiB; `numapilot boot status`; carregar um modelo de 14B no servidor de IA
+- [ ] BC-250: Streaming com codificador por software (superfast) no Moonlight
 - [ ] RX 9060 XT: deslocamento de voltagem (-50 mV), curva da ventoinha no firmware, link PCIe
 - [ ] BC-160: curva de 3 pontos e ventoinha; renderizar nela com o monitor na outra placa
 

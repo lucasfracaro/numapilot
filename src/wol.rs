@@ -18,13 +18,18 @@ pub struct Nic {
 
 /// Placas de rede com fio de verdade (têm dispositivo; não são ponte, VPN ou wifi).
 pub fn nics() -> Vec<Nic> {
-    let Ok(rd) = std::fs::read_dir(sys("class/net")) else { return vec![] };
+    let Ok(rd) = std::fs::read_dir(sys("class/net")) else {
+        return vec![];
+    };
     let mut v: Vec<Nic> = rd
         .flatten()
         .filter_map(|e| {
             let iface = e.file_name().to_string_lossy().to_string();
             let d = e.path();
-            if !d.join("device").exists() || d.join("wireless").exists() || d.join("phy80211").exists() {
+            if !d.join("device").exists()
+                || d.join("wireless").exists()
+                || d.join("phy80211").exists()
+            {
                 return None;
             }
             if read_trim(d.join("type")).as_deref() != Some("1") {
@@ -32,7 +37,13 @@ pub fn nics() -> Vec<Nic> {
             }
             let mac = read_trim(d.join("address"))?;
             let (wol, supports) = ethtool_wol(&iface);
-            Some(Nic { up: read_trim(d.join("operstate")).as_deref() == Some("up"), iface, mac, wol, supports })
+            Some(Nic {
+                up: read_trim(d.join("operstate")).as_deref() == Some("up"),
+                iface,
+                mac,
+                wol,
+                supports,
+            })
         })
         .collect();
     v.sort_by(|a, b| b.up.cmp(&a.up).then(a.iface.cmp(&b.iface)));
@@ -64,7 +75,10 @@ fn ethtool_wol(iface: &str) -> (Option<String>, Option<String>) {
 
 /// Liga o WoL (pacote mágico) na placa. Precisa de root (o serviço faz).
 pub fn enable(iface: &str) -> Result<(), String> {
-    if !iface.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+    if !iface
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
+    {
         return Err("nome de interface inválido".into());
     }
     let o = Command::new("ethtool")
@@ -72,16 +86,28 @@ pub fn enable(iface: &str) -> Result<(), String> {
         .output()
         .map_err(|e| format!("ethtool: {e} (sudo pacman -S ethtool)"))?;
     if !o.status.success() {
-        return Err(format!("ethtool: {}", String::from_utf8_lossy(&o.stderr).trim()));
+        return Err(format!(
+            "ethtool: {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        ));
     }
     // NetworkManager: guarda na conexão para ele não desligar de novo.
-    if let Ok(o) = Command::new("nmcli").args(["-g", "NAME,DEVICE", "con", "show", "--active"]).output() {
+    if let Ok(o) = Command::new("nmcli")
+        .args(["-g", "NAME,DEVICE", "con", "show", "--active"])
+        .output()
+    {
         for l in String::from_utf8_lossy(&o.stdout).lines() {
             if let Some((name, dev)) = l.rsplit_once(':')
                 && dev == iface
             {
                 let _ = Command::new("nmcli")
-                    .args(["con", "modify", &name.replace("\\:", ":"), "802-3-ethernet.wake-on-lan", "magic"])
+                    .args([
+                        "con",
+                        "modify",
+                        &name.replace("\\:", ":"),
+                        "802-3-ethernet.wake-on-lan",
+                        "magic",
+                    ])
                     .output();
             }
         }
@@ -127,7 +153,11 @@ pub fn wake(mac: &str, ip_hint: Option<&str>) -> Result<(), String> {
             sent |= s.send_to(&pkt, format!("{t}:{port}")).is_ok();
         }
     }
-    if sent { Ok(()) } else { Err("não consegui mandar o pacote (rede?)".into()) }
+    if sent {
+        Ok(())
+    } else {
+        Err("não consegui mandar o pacote (rede?)".into())
+    }
 }
 
 #[cfg(test)]
@@ -142,7 +172,8 @@ mod tests {
         assert_eq!(&p[..6], &[0xFF; 6]);
         assert_eq!(&p[96..], &m);
         assert!(parse_mac("aa:bb").is_none());
-        let (w, s) = parse_ethtool("Settings for enp3s0:\n\tSupports Wake-on: pumbg\n\tWake-on: d\n");
+        let (w, s) =
+            parse_ethtool("Settings for enp3s0:\n\tSupports Wake-on: pumbg\n\tWake-on: d\n");
         assert_eq!((w.as_deref(), s.as_deref()), (Some("d"), Some("pumbg")));
     }
 }

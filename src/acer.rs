@@ -8,12 +8,42 @@ use std::path::PathBuf;
 
 /// Ajustes conhecidos: chave, arquivo, nome, explicação.
 pub const KNOBS: &[(&str, &str, &str, &str)] = &[
-    ("fan_speed", "fan_speed", "Ventoinhas (CPU, GPU %)", "0,0 = automático; 100,100 = máximo"),
-    ("battery_limiter", "battery_limiter", "Parar de carregar em 80%", "aumenta a vida da bateria quando fica na tomada"),
-    ("lcd_override", "lcd_override", "Overdrive da tela", "menos rastro em movimento rápido"),
-    ("backlight_timeout", "backlight_timeout", "Apagar a luz do teclado", "depois de 30 s sem usar"),
-    ("usb_charging", "usb_charging", "Carregar USB desligado", "até a bateria chegar a 10, 20 ou 30% (0 = não)"),
-    ("boot_animation_sound", "boot_animation_sound", "Animação e som ao ligar", ""),
+    (
+        "fan_speed",
+        "fan_speed",
+        "Ventoinhas (CPU, GPU %)",
+        "0,0 = automático; 100,100 = máximo",
+    ),
+    (
+        "battery_limiter",
+        "battery_limiter",
+        "Parar de carregar em 80%",
+        "aumenta a vida da bateria quando fica na tomada",
+    ),
+    (
+        "lcd_override",
+        "lcd_override",
+        "Overdrive da tela",
+        "menos rastro em movimento rápido",
+    ),
+    (
+        "backlight_timeout",
+        "backlight_timeout",
+        "Apagar a luz do teclado",
+        "depois de 30 s sem usar",
+    ),
+    (
+        "usb_charging",
+        "usb_charging",
+        "Carregar USB desligado",
+        "até a bateria chegar a 10, 20 ou 30% (0 = não)",
+    ),
+    (
+        "boot_animation_sound",
+        "boot_animation_sound",
+        "Animação e som ao ligar",
+        "",
+    ),
 ];
 
 /// Efeitos do RGB de 4 zonas (four_zone_mode).
@@ -82,16 +112,24 @@ pub fn validate(key: &str, v: &str) -> Result<(), String> {
             return Err(format!("{key}: esperava {n} números separados por vírgula"));
         }
         for (i, x) in p.iter().enumerate() {
-            let x: u32 = x.trim().parse().map_err(|_| format!("{key}: '{x}' não é número"))?;
+            let x: u32 = x
+                .trim()
+                .parse()
+                .map_err(|_| format!("{key}: '{x}' não é número"))?;
             if x > max[i.min(max.len() - 1)] {
-                return Err(format!("{key}: {x} acima do máximo {}", max[i.min(max.len() - 1)]));
+                return Err(format!(
+                    "{key}: {x} acima do máximo {}",
+                    max[i.min(max.len() - 1)]
+                ));
             }
         }
         Ok(())
     };
     match key {
         "fan_speed" => nums(2, &[100]),
-        "battery_limiter" | "lcd_override" | "backlight_timeout" | "boot_animation_sound" => nums(1, &[1]),
+        "battery_limiter" | "lcd_override" | "backlight_timeout" | "boot_animation_sound" => {
+            nums(1, &[1])
+        }
         "usb_charging" => {
             if ["0", "10", "20", "30"].contains(&v) {
                 Ok(())
@@ -104,9 +142,19 @@ pub fn validate(key: &str, v: &str) -> Result<(), String> {
         // RRGGBB,RRGGBB,RRGGBB,RRGGBB,brilho
         "kb_zones" => {
             let p: Vec<&str> = v.split(',').collect();
-            let hex_ok = p.len() == 5 && p[..4].iter().all(|z| z.len() == 6 && z.chars().all(|c| c.is_ascii_hexdigit()));
-            let b_ok = p.get(4).and_then(|b| b.parse::<u32>().ok()).is_some_and(|b| b <= 100);
-            if hex_ok && b_ok { Ok(()) } else { Err("kb_zones: use RRGGBB,RRGGBB,RRGGBB,RRGGBB,brilho".into()) }
+            let hex_ok = p.len() == 5
+                && p[..4]
+                    .iter()
+                    .all(|z| z.len() == 6 && z.chars().all(|c| c.is_ascii_hexdigit()));
+            let b_ok = p
+                .get(4)
+                .and_then(|b| b.parse::<u32>().ok())
+                .is_some_and(|b| b <= 100);
+            if hex_ok && b_ok {
+                Ok(())
+            } else {
+                Err("kb_zones: use RRGGBB,RRGGBB,RRGGBB,RRGGBB,brilho".into())
+            }
         }
         _ => Err(format!("ajuste desconhecido: {key}")),
     }
@@ -114,7 +162,8 @@ pub fn validate(key: &str, v: &str) -> Result<(), String> {
 
 pub fn set(key: &str, v: &str) -> Result<(), String> {
     validate(key, v)?;
-    let p = path_for(key).ok_or_else(|| format!("{key}: o módulo linuwu_sense não expõe isso neste notebook"))?;
+    let p = path_for(key)
+        .ok_or_else(|| format!("{key}: o módulo linuwu_sense não expõe isso neste notebook"))?;
     std::fs::write(&p, v).map_err(|e| format!("{}: {e}", p.display()))
 }
 

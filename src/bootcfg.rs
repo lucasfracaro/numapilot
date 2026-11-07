@@ -162,7 +162,10 @@ pub fn set_gpu_memory(gib: Option<f64>, log: &mut dyn FnMut(&str)) -> Result<(),
     let total = mem_total_gib();
     let pages = match gib {
         Some(g) if g < 1.0 || (total > 0.0 && g > total - 1.0) => {
-            return Err(format!("valor fora da faixa: 1 a {:.0} GiB (deixe ao menos 1 GiB para o sistema)", (total - 1.0).max(1.0)));
+            return Err(format!(
+                "valor fora da faixa: 1 a {:.0} GiB (deixe ao menos 1 GiB para o sistema)",
+                (total - 1.0).max(1.0)
+            ));
         }
         Some(g) => Some(gib_to_pages(g)),
         None => None,
@@ -172,9 +175,16 @@ pub fn set_gpu_memory(gib: Option<f64>, log: &mut dyn FnMut(&str)) -> Result<(),
     let changed = write_conf(&text, mask.is_none() && pages.is_none(), log)?;
     if let Some(p) = pages {
         for f in ["pages_limit", "page_pool_size"] {
-            match std::fs::write(crate::util::sys(&format!("module/ttm/parameters/{f}")), p.to_string()) {
-                Ok(()) => log(&format!("ttm {f}={p} aplicado agora (vale para os próximos programas)")),
-                Err(e) => log(&format!("ttm {f}: não deu para aplicar agora ({e}); vale depois de reiniciar")),
+            match std::fs::write(
+                crate::util::sys(&format!("module/ttm/parameters/{f}")),
+                p.to_string(),
+            ) {
+                Ok(()) => log(&format!(
+                    "ttm {f}={p} aplicado agora (vale para os próximos programas)"
+                )),
+                Err(e) => log(&format!(
+                    "ttm {f}: não deu para aplicar agora ({e}); vale depois de reiniciar"
+                )),
             }
         }
     }
@@ -263,6 +273,9 @@ mod tests {
         assert!(render(Some(0xfff7ffff), None).contains("options amdgpu ppfeaturemask=0xfff7ffff"));
         assert!(!render(None, None).contains("options"));
         let r = render(None, Some(gib_to_pages(16.0)));
-        assert!(r.contains("options ttm pages_limit=4194304 page_pool_size=4194304"), "{r}");
+        assert!(
+            r.contains("options ttm pages_limit=4194304 page_pool_size=4194304"),
+            "{r}"
+        );
     }
 }
