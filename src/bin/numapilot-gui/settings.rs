@@ -90,6 +90,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             );
         }
         updates_ui(app, ui);
+        ui.add_space(4.0);
+        selfupdate_ui(app, ui);
 
         ui.add_space(8.0);
         ui.heading("Painel no celular");
@@ -351,6 +353,37 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
                     app.toast(format!("{} adicionado", p.name), true);
                     app.peer_link.clear();
                     app.peer_name.clear();
+                }
+                Err(e) => app.toast(e, false),
+            }
+        }
+    });
+}
+
+fn selfupdate_ui(app: &mut App, ui: &mut egui::Ui) {
+    use numapilot::selfupdate::{self, How};
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(format!("numapilot {}", env!("CARGO_PKG_VERSION"))).strong());
+        let how = selfupdate::how();
+        ui.label(
+            RichText::new(match &how {
+                How::Package(p) => format!("pacote {p}"),
+                How::Source(d) => format!("código em {}", d.display()),
+                How::Unknown => "origem desconhecida".into(),
+            })
+            .small()
+            .weak(),
+        );
+        if ui
+            .add_enabled(how != How::Unknown, egui::Button::new("Atualizar o numapilot"))
+            .on_hover_text("Baixa a versão nova, recompila e reinstala num terminal (pede a senha). Depois, reabra a interface.")
+            .clicked()
+        {
+            match selfupdate::command() {
+                Ok(c) => {
+                    if let Err(e) = crate::jobs::in_terminal(&c) {
+                        app.toast(e, false);
+                    }
                 }
                 Err(e) => app.toast(e, false),
             }

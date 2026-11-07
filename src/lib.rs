@@ -33,6 +33,7 @@ pub mod procfs;
 pub mod profiles;
 pub mod recipes;
 pub mod ryzen;
+pub mod selfupdate;
 pub mod steam;
 pub mod topo;
 pub mod tuner;

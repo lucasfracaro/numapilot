@@ -200,6 +200,11 @@ sudo install -Dm755 target/release/numapilot /usr/local/bin/numapilot
 sudo install -Dm755 target/release/numapilot-gui /usr/local/bin/numapilot-gui
 sudo install -Dm644 packaging/numapilot-gui.desktop /usr/local/share/applications/numapilot.desktop
 sudo install -Dm755 packaging/gfx906-rocm /usr/local/bin/gfx906-rocm
+# de onde instalou (o "Atualizar o numapilot" da interface usa para buscar a versão nova)
+if [[ -d .git ]]; then
+    sudo install -d /var/lib/numapilot
+    pwd | sudo tee /var/lib/numapilot/source >/dev/null
+fi
 sudo install -d /usr/local/share/numapilot/container
 sudo install -m644 container/Containerfile container/*.txt container/*.py /usr/local/share/numapilot/container/
 sudo install -m755 container/lab-start /usr/local/share/numapilot/container/

@@ -103,6 +103,9 @@ enum Cmd {
         arg: Option<String>,
         name: Option<String>,
     },
+    /// Atualiza o próprio numapilot (pacote ou pasta do código): status | run
+    #[command(name = "self-update")]
+    SelfUpdate { action: Option<String> },
     /// Undervolt automático de uma GPU (apelido ou PCI): testa passo a passo com carga e grava o último estável
     Undervolt {
         gpu: String,
@@ -445,6 +448,31 @@ fn real_main() -> Result<()> {
                 }
                 _ => bail!("use: numapilot peers list | add LINK [NOME] | remove NOME | wake NOME | pull NOME [todos] | backup"),
             }
+        }
+        Cmd::SelfUpdate { action } => {
+            use numapilot::selfupdate::{self, How};
+            let h = selfupdate::how();
+            println!("numapilot {}", env!("CARGO_PKG_VERSION"));
+            match &h {
+                How::Package(p) => println!("instalado pelo pacote {p}"),
+                How::Source(d) => {
+                    println!("instalado pela pasta {}", d.display());
+                    match selfupdate::source_behind(d) {
+                        Some(0) => println!("já está na versão mais nova"),
+                        Some(n) => println!("{n} atualização(ões) novas no repositório"),
+                        None => println!("não consegui consultar o repositório"),
+                    }
+                }
+                How::Unknown => println!("origem desconhecida"),
+            }
+            if action.as_deref() == Some("run") {
+                let c = selfupdate::command().map_err(|e| anyhow::anyhow!(e))?;
+                let st = std::process::Command::new(&c[0]).args(&c[1..]).status()?;
+                if !st.success() {
+                    bail!("a atualização terminou com erro ({st})");
+                }
+            }
+            Ok(())
         }
         Cmd::Undervolt {
             gpu,
