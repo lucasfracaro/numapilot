@@ -161,6 +161,20 @@ fn act(body: &Value, topo: &Topology) -> Result<String, String> {
     let _ = topo;
     match body["action"].as_str().unwrap_or("") {
         "wake" => crate::peers::wake(body["name"].as_str().ok_or("falta name")?),
+        "launch" => {
+            let id = body["appid"].as_str().ok_or("falta appid")?;
+            if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
+                return Err("appid inválido".into());
+            }
+            let name = crate::steam::installed_games()
+                .into_iter()
+                .find(|g| g.0 == id)
+                .map(|g| g.1)
+                .ok_or("jogo não instalado aqui")?;
+            spawn_quiet(&["steam", &format!("steam://rungameid/{id}")])?;
+            Ok(format!("abrindo {name} na Steam"))
+        }
+        "sunshine" => sunshine_start(),
         "preset" => {
             let key = body["key"].as_str().ok_or("falta key")?.to_string();
             let preset = body["preset"].as_str().unwrap_or("auto");
@@ -242,6 +256,44 @@ pub fn metrics(topo: &Topology) -> String {
     out
 }
 
+/// Roda sem esperar e sem prender a saída (o painel continua respondendo).
+fn spawn_quiet(cmd: &[&str]) -> Result<(), String> {
+    std::process::Command::new(cmd[0])
+        .args(&cmd[1..])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("{}: {e}", cmd[0]))
+}
+
+/// Liga o Sunshine: serviço do usuário, Flatpak ou o executável.
+fn sunshine_start() -> Result<String, String> {
+    for unit in ["sunshine.service", "app-dev.lizardbyte.app.Sunshine.service"] {
+        let ok = std::process::Command::new("systemctl")
+            .args(["--user", "start", unit])
+            .output()
+            .is_ok_and(|o| o.status.success());
+        if ok {
+            return Ok("Sunshine ligado".into());
+        }
+    }
+    let flatpak = std::process::Command::new("flatpak")
+        .args(["info", "dev.lizardbyte.app.Sunshine"])
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if flatpak {
+        spawn_quiet(&["flatpak", "run", "dev.lizardbyte.app.Sunshine"])?;
+        return Ok("Sunshine ligando (Flatpak)".into());
+    }
+    if crate::containers::which("sunshine") {
+        spawn_quiet(&["sunshine"])?;
+        return Ok("Sunshine ligando".into());
+    }
+    Err("Sunshine não instalado neste PC".into())
+}
+
 fn authorized(req: &tiny_http::Request, token: &str) -> bool {
     let hdr = req
         .headers()
@@ -316,6 +368,13 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
                 }
                 respond(req, 200, "application/json", Value::Array(v).to_string())
             }
+            (tiny_http::Method::Get, "/api/games") => {
+                let v: Vec<Value> = crate::steam::installed_games()
+                    .into_iter()
+                    .map(|(id, name)| json!({"appid": id, "name": name}))
+                    .collect();
+                respond(req, 200, "application/json", Value::Array(v).to_string())
+            }
             (tiny_http::Method::Get, "/metrics") => {
                 respond(req, 200, "text/plain; version=0.0.4", metrics(&topo))
             }
@@ -361,6 +420,9 @@ button:active{background:var(--acc)}.hot{color:var(--bad)}.warm{color:var(--warn
 <h2>Processadores</h2><div class="grid" id="nodes"></div>
 <h2>Programas</h2><div id="progs"></div>
 <div id="peersbox" style="display:none"><h2>Meus PCs</h2><div class="grid" id="peers"></div></div>
+<div id="gamesbox" style="display:none"><h2>Jogos</h2><div class="card">
+<div class="row"><input id="gq" placeholder="procurar" oninput="drawGames()" style="flex:1;padding:6px;border-radius:6px;border:1px solid #444;background:#111;color:var(--fg)">
+<button onclick="act({action:'sunshine'})">Ligar Sunshine</button></div><div id="games"></div></div></div>
 <h2>Atalhos</h2><div class="card">
 <div class="row"><span>Laboratório (Jupyter/VS Code)</span></div>
 <button onclick="act({action:'lab_up'})">Ligar</button><button onclick="act({action:'lab_down'})">Desligar</button>
@@ -406,7 +468,9 @@ async function peers(){try{const r=await fetch('/api/peers',{headers:{'X-Token':
   ${spark(x.hist)}
   <div class="mut">CPU ${(x.load||[]).map(l=>Math.round(l*100)+'%').join(' · ')}</div>
   <a href="${esc(x.link)}"><button>Abrir</button></a>`:`<div class="mut">desligado ou fora da rede</div>${x.can_wake?`<button onclick='act({action:"wake",name:${JSON.stringify(x.name)}})'>Ligar</button>`:''}`}</div>`).join('')}catch(e){}}
-load();setInterval(load,3000);peers();setInterval(peers,15000);
+let G=[];async function games(){try{const r=await fetch('/api/games',{headers:{'X-Token':T}});if(!r.ok)return;G=await r.json();document.getElementById('gamesbox').style.display=G.length?'block':'none';drawGames()}catch(e){}}
+function drawGames(){const q=(document.getElementById('gq').value||'').toLowerCase();document.getElementById('games').innerHTML=G.filter(g=>g.name.toLowerCase().includes(q)).slice(0,30).map(g=>`<div class="row" style="margin-top:6px"><span>${esc(g.name)}</span><button onclick='act({action:"launch",appid:${JSON.stringify(g.appid)}})'>Abrir</button></div>`).join('')}
+load();setInterval(load,3000);peers();setInterval(peers,15000);games();
 </script></body></html>
 "##;
 
