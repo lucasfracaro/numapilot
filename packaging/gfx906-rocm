@@ -536,6 +536,7 @@ lab_up() {
     [[ -n $renders ]] || renders=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true)
     for r in $renders; do args+=(--device="$r"); done
     mapfile -t -O "${#args[@]}" args < <(stack_devices)
+    mapfile -t -O "${#args[@]}" args < <(stack_env)
     if [[ $eng == podman && $EUID -ne 0 ]]; then
         args+=(--group-add keep-groups)
     else
@@ -910,6 +911,16 @@ cmd_llm() {
 # ---------------------------------------------------------------- validação antes de trocar de versão
 STATE_DIR="$(dirname "$UPDATE_LOG")"
 RELEASES_URL="https://github.com/mixa3607/ML-gfx906/releases"
+
+stack_env() { # variáveis extras por placa (uma linha cada)
+    # BC-250: memória unificada; o llama.cpp com Vulkan gera texto 5-12% mais rápido na memória
+    # visível pela CPU (heap 0) do que na "local" que ele escolhe sozinho.
+    if [[ $GPU_STACK == vulkan ]] && grep -qil 0x13fe /sys/bus/pci/devices/*/device 2>/dev/null &&
+        grep -qil 0x1002 /sys/bus/pci/devices/*/vendor 2>/dev/null; then
+        printf '%s\n' -e GGML_VK_PREFER_HOST_MEMORY=1
+    fi
+    return 0
+}
 
 stack_devices() { # dispositivos extras da pilha (uma linha cada)
     case $GPU_STACK in

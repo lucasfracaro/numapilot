@@ -810,6 +810,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                 });
                 board_ui(app, ui, g);
+                apu_memory_ui(app, ui, g);
                 ui.horizontal_wrapped(|ui| {
                     if let Some(l) = gpuctl::pcie_link(&g.pci) {
                         let txt = format!("PCIe Gen{} x{} (máx. Gen{} x{})", l.generation, l.width, l.max_gen, l.max_width);
@@ -966,5 +967,57 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         app.send(Request::SetGpuControl { pci, control, trial: false });
         app.gpu_saved = gpuctl::GpuControls::load();
         app.gpu_edit.clear();
+    }
+}
+
+/// Memória que a GPU integrada (APU/BC-250) pode usar: padrão do kernel = metade da RAM, o que
+/// limita modelos de IA grandes. Grava em /etc/modprobe.d (ttm.pages_limit) e aplica já.
+fn apu_memory_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
+    let bc = numapilot::recipes::load().board_for(g).is_some_and(|b| b.cus.is_some());
+    if g.vendor != 0x1002 || !(g.is_integrated() || bc) {
+        return;
+    }
+    use numapilot::bootcfg;
+    let total = bootcfg::mem_total_gib();
+    if total < 4.0 {
+        return;
+    }
+    let gib = |p: u64| p as f64 * 4096.0 / 1073741824.0;
+    let now = bootcfg::ttm_now().map(gib);
+    let saved = bootcfg::saved_ttm().map(gib);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Memória para a GPU (IA):").strong())
+            .on_hover_text("Quanto da RAM a GPU integrada pode usar. O padrão do kernel é a metade, o que impede modelos grandes de carregar. Deixe 1-2 GiB para o sistema.");
+        let id = ui.scope_id().with(("apumem", &g.pci));
+        let mut v: f64 = ui.data(|d| d.get_temp(id)).unwrap_or(saved.or(now).unwrap_or(total / 2.0).min(total - 1.0));
+        ui.add(egui::Slider::new(&mut v, 2.0..=(total - 1.0).max(2.0)).suffix(" GiB").step_by(0.5).fixed_decimals(1));
+        ui.data_mut(|d| d.insert_temp(id, v));
+        if ui.button("Aplicar").on_hover_text("Grava para os próximos boots e aplica agora (pede a senha)").clicked() {
+            app.start_job(
+                "Memória da GPU",
+                vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "boot".into(), "gpu-memory".into(), format!("{v:.1}")],
+            );
+        }
+        if saved.is_some() && ui.small_button("padrão").clicked() {
+            app.start_job(
+                "Memória da GPU",
+                vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "boot".into(), "gpu-memory".into(), "padrao".into()],
+            );
+        }
+        ui.label(
+            RichText::new(format!(
+                "agora {} · no boot {}",
+                now.map(|x| format!("{x:.1} GiB")).unwrap_or("?".into()),
+                saved.map(|x| format!("{x:.1} GiB")).unwrap_or("padrão".into())
+            ))
+            .weak(),
+        );
+    });
+    if bc {
+        ui.label(
+            RichText::new("BC-250: com 16 GB, 14 GiB deixa os modelos de até ~14B carregarem (BIOS com UMA em 512 MB). O servidor de IA usa o Vulkan e já liga o GGML_VK_PREFER_HOST_MEMORY (+5 a 12% na geração).")
+                .small()
+                .weak(),
+        );
     }
 }

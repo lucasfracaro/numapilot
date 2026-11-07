@@ -77,7 +77,7 @@ enum Cmd {
         report: bool,
     },
     /// Opções de boot que sobrevivem às atualizações do kernel (precisa de sudo para mudar).
-    /// status | overdrive on|off | cmdline [add|remove PARAM...]
+    /// status | overdrive on|off | gpu-memory GiB|padrao | cmdline [add|remove PARAM...]
     Boot {
         what: String,
         #[arg(trailing_var_arg = true)]
@@ -1170,6 +1170,12 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
                     ""
                 }
             );
+            let gib = |p: u64| p as f64 * 4096.0 / 1073741824.0;
+            println!(
+                "Memória da GPU integrada (ttm): {} agora, {} no boot",
+                bootcfg::ttm_now().map(|p| format!("{:.1} GiB", gib(p))).unwrap_or("?".into()),
+                bootcfg::saved_ttm().map(|p| format!("{:.1} GiB", gib(p))).unwrap_or("padrão (metade da RAM)".into())
+            );
             println!("Arquivo: {}", bootcfg::conf_path().display());
             match bootcfg::initramfs_tool() {
                 Some(t) => println!("Imagem de boot refeita com: {}", t.join(" ")),
@@ -1181,8 +1187,16 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
             bootcfg::set_overdrive(v == "on", &mut |m| println!("{m}"))
                 .map_err(|e| anyhow::anyhow!(e))
         }
+        ("gpu-memory", Some(v)) => {
+            let gib = if v == "padrao" || v == "default" || v == "off" {
+                None
+            } else {
+                Some(v.trim_end_matches(['G', 'g']).replace(',', ".").parse::<f64>().context("use um número em GiB (ex.: 14) ou padrao")?)
+            };
+            bootcfg::set_gpu_memory(gib, &mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
+        }
         _ => bail!(
-            "use: numapilot boot status | sudo numapilot boot overdrive on|off | numapilot boot cmdline [add|remove PARAM...]"
+            "use: numapilot boot status | sudo numapilot boot overdrive on|off | sudo numapilot boot gpu-memory GiB|padrao | numapilot boot cmdline [add|remove PARAM...]"
         ),
     }
 }

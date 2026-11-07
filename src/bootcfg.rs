@@ -75,7 +75,7 @@ pub fn overdrive_mask(base: u64) -> u64 {
     base | OVERDRIVE_BIT
 }
 
-fn render(mask: Option<u64>) -> String {
+fn render(mask: Option<u64>, ttm_pages: Option<u64>) -> String {
     let mut s = String::from(
         "# Gerado pelo numapilot (Configurações → Opções de boot). Edite pela interface ou\n\
          # com `sudo numapilot boot ...`. Vale para qualquer kernel instalado.\n",
@@ -84,7 +84,105 @@ fn render(mask: Option<u64>) -> String {
         s.push_str("# OverDrive das placas AMD (clock/voltagem: undervolt e overclock)\n");
         s.push_str(&format!("options amdgpu ppfeaturemask=0x{m:x}\n"));
     }
+    if let Some(p) = ttm_pages {
+        s.push_str(&format!(
+            "# Memória que a GPU integrada/APU pode usar ({:.1} GiB; páginas de 4 KiB)\n",
+            p as f64 * 4096.0 / 1073741824.0
+        ));
+        s.push_str(&format!("options ttm pages_limit={p} page_pool_size={p}\n"));
+    }
     s
+}
+
+/// Limite de memória da GPU (páginas de 4 KiB) salvo no nosso arquivo.
+pub fn saved_ttm() -> Option<u64> {
+    let s = std::fs::read_to_string(conf_path()).ok()?;
+    s.lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .flat_map(|l| l.split_whitespace())
+        .find_map(|w| w.strip_prefix("pages_limit="))
+        .and_then(|v| v.parse().ok())
+}
+
+/// Limite em uso agora (páginas de 4 KiB).
+pub fn ttm_now() -> Option<u64> {
+    crate::util::read_u64(crate::util::sys("module/ttm/parameters/pages_limit"))
+}
+
+pub fn gib_to_pages(gib: f64) -> u64 {
+    (gib * 1073741824.0 / 4096.0).round() as u64
+}
+
+/// Memória total do sistema (GiB).
+pub fn mem_total_gib() -> f64 {
+    std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.strip_prefix("MemTotal:"))
+                .and_then(|r| r.split_whitespace().next()?.parse::<f64>().ok())
+        })
+        .map(|kb| kb / 1048576.0)
+        .unwrap_or(0.0)
+}
+
+fn write_conf(text: &str, empty: bool, log: &mut dyn FnMut(&str)) -> Result<bool, String> {
+    let path = conf_path();
+    let old = std::fs::read_to_string(&path).ok();
+    if old.as_deref() == Some(text) {
+        log("Nada mudou no arquivo.");
+        return Ok(false);
+    }
+    if empty && old.is_none() {
+        log("Já estava desligado.");
+        return Ok(false);
+    }
+    if let Some(o) = &old {
+        let _ = std::fs::write(path.with_extension("conf.bak"), o);
+    }
+    if empty {
+        std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        log(&format!("Removido {}", path.display()));
+    } else {
+        if let Some(d) = path.parent() {
+            std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+        log(&format!("Gravado {}", path.display()));
+    }
+    Ok(true)
+}
+
+/// Memória que a GPU integrada (APU, BC-250) pode usar para IA/jogos: grava no boot e tenta
+/// aplicar já. None = volta ao padrão do kernel (metade da RAM).
+pub fn set_gpu_memory(gib: Option<f64>, log: &mut dyn FnMut(&str)) -> Result<(), String> {
+    if !crate::util::is_root() {
+        return Err("precisa de root (use sudo, ou o botão da interface pede a senha)".into());
+    }
+    let total = mem_total_gib();
+    let pages = match gib {
+        Some(g) if g < 1.0 || (total > 0.0 && g > total - 1.0) => {
+            return Err(format!("valor fora da faixa: 1 a {:.0} GiB (deixe ao menos 1 GiB para o sistema)", (total - 1.0).max(1.0)));
+        }
+        Some(g) => Some(gib_to_pages(g)),
+        None => None,
+    };
+    let mask = saved_mask();
+    let text = render(mask, pages);
+    let changed = write_conf(&text, mask.is_none() && pages.is_none(), log)?;
+    if let Some(p) = pages {
+        for f in ["pages_limit", "page_pool_size"] {
+            match std::fs::write(crate::util::sys(&format!("module/ttm/parameters/{f}")), p.to_string()) {
+                Ok(()) => log(&format!("ttm {f}={p} aplicado agora (vale para os próximos programas)")),
+                Err(e) => log(&format!("ttm {f}: não deu para aplicar agora ({e}); vale depois de reiniciar")),
+            }
+        }
+    }
+    if changed {
+        regenerate(log)?;
+    }
+    log("Pronto. Atualizações do kernel mantêm a opção.");
+    Ok(())
 }
 
 /// Ferramenta que refaz a imagem de boot, na ordem de preferência.
@@ -139,34 +237,13 @@ pub fn set_overdrive(on: bool, log: &mut dyn FnMut(&str)) -> Result<(), String> 
     } else {
         None
     };
-    let path = conf_path();
-    let old = std::fs::read_to_string(&path).ok();
-    let text = render(new);
-    if old.as_deref() == Some(text.as_str()) {
-        log("Nada mudou no arquivo.");
-    } else if new.is_none() && old.is_none() {
-        log("Já estava desligado.");
+    let ttm = saved_ttm();
+    let text = render(new, ttm);
+    if !write_conf(&text, new.is_none() && ttm.is_none(), log)? && new.is_none() && ttm.is_none() {
         return Ok(());
-    } else {
-        if let Some(o) = &old {
-            let _ = std::fs::write(path.with_extension("conf.bak"), o);
-        }
-        match new {
-            None => {
-                std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-                log(&format!("Removido {}", path.display()));
-            }
-            Some(m) => {
-                if let Some(d) = path.parent() {
-                    std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
-                }
-                std::fs::write(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
-                log(&format!(
-                    "Gravado {}: ppfeaturemask=0x{m:x}",
-                    path.display()
-                ));
-            }
-        }
+    }
+    if let Some(m) = new {
+        log(&format!("ppfeaturemask=0x{m:x}"));
     }
     regenerate(log)?;
     log("Pronto. Reinicie o computador para valer. Atualizações do kernel mantêm a opção.");
@@ -183,7 +260,9 @@ mod tests {
         assert_eq!(parse_hex("4294426623"), Some(0xfff7bfff));
         assert_eq!(overdrive_mask(0xfff7bfff), 0xfff7ffff);
         assert_eq!(overdrive_mask(0xfffd7fff), 0xfffd7fff);
-        assert!(render(Some(0xfff7ffff)).contains("options amdgpu ppfeaturemask=0xfff7ffff"));
-        assert!(!render(None).contains("options"));
+        assert!(render(Some(0xfff7ffff), None).contains("options amdgpu ppfeaturemask=0xfff7ffff"));
+        assert!(!render(None, None).contains("options"));
+        let r = render(None, Some(gib_to_pages(16.0)));
+        assert!(r.contains("options ttm pages_limit=4194304 page_pool_size=4194304"), "{r}");
     }
 }
