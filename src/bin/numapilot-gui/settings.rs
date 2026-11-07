@@ -306,6 +306,16 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
                     Err(e) => app.toast(e, false),
                 }
             }
+            if ui
+                .small_button("copiar perfis")
+                .on_hover_text("Traz os perfis de programa (Ajustar…) que este PC ainda não tem")
+                .clicked()
+            {
+                match numapilot::peers::pull_profiles(&p.name, false) {
+                    Ok(m) => app.toast(m, true),
+                    Err(e) => app.toast(e, false),
+                }
+            }
             if ui.small_button("remover").clicked() {
                 let _ = numapilot::peers::remove(&p.name);
             }

@@ -115,6 +115,83 @@ pub fn fetch(p: &Peer) -> Option<serde_json::Value> {
         .flatten()
 }
 
+fn get(p: &Peer, path: &str, out: Option<&std::path::Path>, secs: u32) -> Result<Vec<u8>, String> {
+    let mut c = std::process::Command::new("curl");
+    c.args(["-fsS", "--noproxy", "*", "--max-time", &secs.to_string(), "-H"])
+        .arg(format!("X-Token: {}", p.token));
+    if let Some(o) = out {
+        c.arg("-o").arg(o);
+    }
+    let o = c.arg(format!("{}{path}", p.url)).output().map_err(|e| format!("curl: {e}"))?;
+    if o.status.success() {
+        Ok(o.stdout)
+    } else {
+        Err(format!("{}: {}", p.name, String::from_utf8_lossy(&o.stderr).trim()))
+    }
+}
+
+/// Copia os perfis de programa de outro PC (os que este não tem; com `all`, todos).
+/// Perfis de jogos da Steam (steam:APPID) valem em qualquer PC.
+pub fn pull_profiles(name: &str, all: bool) -> Result<String, String> {
+    let p = load().into_iter().find(|p| p.name == name).ok_or_else(|| format!("PC {name} não está na lista"))?;
+    let body = get(&p, "/api/profiles", None, 10)?;
+    let theirs: std::collections::BTreeMap<String, crate::profiles::Profile> =
+        serde_json::from_slice(&body).map_err(|e| format!("resposta inválida: {e}"))?;
+    let mine = crate::profiles::Profiles::load();
+    let mut n = 0;
+    for (k, prof) in theirs {
+        if !all && mine.get(&k).is_some() {
+            continue;
+        }
+        let r = crate::ctl::send(&crate::ctl::Request::SetProfile { key: k.clone(), profile: prof, pid: None })
+            .map_err(|e| format!("serviço numapilot: {e}"))?;
+        if r.ok {
+            n += 1;
+        }
+    }
+    Ok(format!("{n} perfil(s) copiado(s) de {name}"))
+}
+
+pub fn backup_dir() -> std::path::PathBuf {
+    std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| "/tmp".into())
+        .join("numapilot-backups")
+}
+
+/// Guarda o backup de cada PC ligado em ~/numapilot-backups/NOME/AAAA-MM-DD.tar.gz (7 mais novos).
+pub fn backup_all() -> Vec<String> {
+    let mut msgs = vec![];
+    for p in load() {
+        let dir = backup_dir().join(&p.name);
+        if std::fs::create_dir_all(&dir).is_err() {
+            continue;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(backup_dir(), std::fs::Permissions::from_mode(0o700));
+        }
+        let f = dir.join(format!("{}.tar.gz", crate::energy::today()));
+        match get(&p, "/api/backup", Some(&f), 120) {
+            Ok(_) => msgs.push(format!("{}: {}", p.name, f.display())),
+            Err(e) => {
+                let _ = std::fs::remove_file(&f);
+                msgs.push(e);
+                continue;
+            }
+        }
+        let mut files: Vec<_> = std::fs::read_dir(&dir)
+            .map(|rd| rd.flatten().map(|e| e.path()).filter(|x| x.extension().is_some_and(|e| e == "gz")).collect())
+            .unwrap_or_default();
+        files.sort();
+        while files.len() > 7 {
+            let _ = std::fs::remove_file(files.remove(0));
+        }
+    }
+    msgs
+}
+
 /// MAC com Wake-on-LAN ligado no estado do outro PC.
 fn wol_mac(s: &serde_json::Value) -> Option<String> {
     s["wol"]

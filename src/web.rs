@@ -368,6 +368,21 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
                 }
                 respond(req, 200, "application/json", Value::Array(v).to_string())
             }
+            (tiny_http::Method::Get, "/api/profiles") => {
+                let v = serde_json::to_string(&crate::profiles::Profiles::load().map).unwrap_or_default();
+                respond(req, 200, "application/json", v)
+            }
+            (tiny_http::Method::Get, "/api/backup") => {
+                let f = std::env::temp_dir().join(format!("numapilot-web-backup-{}.tar.gz", std::process::id()));
+                match crate::backup::create(Some(&f)).and_then(|p| std::fs::read(&p).map_err(|e| e.to_string())) {
+                    Ok(bytes) => {
+                        let _ = std::fs::remove_file(&f);
+                        let h = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/gzip"[..]).unwrap();
+                        let _ = req.respond(tiny_http::Response::from_data(bytes).with_header(h));
+                    }
+                    Err(e) => respond(req, 500, "application/json", json!({"error": e}).to_string()),
+                }
+            }
             (tiny_http::Method::Get, "/api/games") => {
                 let v: Vec<Value> = crate::steam::installed_games()
                     .into_iter()

@@ -97,7 +97,7 @@ enum Cmd {
         #[arg(long)]
         int8: bool,
     },
-    /// Outros PCs no painel do celular: list | add LINK [NOME] | remove NOME | wake NOME (liga pela rede)
+    /// Outros PCs: list | add LINK [NOME] | remove NOME | wake NOME (liga pela rede) | pull NOME [todos] (copia perfis) | backup (guarda o de todos)
     Peers {
         action: String,
         arg: Option<String>,
@@ -425,13 +425,25 @@ fn real_main() -> Result<()> {
                     println!("removido");
                     Ok(())
                 }
+                "pull" => {
+                    let m = peers::pull_profiles(&arg.context("faltou o nome")?, name.as_deref() == Some("todos"))
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    println!("{m}");
+                    Ok(())
+                }
+                "backup" => {
+                    for m in peers::backup_all() {
+                        println!("{m}");
+                    }
+                    Ok(())
+                }
                 "wake" => {
                     let m = peers::wake(&arg.context("faltou o nome")?)
                         .map_err(|e| anyhow::anyhow!(e))?;
                     println!("{m}");
                     Ok(())
                 }
-                _ => bail!("use: numapilot peers list | add LINK [NOME] | remove NOME | wake NOME"),
+                _ => bail!("use: numapilot peers list | add LINK [NOME] | remove NOME | wake NOME | pull NOME [todos] | backup"),
             }
         }
         Cmd::Undervolt {
