@@ -262,20 +262,7 @@ pub fn stress_cmd() -> Option<Vec<String>> {
 }
 
 fn stress_env(g: &Gpu, topo: &Topology) -> Vec<(String, String)> {
-    let d = crate::decide::Decision {
-        nodes: vec![],
-        cpus: vec![],
-        gpus: vec![g.clone()],
-        kind: crate::decide::Kind::Graphics,
-        mem: crate::config::MemSpec::Local,
-        manual: true,
-        limit_visible: false,
-        priority: "normal".into(),
-        needs_daemon: false,
-        fg_gpu: None,
-        reasons: vec![],
-    };
-    crate::decide::gpu_env(&d, topo).0
+    crate::decide::env_for_gpu(g, topo)
 }
 
 /// Roda a carga por `secs`. Ok se aguentou; Err com o motivo se caiu ou o kernel reclamou.

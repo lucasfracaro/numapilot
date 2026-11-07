@@ -438,6 +438,16 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
                     }
                     set.push(("__GLX_VENDOR_LIBRARY_NAME".into(), "nvidia".into()));
                     set.push(("__VK_LAYER_NV_optimus".into(), "NVIDIA_only".into()));
+                    // herdado de um programa que abriu na integrada (ex.: o Steam da inicialização)
+                    for v in [
+                        "VK_DRIVER_FILES",
+                        "VK_ICD_FILENAMES",
+                        "DRI_PRIME",
+                        "MESA_VK_DEVICE_SELECT",
+                        "MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE",
+                    ] {
+                        unset.push(v.into());
+                    }
                     let nvs = crate::nvctl::cuda_indices(topo);
                     if nvs.len() > 1
                         && let Some(i) = nvs.get(&g.pci)
@@ -622,4 +632,22 @@ pub fn non_nvidia_vk_icds() -> Vec<String> {
         .collect();
     v.sort();
     v
+}
+
+/// Variáveis para um programa rodar só numa placa (gráficos), sem passar pelo serviço.
+pub fn env_for_gpu(g: &crate::topo::Gpu, topo: &Topology) -> Vec<(String, String)> {
+    let d = Decision {
+        nodes: vec![],
+        cpus: vec![],
+        gpus: vec![g.clone()],
+        kind: Kind::Graphics,
+        mem: crate::config::MemSpec::Local,
+        manual: true,
+        limit_visible: false,
+        priority: "normal".into(),
+        needs_daemon: false,
+        fg_gpu: None,
+        reasons: vec![],
+    };
+    gpu_env(&d, topo).0
 }

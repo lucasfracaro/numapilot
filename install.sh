@@ -283,13 +283,31 @@ sudo systemctl enable --now numapilot.service
 sudo systemctl restart numapilot.service
 ok "numapilot.service ativo"
 
-# ------------------------------------------------------------------ 7. diagnóstico
+# ------------------------------------------------------------------ 7. notebook com NVIDIA
+if /usr/local/bin/numapilot hybrid 2>/dev/null | grep -q '^nvidia'; then
+    step "Notebook com NVIDIA"
+    echo "  Para a NVIDIA dormir quando não está em uso, o que abre com o sistema (ZapZap, Sunshine,"
+    echo "  notificadores...) e o Xwayland podem usar só a placa integrada. Jogos continuam na NVIDIA."
+    if ask "Abrir tudo que inicia com o sistema na placa integrada?"; then
+        /usr/local/bin/numapilot autostart igpu --if-hybrid || warn "não consegui ajustar a inicialização"
+        sudo /usr/local/bin/numapilot hybrid xwayland on || warn "não consegui ajustar o Xwayland"
+        NEED_RELOGIN=1
+    fi
+    if systemctl is-enabled --quiet lactd 2>/dev/null; then
+        warn "o serviço do LACT (lactd) mantém a NVIDIA acordada o tempo todo"
+        if ask "Desligar o lactd (o numapilot faz o controle das placas)?"; then
+            sudo systemctl disable --now lactd || true
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------ 8. diagnóstico
 step "Diagnóstico"
 sleep 2
 numapilot doctor | tail -n 25 || true
 
 echo
 echo "${B}Pronto.${N} Abra \"numapilot\" no menu."
-[[ $NEED_RELOGIN == 1 ]] && echo "${Y}Saia e entre de novo na sessão${N} para valer os grupos novos (acesso às GPUs pelo ROCm)."
+[[ $NEED_RELOGIN == 1 ]] && echo "${Y}Saia e entre de novo na sessão${N} para valer os grupos novos e a placa de cada programa."
 echo "Antes de formatar de novo: numapilot backup (e guarde o arquivo fora do disco do sistema)."
 echo "Roteiro de testes no hardware: docs/TESTES.md"

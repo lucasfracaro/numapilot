@@ -657,6 +657,14 @@ balanceamento NUMA) some.
   nenhum programa a usa, com consumo praticamente zero. O diagnóstico separa quem só abriu a saída
   de vídeo (KWin, logind) de quem usa a placa de verdade e a mantém acordada (no Nitro 5 testado:
   LACT, Sunshine com NVENC, ZapZap), com a dica para cada um.
+  **Tudo que abre com o sistema na integrada** (Máquina → Notebook, `numapilot autostart igpu`, e
+  o instalador oferece): os atalhos da inicialização (~/.config/autostart e /etc/xdg/autostart, ex.:
+  ZapZap, notificadores) e os serviços do usuário ligados no login (ex.: Sunshine) ganham as
+  variáveis que fazem OpenGL/EGL/Vulkan usarem só a integrada; o Exec original fica guardado e
+  `numapilot autostart normal` desfaz. Lançadores de jogos (Steam, Heroic, Lutris...) ficam como
+  estão, e um jogo escolhido para a NVIDIA limpa as variáveis herdadas. A interface reaplica ao
+  abrir, pegando programas novos na inicialização. O instalador também oferece desligar o `lactd`
+  (o serviço do LACT lê a NVIDIA o tempo todo).
   O **Xwayland** costuma abrir a NVIDIA mesmo sem usar: o botão "usar só a integrada no Xwayland"
   (`sudo numapilot hybrid xwayland on`) instala `/usr/local/bin/Xwayland`, que usa só o Mesa; jogos
   X11 escolhidos para a NVIDIA continuam indo para ela. Programas na integrada também deixam de

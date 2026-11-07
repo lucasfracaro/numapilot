@@ -134,6 +134,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     let mut job: Option<(String, Vec<String>)> = None;
     let mut app_toast: Option<String> = None;
     let mut dgpu_send: Option<Option<String>> = None;
+    let mut app_toast_ok2: Option<String> = None;
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         let mu = &mut app.mach;
@@ -284,6 +285,32 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                     if let Some(e) = &st.last_error {
                         ui.label(RichText::new(format!("Erro: {e}")).color(Color32::from_rgb(229, 83, 75)));
+                    }
+                }
+                {
+                    use numapilot::autostart;
+                    let mut on = autostart::enabled();
+                    if ui
+                        .checkbox(&mut on, "Tudo que abre com o sistema na integrada")
+                        .on_hover_text(
+                            "Os programas da inicialização (ZapZap, notificadores...) e os serviços do usuário (ex.: Sunshine) \
+                             passam a usar só a 680M, então não acordam a NVIDIA. Lançadores de jogos (Steam, Heroic, Lutris) \
+                             ficam como estão: os jogos continuam na NVIDIA. Vale a partir do próximo login.",
+                        )
+                        .changed()
+                    {
+                        if on {
+                            match autostart::apply(&topo) {
+                                Ok(ch) => app_toast_ok2 = Some(format!(
+                                    "Na integrada no próximo login: {}",
+                                    if ch.is_empty() { "nada novo".into() } else { ch.join(", ") }
+                                )),
+                                Err(e) => app_toast = Some(e),
+                            }
+                        } else {
+                            autostart::revert();
+                            app_toast_ok2 = Some("Inicialização de volta ao normal (próximo login)".into());
+                        }
                     }
                 }
                 if !hybrid::xwayland_wrapped() {
@@ -1300,6 +1327,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
     if let Some(e) = app_toast {
         app.toast(e, false);
+    }
+    if let Some(m) = app_toast_ok2 {
+        app.toast(m, true);
     }
     // o modo da NVIDIA vale na hora (sem o "Aplicar ajustes")
     if let Some(v) = dgpu_send {

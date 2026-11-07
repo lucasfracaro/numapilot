@@ -213,6 +213,10 @@ impl App {
     fn new(ctx: egui::Context) -> App {
         let cfg = Config::load().unwrap_or_default();
         let topo = Topology::load(&cfg);
+        // Programas novos na inicialização também vão para a integrada (se ligado).
+        if numapilot::autostart::enabled() {
+            let _ = numapilot::autostart::apply(&topo);
+        }
         let renders: Vec<String> = topo.gpus.iter().filter_map(|g| g.render.clone()).collect();
         let bg = bg::start(ctx.clone(), renders);
         let mut cpu_opts = vec![

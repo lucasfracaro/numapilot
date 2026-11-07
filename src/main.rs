@@ -121,6 +121,13 @@ enum Cmd {
         #[arg(long, default_value_t = 120)]
         disk: u32,
     },
+    /// Notebook com NVIDIA: o que abre com o sistema na integrada: status | igpu | normal
+    Autostart {
+        action: Option<String>,
+        /// Só faz algo em notebook com integrada + NVIDIA (para o instalador)
+        #[arg(long)]
+        if_hybrid: bool,
+    },
     /// Notebook com NVIDIA: status | auto | hibrido | integrada | nao-mexer | xwayland on|off
     Hybrid {
         action: Option<String>,
@@ -659,6 +666,63 @@ fn real_main() -> Result<()> {
                             "normal (pode prender a NVIDIA)"
                         }
                     );
+                    Ok(())
+                }
+            }
+        }
+        Cmd::Autostart { action, if_hybrid } => {
+            use numapilot::autostart;
+            let cfg = Config::load()?;
+            let topo = Topology::load(&cfg);
+            if if_hybrid && numapilot::hybrid::pair(&topo).is_none() {
+                return Ok(());
+            }
+            match action.as_deref().unwrap_or("status") {
+                "igpu" => {
+                    let ch = autostart::apply(&topo).map_err(|e| anyhow::anyhow!(e))?;
+                    if ch.is_empty() {
+                        println!("Tudo que abre com o sistema já está na integrada.");
+                    } else {
+                        println!(
+                            "Agora na integrada (vale a partir do próximo login): {}",
+                            ch.join(", ")
+                        );
+                    }
+                    Ok(())
+                }
+                "normal" => {
+                    let ch = autostart::revert();
+                    println!(
+                        "Voltaram ao normal: {}",
+                        if ch.is_empty() {
+                            "nada".into()
+                        } else {
+                            ch.join(", ")
+                        }
+                    );
+                    Ok(())
+                }
+                _ => {
+                    println!(
+                        "Na integrada: {}",
+                        if autostart::enabled() {
+                            "ligado"
+                        } else {
+                            "desligado"
+                        }
+                    );
+                    for e in autostart::entries() {
+                        if !e.hidden {
+                            println!(
+                                "  {:<40} {}",
+                                e.name,
+                                if e.wrapped { "integrada" } else { "-" }
+                            );
+                        }
+                    }
+                    for s in autostart::user_services() {
+                        println!("  {s:<40} (serviço do usuário)");
+                    }
                     Ok(())
                 }
             }
