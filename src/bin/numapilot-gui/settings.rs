@@ -321,6 +321,17 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
             }
         });
     }
+    if !peers.is_empty() {
+        ui.horizontal(|ui| {
+            if ui
+                .button("Backup de todos agora")
+                .on_hover_text("Guarda as configurações de cada PC ligado em ~/numapilot-backups (o painel no celular faz isso sozinho uma vez por dia)")
+                .clicked()
+            {
+                app.start_job("Backup dos PCs", vec![crate::jobs::sibling_abs("numapilot"), "peers".into(), "backup".into()]);
+            }
+        });
+    }
     ui.horizontal(|ui| {
         ui.add(
             egui::TextEdit::singleline(&mut app.peer_link)
