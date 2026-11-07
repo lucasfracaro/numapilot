@@ -104,7 +104,7 @@ if [[ -e /dev/ipmi0 ]] || lsmod 2>/dev/null | grep -q '^ipmi_si'; then
     RECOMMENDED+=("ipmitool|ventoinhas pelo IPMI da placa de servidor")
 fi
 
-missing_req=() missing_rec=() unavailable=()
+missing_req=() missing_rec=() unavailable=() missing_aur=()
 if [[ $HAS_PACMAN == 1 ]]; then
     for e in "${REQUIRED[@]}"; do
         p=${e%%|*} why=${e#*|}
@@ -121,6 +121,22 @@ if [[ $HAS_PACMAN == 1 ]]; then
             unavailable+=("$p")
         fi
     done
+    # o que não está nos repositórios oficiais pode estar no AUR (paru/yay)
+    AUR_HELPER=$(command -v paru || command -v yay || true)
+    missing_aur=()
+    if [[ -n $AUR_HELPER ]]; then
+        for p in "${unavailable[@]}"; do
+            if "$AUR_HELPER" -Si "$p" >/dev/null 2>&1; then
+                warn "$p não instalado (AUR)"
+                missing_aur+=("$p")
+            fi
+        done
+        if ((${#missing_aur[@]} > 0)); then
+            un=()
+            for p in "${unavailable[@]}"; do [[ " ${missing_aur[*]} " == *" $p "* ]] || un+=("$p"); done
+            unavailable=("${un[@]}")
+        fi
+    fi
     ((${#unavailable[@]} == 0)) || echo "  (sem pacote nesta distro: ${unavailable[*]})"
 else
     warn "não é Arch/CachyOS: confira à mão (Rust, gcc, pkg-config, libxkbcommon, wayland, mesa, polkit, podman)"
@@ -165,9 +181,41 @@ if ((${#missing_rec[@]} > 0)) && [[ $MINIMAL == 0 ]]; then
     echo "  Opcionais que faltam: ${missing_rec[*]}"
     if ask "Instalar os opcionais também?"; then to_install+=("${missing_rec[@]}"); fi
 fi
-if ((${#to_install[@]} > 0)); then
+# Outro gerenciador de pacotes aberto (Discover, atualização automática...) trava o pacman.
+wait_pacman() {
+    local i
+    for i in $(seq 1 60); do
+        [[ -e /var/lib/pacman/db.lck ]] || return 0
+        if ! pgrep -x pacman >/dev/null && ! pgrep -f 'packagekitd|pamac|octopi|paru|yay' >/dev/null; then
+            warn "o pacman está travado (/var/lib/pacman/db.lck) e nenhum gerenciador está rodando"
+            if ask "Apagar a trava antiga e continuar?"; then sudo rm -f /var/lib/pacman/db.lck; return 0; fi
+            return 1
+        fi
+        ((i == 1)) && echo "  esperando outro gerenciador de pacotes terminar (até 2 min)..."
+        sleep 2
+    done
+    return 1
+}
+if ((${#to_install[@]} > 0)) || ((${#missing_aur[@]} > 0)); then
+    wait_pacman || warn "pacman ocupado: pulando a instalação de pacotes (rode o install.sh de novo depois)"
+fi
+if ((${#missing_req[@]} > 0)) && [[ -e /var/lib/pacman/db.lck ]]; then
+    die "não deu para instalar os obrigatórios (${missing_req[*]}) com o pacman travado"
+fi
+if ((${#to_install[@]} > 0)) && [[ ! -e /var/lib/pacman/db.lck ]]; then
     step "Instalando: ${to_install[*]}"
-    sudo pacman -S --needed --noconfirm "${to_install[@]}"
+    # obrigatórios têm que entrar; opcionais com problema não param a instalação
+    if ((${#missing_req[@]} > 0)); then sudo pacman -S --needed --noconfirm "${missing_req[@]}"; fi
+    for p in "${to_install[@]}"; do
+        [[ " ${missing_req[*]} " == *" $p "* ]] && continue
+        sudo pacman -S --needed --noconfirm "$p" || warn "não consegui instalar $p (seguindo sem ele)"
+    done
+fi
+if ((${#missing_aur[@]} > 0)) && [[ $MINIMAL == 0 ]] && [[ ! -e /var/lib/pacman/db.lck ]] &&
+    ask "Instalar do AUR também (${missing_aur[*]})?"; then
+    for p in "${missing_aur[@]}"; do
+        "$AUR_HELPER" -S --needed --noconfirm "$p" || warn "não consegui instalar $p do AUR (seguindo sem ele)"
+    done
 fi
 if ((${#missing_groups[@]} > 0)) && ask "Adicionar você aos grupos ${missing_groups[*]}?"; then
     sudo usermod -aG "$(IFS=,; echo "${missing_groups[*]}")" "$USER"
