@@ -267,9 +267,20 @@ fn dev_nodes(pci: &str) -> Vec<String> {
     v
 }
 
-/// Programas com a placa aberta (o que a impede de dormir). Sem root, só aparecem os do
-/// próprio usuário, que é o caso comum (navegador, Steam, jogo).
-pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
+/// Quem abriu a placa e como: `client` = usa a placa de verdade (/dev/nvidiaN ou o nó de
+/// render: CUDA, NVENC, NVML, OpenGL/Vulkan), o que a impede de dormir; senão só abriu a saída
+/// de vídeo (cardN), como o KWin e o logind fazem com todas as placas.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Holder {
+    pub pid: u32,
+    pub name: String,
+    pub client: bool,
+}
+
+/// Processos do sistema que só guardam uma cópia do acesso (não usam a placa).
+pub const SYSTEM_HOLDERS: &[&str] = &["systemd", "systemd-logind"];
+
+pub fn dgpu_holders(pci: &str) -> Vec<Holder> {
     let nodes = dev_nodes(pci);
     if nodes.is_empty() {
         return vec![];
@@ -285,17 +296,53 @@ pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
         let Ok(fds) = fs::read_dir(e.path().join("fd")) else {
             continue;
         };
-        let uses = fds.flatten().any(|f| {
-            fs::read_link(f.path())
-                .map(|t| nodes.iter().any(|n| t.as_os_str() == n.as_str()))
-                .unwrap_or(false)
-        });
-        if uses {
+        let mut any = false;
+        let mut client = false;
+        for f in fds.flatten() {
+            let Ok(t) = fs::read_link(f.path()) else {
+                continue;
+            };
+            let t = t.to_string_lossy().to_string();
+            if nodes.iter().any(|n| *n == t) {
+                any = true;
+                if !t.starts_with("/dev/dri/card") {
+                    client = true;
+                    break;
+                }
+            }
+        }
+        if any {
             let name = read_trim(e.path().join("comm")).unwrap_or_default();
-            out.push((pid, name));
+            out.push(Holder { pid, name, client });
         }
     }
     out
+}
+
+/// Programas que usam a placa de verdade e não deixam ela dormir (sem os do sistema).
+pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
+    dgpu_holders(pci)
+        .into_iter()
+        .filter(|h| h.client && !SYSTEM_HOLDERS.contains(&h.name.as_str()))
+        .map(|h| (h.pid, h.name))
+        .collect()
+}
+
+/// Dica para os programas que costumam prender a NVIDIA do notebook.
+pub fn holder_hint(name: &str) -> Option<&'static str> {
+    match name {
+        "lact" | "lactd" => Some(
+            "LACT: o serviço dele lê a NVIDIA o tempo todo (NVML). Se o numapilot já faz o que você usa nele: sudo systemctl disable --now lactd",
+        ),
+        "sunshine" => Some(
+            "Sunshine: codifica na NVIDIA (NVENC). Escolha VA-API na aba Streaming (usa a 680M) ou tire o Sunshine da inicialização",
+        ),
+        "Xwayland" => Some("Xwayland: sudo numapilot hybrid xwayland on e entre de novo na sessão"),
+        "nvidia-powerd" | "nvidia-persistenced" => {
+            Some("serviço da NVIDIA: o numapilot para e liga junto com a placa")
+        }
+        _ => None,
+    }
 }
 
 /// Ventoinhas do notebook (controlador do fabricante: acer, asus, dell_smm, thinkpad...): RPM.

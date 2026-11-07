@@ -258,6 +258,21 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                 });
                 if let Some(st) = &dstate {
+                    if st.sleep_only && !st.want_present {
+                        ui.label(
+                            RichText::new(format!(
+                                "O KDE mantém a saída de vídeo da NVIDIA aberta, então ela não é tirada do sistema (não é seguro com o desktop segurando). Sem programas usando, ela dorme sozinha: agora {}.",
+                                nb::dgpu_state(&st.pci)
+                            ))
+                            .small()
+                            .weak(),
+                        );
+                    }
+                    for n in &st.blocked_by {
+                        if let Some(h) = nb::holder_hint(n) {
+                            ui.label(RichText::new(format!("• {h}")).small());
+                        }
+                    }
                     if !st.blocked_by.is_empty() && !st.want_present {
                         ui.label(
                             RichText::new(format!(

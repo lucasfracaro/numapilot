@@ -97,6 +97,11 @@ pub const KNOWN: &[(&str, &str, &str)] = &[
         "Limitar os estados de economia sempre",
         "Menor latência o tempo todo, mas mais calor e consumo parado. O numapilot já faz isso só enquanto um jogo roda.",
     ),
+    (
+        "amdgpu.dcdebugmask=0x10",
+        "Sem Panel Self Refresh (AMD)",
+        "Corrige telas externas (USB-C/MST) piscando quando o mouse está na tela do notebook. Gasta um pouco mais de bateria.",
+    ),
 ];
 
 /// Um grupo de mitigações do processador que se desliga junto.
@@ -270,6 +275,7 @@ fn key_of(p: &str) -> &str {
     p.split('=').next().unwrap_or(p)
 }
 const SINGLE: &[&str] = &[
+    "amdgpu.dcdebugmask",
     "mitigations",
     "iommu",
     "intel_iommu",

@@ -246,17 +246,30 @@ impl Hw {
         } else if !want && here {
             // Os serviços da NVIDIA seguram a placa: param junto e voltam quando ela voltar.
             let svcs = ["nvidia-powerd", "nvidia-persistenced"];
+            let holders = crate::notebook::dgpu_holders(&st.pci);
             let users: Vec<String> = {
-                let mut u: Vec<String> = crate::notebook::dgpu_users(&st.pci)
-                    .into_iter()
-                    .map(|x| x.1)
+                let mut u: Vec<String> = holders
+                    .iter()
+                    .filter(|h| {
+                        h.client && !crate::notebook::SYSTEM_HOLDERS.contains(&h.name.as_str())
+                    })
+                    .map(|h| h.name.clone())
                     .filter(|n| !svcs.contains(&n.as_str()))
                     .collect();
                 u.sort();
                 u.dedup();
                 u
             };
-            if users.is_empty() {
+            // O desktop (KWin) com a saída de vídeo da NVIDIA aberta: tirar a placa do sistema
+            // nessas condições não é seguro (o driver espera o desktop soltar). A placa dorme
+            // sozinha sem programas usando; é o que vale.
+            let display_open = holders
+                .iter()
+                .any(|h| !h.client && !crate::notebook::SYSTEM_HOLDERS.contains(&h.name.as_str()));
+            st.sleep_only = users.is_empty() && display_open;
+            if st.sleep_only {
+                st.blocked_by.clear();
+            } else if users.is_empty() {
                 for svc in svcs {
                     let active = Command::new("systemctl")
                         .args(["is-active", "--quiet", svc])
@@ -294,6 +307,7 @@ impl Hw {
             }
         } else {
             st.blocked_by.clear();
+            st.sleep_only = false;
         }
         crate::hybrid::save_state(&st);
         self.dgpu = Some(st);

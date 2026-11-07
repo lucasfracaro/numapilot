@@ -632,13 +632,24 @@ fn real_main() -> Result<()> {
                             .map(|x| x.1)
                             .unwrap_or("não mexer")
                     );
-                    if let Some(st) = st
-                        && !st.blocked_by.is_empty()
-                    {
-                        println!(
-                            "Esperando para desligar: em uso por {}",
-                            st.blocked_by.join(", ")
-                        );
+                    if let Some(st) = &st {
+                        if !st.blocked_by.is_empty() {
+                            println!(
+                                "Esperando para desligar: em uso por {}",
+                                st.blocked_by.join(", ")
+                            );
+                            for n in &st.blocked_by {
+                                if let Some(h) = numapilot::notebook::holder_hint(n) {
+                                    println!("  · {h}");
+                                }
+                            }
+                        }
+                        if st.sleep_only && !st.want_present {
+                            println!(
+                                "O KDE segura a saída de vídeo da NVIDIA: ela não é tirada do sistema, mas dorme sozinha ({}).",
+                                numapilot::notebook::dgpu_state(&st.pci)
+                            );
+                        }
                     }
                     println!(
                         "Xwayland: {}",

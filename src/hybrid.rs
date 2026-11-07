@@ -100,6 +100,9 @@ pub struct State {
     pub want_present: bool,
     /// Programas que impedem desligar.
     pub blocked_by: Vec<String>,
+    /// Só a saída de vídeo está aberta (KWin): não tiramos a placa (não é seguro com o desktop
+    /// segurando), mas ela dorme sozinha.
+    pub sleep_only: bool,
     pub last_error: Option<String>,
 }
 

@@ -242,6 +242,17 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                         users.join(", "),
                         Some("Abra esses programas na placa integrada para a dedicada dormir"),
                     );
+                    for u in &users {
+                        if let Some(h) = crate::notebook::holder_hint(u) {
+                            add(
+                                "Notebook",
+                                u,
+                                Level::Info,
+                                "mantém a NVIDIA acordada".into(),
+                                Some(h),
+                            );
+                        }
+                    }
                     // KDE: o KWin (e o Xwayland) abrem todas as placas; dá para limitar à integrada
                     let kde = std::env::var("XDG_CURRENT_DESKTOP")
                         .unwrap_or_default()

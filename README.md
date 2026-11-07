@@ -652,6 +652,11 @@ balanceamento NUMA) some.
   serviço lê o barramento PCI de novo e o KDE adiciona a placa sozinho. Só desliga se nenhum programa
   estiver usando a NVIDIA (senão espera, mostra quem é e a bandeja avisa); o `nvidia-powerd` para e
   volta junto. Ao parar o serviço, a placa sempre volta. Nada fica checando a placa periodicamente.
+  Com o KDE, o KWin mantém aberta a saída de vídeo da NVIDIA; nessas condições o numapilot não tira
+  a placa do sistema (o driver esperaria o desktop soltar) e ela simplesmente dorme sozinha quando
+  nenhum programa a usa, com consumo praticamente zero. O diagnóstico separa quem só abriu a saída
+  de vídeo (KWin, logind) de quem usa a placa de verdade e a mantém acordada (no Nitro 5 testado:
+  LACT, Sunshine com NVENC, ZapZap), com a dica para cada um.
   O **Xwayland** costuma abrir a NVIDIA mesmo sem usar: o botão "usar só a integrada no Xwayland"
   (`sudo numapilot hybrid xwayland on`) instala `/usr/local/bin/Xwayland`, que usa só o Mesa; jogos
   X11 escolhidos para a NVIDIA continuam indo para ela. Programas na integrada também deixam de

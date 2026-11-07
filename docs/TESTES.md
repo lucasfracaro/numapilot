@@ -100,6 +100,10 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
       "Desligada" com as telas USB-C ligadas: a NVIDIA some do `lspci` e o KDE continua; "Sempre disponível":
       ela volta e um monitor no HDMI acende sem sair da sessão; "Automático": tirar/colocar o carregador troca
 - [ ] Com um jogo aberto na NVIDIA, pedir "Desligada": espera e mostra o jogo; ao fechar, desliga
+- [x] Teste 7 nov: o modo esperou o Elden Ring; a placa nunca foi tirada (KWin, LACT, Sunshine, ZapZap
+      seguravam). Telas piscando após trocar o monitor entre HDMI e USB-C; sumiu ao reiniciar
+      (numapilot não mexeu nas placas). Se voltar: parâmetro amdgpu.dcdebugmask=0x10
+- [ ] Desligar o lactd, Sunshine em VA-API, ZapZap na 680M: `numapilot hybrid` mostra a NVIDIA "dormindo"
 - [ ] Máquina → Notebook: "Acordada por" lista quem segura a NVIDIA; fechar e ver "dormindo"
 - [ ] Limites do Ryzen (ryzenadj): STAPM 35 W e 85 °C aplicam; voltam sozinhos depois de tirar/pôr na tomada
 - [ ] EPP (power/balance_power) aplica no modo Silencioso
