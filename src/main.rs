@@ -121,11 +121,10 @@ enum Cmd {
         #[arg(long, default_value_t = 120)]
         disk: u32,
     },
-    /// Notebook com NVIDIA: status | on | off | sempre | bateria | env [--export] ("NVIDIA só quando precisar")
+    /// Notebook com NVIDIA: status | auto | hibrido | integrada | nao-mexer | xwayland on|off
     Hybrid {
         action: Option<String>,
-        #[arg(long)]
-        export: bool,
+        arg: Option<String>,
     },
     /// Atualiza o próprio numapilot (pacote ou pasta do código): status | run
     #[command(name = "self-update")]
@@ -559,95 +558,94 @@ fn real_main() -> Result<()> {
                 ),
             }
         }
-        Cmd::Hybrid { action, export } => {
+        Cmd::Hybrid { action, arg } => {
             use numapilot::hybrid;
             let cfg = Config::load()?;
             let topo = Topology::load(&cfg);
-            match action.as_deref().unwrap_or("status") {
-                "env" => {
-                    for (k, v) in hybrid::session_env(&topo) {
-                        if export {
-                            println!("export {k}='{v}'");
-                        } else {
-                            println!("{k}={v}");
-                        }
-                    }
-                    Ok(())
-                }
-                "sempre" | "bateria" => {
-                    hybrid::set_policy(action.as_deref().unwrap_or("sempre"))
-                        .map_err(|e| anyhow::anyhow!(e))?;
+            let act = action.as_deref().unwrap_or("status");
+            match act {
+                "xwayland" => {
+                    let on = arg.as_deref() != Some("off");
+                    hybrid::set_xwayland_wrapper(on).map_err(|e| anyhow::anyhow!(e))?;
                     println!(
-                        "quando: {} (vale a partir do próximo login)",
-                        hybrid::policy()
+                        "{} (vale para o próximo Xwayland: saia e entre na sessão, ou feche os programas X11)",
+                        if on {
+                            "Xwayland usando só o Mesa"
+                        } else {
+                            "Xwayland normal"
+                        }
                     );
                     Ok(())
                 }
-                "on" | "off" => {
-                    hybrid::pair(&topo).context("só para notebook com placa integrada + NVIDIA")?;
-                    hybrid::set_enabled(
-                        action.as_deref() == Some("on"),
-                        &numapilot::desktop::numapilot_bin(),
-                    )
-                    .map_err(|e| anyhow::anyhow!(e))?;
+                "auto" | "hibrido" | "integrada" | "nao-mexer" => {
+                    hybrid::remove_login_files();
+                    let mut m = numapilot::machine::Machine::load();
+                    m.dgpu_mode = (act != "nao-mexer").then(|| act.to_string());
+                    let r =
+                        numapilot::ctl::send(&numapilot::ctl::Request::SetMachine { machine: m })?;
+                    if !r.ok {
+                        bail!(r.message);
+                    }
                     println!(
-                        "{} (vale a partir do próximo login)",
-                        if action.as_deref() == Some("on") {
-                            "ligado"
-                        } else {
-                            "desligado"
-                        }
+                        "modo da NVIDIA: {act} (o serviço aplica em segundos, sem sair da sessão)"
                     );
                     Ok(())
                 }
                 _ => {
-                    let Some((i, n)) = hybrid::pair(&topo) else {
-                        println!("Não é um notebook com placa integrada + NVIDIA.");
-                        return Ok(());
-                    };
-                    for g in [i, n] {
-                        let outs = hybrid::outputs(&g.pci);
+                    hybrid::remove_login_files();
+                    let st = hybrid::load_state();
+                    match hybrid::pair(&topo) {
+                        Some((i, n)) => {
+                            for g in [i, n] {
+                                let outs = hybrid::outputs(&g.pci);
+                                println!(
+                                    "{} ({}): {}",
+                                    g.alias,
+                                    numapilot::notebook::dgpu_state(&g.pci),
+                                    outs.iter()
+                                        .map(|o| format!(
+                                            "{}{}",
+                                            o.name,
+                                            if o.connected { " [tela]" } else { "" }
+                                        ))
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                );
+                            }
+                        }
+                        None if st.as_ref().is_some_and(|s| s.removed) => {
+                            println!(
+                                "{}: desligada pelo numapilot (fora do sistema)",
+                                st.as_ref().map(|s| s.alias.as_str()).unwrap_or("NVIDIA")
+                            );
+                        }
+                        None => {
+                            println!("Não é um notebook com placa integrada + NVIDIA.");
+                            return Ok(());
+                        }
+                    }
+                    let m = numapilot::machine::Machine::load().dgpu_mode;
+                    println!(
+                        "Modo: {}",
+                        m.as_deref()
+                            .and_then(|m| hybrid::MODES.iter().find(|x| x.0 == m))
+                            .map(|x| x.1)
+                            .unwrap_or("não mexer")
+                    );
+                    if let Some(st) = st
+                        && !st.blocked_by.is_empty()
+                    {
                         println!(
-                            "{} ({}): {}",
-                            g.alias,
-                            numapilot::notebook::dgpu_state(&g.pci),
-                            outs.iter()
-                                .map(|o| format!(
-                                    "{}{}",
-                                    o.name,
-                                    if o.connected { " [tela]" } else { "" }
-                                ))
-                                .collect::<Vec<_>>()
-                                .join(", ")
+                            "Esperando para desligar: em uso por {}",
+                            st.blocked_by.join(", ")
                         );
                     }
                     println!(
-                        "NVIDIA só quando precisar: {} ({}) · esta sessão: {}",
-                        if hybrid::enabled() {
-                            "ligado"
+                        "Xwayland: {}",
+                        if hybrid::xwayland_wrapped() {
+                            "só Mesa (não prende a NVIDIA)"
                         } else {
-                            "desligado"
-                        },
-                        if hybrid::policy() == "bateria" {
-                            "só se o login for na bateria"
-                        } else {
-                            "sempre"
-                        },
-                        if hybrid::session_restricted() {
-                            "desktop só na integrada"
-                        } else {
-                            "desktop nas duas placas"
-                        }
-                    );
-                    let env = hybrid::session_env(&topo);
-                    println!(
-                        "No próximo login: {}",
-                        if !hybrid::enabled() {
-                            "normal".into()
-                        } else if env.is_empty() {
-                            "normal (há tela na saída da NVIDIA)".to_string()
-                        } else {
-                            "desktop só na integrada".into()
+                            "normal (pode prender a NVIDIA)"
                         }
                     );
                     Ok(())

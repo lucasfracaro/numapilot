@@ -133,7 +133,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     let mut send_fan: Option<(String, BoardFanControl)> = None;
     let mut job: Option<(String, Vec<String>)> = None;
     let mut app_toast: Option<String> = None;
-    let mut app_toast_ok: Option<&str> = None;
+    let mut dgpu_send: Option<Option<String>> = None;
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         let mu = &mut app.mach;
@@ -190,8 +190,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     b.health_pct.map(|h| format!(" · saúde {h:.0}%")).unwrap_or_default()
                 ));
             }
-            // ---- telas e "NVIDIA só quando precisar" ----
-            if let Some((ig, nv)) = numapilot::hybrid::pair(&topo) {
+            // ---- telas e modo da NVIDIA (trocado com a sessão aberta) ----
+            let dstate = numapilot::hybrid::load_state();
+            let pair = numapilot::hybrid::pair(&topo);
+            if pair.is_some() || dstate.as_ref().is_some_and(|s| s.removed) {
                 use numapilot::hybrid;
                 let desc = |g: &numapilot::topo::Gpu| {
                     let outs = hybrid::outputs(&g.pci);
@@ -215,49 +217,74 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         if g.is_nvidia() && !free.is_empty() { format!(" · saídas livres: {}", free.join(", ")) } else { String::new() }
                     )
                 };
-                ui.label(format!("Telas na {}: {}", ig.alias, desc(ig)));
-                ui.label(format!("Telas na {}: {}", nv.alias, desc(nv)));
-                let nv_screen = hybrid::outputs(&nv.pci).iter().any(|o| o.connected);
-                let mut on = hybrid::enabled();
-                if ui
-                    .checkbox(&mut on, "NVIDIA só quando precisar")
-                    .on_hover_text(
-                        "No login, se não houver tela ligada numa saída da NVIDIA, o desktop sobe só na integrada e a NVIDIA dorme; \
-                         jogos e programas escolhidos para ela continuam indo para ela. Com uma tela na saída da NVIDIA no login, \
-                         ela fica ligada para gerar a imagem. Vale a partir do próximo login.",
-                    )
-                    .changed()
-                {
-                    match hybrid::set_enabled(on, &numapilot::desktop::numapilot_bin()) {
-                        Ok(()) => app_toast_ok = Some(if on { "Ligado: vale a partir do próximo login" } else { "Desligado: vale a partir do próximo login" }),
-                        Err(e) => app_toast = Some(e),
+                if let Some(ig) = topo.gpus.iter().find(|g| g.is_integrated()) {
+                    ui.label(format!("Telas na {}: {}", ig.alias, desc(ig)));
+                }
+                match pair {
+                    Some((_, nv)) => {
+                        ui.label(format!("Telas na {}: {}", nv.alias, desc(nv)));
+                    }
+                    None => {
+                        ui.label(format!(
+                            "{}: desligada pelo numapilot (fora do sistema; o HDMI não funciona)",
+                            dstate.as_ref().map(|d| d.alias.as_str()).unwrap_or("NVIDIA")
+                        ));
                     }
                 }
-                if on {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("NVIDIA:").strong()).on_hover_text(
+                        "Troca na hora, sem sair da sessão: \"desligada\" tira a placa do sistema (zero consumo, nada a acorda, o KDE segue \
+                         só na integrada e o HDMI não funciona); \"disponível\" devolve e o KDE a adiciona sozinho. \
+                         Só desliga se nenhum programa estiver usando a NVIDIA.",
+                    );
+                    let mut v = m.dgpu_mode.clone();
+                    egui::ComboBox::from_id_salt("dgpumode")
+                        .selected_text(
+                            v.as_deref()
+                                .and_then(|x| hybrid::MODES.iter().find(|y| y.0 == x))
+                                .map(|y| y.1)
+                                .unwrap_or("não mexer (dorme quando ninguém usa)"),
+                        )
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut v, None, "não mexer (dorme quando ninguém usa)");
+                            for (k, l) in hybrid::MODES {
+                                ui.selectable_value(&mut v, Some(k.to_string()), *l);
+                            }
+                        });
+                    if v != m.dgpu_mode {
+                        m.dgpu_mode = v.clone();
+                        hybrid::remove_login_files();
+                        dgpu_send = Some(v);
+                    }
+                });
+                if let Some(st) = &dstate {
+                    if !st.blocked_by.is_empty() && !st.want_present {
+                        ui.label(
+                            RichText::new(format!(
+                                "Esperando para desligar a NVIDIA: em uso por {}. Feche esses programas (ou abra-os na integrada).",
+                                st.blocked_by.join(", ")
+                            ))
+                            .color(Color32::from_rgb(230, 160, 40)),
+                        );
+                    }
+                    if let Some(e) = &st.last_error {
+                        ui.label(RichText::new(format!("Erro: {e}")).color(Color32::from_rgb(229, 83, 75)));
+                    }
+                }
+                if !hybrid::xwayland_wrapped() {
                     ui.horizontal(|ui| {
-                        ui.label("Quando:");
-                        let mut pol = hybrid::policy();
-                        let before = pol.clone();
-                        ui.radio_value(&mut pol, "sempre".to_string(), "sempre")
-                            .on_hover_text("Também na tomada: menos calor e barulho; o HDMI só funciona se estiver ligado no login (ou depois de sair e entrar).");
-                        ui.radio_value(&mut pol, "bateria".to_string(), "só se o login for na bateria")
-                            .on_hover_text("Na tomada o desktop usa as duas placas e o HDMI funciona a qualquer hora (a NVIDIA fica ligada).");
-                        if pol != before
-                            && let Err(e) = hybrid::set_policy(&pol)
+                        ui.label(RichText::new("O Xwayland pode prender a NVIDIA à toa.").small().weak());
+                        if ui
+                            .small_button("usar só a integrada no Xwayland")
+                            .on_hover_text("Instala /usr/local/bin/Xwayland que usa só o Mesa (pede a senha). Jogos X11 escolhidos para a NVIDIA continuam indo para ela. Vale no próximo login.")
+                            .clicked()
                         {
-                            app_toast = Some(e);
+                            job = Some((
+                                "Xwayland só na integrada".into(),
+                                vec!["pkexec".into(), numapilot::desktop::numapilot_bin(), "hybrid".into(), "xwayland".into(), "on".into()],
+                            ));
                         }
                     });
-                }
-                if hybrid::session_restricted() && nv_screen {
-                    ui.label(
-                        RichText::new(format!("Tela ligada na saída da {} ({}): saia e entre na sessão para ela funcionar.", nv.alias, hybrid::outputs(&nv.pci).iter().filter(|o| o.connected).map(|o| o.name.clone()).collect::<Vec<_>>().join(", ")))
-                            .color(Color32::from_rgb(230, 160, 40)),
-                    );
-                } else if hybrid::session_restricted() {
-                    ui.label(RichText::new("Esta sessão: desktop só na integrada.").small().weak());
-                } else if on && !nv_screen {
-                    ui.label(RichText::new("Esta sessão começou nas duas placas; no próximo login o desktop fica só na integrada.").small().weak());
                 }
             }
             let fans = nb::ec_fans();
@@ -1259,8 +1286,12 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     if let Some(e) = app_toast {
         app.toast(e, false);
     }
-    if let Some(m) = app_toast_ok {
-        app.toast(m, true);
+    // o modo da NVIDIA vale na hora (sem o "Aplicar ajustes")
+    if let Some(v) = dgpu_send {
+        let mut s = app.mach.saved.clone();
+        s.dgpu_mode = v;
+        app.mach.saved.dgpu_mode = s.dgpu_mode.clone();
+        send_machine = Some(s);
     }
     if let Some(m) = send_machine {
         app.send(Request::SetMachine { machine: m });

@@ -1,21 +1,33 @@
-//! Notebook com duas placas (integrada + NVIDIA): "NVIDIA só quando precisar".
+//! Notebook com duas placas (integrada + NVIDIA): modos da NVIDIA trocados com a sessão aberta.
 //!
-//! No login, se nenhuma tela estiver ligada numa saída da NVIDIA (no Nitro 5: o HDMI), o desktop
-//! sobe só na integrada: o KWin usa apenas ela (KWIN_DRM_DEVICES) e o Xwayland e os programas
-//! comuns usam o EGL do Mesa (__EGL_VENDOR_LIBRARY_FILENAMES). Assim nada abre a NVIDIA à toa e ela
-//! dorme. Jogos e programas escolhidos para a NVIDIA continuam indo para ela (o numapilot passa o
-//! EGL/Vulkan da NVIDIA para eles). Com uma tela na saída da NVIDIA no login, nada muda: ela fica
-//! ligada para gerar a imagem.
+//! - **Sempre disponível**: a NVIDIA fica no sistema; dorme sozinha quando ninguém usa e o HDMI
+//!   (ligado nela) funciona a qualquer hora.
+//! - **Desligada**: o serviço tira a NVIDIA do sistema (como se ela não existisse: zero consumo,
+//!   nada a acorda); o KDE percebe e segue só na integrada. O HDMI não funciona.
+//! - **Automático**: na tomada, sempre disponível; na bateria, desligada.
 //!
-//! Funciona por dois arquivos lidos a cada login: o do Plasma (~/.config/plasma-workspace/env) e
-//! um gerador de ambiente do systemd do usuário (outros desktops).
+//! Para devolver, o serviço pede uma nova leitura do barramento PCI: a placa volta, o driver
+//! carrega e o KDE a adiciona sozinho (sem sair da sessão). Só desliga se nenhum programa estiver
+//! usando a NVIDIA (senão espera e mostra quem está usando).
+//!
+//! O Xwayland (programas X11) costuma abrir a NVIDIA mesmo sem usar; o wrapper em
+//! /usr/local/bin/Xwayland faz ele usar só o EGL do Mesa.
 
 use crate::topo::{Gpu, Topology};
 use crate::util::{read_trim, sys};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub const MESA_EGL: &str = "/usr/share/glvnd/egl_vendor.d/50_mesa.json";
 pub const NVIDIA_EGL: &str = "/usr/share/glvnd/egl_vendor.d/10_nvidia.json";
+pub const MODES: &[(&str, &str)] = &[
+    (
+        "auto",
+        "Automático (tomada: disponível, bateria: desligada)",
+    ),
+    ("hibrido", "Sempre disponível"),
+    ("integrada", "Desligada (só a integrada)"),
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Output {
@@ -59,63 +71,7 @@ pub fn outputs(pci: &str) -> Vec<Output> {
     v
 }
 
-/// Como root: manda cada saída da placa se conferir de novo ("detect"). A placa acorda por um
-/// instante e o estado fica certo mesmo quando o notebook não avisa que um cabo foi ligado.
-pub fn probe_root(pci: &str) -> usize {
-    let Some(c) = card(pci) else { return 0 };
-    let Ok(rd) = std::fs::read_dir(sys("class/drm")) else {
-        return 0;
-    };
-    let mut n = 0;
-    for e in rd.flatten() {
-        let name = e.file_name().to_string_lossy().to_string();
-        if name.starts_with(&format!("{c}-"))
-            && !name.contains("Writeback")
-            && std::fs::write(e.path().join("status"), "detect").is_ok()
-        {
-            n += 1;
-        }
-    }
-    n
-}
-
-/// Confere as saídas da placa de verdade (pelo serviço, que é root; sem ele, pelo que o driver
-/// já sabe) e diz se há tela ligada.
-pub fn probe_connected(pci: &str) -> bool {
-    if crate::util::is_root() {
-        probe_root(pci);
-    } else {
-        let _ = crate::ctl::send(&crate::ctl::Request::ProbeOutputs {
-            pci: pci.to_string(),
-        });
-    }
-    outputs(pci).iter().any(|o| o.connected)
-}
-
-/// Quando restringir: "sempre" ou só se o login for na "bateria" (na tomada, desktop nas duas
-/// placas e o HDMI funciona a qualquer hora).
-pub fn policy_file() -> PathBuf {
-    config_home().join("numapilot/hybrid-policy")
-}
-
-pub fn policy() -> String {
-    read_trim(policy_file())
-        .filter(|p| p == "bateria")
-        .unwrap_or_else(|| "sempre".into())
-}
-
-pub fn set_policy(p: &str) -> Result<(), String> {
-    if p != "sempre" && p != "bateria" {
-        return Err("use sempre ou bateria".into());
-    }
-    let f = policy_file();
-    if let Some(d) = f.parent() {
-        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
-    }
-    std::fs::write(&f, p).map_err(|e| e.to_string())
-}
-
-/// Notebook com integrada + NVIDIA dedicada: (integrada, NVIDIA).
+/// Notebook com integrada + NVIDIA dedicada presente: (integrada, NVIDIA).
 pub fn pair(topo: &Topology) -> Option<(&Gpu, &Gpu)> {
     if !crate::notebook::is_laptop() {
         return None;
@@ -128,32 +84,111 @@ pub fn pair(topo: &Topology) -> Option<(&Gpu, &Gpu)> {
     Some((igpu, nv))
 }
 
-/// Ambiente do login no modo "NVIDIA só quando precisar" (vazio = não restringir).
-pub fn session_env(topo: &Topology) -> Vec<(String, String)> {
-    let Some((igpu, nv)) = pair(topo) else {
-        return vec![];
-    };
-    if policy() == "bateria" && crate::notebook::on_ac() != Some(false) {
-        return vec![];
-    }
-    if probe_connected(&nv.pci) {
-        return vec![];
-    }
-    let Some(c) = card(&igpu.pci) else {
-        return vec![];
-    };
-    let mut v = vec![("KWIN_DRM_DEVICES".to_string(), format!("/dev/dri/{c}"))];
-    if std::path::Path::new(MESA_EGL).exists() {
-        v.push(("__EGL_VENDOR_LIBRARY_FILENAMES".into(), MESA_EGL.into()));
-    }
-    v.push(("NUMAPILOT_IGPU_SESSION".into(), "1".into()));
-    v
+/// O que o serviço sabe da NVIDIA (em /run/numapilot/dgpu.json).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct State {
+    pub pci: String,
+    pub alias: String,
+    pub name: String,
+    /// Funções PCI da placa (GPU e áudio).
+    pub functions: Vec<String>,
+    /// Tirada do sistema pelo numapilot.
+    pub removed: bool,
+    /// Modo pedido e se, por ele, a placa deveria estar no sistema agora.
+    pub mode: String,
+    pub want_present: bool,
+    /// Programas que impedem desligar.
+    pub blocked_by: Vec<String>,
+    pub last_error: Option<String>,
 }
 
-/// Esta sessão subiu no modo restrito?
-pub fn session_restricted() -> bool {
-    std::env::var_os("NUMAPILOT_IGPU_SESSION").is_some()
+pub fn state_path() -> PathBuf {
+    crate::learned::run_dir().join("dgpu.json")
 }
+
+pub fn load_state() -> Option<State> {
+    serde_json::from_str(&std::fs::read_to_string(state_path()).ok()?).ok()
+}
+
+pub fn save_state(s: &State) {
+    let _ = std::fs::write(state_path(), serde_json::to_string(s).unwrap_or_default());
+}
+
+/// Pelo modo e pela fonte de energia, a NVIDIA deve estar no sistema?
+pub fn want_present(mode: &str, on_ac: Option<bool>) -> bool {
+    match mode {
+        "integrada" => false,
+        "auto" => on_ac != Some(false),
+        _ => true,
+    }
+}
+
+pub fn present(pci: &str) -> bool {
+    sys(&format!("bus/pci/devices/{pci}")).exists()
+}
+
+/// Tira as funções da placa do sistema (root). Áudio antes da GPU.
+pub fn remove(functions: &[String]) -> Result<(), String> {
+    let mut f = functions.to_vec();
+    f.sort();
+    f.reverse();
+    for p in f {
+        let path = sys(&format!("bus/pci/devices/{p}/remove"));
+        if path.exists() {
+            std::fs::write(&path, "1").map_err(|e| format!("{p}: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Lê o barramento de novo: a placa volta e o driver carrega (root).
+pub fn rescan() -> Result<(), String> {
+    std::fs::write(sys("bus/pci/rescan"), "1").map_err(|e| format!("rescan: {e}"))
+}
+
+// ---------------- Xwayland ----------------
+
+pub fn xwayland_wrapper() -> PathBuf {
+    std::env::var_os("NUMAPILOT_XWAYLAND_WRAPPER")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/usr/local/bin/Xwayland"))
+}
+
+pub fn xwayland_wrapped() -> bool {
+    std::fs::read_to_string(xwayland_wrapper()).is_ok_and(|s| s.contains("numapilot"))
+}
+
+/// Instala/remove o wrapper do Xwayland (root).
+pub fn set_xwayland_wrapper(on: bool) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let p = xwayland_wrapper();
+    if !on {
+        if xwayland_wrapped() {
+            std::fs::remove_file(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+        }
+        return Ok(());
+    }
+    if p.exists() && !xwayland_wrapped() {
+        return Err(format!("{} já existe e não é do numapilot", p.display()));
+    }
+    let real = ["/usr/bin/Xwayland", "/usr/lib/xorg/Xwayland"]
+        .into_iter()
+        .find(|r| std::path::Path::new(r).exists())
+        .ok_or("Xwayland não encontrado em /usr/bin")?;
+    let body = format!(
+        "#!/bin/sh\n# numapilot: o Xwayland usa só o EGL do Mesa e não prende a NVIDIA do notebook\n\
+         # (jogos X11 escolhidos para a NVIDIA continuam indo para ela). Para tirar: numapilot hybrid xwayland off\n\
+         [ -f {MESA_EGL} ] && export __EGL_VENDOR_LIBRARY_FILENAMES={MESA_EGL}\nexec {real} \"$@\"\n"
+    );
+    if let Some(d) = p.parent() {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&p, body).map_err(|e| format!("{}: {e}", p.display()))?;
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())
+}
+
+// ---------------- versão antiga (escolha no login) ----------------
 
 fn config_home() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
@@ -162,50 +197,18 @@ fn config_home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
-pub fn plasma_env_file() -> PathBuf {
-    config_home().join("plasma-workspace/env/numapilot-igpu.sh")
-}
-
-pub fn generator_file() -> PathBuf {
-    config_home().join("systemd/user-environment-generators/90-numapilot-igpu")
-}
-
-pub fn enabled() -> bool {
-    plasma_env_file().exists() || generator_file().exists()
-}
-
-/// Liga/desliga o modo (arquivos do usuário; vale a partir do próximo login).
-pub fn set_enabled(on: bool, bin: &str) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-    let files = [plasma_env_file(), generator_file()];
-    if !on {
-        for f in files {
-            if f.exists() {
-                std::fs::remove_file(&f).map_err(|e| format!("{}: {e}", f.display()))?;
-            }
-        }
-        return Ok(());
+/// Arquivos da versão anterior (decidia só no login e travava o KDE na integrada): apaga.
+pub fn remove_login_files() {
+    for f in [
+        config_home().join("plasma-workspace/env/numapilot-igpu.sh"),
+        config_home().join("systemd/user-environment-generators/90-numapilot-igpu"),
+        config_home().join("numapilot/hybrid-policy"),
+    ] {
+        let _ = std::fs::remove_file(f);
     }
-    let bin = bin.replace('\'', "");
-    let plasma = format!(
-        "# numapilot: NVIDIA só quando precisar (desktop na integrada se nada estiver ligado na NVIDIA)\n\
-         if [ -x '{bin}' ]; then\n    eval \"$('{bin}' hybrid env --export)\"\nfi\n"
-    );
-    let generator = format!(
-        "#!/bin/sh\n# numapilot: NVIDIA só quando precisar\n[ -x '{bin}' ] && exec '{bin}' hybrid env\nexit 0\n"
-    );
-    for (f, body, mode) in [(&files[0], plasma, 0o644), (&files[1], generator, 0o755)] {
-        if let Some(d) = f.parent() {
-            std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
-        }
-        std::fs::write(f, body).map_err(|e| format!("{}: {e}", f.display()))?;
-        std::fs::set_permissions(f, std::fs::Permissions::from_mode(mode))
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
 }
 
-/// EGL para um programa que vai na NVIDIA numa sessão restrita.
+/// EGL para um programa que vai na NVIDIA (passa por cima de uma restrição herdada).
 pub fn nvidia_egl() -> Option<String> {
     let have: Vec<&str> = [NVIDIA_EGL, MESA_EGL]
         .into_iter()
@@ -217,7 +220,11 @@ pub fn nvidia_egl() -> Option<String> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn outputs_and_env() {
+    fn modes_and_remove() {
+        assert!(!super::want_present("auto", Some(false)));
+        assert!(super::want_present("auto", Some(true)));
+        assert!(super::want_present("hibrido", Some(false)));
+        assert!(!super::want_present("integrada", Some(true)));
         let root = std::env::temp_dir().join(format!("np-hy-{}", std::process::id()));
         let w = |p: &str, v: &str| {
             let f = root.join(p);
@@ -225,15 +232,18 @@ mod tests {
             std::fs::write(f, v).unwrap();
         };
         w("bus/pci/devices/0000:01:00.0/drm/card1/dev", "x");
-        w("class/drm/card1-HDMI-A-1/status", "disconnected");
-        w("class/drm/card1-eDP-1/status", "disconnected");
-        w("class/drm/card2-DP-9/status", "connected");
-        w("class/drm/card2-DP-9/enabled", "enabled");
+        w("bus/pci/devices/0000:01:00.0/remove", "");
+        w("bus/pci/devices/0000:01:00.1/remove", "");
+        w("class/drm/card1-HDMI-A-1/status", "connected");
+        w("bus/pci/rescan", "");
         let _g = crate::util::test_sysfs_lock(&root);
-        let o = super::outputs("0000:01:00.0");
-        assert_eq!(o.len(), 2);
-        assert!(o.iter().all(|x| !x.connected));
-        assert_eq!(super::card("0000:01:00.0").as_deref(), Some("card1"));
+        assert!(super::outputs("0000:01:00.0")[0].connected);
+        super::remove(&["0000:01:00.0".into(), "0000:01:00.1".into()]).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join("bus/pci/devices/0000:01:00.1/remove")).unwrap(),
+            "1"
+        );
+        super::rescan().unwrap();
         let _ = std::fs::remove_dir_all(root);
     }
 }

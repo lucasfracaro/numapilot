@@ -22,6 +22,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -57,6 +58,10 @@ struct Hw {
     manual_mode: Option<String>,
     /// O usuário trocou o modo à mão enquanto uma regra valia: não reaplica a mesma regra.
     auto_suppressed: Option<String>,
+    /// NVIDIA do notebook (modos trocados com a sessão aberta).
+    dgpu: Option<crate::hybrid::State>,
+    /// Serviços da NVIDIA parados para poder tirar a placa (voltam junto com ela).
+    dgpu_stopped: Vec<String>,
 }
 
 fn base_governors() -> BTreeMap<usize, String> {
@@ -98,6 +103,16 @@ impl Hw {
             auto_mode: None,
             manual_mode: None,
             auto_suppressed: None,
+            dgpu: crate::hybrid::pair(topo)
+                .map(|(_, nv)| crate::hybrid::State {
+                    pci: nv.pci.clone(),
+                    alias: nv.alias.clone(),
+                    name: nv.name.clone(),
+                    functions: crate::vm::functions(&nv.pci),
+                    ..Default::default()
+                })
+                .or_else(crate::hybrid::load_state),
+            dgpu_stopped: vec![],
         }
     }
 
@@ -199,6 +214,89 @@ impl Hw {
                 "fim da regra, volta ao anterior"
             }
         );
+    }
+
+    /// Modos da NVIDIA do notebook: tira ou devolve a placa conforme o modo e a tomada.
+    fn dgpu_tick(&mut self) {
+        let Some(mut st) = self.dgpu.clone() else {
+            return;
+        };
+        let here = crate::hybrid::present(&st.pci);
+        let mode = self.machine.dgpu_mode.clone();
+        let want = match &mode {
+            Some(m) => crate::hybrid::want_present(m, crate::notebook::on_ac()),
+            // "não mexer": se fomos nós que tiramos, devolve
+            None => here || st.removed,
+        };
+        st.mode = mode.clone().unwrap_or_default();
+        st.want_present = want;
+        if want && !here {
+            match crate::hybrid::rescan() {
+                Ok(()) => {
+                    std::thread::sleep(Duration::from_millis(1500));
+                    for svc in self.dgpu_stopped.drain(..) {
+                        let _ = Command::new("systemctl").args(["start", &svc]).status();
+                    }
+                    st.removed = false;
+                    st.last_error = None;
+                    eprintln!("[numapilot] NVIDIA de volta ({})", st.alias);
+                }
+                Err(e) => st.last_error = Some(e),
+            }
+        } else if !want && here {
+            // Os serviços da NVIDIA seguram a placa: param junto e voltam quando ela voltar.
+            let svcs = ["nvidia-powerd", "nvidia-persistenced"];
+            let users: Vec<String> = {
+                let mut u: Vec<String> = crate::notebook::dgpu_users(&st.pci)
+                    .into_iter()
+                    .map(|x| x.1)
+                    .filter(|n| !svcs.contains(&n.as_str()))
+                    .collect();
+                u.sort();
+                u.dedup();
+                u
+            };
+            if users.is_empty() {
+                for svc in svcs {
+                    let active = Command::new("systemctl")
+                        .args(["is-active", "--quiet", svc])
+                        .status()
+                        .is_ok_and(|s| s.success());
+                    if active
+                        && Command::new("systemctl")
+                            .args(["stop", svc])
+                            .status()
+                            .is_ok_and(|s| s.success())
+                    {
+                        self.dgpu_stopped.push(svc.to_string());
+                    }
+                }
+                match crate::hybrid::remove(&st.functions) {
+                    Ok(()) => {
+                        st.removed = true;
+                        st.blocked_by.clear();
+                        st.last_error = None;
+                        eprintln!(
+                            "[numapilot] NVIDIA desligada ({}): só a integrada",
+                            st.alias
+                        );
+                    }
+                    Err(e) => st.last_error = Some(e),
+                }
+            } else {
+                if st.blocked_by != users {
+                    eprintln!(
+                        "[numapilot] NVIDIA em uso, não desliguei: {}",
+                        users.join(", ")
+                    );
+                }
+                st.blocked_by = users;
+            }
+        } else {
+            st.blocked_by.clear();
+        }
+        crate::hybrid::save_state(&st);
+        self.dgpu = Some(st);
     }
 
     fn apply_machine(&mut self, topo: &Topology, prev: Option<&Machine>) -> Vec<String> {
@@ -962,6 +1060,7 @@ pub fn run(cfg: Config) -> Result<()> {
         }
         if tick.is_multiple_of(3) {
             hw.auto_mode_tick(&topo, &procs);
+            hw.dgpu_tick();
         }
         // o irqbalance desfaz de tempos em tempos: reaplica a cada 5 min
         if tick.is_multiple_of(300) {
@@ -1160,6 +1259,15 @@ pub fn run(cfg: Config) -> Result<()> {
         let _ = std::fs::remove_file(&reserved_flag);
     }
     hw.restore(&topo);
+    // devolve a NVIDIA se fomos nós que tiramos
+    if hw.dgpu.as_ref().is_some_and(|d| d.removed) {
+        let _ = crate::hybrid::rescan();
+        std::thread::sleep(Duration::from_millis(1500));
+        for svc in hw.dgpu_stopped.drain(..) {
+            let _ = Command::new("systemctl").args(["start", &svc]).status();
+        }
+        let _ = std::fs::remove_file(crate::hybrid::state_path());
+    }
     let _ = hw.energy.save();
     for (pci, (_, prev)) in &hw.idle {
         if let Some(p) = prev {
@@ -1255,16 +1363,6 @@ fn handle(
         Request::FixMemory { key } => return handle_fix_memory(uid, ctx, procs, &key),
         Request::SetGovernor { node, governor } => {
             return handle_governor(uid, ctx, node, &governor);
-        }
-        Request::ProbeOutputs { pci } => {
-            if uid != 0 && uid < ctx.cfg.daemon.min_uid {
-                return Response::err("sem permissão");
-            }
-            if !ctx.topo.gpus.iter().any(|g| g.pci == pci) {
-                return Response::err(format!("GPU {pci} não existe"));
-            }
-            let n = crate::hybrid::probe_root(&pci);
-            return Response::ok(format!("{n} saída(s) conferidas"));
         }
         Request::SetNotify { notify } => {
             if uid != 0 && uid < ctx.cfg.daemon.min_uid {

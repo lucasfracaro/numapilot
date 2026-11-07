@@ -83,6 +83,8 @@ pub struct Machine {
     pub base_w: Option<f64>,
     /// Modos por horário (ex.: Silencioso das 0:00 às 7:00).
     pub schedule: Vec<Sched>,
+    /// Notebook com NVIDIA: auto | hibrido | integrada (None = não mexer).
+    pub dgpu_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -168,6 +170,7 @@ impl Default for Machine {
             price_kwh: None,
             base_w: None,
             schedule: vec![],
+            dgpu_mode: None,
         }
     }
 }
@@ -226,6 +229,11 @@ impl Machine {
         }
         if let Some(r) = &self.ryzen {
             r.validate()?;
+        }
+        if let Some(m) = &self.dgpu_mode
+            && !crate::hybrid::MODES.iter().any(|x| x.0 == m)
+        {
+            return Err(format!("modo da NVIDIA inválido: {m}"));
         }
         if let Some(s) = self.schedule.iter().find(|s| !s.valid()) {
             return Err(format!(
@@ -292,6 +300,7 @@ impl Machine {
             price_kwh: keep.price_kwh,
             base_w: keep.base_w,
             schedule: keep.schedule.clone(),
+            dgpu_mode: keep.dgpu_mode.clone(),
             platform_profile: crate::notebook::profile_for_mode(name),
             ..Default::default()
         };

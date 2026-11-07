@@ -380,26 +380,36 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 format!("{}: {} · {}: {}", ig.alias, scr(ig), nv.alias, scr(nv)),
                 None,
             );
+            let m = crate::machine::Machine::load().dgpu_mode;
             add(
                 "Notebook",
-                "NVIDIA só quando precisar",
+                "modo da NVIDIA",
                 Level::Info,
-                format!(
-                    "{}; esta sessão: {}",
-                    if crate::hybrid::enabled() {
-                        "ligado"
-                    } else {
-                        "desligado"
-                    },
-                    if crate::hybrid::session_restricted() {
-                        "desktop só na integrada"
-                    } else {
-                        "desktop nas duas placas"
-                    }
-                ),
-                (!crate::hybrid::enabled()).then_some(
-                    "numapilot hybrid on (ou Máquina → Notebook) e entre de novo na sessão",
-                ),
+                m.as_deref()
+                    .and_then(|m| crate::hybrid::MODES.iter().find(|x| x.0 == m))
+                    .map(|x| x.1.to_string())
+                    .unwrap_or_else(|| "não mexer (fica no sistema; dorme quando ninguém usa)".into()),
+                m.is_none().then_some("Máquina → Notebook → NVIDIA: Automático desliga na bateria e devolve na tomada, sem sair da sessão"),
+            );
+            if !crate::hybrid::xwayland_wrapped() {
+                add(
+                    "Notebook",
+                    "Xwayland",
+                    Level::Info,
+                    "pode abrir a NVIDIA à toa (programas X11)".into(),
+                    Some("sudo numapilot hybrid xwayland on (o Xwayland usa só o Mesa)"),
+                );
+            }
+        }
+        if let Some(st) = crate::hybrid::load_state()
+            && st.removed
+        {
+            add(
+                "Notebook",
+                "NVIDIA",
+                Level::Ok,
+                format!("{} desligada pelo numapilot (só a integrada)", st.alias),
+                None,
             );
         }
         if crate::notebook::ppd_active() {

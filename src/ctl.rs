@@ -34,10 +34,6 @@ pub enum Request {
     SetMachine {
         machine: crate::machine::Machine,
     },
-    /// Força a placa a conferir as saídas de vídeo (acorda a placa por um instante).
-    ProbeOutputs {
-        pci: String,
-    },
     /// Avisos no celular (ntfy).
     SetNotify {
         notify: crate::notify::Notify,

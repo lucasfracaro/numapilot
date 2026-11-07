@@ -642,18 +642,19 @@ balanceamento NUMA) some.
   permite, perfil de energia do fabricante (ACPI), deixar a placa dedicada **dormir** quando ninguém
   usa (o numapilot não acorda a placa para ler sensores), **quais programas estão mantendo a placa
   acordada** e o Dynamic Boost da NVIDIA.
-- **NVIDIA só quando precisar** (Máquina → Notebook, ou `numapilot hybrid on`): mostra em qual
-  placa está cada tela (no Nitro 5: a tela do notebook e o USB-C/Thunderbolt na 680M, o HDMI na
-  NVIDIA). Ligado, a cada login o numapilot confere: sem tela numa saída da NVIDIA, o desktop sobe
-  só na integrada (`KWIN_DRM_DEVICES` e EGL do Mesa para o Xwayland e os programas comuns) e a NVIDIA
-  dorme; jogos e programas escolhidos para ela continuam indo para ela. Com tela na saída da NVIDIA
-  no login, nada muda e ela fica ligada para gerar a imagem. Se uma tela for ligada no HDMI depois do
-  login, a bandeja avisa para sair e entrar na sessão: como o notebook não avisa quando um cabo é
-  ligado na NVIDIA dormindo, o numapilot confere de verdade no login e, durante a sessão, a cada 20 s
-  na tomada e 60 s na bateria (a placa acorda por um instante). **Quando**: "sempre" (também na
-  tomada: menos calor e barulho) ou "só se o login for na bateria" (na tomada o desktop usa as duas
-  placas e o HDMI funciona a qualquer hora). Trocar tomada/bateria no meio da sessão não troca as
-  placas do desktop; se a sessão começou na tomada e foi para a bateria, a bandeja avisa. Programas na integrada também deixam de
+- **Modo da NVIDIA, trocado com a sessão aberta** (Máquina → Notebook → NVIDIA, ou
+  `numapilot hybrid auto|hibrido|integrada|nao-mexer`): mostra em qual placa está cada tela (no
+  Nitro 5: a tela do notebook e o USB-C/Thunderbolt na 680M, o HDMI na NVIDIA).
+  **Sempre disponível**: a placa fica no sistema, dorme quando ninguém usa e o HDMI funciona a
+  qualquer hora. **Desligada**: o serviço tira a placa do sistema (zero consumo, nada a acorda); o KDE
+  percebe e segue só na integrada, sem sair da sessão; o HDMI não funciona. **Automático**: na tomada
+  disponível, na bateria desligada; tirar ou colocar o carregador troca na hora. Para devolver, o
+  serviço lê o barramento PCI de novo e o KDE adiciona a placa sozinho. Só desliga se nenhum programa
+  estiver usando a NVIDIA (senão espera, mostra quem é e a bandeja avisa); o `nvidia-powerd` para e
+  volta junto. Ao parar o serviço, a placa sempre volta. Nada fica checando a placa periodicamente.
+  O **Xwayland** costuma abrir a NVIDIA mesmo sem usar: o botão "usar só a integrada no Xwayland"
+  (`sudo numapilot hybrid xwayland on`) instala `/usr/local/bin/Xwayland`, que usa só o Mesa; jogos
+  X11 escolhidos para a NVIDIA continuam indo para ela. Programas na integrada também deixam de
   carregar o driver da NVIDIA (EGL/Vulkan), o que a acordava à toa.
 - **Ryzen de notebook**: limites de potência pelo `ryzenadj` (STAPM/sustentado, PPT lento e rápido,
   temperatura máxima), o equivalente do PL1/PL2 da Intel. O serviço reaplica quando o firmware volta
