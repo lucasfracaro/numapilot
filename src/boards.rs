@@ -303,7 +303,7 @@ pub fn parse_active_cu(log: &str) -> Option<u32> {
                 .parse()
                 .ok()
         })
-        .last()
+        .next_back()
 }
 
 #[cfg(test)]
