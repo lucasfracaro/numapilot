@@ -280,6 +280,18 @@ pub struct Holder {
 /// Processos do sistema que só guardam uma cópia do acesso (não usam a placa).
 pub const SYSTEM_HOLDERS: &[&str] = &["systemd", "systemd-logind"];
 
+/// O desktop (compositor) abre todas as placas para poder ligar telas nelas. Parado, isso não
+/// impede a NVIDIA de dormir no modo "fine-grained" do driver; não conta como uso.
+pub const COMPOSITORS: &[&str] = &[
+    "kwin_wayland",
+    "kwin_x11",
+    "gnome-shell",
+    "Hyprland",
+    "sway",
+    "Xorg",
+    "mutter",
+];
+
 pub fn dgpu_holders(pci: &str) -> Vec<Holder> {
     let nodes = dev_nodes(pci);
     if nodes.is_empty() {
@@ -323,7 +335,11 @@ pub fn dgpu_holders(pci: &str) -> Vec<Holder> {
 pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
     dgpu_holders(pci)
         .into_iter()
-        .filter(|h| h.client && !SYSTEM_HOLDERS.contains(&h.name.as_str()))
+        .filter(|h| {
+            h.client
+                && !SYSTEM_HOLDERS.contains(&h.name.as_str())
+                && !COMPOSITORS.contains(&h.name.as_str())
+        })
         .map(|h| (h.pid, h.name))
         .collect()
 }

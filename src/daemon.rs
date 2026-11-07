@@ -251,7 +251,9 @@ impl Hw {
                 let mut u: Vec<String> = holders
                     .iter()
                     .filter(|h| {
-                        h.client && !crate::notebook::SYSTEM_HOLDERS.contains(&h.name.as_str())
+                        h.client
+                            && !crate::notebook::SYSTEM_HOLDERS.contains(&h.name.as_str())
+                            && !crate::notebook::COMPOSITORS.contains(&h.name.as_str())
                     })
                     .map(|h| h.name.clone())
                     .filter(|n| !svcs.contains(&n.as_str()))
@@ -263,9 +265,10 @@ impl Hw {
             // O desktop (KWin) com a saída de vídeo da NVIDIA aberta: tirar a placa do sistema
             // nessas condições não é seguro (o driver espera o desktop soltar). A placa dorme
             // sozinha sem programas usando; é o que vale.
-            let display_open = holders
-                .iter()
-                .any(|h| !h.client && !crate::notebook::SYSTEM_HOLDERS.contains(&h.name.as_str()));
+            let display_open = holders.iter().any(|h| {
+                (!h.client || crate::notebook::COMPOSITORS.contains(&h.name.as_str()))
+                    && !crate::notebook::SYSTEM_HOLDERS.contains(&h.name.as_str())
+            });
             st.sleep_only = users.is_empty() && display_open;
             if st.sleep_only {
                 st.blocked_by.clear();
