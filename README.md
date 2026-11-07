@@ -655,6 +655,23 @@ Processadores com limite de curto prazo ganham o **pico de potência (PL2)** na 
 
 ![BC-250](docs/bc250.png)
 
+**IA e laboratório em qualquer placa.** O `gfx906-rocm` (o nome ficou por compatibilidade)
+descobre a **pilha de computação** do PC e usa as imagens certas, com a mesma validação antes de
+cada atualização, histórico e volta automática:
+
+| Pilha | Placas | Laboratório (PyTorch) | Servidor de IA (llama.cpp) |
+|---|---|---|---|
+| `gfx906` | MI50, Radeon VII | imagens da comunidade (mixa3607) | build gfx906 da comunidade |
+| `rocm` | RX 6000 (gfx1030), 7000, 9000 (ex.: 9060 XT), APUs RDNA 3.5 | `rocm/pytorch` oficial | `ghcr.io/ggml-org/llama.cpp:full-rocm` |
+| `cuda` | NVIDIA | `pytorch/pytorch` (CUDA) | `ghcr.io/ggml-org/llama.cpp:full-cuda` |
+| `vulkan` | BC-250, BC-160, Intel, outras sem ROCm | PyTorch na CPU | `ghcr.io/ggml-org/llama.cpp:full-vulkan` |
+
+`GPU_STACK=auto` em `/etc/gfx906-rocm.conf` detecta sozinho; dá para forçar outra pilha (ex.:
+`vulkan` numa placa com ROCm). Nas imagens com tag que anda (`latest`, `full-*`), a atualização
+baixa a build nova, compara e valida antes de trocar, guardando a anterior. Os tarballs nativos do
+TheRock usam a família da placa (ex.: `gfx120X`). Na NVIDIA, o instalador sugere o
+`nvidia-container-toolkit` e libera a placa para os containers (CDI).
+
 ## 22. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).

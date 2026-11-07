@@ -6,6 +6,8 @@ FROM ${BASE}
 
 ARG BASE
 ARG INSTALL_PYCHARM=0
+# gfx906 | rocm | cuda | vulkan (vulkan = PyTorch na CPU; a GPU fica para o llama.cpp)
+ARG STACK=gfx906
 LABEL io.numapilot.base="${BASE}" \
       org.opencontainers.image.title="gfx906-lab" \
       org.opencontainers.image.description="Jupyter + VS Code + PyCharm + ciência de dados para MI50 (ROCm gfx906)"
@@ -38,7 +40,7 @@ RUN python3 /opt/lab/torch-constraints.py > /opt/lab/torch-constraints.txt \
     && python3 /opt/lab/torch-constraints.py | diff - /opt/lab/torch-constraints.txt \
     && if python3 -m pip list 2>/dev/null | grep -qi '^nvidia-'; then \
            echo "aviso: algum pacote puxou bibliotecas CUDA (inúteis aqui):"; python3 -m pip list | grep -i '^nvidia-'; fi \
-    && python3 -c "import torch; assert torch.version.hip, 'torch sem ROCm'; print('torch', torch.__version__, 'HIP', torch.version.hip)"
+    && STACK="${STACK}" python3 -c "import os, torch; s = os.environ['STACK']; assert s not in ('gfx906', 'rocm') or torch.version.hip, 'torch sem ROCm'; assert s != 'cuda' or torch.version.cuda, 'torch sem CUDA'; print('torch', torch.__version__, 'HIP', torch.version.hip, 'CUDA', torch.version.cuda)"
 
 # VS Code no navegador (code-server) + extensões Python/Jupyter (Open VSX).
 RUN curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone --prefix=/usr/local \

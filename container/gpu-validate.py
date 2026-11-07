@@ -26,10 +26,24 @@ except Exception as e:  # noqa: BLE001
     print("RESULT " + json.dumps(res))
     sys.exit(1)
 
+import os
+
+stack = os.environ.get("VALIDATE_STACK", "gfx906")
 res["torch"] = torch.__version__
 res["hip"] = torch.version.hip
-if torch.version.hip is None:
+res["stack"] = stack
+if stack == "vulkan":
+    # GPU sem ROCm/CUDA: o laboratório roda o PyTorch na CPU (a GPU fica para o llama.cpp/Vulkan).
+    a = torch.randn(512, 512)
+    ok = torch.allclose(a @ torch.eye(512), a)
+    res["ok"] = bool(ok)
+    print("PyTorch na CPU:", "OK" if ok else "ERRO")
+    print("RESULT " + json.dumps(res))
+    sys.exit(0 if ok else 1)
+if stack in ("gfx906", "rocm") and torch.version.hip is None:
     fail("este PyTorch não é build ROCm")
+if stack == "cuda" and torch.version.cuda is None:
+    fail("este PyTorch não é build CUDA")
 n = torch.cuda.device_count() if torch.cuda.is_available() else 0
 if n == 0:
     fail("nenhuma GPU visível")

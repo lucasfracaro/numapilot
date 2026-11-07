@@ -303,6 +303,18 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
         .small()
         .weak(),
     );
+    if let Some(st) = avail["stack"].as_str() {
+        let txt = match st {
+            "gfx906" => "MI50 com ROCm da comunidade",
+            "rocm" => "ROCm oficial da AMD",
+            "cuda" => "NVIDIA (CUDA)",
+            "vulkan" => {
+                "Vulkan (GPUs sem ROCm: o laboratório usa a CPU e o servidor de IA usa a GPU pelo Vulkan)"
+            }
+            o => o,
+        };
+        ui.label(RichText::new(format!("Pilha de computação deste PC: {txt}")).small());
+    }
     let comps = [
         ("lab", "Laboratório (PyTorch)"),
         ("llm", "Servidor de IA (llama.cpp)"),

@@ -14,6 +14,10 @@ FILTER="gfx906"
 KEEP=3
 IMAGE="docker.io/mixa3607/rocm-gfx906:10.1-complete"
 ENGINE=""
+# Pilha de computação: auto | gfx906 | rocm | cuda | vulkan
+#   gfx906 = MI50 com ROCm da comunidade; rocm = placas com ROCm oficial (RX 6000/7000/9000...);
+#   cuda = NVIDIA; vulkan = GPUs sem ROCm (BC-250, BC-160, Intel): llama.cpp via Vulkan.
+GPU_STACK="auto"
 # Laboratório (gfx906-rocm lab): imagem própria construída sobre o PyTorch gfx906.
 LAB_BASE_REPO="docker.io/mixa3607/pytorch-gfx906"
 LAB_BASE=""            # vazio = a tag mais nova do LAB_BASE_REPO (vX.Y.Z-rocm-A.B)
@@ -50,6 +54,54 @@ USER_SETTINGS="${XDG_CONFIG_HOME:-$HOME/.config}/gfx906-lab/settings.env"
 # shellcheck source=/dev/null
 [[ -r $USER_SETTINGS ]] && source "$USER_SETTINGS"
 ROCM_BASE=${GFX906_ROCM_BASE:-$ROCM_BASE}
+
+# ---------------------------------------------------------------- pilha por arquitetura
+kfd_targets() { # gfx_target_version de cada GPU no KFD (ex.: 90006, 120000)
+    local p
+    for p in /sys/class/kfd/kfd/topology/nodes/*/properties; do
+        [[ -r $p ]] && awk '/gfx_target_version/{ if ($2 > 0) print $2 }' "$p"
+    done
+    return 0
+}
+
+detect_stack() {
+    local t
+    t=$(kfd_targets | sort -u | tr '\n' ' ')
+    if [[ " $t " == *" 90006 "* ]]; then echo gfx906; return; fi
+    # alvos com ROCm oficial: gfx908/90a/94x, RDNA2 (gfx1030), RDNA3 (gfx110x/115x), RDNA4 (gfx120x)
+    if [[ $t =~ (^| )(90008|90010|9040[0-9]|9050[0-9]|100300|1100[0-3][0-9]|1105[0-9][0-9]|1200[0-9][0-9])( |$) ]]; then echo rocm; return; fi
+    if command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1; then echo cuda; return; fi
+    echo vulkan
+}
+
+[[ $GPU_STACK == auto ]] && GPU_STACK=$(detect_stack)
+# Imagens padrão de cada pilha (só se o usuário não escolheu outras no config).
+if [[ $GPU_STACK != gfx906 ]]; then
+    # tarballs nativos do TheRock: família da placa (ex.: gfx120X-all)
+    if [[ $FILTER == gfx906 ]]; then
+        case " $(kfd_targets | tr '\n' ' ') " in
+            *" 1200"*) FILTER="gfx120X" ;;
+            *" 1100"* | *" 1101"*) FILTER="gfx110X" ;;
+            *" 1150"*) FILTER="gfx1151" ;;
+            *" 100300 "*) FILTER="gfx103X" ;;
+        esac
+    fi
+    [[ $LAB_BASE_REPO == docker.io/mixa3607/pytorch-gfx906 ]] && case $GPU_STACK in
+        rocm) LAB_BASE_REPO="docker.io/rocm/pytorch" ;;
+        *) LAB_BASE_REPO="docker.io/pytorch/pytorch" ;;
+    esac
+    [[ $LLM_IMAGE_REPO == docker.io/mixa3607/llama.cpp-gfx906 ]] && LLM_IMAGE_REPO="ghcr.io/ggml-org/llama.cpp"
+    # sem placas "de computação" (Instinct): usa a placa de vídeo principal
+    [[ $LLM_GPU == compute:all ]] && LLM_GPU="display"
+    [[ $IMAGE == docker.io/mixa3607/rocm-gfx906:* ]] && IMAGE="docker.io/rocm/dev-ubuntu-24.04:latest"
+fi
+llm_moving_tag() { # pilhas fora da gfx906 usam as imagens oficiais do llama.cpp (tag que anda)
+    case $GPU_STACK in
+        rocm) echo full-rocm ;;
+        cuda) echo full-cuda ;;
+        *) echo full-vulkan ;;
+    esac
+}
 CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/gfx906-rocm
 
 die() { echo "gfx906-rocm: erro: $*" >&2; exit 1; }
@@ -412,6 +464,7 @@ print(sorted(ok, key=key)[-1] if ok else "")'
 
 lab_base() {
     if [[ -n $LAB_BASE ]]; then echo "$LAB_BASE"; return; fi
+    if [[ $GPU_STACK != gfx906 ]]; then echo "$LAB_BASE_REPO:latest"; return; fi
     local t
     t=$(lab_latest_base) || true
     [[ -n $t ]] || die "não consegui consultar as tags de $LAB_BASE_REPO; defina LAB_BASE em $CONF"
@@ -453,8 +506,12 @@ lab_build() {
     info "construindo $LAB_IMAGE sobre $base (a primeira vez demora: a base tem vários GB)"
     local pull=(--pull)
     [[ $eng == podman ]] && pull=(--pull=newer)
+    "$eng" pull "$base" >/dev/null 2>&1 || true
+    local base_id
+    base_id=$("$eng" image inspect -f '{{.Id}}' "$base" 2>/dev/null || true)
     "$eng" build "${pull[@]}" -f "$src/Containerfile" \
-        --build-arg BASE="$base" --build-arg INSTALL_PYCHARM="$LAB_PYCHARM" \
+        --build-arg BASE="$base" --build-arg INSTALL_PYCHARM="$LAB_PYCHARM" --build-arg STACK="$GPU_STACK" \
+        --label io.numapilot.base_id="$base_id" --label io.numapilot.stack="$GPU_STACK" \
         -t "$LAB_IMAGE:$tag" "$src"
 }
 
@@ -468,7 +525,7 @@ lab_up() {
     "$eng" image inspect "$LAB_IMAGE:latest" >/dev/null 2>&1 || lab_build
     mkdir -p "$LAB_DIR" "$HOME/.cache/huggingface"
     local args=(run -d --name "$LAB_NAME" --hostname "$LAB_NAME" --restart unless-stopped
-        --device=/dev/kfd --ipc=host --security-opt seccomp=unconfined
+        --ipc=host --security-opt seccomp=unconfined
         -e LAB_TOKEN="$(lab_token)"
         -p "$LAB_BIND:$LAB_PORT_JUPYTER:8888" -p "$LAB_BIND:$LAB_PORT_CODE:8443" -p "$LAB_BIND:$LAB_PORT_SSH:2222"
         -v "$LAB_DIR:/workspace" -v "$LAB_NAME-home:/root"
@@ -478,6 +535,7 @@ lab_up() {
     local renders=${NUMAPILOT_RENDER:-} r
     [[ -n $renders ]] || renders=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true)
     for r in $renders; do args+=(--device="$r"); done
+    mapfile -t -O "${#args[@]}" args < <(stack_devices)
     if [[ $eng == podman && $EUID -ne 0 ]]; then
         args+=(--group-add keep-groups)
     else
@@ -528,6 +586,24 @@ lab_update() {
     new=$(lab_base)
     echo "imagem atual: ${cur:-nenhuma}"
     echo "base nova   : $new"
+    local ver=$new
+    if [[ $GPU_STACK != gfx906 && $new == "$cur" && $force == 0 && $check == 0 ]]; then
+        # Base com tag que anda (ex.: rocm/pytorch:latest): compara a build baixada com a usada.
+        "$eng" pull "$new" >/dev/null 2>&1 || true
+        local bid lid
+        bid=$("$eng" image inspect -f '{{.Id}}' "$new" 2>/dev/null || true)
+        lid=$("$eng" image inspect -f '{{ index .Config.Labels "io.numapilot.base_id" }}' "$LAB_IMAGE:latest" 2>/dev/null || true)
+        if [[ -n $bid && $bid != "$lid" ]]; then
+            ver="$new@${bid:0:12}"
+            cur="$cur@${lid:0:12}"
+            info "a base $new tem uma build nova"
+            force=1
+            if was_refused lab "$ver"; then
+                info "esta build já foi testada e recusada antes"
+                return 1
+            fi
+        fi
+    fi
     if [[ $new == "$cur" && $force == 0 ]]; then
         info "a base já é a mais nova (use --force para reconstruir e atualizar os pacotes Python)"
         return 0
@@ -544,7 +620,7 @@ lab_update() {
     if [[ $rc != 0 ]]; then
         local why=falhou
         [[ $rc == 2 ]] && why=lenta
-        record_history lab "${cur:-nenhuma}" "$new" "$why" "$VALID_METRICS"
+        record_history lab "${cur:-nenhuma}" "$ver" "$why" "$VALID_METRICS"
         info "a versão nova não passou ($why): o laboratório continua em ${cur:-?}. Ela fica como $LAB_IMAGE:candidate para investigar."
         return 1
     fi
@@ -552,7 +628,7 @@ lab_update() {
     "$eng" tag "$LAB_IMAGE:candidate" "$LAB_IMAGE:latest"
     "$eng" rmi "$LAB_IMAGE:candidate" >/dev/null 2>&1 || true
     save_baseline lab "$VALID_METRICS"
-    record_history lab "${cur:-nenhuma}" "$new" ok "$VALID_METRICS"
+    record_history lab "${cur:-nenhuma}" "$ver" ok "$VALID_METRICS"
     if lab_running; then
         lab_down >/dev/null 2>&1 || true
         lab_up >/dev/null
@@ -626,6 +702,7 @@ print(max(c)[1] if c else "")'
 
 llm_image() {
     if [[ -n $LLM_IMAGE ]]; then echo "$LLM_IMAGE"; return; fi
+    if [[ $GPU_STACK != gfx906 ]]; then echo "$LLM_IMAGE_REPO:$(llm_moving_tag)"; return; fi
     local f t
     f="$(lab_cfg_dir)/llm.image"
     if [[ -s $f ]]; then cat "$f"; return; fi
@@ -666,12 +743,13 @@ llm_run() {
     local model=$1 img=$2 eng
     eng=$(engine)
     "$eng" rm -f "$LLM_NAME" >/dev/null 2>&1 || true
-    local args=(run -d --name "$LLM_NAME" --restart unless-stopped --device=/dev/kfd --ipc=host
+    local args=(run -d --name "$LLM_NAME" --restart unless-stopped --ipc=host
         --security-opt seccomp=unconfined -p "$LLM_BIND:$LLM_PORT:8080" -v "$LLM_MODELS:/models:ro"
         --label io.numapilot.model="$model" --entrypoint sh)
     local renders=${NUMAPILOT_RENDER:-} r ngpu=0
     [[ -n $renders ]] || renders=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true)
     for r in $renders; do args+=(--device="$r"); ngpu=$((ngpu + 1)); done
+    mapfile -t -O "${#args[@]}" args < <(stack_devices)
     if [[ $eng == podman && $EUID -ne 0 ]]; then
         args+=(--group-add keep-groups)
     else
@@ -718,6 +796,9 @@ llm_update() {
     cur=$(cat "$f" 2>/dev/null || true)
     if [[ -n $LLM_IMAGE ]]; then
         new=$LLM_IMAGE
+    elif [[ $GPU_STACK != gfx906 ]]; then
+        new="$LLM_IMAGE_REPO:$(llm_moving_tag)"
+        [[ -n $cur ]] || cur=$new
     else
         new=$(llm_latest_tag) || true
         [[ -n $new ]] || die "não consegui consultar as builds do llama.cpp"
@@ -725,6 +806,37 @@ llm_update() {
     fi
     echo "llama.cpp atual: ${cur:-nenhum}"
     echo "llama.cpp novo : $new"
+    if [[ $GPU_STACK != gfx906 && $new == "$cur" ]]; then
+        [[ $check == 1 ]] && { info "tag que anda ($new): a build nova é conferida ao atualizar"; return 0; }
+        # Tag que anda: guarda a build atual, baixa a nova e compara.
+        local eng old_id new_id
+        eng=$(engine)
+        old_id=$("$eng" image inspect -f '{{.Id}}' "$cur" 2>/dev/null || true)
+        [[ -n $old_id ]] && "$eng" tag "$old_id" localhost/numapilot-llm:previous
+        "$eng" pull "$new" >/dev/null || die "não consegui baixar $new"
+        new_id=$("$eng" image inspect -f '{{.Id}}' "$new")
+        if [[ $new_id == "$old_id" ]]; then info "já está na build mais nova"; return 0; fi
+        local rc=0
+        run_validation llm "$new" || rc=$?
+        if [[ $rc != 0 ]]; then
+            [[ -n $old_id ]] && "$eng" tag localhost/numapilot-llm:previous "$new"
+            record_history llm "$new@${old_id:0:12}" "$new@${new_id:0:12}" "$([[ $rc == 2 ]] && echo lenta || echo falhou)" "$VALID_METRICS"
+            info "a build nova não passou: voltei para a anterior"
+            return 1
+        fi
+        mkdir -p "$(lab_cfg_dir)"
+        echo "$new" >"$f"
+        save_baseline llm "$VALID_METRICS"
+        record_history llm "$new@${old_id:0:12}" "$new@${new_id:0:12}" ok "$VALID_METRICS"
+        if llm_running; then
+            local model
+            model=$("$eng" inspect -f '{{ index .Config.Labels "io.numapilot.model" }}' "$LLM_NAME")
+            "$eng" rm -f "$LLM_NAME" >/dev/null
+            "$0" llm up "$model" || true
+        fi
+        info "llama.cpp atualizado"
+        return 0
+    fi
     [[ $new == "$cur" ]] && { info "já está na build mais nova"; return 0; }
     [[ $check == 1 ]] && return 0
     if was_refused llm "$new"; then
@@ -799,10 +911,19 @@ cmd_llm() {
 STATE_DIR="$(dirname "$UPDATE_LOG")"
 RELEASES_URL="https://github.com/mixa3607/ML-gfx906/releases"
 
+stack_devices() { # dispositivos extras da pilha (uma linha cada)
+    case $GPU_STACK in
+        gfx906 | rocm) [[ -e /dev/kfd ]] && echo --device=/dev/kfd ;;
+        cuda) echo --device=nvidia.com/gpu=all ;; # CDI: nvidia-container-toolkit
+    esac
+    return 0
+}
+
 gpu_args() { # argumentos de GPU para um container de teste (uma linha cada)
     local r eng
     eng=$(engine)
-    printf '%s\n' --device=/dev/kfd --ipc=host --security-opt seccomp=unconfined
+    printf '%s\n' --ipc=host --security-opt seccomp=unconfined
+    stack_devices
     for r in $(compgen -G '/dev/dri/renderD*' || true); do printf -- '--device=%s\n' "$r"; done
     if [[ $eng == podman && $EUID -ne 0 ]]; then
         printf '%s\n' --group-add keep-groups
@@ -868,7 +989,7 @@ validate_lab_image() {
     src=$(lab_src)
     mapfile -t args < <(gpu_args)
     info "validando $img nas GPUs (correção, memória, desempenho)"
-    out=$("$eng" run --rm "${args[@]}" -v "$src/gpu-validate.py:/tmp/gpu-validate.py:ro" --entrypoint python3 "$img" /tmp/gpu-validate.py 2>&1) || {
+    out=$("$eng" run --rm "${args[@]}" -e VALIDATE_STACK="$GPU_STACK" -v "$src/gpu-validate.py:/tmp/gpu-validate.py:ro" --entrypoint python3 "$img" /tmp/gpu-validate.py 2>&1) || {
         echo "$out" | tail -n 15
         return 1
     }
@@ -1059,7 +1180,7 @@ cmd_check() {
         lines+=("$(printf '"rocm":{"current":"%s","new":"%s","held":%s}' "$cur" "${new:-?}" "$(is_held rocm && echo true || echo false)")")
         echo "ROCm nativo: $cur  ->  ${new:-sem informação}"
     fi
-    printf '{"time":"%s","any":%s,"releases":"%s",%s}\n' "$(date -Iseconds)" "$([[ $any == 1 ]] && echo true || echo false)" \
+    printf '{"time":"%s","stack":"%s","any":%s,"releases":"%s",%s}\n' "$(date -Iseconds)" "$GPU_STACK" "$([[ $any == 1 ]] && echo true || echo false)" \
         "$RELEASES_URL" "$(IFS=,; echo "${lines[*]:-\"_\":null}")" >"$STATE_DIR/available.json"
     [[ $any == 1 ]] && echo "Novidades da comunidade: $RELEASES_URL"
     return 0
@@ -1190,6 +1311,10 @@ cmd_doctor() {
   → pode conviver; só não misture LD_LIBRARY_PATH dos dois no mesmo programa."
     fi
     echo "versão ativa: $(readlink "$ROCM_BASE/current" 2>/dev/null || echo nenhuma)"
+    echo "pilha de computação: $GPU_STACK (GPU_STACK em $CONF; auto detecta)"
+    echo "  laboratório: $LAB_BASE_REPO   servidor de IA: $LLM_IMAGE_REPO"
+    [[ $GPU_STACK == cuda ]] && ! [[ -e /etc/cdi/nvidia.yaml || -e /var/run/cdi/nvidia.yaml ]] &&
+        echo "  NVIDIA em container: sudo pacman -S nvidia-container-toolkit && sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml"
 }
 
 main() {

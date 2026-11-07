@@ -86,6 +86,13 @@ RECOMMENDED=(
     "scx-scheds|escalonadores sched_ext do CachyOS"
     "scx-tools|trocar o escalonador pela interface (scxctl)"
 )
+HAS_NVIDIA=0
+for d in /sys/bus/pci/devices/*; do
+    [[ $(cat "$d/vendor" 2>/dev/null) == 0x10de && $(cat "$d/class" 2>/dev/null) == 0x03* ]] && HAS_NVIDIA=1
+done
+if [[ $HAS_NVIDIA == 1 ]]; then
+    RECOMMENDED+=("nvidia-container-toolkit|IA e laboratório em container na NVIDIA")
+fi
 if [[ -e /dev/ipmi0 ]] || lsmod 2>/dev/null | grep -q '^ipmi_si'; then
     RECOMMENDED+=("ipmitool|ventoinhas pelo IPMI da placa de servidor")
 fi
@@ -162,6 +169,15 @@ fi
 if [[ $UNCORE == 1 ]] && ask "Carregar o módulo do uncore em todo boot?"; then
     echo intel_uncore_frequency | sudo tee /etc/modules-load.d/numapilot.conf >/dev/null
     sudo modprobe intel_uncore_frequency || true
+fi
+
+if [[ $HAS_NVIDIA == 1 ]]; then
+    if ! lsmod 2>/dev/null | grep -q '^nvidia '; then
+        warn "driver oficial da NVIDIA não carregado: depois rode 'sudo numapilot driver install' (ou o botão em Placas de vídeo)"
+    fi
+    if command -v nvidia-ctk >/dev/null && [[ ! -e /etc/cdi/nvidia.yaml ]]; then
+        sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml >/dev/null 2>&1 && ok "NVIDIA liberada para os containers (CDI)"
+    fi
 fi
 
 # ------------------------------------------------------------------ 4. compilar e instalar
