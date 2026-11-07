@@ -100,6 +100,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         peers_ui(app, ui);
         ui.add_space(8.0);
         notify_ui(app, ui);
+        ui.add_space(8.0);
+        vm_ui(app, ui);
 
         ui.add_space(8.0);
         ui.heading("Opções de boot");
@@ -636,4 +638,125 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
                 });
         });
     }
+}
+
+#[derive(Default)]
+pub struct VmUi {
+    gpu: String,
+    checks: Vec<numapilot::vm::Check>,
+    name: String,
+    iso: String,
+    mem: u32,
+    cpus: usize,
+    disk: u32,
+}
+
+fn vm_ui(app: &mut App, ui: &mut egui::Ui) {
+    egui::CollapsingHeader::new(RichText::new("Máquina virtual Windows (jogos com anti-cheat)").strong())
+        .id_salt("vm")
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new("Uma placa de vídeo fica só para o Windows numa VM (VFIO). O Linux continua na outra. Alguns anti-cheats (ex.: Vanguard) recusam VM: confira o jogo antes.")
+                    .small()
+                    .weak(),
+            );
+            let gpus: Vec<numapilot::topo::Gpu> = app.topo.gpus.iter().filter(|g| !g.is_integrated()).cloned().collect();
+            let v = &mut app.vm_ui;
+            if v.mem == 0 {
+                (v.mem, v.cpus, v.disk, v.name) = (16, 8, 120, "windows".into());
+            }
+            ui.horizontal(|ui| {
+                ui.label("Placa da VM:");
+                egui::ComboBox::from_id_salt("vmgpu")
+                    .selected_text(if v.gpu.is_empty() { "escolha".to_string() } else { v.gpu.clone() })
+                    .show_ui(ui, |ui| {
+                        for g in &gpus {
+                            ui.selectable_value(&mut v.gpu, g.alias.clone(), format!("{} ({})", g.alias, g.name));
+                        }
+                    });
+                if ui.button("Conferir").clicked() {
+                    let g = gpus.iter().find(|g| g.alias == v.gpu);
+                    v.checks = numapilot::vm::check(&app.topo, g);
+                }
+            });
+            for c in &v.checks {
+                ui.label(
+                    RichText::new(format!(
+                        "{} {}{}",
+                        if c.ok { "ok   " } else { "falta" },
+                        c.name,
+                        if c.detail.is_empty() { String::new() } else { format!(": {}", c.detail) }
+                    ))
+                    .color(if c.ok { Color32::from_rgb(110, 190, 120) } else { Color32::from_rgb(230, 160, 40) }),
+                );
+                if !c.ok
+                    && let Some(f) = &c.fix
+                {
+                    ui.label(RichText::new(format!("    {f}")).small().monospace());
+                }
+            }
+            let gsel = v.gpu.clone();
+            let mut job: Option<(String, Vec<String>)> = None;
+            let mut term: Option<Vec<String>> = None;
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(!gsel.is_empty(), egui::Button::new("Preparar a placa"))
+                    .on_hover_text("Prende a placa no vfio-pci no boot, liga o IOMMU e refaz a imagem de boot (pede a senha). Reinicie depois.")
+                    .clicked()
+                {
+                    job = Some(("Preparando a VM".into(), vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "vm".into(), "prepare".into(), gsel.clone()]));
+                }
+                if ui.button("Devolver ao Linux").clicked() {
+                    job = Some(("Devolvendo a placa".into(), vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "vm".into(), "unprepare".into()]));
+                }
+                if numapilot::containers::which("virt-manager") && ui.button("Abrir virt-manager").clicked() {
+                    let _ = crate::jobs::spawn_detached(&["virt-manager".into()]);
+                }
+            });
+            egui::Grid::new("vmnew").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                ui.label("Nome");
+                ui.add(egui::TextEdit::singleline(&mut v.name).desired_width(160.0));
+                ui.end_row();
+                ui.label("ISO do Windows");
+                ui.add(egui::TextEdit::singleline(&mut v.iso).hint_text("/home/.../Win11.iso").desired_width(320.0));
+                ui.end_row();
+                ui.label("Memória / núcleos / disco");
+                ui.horizontal(|ui| {
+                    ui.add(egui::DragValue::new(&mut v.mem).range(4..=256).suffix(" GB"));
+                    ui.add(egui::DragValue::new(&mut v.cpus).range(2..=64).suffix(" núcleos"));
+                    ui.add(egui::DragValue::new(&mut v.disk).range(64..=2000).suffix(" GB"));
+                });
+                ui.end_row();
+            });
+            if ui
+                .add_enabled(!gsel.is_empty() && !v.iso.is_empty(), egui::Button::new("Criar a VM"))
+                .on_hover_text("UEFI, TPM, núcleos e memória do socket da placa; depois instale o Windows pelo virt-manager")
+                .clicked()
+            {
+                term = Some(vec![
+                    crate::jobs::sibling_abs("numapilot"),
+                    "vm".into(),
+                    "create".into(),
+                    v.name.clone(),
+                    "--gpu".into(),
+                    gsel.clone(),
+                    "--iso".into(),
+                    v.iso.clone(),
+                    "--mem".into(),
+                    v.mem.to_string(),
+                    "--cpus".into(),
+                    v.cpus.to_string(),
+                    "--disk".into(),
+                    v.disk.to_string(),
+                ]);
+            }
+            if let Some((t, c)) = job {
+                app.start_job(&t, c);
+            }
+            if let Some(c) = term
+                && let Err(e) = crate::jobs::in_terminal(&c)
+            {
+                app.toast(e, false);
+            }
+        });
 }

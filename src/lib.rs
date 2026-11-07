@@ -41,6 +41,7 @@ pub mod tuner;
 pub mod undervolt;
 pub mod upscale;
 pub mod util;
+pub mod vm;
 pub mod watch;
 pub mod web;
 pub mod wol;
