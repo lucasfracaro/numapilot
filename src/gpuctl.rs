@@ -116,6 +116,11 @@ pub struct GpuControl {
     pub od: Option<OdSettings>,
     /// NVIDIA: clock máximo travado (MHz). None = normal.
     pub clock_max_mhz: Option<u32>,
+    /// NVIDIA: deslocamento da curva clock/voltagem da GPU (MHz). Com o clock máximo travado,
+    /// um deslocamento positivo é o undervolt.
+    pub nv_gpc_offset_mhz: Option<i32>,
+    /// NVIDIA: deslocamento do clock da memória (MHz).
+    pub nv_mem_offset_mhz: Option<i32>,
 }
 
 pub fn default_curve() -> Vec<(f64, f64)> {
@@ -137,6 +142,8 @@ impl Default for GpuControl {
             power_cap_w: None,
             od: None,
             clock_max_mhz: None,
+            nv_gpc_offset_mhz: None,
+            nv_mem_offset_mhz: None,
         }
     }
 }

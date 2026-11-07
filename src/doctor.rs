@@ -227,10 +227,63 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     None,
                 );
             }
+            if !crate::notebook::dgpu_state(&g.pci).starts_with("dormindo") {
+                let mut users: Vec<String> = crate::notebook::dgpu_users(&g.pci).into_iter().map(|u| u.1).collect();
+                users.sort();
+                users.dedup();
+                if !users.is_empty() {
+                    add(
+                        "Notebook",
+                        &format!("{} acordada por", g.alias),
+                        Level::Info,
+                        users.join(", "),
+                        Some("Abra esses programas na placa integrada para a dedicada dormir"),
+                    );
+                }
+            }
+        }
+        if crate::ryzen::applicable() {
+            if crate::ryzen::available() {
+                match crate::ryzen::info() {
+                    Ok(i) => {
+                        let l = crate::ryzen::limits_from(&i);
+                        add(
+                            "Notebook",
+                            "limites do Ryzen",
+                            Level::Ok,
+                            format!(
+                                "STAPM {} W · PPT {} / {} W · {} °C",
+                                l.stapm_w.map(|v| format!("{v:.0}")).unwrap_or("?".into()),
+                                l.slow_w.map(|v| format!("{v:.0}")).unwrap_or("?".into()),
+                                l.fast_w.map(|v| format!("{v:.0}")).unwrap_or("?".into()),
+                                l.tctl_c.map(|v| format!("{v:.0}")).unwrap_or("?".into())
+                            ),
+                            None,
+                        )
+                    }
+                    Err(e) => add("Notebook", "limites do Ryzen", Level::Info, e, Some("rode com sudo para ler (o ryzenadj precisa de root)")),
+                }
+            } else {
+                add("Notebook", "limites do Ryzen", Level::Info, "ryzenadj não instalado".into(), Some("paru -S ryzenadj"));
+            }
+        }
+        if crate::acer::is_acer() {
+            if crate::acer::sense_dir().is_some() || crate::acer::kb_dir().is_some() {
+                add("Notebook", "Acer (Linuwu-Sense)", Level::Ok, format!("{} ajustes disponíveis", crate::acer::knobs().len()), None);
+            } else {
+                add(
+                    "Notebook",
+                    "Acer (Linuwu-Sense)",
+                    Level::Info,
+                    "módulo não carregado: sem ventoinha manual, limite de 80% e RGB".into(),
+                    Some("https://github.com/0x7375646F/Linuwu-Sense"),
+                );
+            }
         }
         if !crate::notebook::battery_info()
             .iter()
             .any(|b| b.charge_limit.is_some())
+            && crate::acer::read("battery_limiter").is_none()
         {
             add(
                 "Notebook",

@@ -394,9 +394,37 @@ fn nv_clock_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
             ui.label(RichText::new(format!("normal (até {hi} MHz)")).weak());
         }
     });
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Undervolt:").strong())
+            .on_hover_text("Desloca a curva clock/voltagem para cima: com o clock máximo travado, a placa chega nele com voltagem menor. Suba de 15 em 15 MHz e teste em jogo; se travar ou der artefato, volte um passo.");
+        let mut on = edit.nv_gpc_offset_mhz.is_some();
+        if ui.checkbox(&mut on, "deslocar a curva").changed() {
+            edit.nv_gpc_offset_mhz = on.then_some(75);
+        }
+        if let Some(v) = edit.nv_gpc_offset_mhz.as_mut() {
+            ui.add(egui::Slider::new(v, -200..=300).suffix(" MHz").step_by(15.0));
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label("Memória:");
+        let mut on = edit.nv_mem_offset_mhz.is_some();
+        if ui.checkbox(&mut on, "deslocar").changed() {
+            edit.nv_mem_offset_mhz = on.then_some(0);
+        }
+        if let Some(v) = edit.nv_mem_offset_mhz.as_mut() {
+            ui.add(egui::Slider::new(v, -500..=1500).suffix(" MHz").step_by(50.0));
+        }
+    });
+    if edit.nv_gpc_offset_mhz.is_some_and(|v| v > 0) && edit.clock_max_mhz.is_none() {
+        ui.label(
+            RichText::new("Sem travar o clock máximo, o deslocamento vira overclock (mais clock, mesma voltagem). Para undervolt, trave o clock também.")
+                .small()
+                .color(Color32::from_rgb(230, 160, 40)),
+        );
+    }
     ui.label(
         RichText::new(
-            "Com potência e clock limitados a placa gasta e esquenta bem menos perdendo pouco FPS: é o mais perto de um undervolt que o driver permite no Linux.",
+            "Undervolt na NVIDIA: trave o clock (ex.: 1800 MHz) e desloque a curva (+100 a +200 MHz): mesmo FPS gastando e esquentando menos. O botão \"Achar sozinho\" testa os passos por você.",
         )
         .small()
         .weak(),
@@ -913,7 +941,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         );
     }
     if let Some((pci, control)) = app.pending_gpu.take() {
-        app.send(Request::SetGpuControl { pci, control });
+        app.send(Request::SetGpuControl { pci, control, trial: false });
         app.gpu_saved = gpuctl::GpuControls::load();
         app.gpu_edit.clear();
     }

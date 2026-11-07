@@ -58,6 +58,10 @@ pub enum Request {
     SetGpuControl {
         pci: String,
         control: crate::gpuctl::GpuControl,
+        /// Teste (undervolt automático): aplica, mas não grava no disco; se o PC travar,
+        /// volta com o último valor bom.
+        #[serde(default)]
+        trial: bool,
     },
 }
 

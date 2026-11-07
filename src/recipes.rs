@@ -167,6 +167,9 @@ impl Recipes {
 
 /// Nome do processador (primeira "model name" do /proc/cpuinfo).
 pub fn cpu_model() -> String {
+    if let Ok(m) = std::env::var("NUMAPILOT_CPU_MODEL") {
+        return m;
+    }
     std::fs::read_to_string("/proc/cpuinfo")
         .unwrap_or_default()
         .lines()

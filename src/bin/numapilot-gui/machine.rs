@@ -33,6 +33,8 @@ pub struct MachineUi {
     vulns: Vec<(String, String)>,
     sel: BTreeSet<String>,
     custom: String,
+    dgpu_at: Option<Instant>,
+    dgpu_users: Vec<(u32, String)>,
 }
 
 impl MachineUi {
@@ -122,6 +124,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     let mut send_machine: Option<Machine> = None;
     let mut send_fan: Option<(String, BoardFanControl)> = None;
     let mut job: Option<(String, Vec<String>)> = None;
+    let mut app_toast: Option<String> = None;
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         let mu = &mut app.mach;
@@ -226,10 +229,200 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         tri(ui, &format!("dpm{}", g.pci), &mut m.dgpu_autosuspend, "dormir quando ninguém usa", "sempre ligada");
                     });
                     ui.end_row();
+                    if !nb::dgpu_state(&g.pci).starts_with("dormindo") {
+                        if mu.dgpu_at.is_none_or(|t| t.elapsed().as_secs() >= 3) {
+                            mu.dgpu_at = Some(Instant::now());
+                            mu.dgpu_users = nb::dgpu_users(&g.pci);
+                        }
+                        if !mu.dgpu_users.is_empty() {
+                            let mut names: Vec<&str> = mu.dgpu_users.iter().map(|(_, n)| n.as_str()).collect();
+                            names.sort();
+                            names.dedup();
+                            ui.label("");
+                            ui.label(
+                                RichText::new(format!("Acordada por: {}", names.join(", ")))
+                                    .small()
+                                    .color(Color32::from_rgb(230, 160, 40)),
+                            )
+                            .on_hover_text("Esses programas abriram a placa dedicada; enquanto estiverem abertos ela não dorme e gasta bateria. Abra-os na integrada (perfil do programa → placa) para economizar.");
+                            ui.end_row();
+                        }
+                    }
                 }
                 if nb::has_nvidia_powerd() {
                     ui.label("Dynamic Boost da NVIDIA").on_hover_text("Passa potência do processador para a placa de vídeo em jogos (nvidia-powerd).");
                     tri(ui, "powerd", &mut m.nvidia_powerd, "ligado", "desligado");
+                    ui.end_row();
+                }
+            });
+        }
+
+        // ---------------- Ryzen de notebook (ryzenadj) ----------------
+        if numapilot::ryzen::applicable() {
+            ui.add_space(8.0);
+            ui.heading("Limites de potência do Ryzen");
+            if !numapilot::ryzen::available() {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Instale o ryzenadj para ajustar STAPM/PPT (o equivalente do PL1/PL2 da Intel).").weak());
+                    if ui.small_button("instalar (AUR)").clicked() {
+                        let helper = if numapilot::containers::which("paru") { "paru" } else { "yay" };
+                        if let Err(e) = crate::jobs::in_terminal(&[helper.into(), "-S".into(), "ryzenadj".into()]) {
+                            app_toast = Some(e);
+                        }
+                    }
+                });
+            } else {
+                let now = &mu.hw["ryzen"];
+                let r = m.ryzen.get_or_insert_with(Default::default);
+                egui::Grid::new("ryzen").num_columns(3).spacing([14.0, 6.0]).show(ui, |ui| {
+                    let rows: [(&str, &str, &str, &mut Option<f64>, f64, f64); 4] = [
+                        ("Sustentado (STAPM)", "STAPM LIMIT", " W", &mut r.stapm_w, 5.0, 120.0),
+                        ("Média curta (PPT lento)", "PPT LIMIT SLOW", " W", &mut r.slow_w, 5.0, 150.0),
+                        ("Picos (PPT rápido)", "PPT LIMIT FAST", " W", &mut r.fast_w, 5.0, 150.0),
+                        ("Temperatura máxima", "THM LIMIT CORE", " °C", &mut r.tctl_c, 60.0, 105.0),
+                    ];
+                    for (label, key, unit, v, lo, hi) in rows {
+                        ui.label(label);
+                        let cur = now[key].as_f64();
+                        let mut on = v.is_some();
+                        let mut x = v.or(cur).unwrap_or(lo.max(35.0).min(hi));
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut on, "");
+                            ui.add_enabled(on, egui::DragValue::new(&mut x).range(lo..=hi).suffix(unit).speed(0.5).fixed_decimals(0));
+                        });
+                        *v = on.then_some(x);
+                        ui.label(RichText::new(cur.map(|c| format!("agora {c:.0}{unit}")).unwrap_or_else(|| "agora ? (serviço)".into())).weak());
+                        ui.end_row();
+                    }
+                });
+                if r.is_empty() {
+                    m.ryzen = None;
+                }
+                ui.label(
+                    RichText::new("Baixar o STAPM e a temperatura deixa o notebook frio e silencioso; o serviço reaplica se o firmware voltar os valores ao trocar tomada/bateria.")
+                        .small()
+                        .weak(),
+                );
+            }
+        }
+
+        // ---------------- Acer Predator / Nitro ----------------
+        if numapilot::acer::is_acer() || numapilot::acer::sense_dir().is_some() {
+            use numapilot::acer;
+            ui.add_space(8.0);
+            ui.heading("Acer Predator / Nitro");
+            let knobs = acer::knobs();
+            if knobs.is_empty() && acer::kb_dir().is_none() {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Ventoinhas, limite de carga em 80% e RGB precisam do módulo da comunidade Linuwu-Sense.").weak());
+                    if ui.small_button("página").clicked() {
+                        let _ = crate::jobs::open_url("https://github.com/0x7375646F/Linuwu-Sense");
+                    }
+                });
+            }
+            egui::Grid::new("acer").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
+                for (key, cur) in &knobs {
+                    let Some((_, _, label, help)) = acer::KNOBS.iter().find(|k| k.0 == *key) else { continue };
+                    ui.label(*label).on_hover_text(*help);
+                    let cur = cur.clone().unwrap_or_default();
+                    match *key {
+                        "fan_speed" => {
+                            let v = m.acer.get(*key).cloned();
+                            let (mut c, mut g) = v
+                                .as_deref()
+                                .and_then(|v| v.split_once(','))
+                                .and_then(|(a, b)| Some((a.trim().parse::<u32>().ok()?, b.trim().parse::<u32>().ok()?)))
+                                .unwrap_or((0, 0));
+                            let mut mode = match (v.is_some(), c, g) {
+                                (false, ..) => 0,
+                                (true, 0, 0) => 1,
+                                (true, 100, 100) => 2,
+                                _ => 3,
+                            };
+                            ui.horizontal(|ui| {
+                                for (i, l) in ["não mexer", "automático", "máximo", "manual"].iter().enumerate() {
+                                    ui.selectable_value(&mut mode, i, *l);
+                                }
+                                if mode == 3 {
+                                    if (c, g) == (0, 0) || (c, g) == (100, 100) {
+                                        (c, g) = (60, 60);
+                                    }
+                                    ui.add(egui::DragValue::new(&mut c).range(20..=100).prefix("CPU ").suffix("%"));
+                                    ui.add(egui::DragValue::new(&mut g).range(20..=100).prefix("GPU ").suffix("%"));
+                                }
+                                ui.label(RichText::new(format!("agora {cur}")).weak());
+                            });
+                            match mode {
+                                0 => {
+                                    m.acer.remove(*key);
+                                }
+                                1 => {
+                                    m.acer.insert(key.to_string(), "0,0".into());
+                                }
+                                2 => {
+                                    m.acer.insert(key.to_string(), "100,100".into());
+                                }
+                                _ => {
+                                    m.acer.insert(key.to_string(), format!("{c},{g}"));
+                                }
+                            }
+                        }
+                        "usb_charging" => {
+                            let mut v = m.acer.get(*key).cloned();
+                            egui::ComboBox::from_id_salt("usbc")
+                                .selected_text(v.clone().map(|x| if x == "0" { "não".into() } else { format!("até {x}%") }).unwrap_or_else(|| format!("não mexer ({cur})")))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut v, None, "não mexer");
+                                    for x in ["0", "10", "20", "30"] {
+                                        ui.selectable_value(&mut v, Some(x.to_string()), if x == "0" { "não".to_string() } else { format!("até {x}%") });
+                                    }
+                                });
+                            match v {
+                                Some(x) => m.acer.insert(key.to_string(), x),
+                                None => m.acer.remove(*key),
+                            };
+                        }
+                        _ => {
+                            let mut v = m.acer.get(*key).map(|x| x == "1");
+                            ui.horizontal(|ui| {
+                                tri(ui, &format!("acer{key}"), &mut v, "ligado", "desligado");
+                                ui.label(RichText::new(format!("agora {}", if cur == "1" { "ligado" } else { "desligado" })).weak());
+                            });
+                            match v {
+                                Some(b) => m.acer.insert(key.to_string(), if b { "1" } else { "0" }.into()),
+                                None => m.acer.remove(*key),
+                            };
+                        }
+                    }
+                    ui.end_row();
+                }
+                if acer::kb_dir().is_some() {
+                    ui.label("Teclado RGB");
+                    ui.horizontal(|ui| {
+                        let cur = m.acer.get("kb_effect").cloned();
+                        let parts: Vec<u32> = cur.as_deref().unwrap_or("0,1,100,0,255,40,0").split(',').filter_map(|x| x.parse().ok()).collect();
+                        let p = |i: usize, d: u32| parts.get(i).copied().unwrap_or(d);
+                        let mut on = cur.is_some();
+                        let (mut mode, speed, mut bright, dir) = (p(0, 0), p(1, 1), p(2, 100), p(3, 0));
+                        let mut rgb = [p(4, 255) as u8, p(5, 40) as u8, p(6, 0) as u8];
+                        ui.checkbox(&mut on, "");
+                        ui.add_enabled_ui(on, |ui| {
+                            egui::ComboBox::from_id_salt("kbfx")
+                                .selected_text(acer::EFFECTS.iter().find(|e| e.0 as u32 == mode).map(|e| e.1).unwrap_or("?"))
+                                .show_ui(ui, |ui| {
+                                    for (k, l) in acer::EFFECTS {
+                                        ui.selectable_value(&mut mode, *k as u32, *l);
+                                    }
+                                });
+                            ui.color_edit_button_srgb(&mut rgb);
+                            ui.add(egui::Slider::new(&mut bright, 0..=100).suffix("%"));
+                        });
+                        if on {
+                            m.acer.insert("kb_effect".into(), format!("{mode},{speed},{bright},{dir},{},{},{}", rgb[0], rgb[1], rgb[2]));
+                        } else {
+                            m.acer.remove("kb_effect");
+                        }
+                    });
                     ui.end_row();
                 }
             });
@@ -780,6 +973,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         );
     });
 
+    if let Some(e) = app_toast {
+        app.toast(e, false);
+    }
     if let Some(m) = send_machine {
         app.send(Request::SetMachine { machine: m });
         app.mach.read_at = None;

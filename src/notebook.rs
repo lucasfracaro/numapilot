@@ -264,3 +264,50 @@ mod tests {
         assert!(set_platform_profile("turbo").is_err());
     }
 }
+
+/// Arquivos de dispositivo da placa: /dev/dri/cardN e renderDN, e /dev/nvidiaN na NVIDIA.
+fn dev_nodes(pci: &str) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(sys(&format!("bus/pci/devices/{pci}/drm")))
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| n.starts_with("card") || n.starts_with("renderD"))
+                .map(|n| format!("/dev/dri/{n}"))
+                .collect()
+        })
+        .unwrap_or_default();
+    let info = fs::read_to_string(format!("/proc/driver/nvidia/gpus/{pci}/information")).unwrap_or_default();
+    if let Some(m) = info
+        .lines()
+        .find(|l| l.starts_with("Device Minor"))
+        .and_then(|l| l.split(':').nth(1))
+    {
+        v.push(format!("/dev/nvidia{}", m.trim()));
+    }
+    v
+}
+
+/// Programas com a placa aberta (o que a impede de dormir). Sem root, só aparecem os do
+/// próprio usuário, que é o caso comum (navegador, Steam, jogo).
+pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
+    let nodes = dev_nodes(pci);
+    if nodes.is_empty() {
+        return vec![];
+    }
+    let mut out = vec![];
+    let Ok(rd) = fs::read_dir("/proc") else { return out };
+    for e in rd.flatten() {
+        let Ok(pid) = e.file_name().to_string_lossy().parse::<u32>() else { continue };
+        let Ok(fds) = fs::read_dir(e.path().join("fd")) else { continue };
+        let uses = fds.flatten().any(|f| {
+            fs::read_link(f.path())
+                .map(|t| nodes.iter().any(|n| t.as_os_str() == n.as_str()))
+                .unwrap_or(false)
+        });
+        if uses {
+            let name = read_trim(e.path().join("comm")).unwrap_or_default();
+            out.push((pid, name));
+        }
+    }
+    out
+}

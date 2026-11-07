@@ -79,6 +79,12 @@ impl Gpu {
                 ]
                 .iter()
                 .any(|k| n.contains(k))
+                    // IDs das APUs mais comuns, para quando não há nome (sem hwdata)
+                    || [
+                        0x15d8, 0x15dd, 0x1636, 0x1638, 0x164c, 0x1681, 0x15bf, 0x15c8, 0x164e,
+                        0x1506, 0x163f, 0x150e, 0x1586, 0x13c0,
+                    ]
+                    .contains(&self.device)
             }
             _ => false,
         }

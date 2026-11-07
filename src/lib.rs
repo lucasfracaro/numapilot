@@ -1,4 +1,5 @@
 //! numapilot: escolhe socket NUMA, memória e GPU para cada programa.
+pub mod acer;
 pub mod backup;
 pub mod bench;
 pub mod boards;
@@ -22,14 +23,17 @@ pub mod learned;
 pub mod machine;
 pub mod notebook;
 pub mod nvctl;
+pub mod nvml;
 pub mod peers;
 pub mod procevents;
 pub mod procfs;
 pub mod profiles;
 pub mod recipes;
+pub mod ryzen;
 pub mod steam;
 pub mod topo;
 pub mod tuner;
+pub mod undervolt;
 pub mod upscale;
 pub mod util;
 pub mod web;

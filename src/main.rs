@@ -103,6 +103,22 @@ enum Cmd {
         arg: Option<String>,
         name: Option<String>,
     },
+    /// Undervolt automático de uma GPU (apelido ou PCI): testa passo a passo com carga e grava o último estável
+    Undervolt {
+        gpu: String,
+        /// Segundos de carga por passo
+        #[arg(long, default_value_t = 60)]
+        secs: u64,
+        /// Passos de margem no fim
+        #[arg(long, default_value_t = 1)]
+        margin: u32,
+        /// NVIDIA: clock máximo a travar (MHz)
+        #[arg(long)]
+        clock: Option<u32>,
+        /// Tamanho do passo (MHz na NVIDIA, mV na AMD)
+        #[arg(long)]
+        step: Option<i32>,
+    },
     /// Driver oficial da NVIDIA: status | install | update (install/update com sudo)
     Driver { action: String },
     /// Guarda todas as configurações num .tar.gz (para reinstalar depois de formatar).
@@ -410,6 +426,26 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
                 _ => bail!("use: numapilot peers list | add LINK [NOME] | remove NOME"),
+            }
+        }
+        Cmd::Undervolt { gpu, secs, margin, clock, step } => {
+            let cfg = Config::load()?;
+            let topo = Topology::load(&cfg);
+            let g = topo
+                .gpus
+                .iter()
+                .find(|g| g.alias == gpu || g.pci == gpu)
+                .with_context(|| format!("GPU '{gpu}' não encontrada (veja numapilot topo)"))?
+                .clone();
+            numapilot::undervolt::catch_ctrl_c();
+            println!("Deixe o PC parado durante o teste. Ctrl+C para parar e voltar ao que era.");
+            let opts = numapilot::undervolt::Opts { secs, margin, clock, step };
+            match numapilot::undervolt::run(&topo, &g, &opts, &mut |l| println!("{l}")) {
+                Ok(o) => {
+                    println!("\nPronto: {} ({} passo(s) estáveis).", o.description, o.steps_ok);
+                    Ok(())
+                }
+                Err(e) => bail!(e),
             }
         }
         Cmd::Driver { action } => {

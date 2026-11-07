@@ -71,6 +71,10 @@ pub struct Machine {
     pub dgpu_autosuspend: Option<bool>,
     /// Dynamic Boost da NVIDIA (nvidia-powerd).
     pub nvidia_powerd: Option<bool>,
+    /// Limites de potência do Ryzen de notebook (ryzenadj).
+    pub ryzen: Option<crate::ryzen::Limits>,
+    /// Acer Predator/Nitro (Linuwu-Sense): chave -> valor.
+    pub acer: BTreeMap<String, String>,
 }
 
 impl Default for Machine {
@@ -94,6 +98,8 @@ impl Default for Machine {
             battery_mode: None,
             dgpu_autosuspend: None,
             nvidia_powerd: None,
+            ryzen: None,
+            acer: BTreeMap::new(),
         }
     }
 }
@@ -150,6 +156,12 @@ impl Machine {
                 return Err(format!("EPP inválido: {e}"));
             }
         }
+        if let Some(r) = &self.ryzen {
+            r.validate()?;
+        }
+        for (k, v) in &self.acer {
+            crate::acer::validate(k, v)?;
+        }
         if let Some(t) = &self.thp
             && !["always", "madvise", "never"].contains(&t.as_str())
         {
@@ -200,6 +212,8 @@ impl Machine {
             battery_mode: keep.battery_mode.clone(),
             dgpu_autosuspend: keep.dgpu_autosuspend,
             nvidia_powerd: keep.nvidia_powerd,
+            ryzen: keep.ryzen.clone(),
+            acer: keep.acer.clone(),
             platform_profile: crate::notebook::profile_for_mode(name),
             ..Default::default()
         };
@@ -335,6 +349,8 @@ pub struct Orig {
     pub platform_profile: Option<String>,
     /// power/control das placas dedicadas
     pub dgpu_pm: BTreeMap<String, String>,
+    pub ryzen: Option<crate::ryzen::Limits>,
+    pub acer: BTreeMap<String, String>,
 }
 
 impl Orig {
@@ -381,6 +397,19 @@ impl Orig {
         for g in topo.gpus.iter().filter(|g| !g.is_integrated()) {
             if let Some(c) = crate::notebook::runtime_pm(&g.pci) {
                 o.dgpu_pm.insert(g.pci.clone(), c);
+            }
+        }
+        if crate::ryzen::available() && crate::ryzen::applicable() {
+            o.ryzen = crate::ryzen::info().ok().map(|i| crate::ryzen::limits_from(&i));
+        }
+        for (k, v) in crate::acer::knobs() {
+            if let Some(v) = v {
+                o.acer.insert(k.to_string(), v);
+            }
+        }
+        for k in ["kb_effect", "kb_zones"] {
+            if let Some(v) = crate::acer::read(k) {
+                o.acer.insert(k.to_string(), v);
             }
         }
         o
@@ -620,6 +649,31 @@ pub fn apply(
     {
         e(crate::notebook::set_nvidia_powerd(on), "Dynamic Boost");
     }
+    if crate::ryzen::available() && crate::ryzen::applicable() {
+        let want = m.ryzen.clone().filter(|l| !l.is_empty());
+        let had = prev.and_then(|p| p.ryzen.clone()).filter(|l| !l.is_empty());
+        match want {
+            Some(w) if prev.is_none() || had.as_ref() != Some(&w) => e(crate::ryzen::apply(&w), "limites do Ryzen"),
+            None if had.is_some() => {
+                if let Some(o) = &orig.ryzen {
+                    e(crate::ryzen::apply(o), "limites do Ryzen (originais)");
+                }
+            }
+            _ => {}
+        }
+    }
+    for (k, v) in &m.acer {
+        if crate::acer::read(k).as_deref() != Some(v.as_str()) {
+            e(crate::acer::set(k, v), &format!("Acer {k}"));
+        }
+    }
+    if let Some(p) = prev {
+        for k in p.acer.keys().filter(|k| !m.acer.contains_key(*k)) {
+            if let Some(o) = orig.acer.get(k) {
+                e(crate::acer::set(k, o), &format!("Acer {k} (original)"));
+            }
+        }
+    }
     if let Some(mode) = m.ipmi_fan_mode.or(orig.ipmi)
         && crate::fans::supermicro_mode() != Some(mode)
     {
@@ -730,6 +784,63 @@ impl LowLatency {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ryzen_and_acer_apply() {
+        let root = std::env::temp_dir().join(format!("np-ry-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let w = |p: &str, v: &str| {
+            let f = root.join(p);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, v).unwrap();
+        };
+        w("class/power_supply/BAT0/type", "Battery");
+        w("devices/platform/acer-wmi/predator_sense/battery_limiter", "0");
+        w("devices/platform/acer-wmi/predator_sense/fan_speed", "0,0");
+        let log = root.join("ryzenadj.log");
+        let bin = root.join("ryzenadj");
+        std::fs::write(
+            &bin,
+            format!("#!/bin/sh\necho \"$@\" >> {}\necho '| STAPM LIMIT | 45.000 | stapm-limit |'\n", log.display()),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _g = crate::util::test_sysfs_lock(&root);
+        unsafe {
+            std::env::set_var("NUMAPILOT_RYZENADJ", &bin);
+            std::env::set_var("NUMAPILOT_CPU_MODEL", "AMD Ryzen 7 6800H with Radeon Graphics");
+        }
+        let topo = Topology { nodes: vec![], gpus: vec![], default_graphics: None };
+        let orig = Orig::capture(&topo);
+        assert_eq!(orig.ryzen.as_ref().and_then(|r| r.stapm_w), Some(45.0));
+        assert_eq!(orig.acer.get("battery_limiter").map(String::as_str), Some("0"));
+        let mut m = Machine {
+            ryzen: Some(crate::ryzen::Limits { stapm_w: Some(30.0), tctl_c: Some(85.0), ..Default::default() }),
+            ..Default::default()
+        };
+        m.acer.insert("battery_limiter".into(), "1".into());
+        m.acer.insert("fan_speed".into(), "60,70".into());
+        assert!(m.validate().is_ok());
+        let errs = apply(&m, None, &orig, &topo, &BTreeMap::new());
+        assert!(errs.is_empty(), "{errs:?}");
+        let l = std::fs::read_to_string(&log).unwrap();
+        assert!(l.contains("--stapm-limit=30000 --tctl-temp=85"), "{l}");
+        assert_eq!(crate::acer::read("battery_limiter").as_deref(), Some("1"));
+        assert_eq!(crate::acer::read("fan_speed").as_deref(), Some("60,70"));
+        // tirar os ajustes volta os originais
+        let prev = m.clone();
+        let m2 = Machine::default();
+        let errs = apply(&m2, Some(&prev), &orig, &topo, &BTreeMap::new());
+        assert!(errs.is_empty(), "{errs:?}");
+        assert_eq!(crate::acer::read("battery_limiter").as_deref(), Some("0"));
+        assert!(std::fs::read_to_string(&log).unwrap().contains("--stapm-limit=45000"));
+        unsafe {
+            std::env::remove_var("NUMAPILOT_RYZENADJ");
+            std::env::remove_var("NUMAPILOT_CPU_MODEL");
+        }
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn validate_and_serde() {
