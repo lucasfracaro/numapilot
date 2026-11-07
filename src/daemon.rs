@@ -710,6 +710,12 @@ pub fn run(cfg: Config) -> Result<()> {
     if cfg.daemon.gpu_irq {
         gpu_irqs(&ctx);
     }
+    if cfg.daemon.device_irq {
+        let n = crate::irqs::apply(&topo);
+        if n > 0 {
+            eprintln!("[numapilot] {n} interrupções de disco/rede no socket da placa");
+        }
+    }
     for (pci, c) in &gpuc.map {
         if let Err(e) = nv_offsets(pci, c) {
             eprintln!("[numapilot] GPU {pci}: deslocamento de clock não aplicado: {e}");
@@ -948,6 +954,15 @@ pub fn run(cfg: Config) -> Result<()> {
         }
         if tick.is_multiple_of(3) {
             hw.auto_mode_tick(&topo, &procs);
+        }
+        // o irqbalance desfaz de tempos em tempos: reaplica a cada 5 min
+        if tick.is_multiple_of(300) {
+            if cfg.daemon.gpu_irq {
+                gpu_irqs(&ctx);
+            }
+            if cfg.daemon.device_irq {
+                crate::irqs::apply(&topo);
+            }
         }
         // Aviso de GPU quente no celular (3 leituras seguidas acima do limite).
         if tick.is_multiple_of(5) {

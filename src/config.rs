@@ -46,6 +46,8 @@ pub struct DaemonCfg {
     pub ignore: Vec<String>,
     /// Interrupções de cada GPU atendidas pelo socket onde ela está ligada.
     pub gpu_irq: bool,
+    /// O mesmo para discos NVMe e placas de rede.
+    pub device_irq: bool,
 }
 
 impl Default for DaemonCfg {
@@ -62,6 +64,7 @@ impl Default for DaemonCfg {
             migrate_memory: true,
             ignore: vec!["numapilot".into(), "systemd".into(), "dbus-*".into()],
             gpu_irq: true,
+            device_irq: true,
         }
     }
 }

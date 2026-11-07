@@ -445,6 +445,23 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     for n in rec.cpu_notes(&crate::recipes::cpu_model()) {
         add("Processador", "dica", Level::Info, n, None);
     }
+    // ---- interrupções no socket certo ----
+    if topo.nodes.len() > 1 {
+        let devs = crate::irqs::devices();
+        if !devs.is_empty() {
+            let desc: Vec<String> = devs.iter().map(|d| format!("{} {} no socket {}", d.kind, d.pci, d.node)).collect();
+            add("Interrupções", "discos e rede", Level::Ok, desc.join(", "), None);
+        }
+        if crate::irqs::irqbalance_active() {
+            add(
+                "Interrupções",
+                "irqbalance",
+                Level::Info,
+                "ligado: ele espalha as interrupções e o serviço reaplica a cada 5 min".into(),
+                Some("sudo systemctl disable --now irqbalance (opcional)"),
+            );
+        }
+    }
     // ---- saúde do hardware ----
     let rep = if crate::util::is_root() {
         Some(crate::health::collect(&topo))

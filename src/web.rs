@@ -456,6 +456,7 @@ const PRE=[['jogo','Jogo'],['ia','IA'],['render','Render'],['silencioso','Silenc
 async function load(){
  let s;try{const r=await fetch('/api/state',{headers:{'X-Token':T}});if(r.status==401){document.getElementById('err').style.display='block';document.getElementById('err').textContent='Token inválido: abra o link com ?t= mostrado no numapilot (Configurações → Painel no celular).';return}s=await r.json()}catch(e){return}
  document.getElementById('err').style.display='none';
+ window.ME=s.version;
  const al=document.getElementById('alerts');al.style.display=(s.alerts||[]).length?'block':'none';al.innerHTML=(s.alerts||[]).map(a=>'⚠ '+esc(a)).join('<br>');
  document.getElementById('host').textContent=s.host+(s.watts!=null?' · '+Math.round(s.watts)+' W':'')+(s.kwh_today!=null?' · hoje '+s.kwh_today.toFixed(2)+' kWh'+(s.price_kwh?' (R$ '+(s.kwh_today*s.price_kwh).toFixed(2)+')':''):'');
  document.getElementById('svc').innerHTML=`<span class="dot" style="background:${s.daemon?'var(--ok)':'var(--bad)'}"></span>${s.daemon?'serviço ok':'serviço parado'}`;
@@ -481,6 +482,7 @@ async function peers(){try{const r=await fetch('/api/peers',{headers:{'X-Token':
   ${x.online?`<div class="mut">${esc(x.host||'')} · ${x.gpus} GPU · ${x.programs} programas</div>
   <div class="big ${tc(x.hot)}">${x.hot!=null?Math.round(x.hot)+' °C':'—'}</div>
   ${spark(x.hist)}
+  ${x.version&&window.ME&&x.version!=window.ME?`<div class="mut warm">numapilot ${esc(x.version)} (este: ${esc(window.ME)}): atualize em Configurações</div>`:''}
   <div class="mut">CPU ${(x.load||[]).map(l=>Math.round(l*100)+'%').join(' · ')}</div>
   <a href="${esc(x.link)}"><button>Abrir</button></a>`:`<div class="mut">desligado ou fora da rede</div>${x.can_wake?`<button onclick='act({action:"wake",name:${JSON.stringify(x.name)}})'>Ligar</button>`:''}`}</div>`).join('')}catch(e){}}
 let G=[];async function games(){try{const r=await fetch('/api/games',{headers:{'X-Token':T}});if(!r.ok)return;G=await r.json();document.getElementById('gamesbox').style.display=G.length?'block':'none';drawGames()}catch(e){}}
