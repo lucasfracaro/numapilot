@@ -280,6 +280,74 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 }
             }
         }
+        // acer_wmi com predator_v4=1: perfis (incluindo Turbo) e leitura das ventoinhas
+        if crate::acer::is_acer() {
+            let pv4 =
+                crate::util::read_trim(crate::util::sys("module/acer_wmi/parameters/predator_v4"));
+            if pv4.as_deref() == Some("Y") {
+                add(
+                    "Notebook",
+                    "acer_wmi predator_v4",
+                    Level::Ok,
+                    "ligado: perfis de energia e ventoinhas pelo kernel (o numapilot usa)".into(),
+                    None,
+                );
+            }
+        }
+        // Programas que disputam ventoinha/energia com o numapilot
+        let mut rivals: Vec<String> = vec![];
+        if let Ok(rd) = std::fs::read_dir("/proc") {
+            for e in rd.flatten() {
+                if let Some(c) = crate::util::read_trim(e.path().join("comm")) {
+                    let l = c.to_lowercase();
+                    if [
+                        "nitrosense",
+                        "nitro-sense",
+                        "predatorsense",
+                        "nbfc",
+                        "auto-cpufreq",
+                        "tlp",
+                        "slimbook",
+                        "tuned",
+                    ]
+                    .iter()
+                    .any(|r| l.starts_with(r))
+                        && !rivals.contains(&c)
+                    {
+                        rivals.push(c);
+                    }
+                }
+                if let Ok(cmd) = std::fs::read_to_string(e.path().join("cmdline")) {
+                    let cmd = cmd.replace('\0', " ").to_lowercase();
+                    if cmd.contains("nitrosense") && !rivals.iter().any(|r| r == "nitrosense") {
+                        rivals.push("nitrosense".into());
+                    }
+                }
+            }
+        }
+        if !rivals.is_empty() {
+            add(
+                "Notebook",
+                "outros controladores rodando",
+                Level::Warn,
+                rivals.join(", "),
+                Some("eles mexem nas mesmas ventoinhas/perfis: feche e tire da inicialização"),
+            );
+        }
+        if crate::util::read_trim(crate::util::sys("module/ec_sys/parameters/write_support"))
+            .as_deref()
+            == Some("Y")
+        {
+            add(
+                "Notebook",
+                "escrita no controlador (ec_sys)",
+                Level::Info,
+                "ligada (usada por programas tipo NitroSense que escrevem direto no EC)".into(),
+                Some(
+                    "se não usa mais esses programas, remova ec_sys write_support=1 do /etc/modprobe.d",
+                ),
+            );
+        }
         if crate::notebook::ppd_active() {
             add(
                 "Notebook",

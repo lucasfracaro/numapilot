@@ -447,6 +447,17 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
                     set.push(("__GLX_VENDOR_LIBRARY_NAME".into(), "mesa".into()));
                     set.push(("__VK_LAYER_NV_optimus".into(), "non_NVIDIA_only".into()));
                     unset.push("__NV_PRIME_RENDER_OFFLOAD".into());
+                    // Sem isso, programas com EGL/Vulkan (Chromium, Qt WebEngine, Electron)
+                    // carregam o driver da NVIDIA e acordam a placa do notebook à toa.
+                    let egl = "/usr/share/glvnd/egl_vendor.d/50_mesa.json";
+                    if std::path::Path::new(egl).exists() {
+                        set.push(("__EGL_VENDOR_LIBRARY_FILENAMES".into(), egl.into()));
+                    }
+                    let icds = non_nvidia_vk_icds();
+                    if !icds.is_empty() {
+                        set.push(("VK_DRIVER_FILES".into(), icds.join(":")));
+                        set.push(("VK_ICD_FILENAMES".into(), icds.join(":")));
+                    }
                 }
             }
         }
@@ -583,4 +594,28 @@ pub fn game_warnings(topo: &Topology, d: &Decision) -> Vec<String> {
         ));
     }
     w
+}
+
+/// Drivers Vulkan instalados que não são o da NVIDIA (radeon, intel, lvp...).
+pub fn non_nvidia_vk_icds() -> Vec<String> {
+    let mut v: Vec<String> = ["/usr/share/vulkan/icd.d", "/etc/vulkan/icd.d"]
+        .iter()
+        .filter_map(|d| std::fs::read_dir(d).ok())
+        .flat_map(|rd| rd.flatten())
+        .map(|e| e.path())
+        .filter(|p| {
+            let n = p
+                .file_name()
+                .map(|f| f.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            n.ends_with(".json")
+                && !n.contains("nvidia")
+                && !n.contains("lvp")
+                && !n.contains("i686")
+                && !n.contains("i386")
+        })
+        .map(|p| p.display().to_string())
+        .collect();
+    v.sort();
+    v
 }
