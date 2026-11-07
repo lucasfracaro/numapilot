@@ -95,6 +95,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.heading("Painel no celular");
         web_ui(app, ui);
 
+        peers_ui(app, ui);
+
         ui.add_space(8.0);
         ui.heading("Opções de boot");
         let od = numapilot::bootcfg::overdrive_state();
@@ -213,6 +215,52 @@ fn qr(ui: &mut egui::Ui, text: &str) {
             );
         }
     }
+}
+
+fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
+    ui.label(RichText::new("Meus outros PCs").strong());
+    ui.label(
+        RichText::new("Cole o link do painel de outro PC (Configurações → Painel no celular, lá nele): o painel deste mostra todos juntos.")
+            .small()
+            .weak(),
+    );
+    let peers = numapilot::peers::load();
+    for p in &peers {
+        ui.horizontal(|ui| {
+            ui.label(&p.name);
+            ui.label(RichText::new(&p.url).small().weak());
+            if ui.small_button("abrir").clicked() {
+                let _ = crate::jobs::open_url(&p.link());
+            }
+            if ui.small_button("remover").clicked() {
+                let _ = numapilot::peers::remove(&p.name);
+            }
+        });
+    }
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::TextEdit::singleline(&mut app.peer_link)
+                .hint_text("http://192.168.0.x:8577/?t=...")
+                .desired_width(320.0),
+        );
+        ui.add(
+            egui::TextEdit::singleline(&mut app.peer_name)
+                .hint_text("nome (ex.: BC-250)")
+                .desired_width(140.0),
+        );
+        if ui.button("Adicionar").clicked() {
+            let name = app.peer_name.trim().to_string();
+            match numapilot::peers::add(&app.peer_link, (!name.is_empty()).then_some(name.as_str()))
+            {
+                Ok(p) => {
+                    app.toast(format!("{} adicionado", p.name), true);
+                    app.peer_link.clear();
+                    app.peer_name.clear();
+                }
+                Err(e) => app.toast(e, false),
+            }
+        }
+    });
 }
 
 fn web_ui(app: &mut App, ui: &mut egui::Ui) {

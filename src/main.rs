@@ -97,6 +97,12 @@ enum Cmd {
         #[arg(long)]
         int8: bool,
     },
+    /// Outros PCs no painel do celular: list | add LINK [NOME] | remove NOME
+    Peers {
+        action: String,
+        arg: Option<String>,
+        name: Option<String>,
+    },
     /// Driver oficial da NVIDIA: status | install | update (install/update com sudo)
     Driver { action: String },
     /// Guarda todas as configurações num .tar.gz (para reinstalar depois de formatar).
@@ -365,6 +371,45 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
                 _ => bail!("use: numapilot upscale fetch | status|install|remove APPID [--int8]"),
+            }
+        }
+        Cmd::Peers { action, arg, name } => {
+            use numapilot::peers;
+            match action.as_str() {
+                "list" => {
+                    for s in peers::summary() {
+                        println!(
+                            "{:<16} {}  {}",
+                            s["name"].as_str().unwrap_or(""),
+                            if s["online"].as_bool() == Some(true) {
+                                "online "
+                            } else {
+                                "offline"
+                            },
+                            s["hot"]
+                                .as_f64()
+                                .map(|t| format!("GPU mais quente {t:.0} °C"))
+                                .unwrap_or_default()
+                        );
+                    }
+                    Ok(())
+                }
+                "add" => {
+                    let p = peers::add(
+                        &arg.context("faltou o link (o do QR code do outro PC)")?,
+                        name.as_deref(),
+                    )
+                    .map_err(|e| anyhow::anyhow!(e))?;
+                    println!("{} adicionado ({})", p.name, p.url);
+                    Ok(())
+                }
+                "remove" => {
+                    peers::remove(&arg.context("faltou o nome")?)
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    println!("removido");
+                    Ok(())
+                }
+                _ => bail!("use: numapilot peers list | add LINK [NOME] | remove NOME"),
             }
         }
         Cmd::Driver { action } => {

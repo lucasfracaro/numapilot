@@ -253,6 +253,10 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
             (tiny_http::Method::Get, "/api/state") => {
                 respond(req, 200, "application/json", state(&topo).to_string())
             }
+            (tiny_http::Method::Get, "/api/peers") => {
+                let v = serde_json::Value::Array(crate::peers::summary());
+                respond(req, 200, "application/json", v.to_string())
+            }
             (tiny_http::Method::Post, "/api/action") => {
                 let mut b = String::new();
                 let _ = req.as_reader().take(64 * 1024).read_to_string(&mut b);
@@ -293,6 +297,7 @@ button:active{background:var(--acc)}.hot{color:var(--bad)}.warm{color:var(--warn
 <h2>Placas de vídeo</h2><div class="grid" id="gpus"></div>
 <h2>Processadores</h2><div class="grid" id="nodes"></div>
 <h2>Programas</h2><div id="progs"></div>
+<div id="peersbox" style="display:none"><h2>Meus PCs</h2><div class="grid" id="peers"></div></div>
 <h2>Atalhos</h2><div class="card">
 <div class="row"><span>Laboratório (Jupyter/VS Code)</span></div>
 <button onclick="act({action:'lab_up'})">Ligar</button><button onclick="act({action:'lab_down'})">Desligar</button>
@@ -326,7 +331,14 @@ async function load(){
   ${PRE.map(([k,l])=>`<button onclick='act({action:"preset",key:${JSON.stringify(p.key)},label:${JSON.stringify(p.label)},preset:"${k}"})'>${l}</button>`).join('')}</div>`).join('')
   :'<div class="card mut">Nenhum programa sendo usado agora.</div>';
 }
-load();setInterval(load,3000);
+async function peers(){try{const r=await fetch('/api/peers',{headers:{'X-Token':T}});if(!r.ok)return;const p=await r.json();
+ document.getElementById('peersbox').style.display=p.length?'block':'none';
+ document.getElementById('peers').innerHTML=p.map(x=>`<div class="card"><div class="row"><b>${esc(x.name)}</b><span class="dot" style="background:${x.online?(x.daemon?'var(--ok)':'var(--warn)'):'var(--bad)'}"></span></div>
+  ${x.online?`<div class="mut">${esc(x.host||'')} · ${x.gpus} GPU · ${x.programs} programas</div>
+  <div class="big ${tc(x.hot)}">${x.hot!=null?Math.round(x.hot)+' °C':'—'}</div>
+  <div class="mut">CPU ${(x.load||[]).map(l=>Math.round(l*100)+'%').join(' · ')}</div>
+  <a href="${esc(x.link)}"><button>Abrir</button></a>`:'<div class="mut">desligado ou fora da rede</div>'}</div>`).join('')}catch(e){}}
+load();setInterval(load,3000);peers();setInterval(peers,15000);
 </script></body></html>
 "##;
 

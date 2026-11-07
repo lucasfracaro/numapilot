@@ -22,6 +22,7 @@ pub mod learned;
 pub mod machine;
 pub mod notebook;
 pub mod nvctl;
+pub mod peers;
 pub mod procevents;
 pub mod procfs;
 pub mod profiles;

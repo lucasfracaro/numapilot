@@ -70,6 +70,7 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 - [ ] Painel no celular pelo QR code, trocar o perfil de um programa
 - [ ] Alerta de GPU quente na bandeja
 - [ ] `numapilot backup` e guardar o arquivo fora do disco do sistema
+- [ ] Meus PCs: colar o link do painel da BC-250 e do notebook no servidor; no celular, ver os três e abrir cada um
 
 ## Notebook (NVIDIA)
 

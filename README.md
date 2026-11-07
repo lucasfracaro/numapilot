@@ -534,6 +534,19 @@ Silencioso, Auto) e os atalhos do laboratório e do servidor de IA. O link leva 
 `~/.config/numapilot/web-token`); sem ele, nada é acessível. Para usar fora de casa, use uma VPN como
 o Tailscale em vez de abrir a porta 8577 no roteador.
 
+**Todos os PCs num painel só.** Com o numapilot instalado em cada máquina, copie o link do painel de
+cada uma (o mesmo do QR code) e cole em Configurações → **Meus outros PCs** no PC principal, ou:
+
+```sh
+numapilot peers add "http://192.168.0.20:8577/?t=..." BC-250
+numapilot peers list
+numapilot peers remove BC-250
+```
+
+O painel do celular desse PC passa a mostrar a seção **Meus PCs**: para cada máquina, se está ligada,
+a GPU mais quente, o uso dos processadores e um botão que abre o painel dela. A lista fica em
+`~/.config/numapilot/peers.json` (só o seu usuário lê, porque guarda os tokens).
+
 ## 19. Diagnóstico
 
 `numapilot doctor` testa no hardware real o que não dá para testar em outra máquina: NUMA, cgroups v2
