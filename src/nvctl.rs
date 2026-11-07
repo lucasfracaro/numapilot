@@ -56,7 +56,8 @@ pub struct NvGpu {
 }
 
 const FIELDS: &str = "index,pci.bus_id,name,temperature.gpu,power.draw,power.limit,power.min_limit,power.max_limit,\
-power.default_limit,fan.speed,utilization.gpu,memory.used,memory.total,clocks.gr,clocks.max.gr,pstate,driver_version,persistence_mode";
+power.default_limit,fan.speed,utilization.gpu,memory.used,memory.total,clocks.gr,clocks.max.gr,pstate,driver_version,persistence_mode,\
+enforced.power.limit";
 
 /// "00000000:01:00.0" → "0000:01:00.0"
 pub fn norm_pci(s: &str) -> String {
@@ -75,14 +76,15 @@ pub fn parse(out: &str) -> Vec<NvGpu> {
             if c.len() < 18 {
                 return None;
             }
-            let f = |i: usize| c[i].parse::<f64>().ok();
+            let f = |i: usize| c.get(i).and_then(|x| x.parse::<f64>().ok());
             Some(NvGpu {
                 index: c[0].parse().ok()?,
                 pci: norm_pci(c[1]),
                 name: c[2].to_string(),
                 temp_c: f(3),
                 power_w: f(4),
-                power_limit_w: f(5),
+                // notebooks: power.limit vem [N/A]; o limite em uso fica no enforced.power.limit
+                power_limit_w: f(5).or(f(18)).or(f(8)),
                 power_min_w: f(6),
                 power_max_w: f(7),
                 power_default_w: f(8),
@@ -238,6 +240,11 @@ mod tests {
     #[test]
     fn parse_smi() {
         let out = "0, 00000000:01:00.0, NVIDIA GeForce RTX 4060 Laptop GPU, 52, 18.43, 80.00, 5.00, 115.00, 80.00, [N/A], 7, 512, 8188, 1530, 3105, P3, 580.119.02, Disabled\n";
+        // notebook de verdade (RTX 3070 Ti, 615.78): power.limit [N/A], limite em uso 115 W
+        let nb = parse(
+            "0, 00000000:01:00.0, NVIDIA GeForce RTX 3070 Ti Laptop GPU, 43, 9.81, [N/A], 1.00, 150.00, [N/A], [N/A], 0, 207, 8192, 210, 1785, P8, 615.78.08, Disabled, 115.00\n",
+        );
+        assert_eq!(nb[0].power_limit_w, Some(115.0));
         let v = parse(out);
         assert_eq!(v.len(), 1);
         let g = &v[0];

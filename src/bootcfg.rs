@@ -56,12 +56,40 @@ pub struct OverdriveState {
     pub from_cmdline: bool,
 }
 
+/// ppfeaturemask definido em qualquer arquivo do modprobe.d (o nosso ou outro).
+pub fn any_modprobe_mask() -> Option<u64> {
+    if let Some(m) = saved_mask() {
+        return Some(m);
+    }
+    for dir in ["/etc/modprobe.d", "/usr/lib/modprobe.d", "/run/modprobe.d"] {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        let mut files: Vec<_> = rd.flatten().map(|e| e.path()).collect();
+        files.sort();
+        for f in files {
+            let s = std::fs::read_to_string(&f).unwrap_or_default();
+            if let Some(m) = s
+                .lines()
+                .filter(|l| !l.trim_start().starts_with('#') && l.contains("amdgpu"))
+                .flat_map(|l| l.split_whitespace())
+                .find_map(|w| w.strip_prefix("ppfeaturemask="))
+                .and_then(parse_hex)
+            {
+                return Some(m);
+            }
+        }
+    }
+    None
+}
+
 pub fn overdrive_state() -> OverdriveState {
     let active = current_mask().is_some_and(|m| m & OVERDRIVE_BIT != 0);
     let cmd = cmdline_mask();
-    let on_next_boot = match cmd {
-        Some(m) => m & OVERDRIVE_BIT != 0,
-        None => saved_mask().is_some_and(|m| m & OVERDRIVE_BIT != 0),
+    let on_next_boot = match (cmd, any_modprobe_mask()) {
+        (Some(m), _) | (None, Some(m)) => m & OVERDRIVE_BIT != 0,
+        // ninguém define: é o padrão do kernel (o do CachyOS já vem com o OverDrive)
+        (None, None) => active,
     };
     OverdriveState {
         active,

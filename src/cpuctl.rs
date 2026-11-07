@@ -402,7 +402,34 @@ pub fn package_temps() -> BTreeMap<u32, f64> {
     let Ok(rd) = fs::read_dir(sys("class/hwmon")) else {
         return out;
     };
-    for e in rd.flatten() {
+    // AMD (k10temp/zenpower): um por socket, na ordem do barramento; Tctl/Tdie
+    let mut amd: Vec<(String, f64)> = vec![];
+    let entries: Vec<_> = rd.flatten().collect();
+    for e in &entries {
+        let d = e.path();
+        if matches!(
+            read_trim(d.join("name")).as_deref(),
+            Some("k10temp") | Some("zenpower")
+        ) {
+            let dev = fs::canonicalize(d.join("device"))
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            for i in 1..=4 {
+                let l = read_trim(d.join(format!("temp{i}_label"))).unwrap_or_default();
+                if (l == "Tctl" || l == "Tdie")
+                    && let Some(v) = read_u64(d.join(format!("temp{i}_input")))
+                {
+                    amd.push((dev.clone(), v as f64 / 1000.0));
+                    break;
+                }
+            }
+        }
+    }
+    amd.sort_by(|a, b| a.0.cmp(&b.0));
+    for (i, (_, t)) in amd.into_iter().enumerate() {
+        out.insert(i as u32, t);
+    }
+    for e in entries {
         let d = e.path();
         if read_trim(d.join("name")).as_deref() != Some("coretemp") {
             continue;

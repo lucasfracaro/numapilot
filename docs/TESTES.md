@@ -91,7 +91,10 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 - [ ] Placa dedicada dorme parada (Máquina → Notebook mostra "dormindo") e acorda ao abrir um jogo
 - [ ] Modo automático: Silencioso na bateria, Jogo/Normal na tomada; limite de carga em 80%
 - [ ] Limite de potência e clock máximo da NVIDIA aplicam (se o notebook permitir)
-- [ ] Rodar `bash ~/Projetos/numapilot-teste/testar.sh` e mandar o relatório (Ryzen 6800H + RTX 3070 Ti, Acer)
+- [x] Rodar `bash ~/Projetos/numapilot-teste/testar.sh` (Acer Nitro AN515-46, Ryzen 7 6800H, RTX 3070 Ti, 7 nov):
+      corrigidos limite da NVIDIA de notebook, OverDrive padrão do CachyOS, temperatura do Ryzen,
+      avisos de ventoinha/potência que não se aplicam a notebook, uncore só na Intel, EPP
+- [ ] Instalar de verdade (`git clone` + `./install.sh`) para testar o serviço
 - [ ] Máquina → Notebook: "Acordada por" lista quem segura a NVIDIA; fechar e ver "dormindo"
 - [ ] Limites do Ryzen (ryzenadj): STAPM 35 W e 85 °C aplicam; voltam sozinhos depois de tirar/pôr na tomada
 - [ ] EPP (power/balance_power) aplica no modo Silencioso

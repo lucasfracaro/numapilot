@@ -189,6 +189,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     b.health_pct.map(|h| format!(" · saúde {h:.0}%")).unwrap_or_default()
                 ));
             }
+            let fans = nb::ec_fans();
+            if !fans.is_empty() {
+                ui.label(format!(
+                    "Ventoinhas: {}",
+                    fans.iter().map(|r| format!("{r} RPM")).collect::<Vec<_>>().join(" · ")
+                ));
+            }
             egui::Grid::new("nb").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
                 let modes = [("normal", "Normal"), ("jogo", "Jogo"), ("ia", "IA"), ("silencioso", "Silencioso")];
                 let combo = |ui: &mut egui::Ui, id: &str, v: &mut Option<String>| {
@@ -709,7 +716,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         .show_ui(ui, |ui| {
                             ui.selectable_value(&mut t.epp, None, "não mexer");
                             for e in cpuctl::epp_available(c) {
-                                if e != "default" {
+                                if !["default", "custom", "dynamic"].contains(&e.as_str()) {
                                     ui.selectable_value(&mut t.epp, Some(e.clone()), e);
                                 }
                             }

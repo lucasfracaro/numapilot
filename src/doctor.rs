@@ -242,8 +242,52 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                         users.join(", "),
                         Some("Abra esses programas na placa integrada para a dedicada dormir"),
                     );
+                    // KDE: o KWin (e o Xwayland) abrem todas as placas; dá para limitar à integrada
+                    let kde = std::env::var("XDG_CURRENT_DESKTOP")
+                        .unwrap_or_default()
+                        .contains("KDE");
+                    if users
+                        .iter()
+                        .any(|u| u == "Xwayland" || u.starts_with("kwin"))
+                    {
+                        let igpu = topo
+                            .gpus
+                            .iter()
+                            .find(|x| x.is_integrated())
+                            .and_then(|x| {
+                                std::fs::read_dir(crate::util::sys(&format!(
+                                    "bus/pci/devices/{}/drm",
+                                    x.pci
+                                )))
+                                .ok()
+                            })
+                            .and_then(|rd| {
+                                rd.flatten()
+                                    .map(|e| e.file_name().to_string_lossy().to_string())
+                                    .find(|n| n.starts_with("card"))
+                            });
+                        let fix = igpu.filter(|_| kde).map(|c| {
+                            format!("echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment e entre de novo (se o número da placa mudar após atualizar, refaça)")
+                        });
+                        add(
+                            "Notebook",
+                            "desktop prendendo a NVIDIA",
+                            Level::Info,
+                            "o compositor (KWin/Xwayland) abriu a placa dedicada".into(),
+                            fix.as_deref(),
+                        );
+                    }
                 }
             }
+        }
+        if crate::notebook::ppd_active() {
+            add(
+                "Notebook",
+                "power-profiles-daemon",
+                Level::Ok,
+                "ligado: os modos do numapilot trocam o perfil por ele (o seletor do desktop acompanha)".into(),
+                None,
+            );
         }
         if crate::ryzen::applicable() {
             if crate::ryzen::available() {
@@ -522,7 +566,8 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     }
     // ---- processador ----
     let unc = crate::cpuctl::uncores();
-    if unc.is_empty() {
+    let intel_cpu = crate::recipes::cpu_model().contains("Intel");
+    if unc.is_empty() && intel_cpu {
         add(
             "Processador",
             "uncore",
@@ -532,7 +577,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 "sudo modprobe intel_uncore_frequency (e echo intel_uncore_frequency | sudo tee /etc/modules-load.d/uncore.conf)",
             ),
         );
-    } else {
+    } else if !unc.is_empty() {
         add(
             "Processador",
             "uncore",
@@ -542,6 +587,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         );
     }
     let rapl = crate::cpuctl::rapl_zones();
+    let no_limits = !rapl.is_empty() && rapl.iter().all(|r| r.limit_w.is_none());
     add(
         "Processador",
         "potência (RAPL)",
@@ -552,6 +598,15 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         },
         if rapl.is_empty() {
             "indisponível".into()
+        } else if no_limits {
+            if intel_cpu {
+                "só medição (sem limites expostos)".into()
+            } else if crate::ryzen::applicable() {
+                "só medição no Ryzen; os limites vão pelo ryzenadj (Máquina → Limites do Ryzen)"
+                    .into()
+            } else {
+                "só medição no Ryzen (limites pela BIOS)".into()
+            }
         } else {
             rapl.iter()
                 .map(|r| {
@@ -817,16 +872,21 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             }
         }
         let s = gpuctl::read_sensors(&g.pci);
+        // integrada e placa de notebook: ventoinha e potência são do próprio notebook
+        let laptop = crate::notebook::is_laptop();
+        let soft = if g.is_integrated() || laptop {
+            Level::Info
+        } else {
+            Level::Warn
+        };
         add(
             &a,
             "ventoinha",
-            if s.fan_controllable {
-                Level::Ok
-            } else {
-                Level::Warn
-            },
+            if s.fan_controllable { Level::Ok } else { soft },
             if s.fan_controllable {
                 format!("controlável ({} RPM)", s.fan_rpm.unwrap_or(0))
+            } else if laptop || g.is_integrated() {
+                "controlada pelo notebook (perfil de energia)".into()
             } else {
                 "sem controle pelo driver".into()
             },
@@ -835,10 +895,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         add(
             &a,
             "limite de potência",
-            if s.power_cap_max_w.is_some() {
+            if s.power_cap_max_w.is_some() || s.power_cap_w.is_some() {
                 Level::Ok
             } else {
-                Level::Warn
+                soft
             },
             s.power_cap_w
                 .map(|w| format!("{w:.0} W"))
@@ -846,15 +906,24 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             None,
         );
         match gpuctl::read_od(&g.pci) {
+            _ if g.is_nvidia() => {}
             Some(od) => add(
                 &a,
                 "clock/voltagem (OD)",
                 Level::Ok,
-                format!(
-                    "GPU até {:?} MHz, curva {} pontos",
-                    od.range_sclk.map(|r| r.1),
-                    od.curve.len()
-                ),
+                {
+                    let mut d = od
+                        .range_sclk
+                        .map(|r| format!("GPU {}-{} MHz", r.0, r.1))
+                        .unwrap_or_else(|| "ligado".into());
+                    if !od.curve.is_empty() {
+                        d += &format!(", curva de {} pontos", od.curve.len());
+                    }
+                    if let Some((lo, _)) = od.range_vo {
+                        d += &format!(", voltagem até {lo} mV");
+                    }
+                    d
+                },
                 None,
             ),
             None => add(
@@ -958,12 +1027,20 @@ pub fn run(cfg: &Config) -> Vec<Check> {
 
     // ---- ROCm / permissões ----
     let groups = out(&["id", "-nG"], &[]).unwrap_or_default();
+    let has_compute = topo
+        .gpus
+        .iter()
+        .any(|g| g.role == crate::topo::GpuRole::Compute);
     for gname in ["render", "video"] {
         if !groups.split_whitespace().any(|x| x == gname) {
             add(
                 "ROCm",
                 &format!("grupo {gname}"),
-                Level::Warn,
+                if has_compute {
+                    Level::Warn
+                } else {
+                    Level::Info
+                },
                 "usuário fora do grupo".into(),
                 Some("sudo usermod -aG render,video $USER (e entre de novo na sessão)"),
             );

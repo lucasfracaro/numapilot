@@ -1179,10 +1179,14 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
                 let c = n.cpus.first().copied().unwrap_or(0);
                 let f = cpuctl::freq(c).unwrap_or_default();
                 println!(
-                    "Socket {}: governor {} · EPB {} · {}-{} MHz (agora {}) · uncore {} · {} · limite {} · {}",
+                    "Socket {}: governor {} · {} · {}-{} MHz (agora {}) · uncore {} · {} · limite {} · {}",
                     n.id,
                     cpuctl::governor(c).unwrap_or("?".into()),
-                    cpuctl::epb(c).map(|e| e.to_string()).unwrap_or("?".into()),
+                    match (cpuctl::epp(c), cpuctl::epb(c)) {
+                        (Some(p), _) => format!("EPP {p}"),
+                        (None, Some(b)) => format!("EPB {b}"),
+                        _ => "EPB ?".into(),
+                    },
                     f.min_khz / 1000,
                     f.max_khz / 1000,
                     f.cur_khz / 1000,

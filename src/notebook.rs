@@ -127,9 +127,38 @@ pub fn platform_profiles() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// O power-profiles-daemon (o seletor de energia do KDE/GNOME) está cuidando do perfil?
+pub fn ppd_active() -> bool {
+    std::env::var_os("NUMAPILOT_SYSFS").is_none()
+        && crate::containers::which("powerprofilesctl")
+        && std::process::Command::new("systemctl")
+            .args(["is-active", "--quiet", "power-profiles-daemon"])
+            .status()
+            .is_ok_and(|s| s.success())
+}
+
+/// Perfil do power-profiles-daemon equivalente ao perfil da plataforma.
+pub fn ppd_profile_for(p: &str) -> &'static str {
+    match p {
+        "performance" | "balanced-performance" => "performance",
+        "quiet" | "low-power" | "cool" | "balanced-power" => "power-saver",
+        _ => "balanced",
+    }
+}
+
 pub fn set_platform_profile(p: &str) -> Result<(), String> {
     if !platform_profiles().iter().any(|c| c == p) {
         return Err(format!("perfil {p} não existe neste notebook"));
+    }
+    // Com o power-profiles-daemon ligado, troca por ele: o seletor de energia do desktop fica
+    // igual e ele não desfaz a troca. Depois acerta o perfil exato (ex.: quiet em vez de low-power).
+    if ppd_active() {
+        let _ = std::process::Command::new("powerprofilesctl")
+            .args(["set", ppd_profile_for(p)])
+            .status();
+    }
+    if platform_profile().as_deref() == Some(p) {
+        return Ok(());
     }
     fs::write(sys("firmware/acpi/platform_profile"), p).map_err(|e| e.to_string())
 }
@@ -267,6 +296,30 @@ pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
         }
     }
     out
+}
+
+/// Ventoinhas do notebook (controlador do fabricante: acer, asus, dell_smm, thinkpad...): RPM.
+pub fn ec_fans() -> Vec<u64> {
+    let Ok(rd) = fs::read_dir(sys("class/hwmon")) else {
+        return vec![];
+    };
+    let mut v = vec![];
+    let mut dirs: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
+    dirs.sort();
+    for d in dirs {
+        let dev = fs::canonicalize(d.join("device"))
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        if !dev.contains("/platform/") {
+            continue;
+        }
+        for i in 1..=4 {
+            if let Some(r) = read_u64(d.join(format!("fan{i}_input"))) {
+                v.push(r);
+            }
+        }
+    }
+    v
 }
 
 #[cfg(test)]
