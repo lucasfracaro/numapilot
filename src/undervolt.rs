@@ -442,6 +442,14 @@ pub fn run(
     }
     let msg = set(&g.pci, &final_c, false)?;
     out(&format!("  gravado: {msg}"));
+    crate::notify::event(
+        "jobs",
+        &format!("uv-{}", g.pci),
+        &format!("Undervolt de {} pronto", g.alias),
+        &format!("{} ({} passo(s) estáveis)", describe(&final_c, &m), ok_steps),
+        3,
+        Duration::from_secs(1),
+    );
     let _ = std::io::stdout().flush();
     Ok(Outcome {
         description: describe(&final_c, &m),

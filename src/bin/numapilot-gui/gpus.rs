@@ -937,6 +937,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 } else {
                     od_ui(ui, &g.pci, edit, &mut boot_job);
                 }
+                if g.vendor == 0x1002 && !g.is_integrated() {
+                    ui.checkbox(&mut edit.idle_save, "Economia quando parada")
+                        .on_hover_text("Parada há 1 min, a placa fica no nível mais baixo de clock e voltagem até voltar a ser usada. Ajuda nas MI50, que gastam bastante paradas; o primeiro pedido depois demora uma fração de segundo a mais.");
+                }
                 let changed = *edit != saved;
                 let edit_c = edit.clone();
                 ui.horizontal(|ui| {

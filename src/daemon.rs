@@ -45,6 +45,13 @@ struct Hw {
     gpu_trial: HashMap<String, gpuctl::GpuControl>,
     health_at: Option<Instant>,
     started: Instant,
+    hot_streak: HashMap<String, u32>,
+    energy: crate::energy::Energy,
+    energy_at: Instant,
+    energy_saved: Instant,
+    watts: f64,
+    /// GPU parada: desde quando, e o nível que estava antes de baixarmos.
+    idle: HashMap<String, (Option<Instant>, Option<String>)>,
 }
 
 fn base_governors() -> BTreeMap<usize, String> {
@@ -77,6 +84,12 @@ impl Hw {
             gpu_trial: HashMap::new(),
             health_at: None,
             started: Instant::now(),
+            hot_streak: HashMap::new(),
+            energy: crate::energy::Energy::load(),
+            energy_at: Instant::now(),
+            energy_saved: Instant::now(),
+            watts: 0.0,
+            idle: HashMap::new(),
         }
     }
 
@@ -815,6 +828,37 @@ pub fn run(cfg: Config) -> Result<()> {
         for (pci, c) in &gpuc.map {
             gpu_tick(pci, c, &mut fan_last);
         }
+        // GPU parada: nível baixo até voltar a ser usada.
+        for (pci, c) in &gpuc.map {
+            let Some(g) = topo.gpus.iter().find(|g| &g.pci == pci) else { continue };
+            if g.vendor != 0x1002 {
+                continue;
+            }
+            let lvl_path = crate::util::sys(&format!("bus/pci/devices/{pci}/power_dpm_force_performance_level"));
+            let e = hw.idle.entry(pci.clone()).or_insert((None, None));
+            if !c.idle_save {
+                if let Some(prev) = e.1.take() {
+                    let _ = std::fs::write(&lvl_path, &prev);
+                }
+                e.0 = None;
+                continue;
+            }
+            let busy = g.busy_percent().unwrap_or(0);
+            if busy > 0 {
+                e.0 = None;
+                if let Some(prev) = e.1.take() {
+                    let _ = std::fs::write(&lvl_path, &prev);
+                }
+            } else {
+                let since = *e.0.get_or_insert_with(Instant::now);
+                if e.1.is_none() && since.elapsed() >= Duration::from_secs(60) {
+                    let cur = crate::util::read_trim(&lvl_path).unwrap_or_else(|| "auto".into());
+                    if cur != "low" && std::fs::write(&lvl_path, "low").is_ok() {
+                        e.1 = Some(cur);
+                    }
+                }
+            }
+        }
         // O deslocamento da NVIDIA se perde quando a placa do notebook dorme e acorda:
         // confere de tempos em tempos (só com ela acordada, para não acordá-la).
         if tick.is_multiple_of(10) {
@@ -849,6 +893,40 @@ pub fn run(cfg: Config) -> Result<()> {
         if tick.is_multiple_of(15) {
             hw.ryzen_tick();
         }
+        // Aviso de GPU quente no celular (3 leituras seguidas acima do limite).
+        if tick.is_multiple_of(5) {
+            let n = crate::notify::Notify::load();
+            if n.enabled && n.gpu_hot {
+                for g in &topo.gpus {
+                    if g.is_nvidia() && crate::nvctl::asleep(&g.pci) {
+                        continue;
+                    }
+                    let s = gpuctl::read_sensors(&g.pci);
+                    let st = hw.hot_streak.entry(g.pci.clone()).or_default();
+                    match s.control_temp() {
+                        Some(t) if t >= n.gpu_hot_c => {
+                            *st += 1;
+                            if *st == 3 {
+                                crate::notify::event(
+                                    "gpu_hot",
+                                    &format!("hot-{}", g.pci),
+                                    &format!("GPU quente: {}", g.alias),
+                                    &format!(
+                                        "{} está a {t:.0} °C (ventoinha {}, {}). Confira a ventilação ou reduza a potência.",
+                                        g.alias,
+                                        s.fan_pct.map(|p| format!("{p:.0}%")).unwrap_or("?".into()),
+                                        s.power_w.map(|p| format!("{p:.0} W")).unwrap_or("?".into())
+                                    ),
+                                    5,
+                                    Duration::from_secs(30 * 60),
+                                );
+                            }
+                        }
+                        _ => *st = 0,
+                    }
+                }
+            }
+        }
         // Saúde do hardware (SMART, ECC, bateria) a cada 30 min, em segundo plano.
         // (a primeira 1 min depois de iniciar, para não atrasar o boot)
         let due = match hw.health_at {
@@ -863,6 +941,7 @@ pub fn run(cfg: Config) -> Result<()> {
                 for (lvl, p) in crate::health::problems(&r) {
                     if lvl >= 2 {
                         eprintln!("[numapilot] saúde: {p}");
+                        crate::notify::event("health", &p, "Problema no hardware", &p, 4, Duration::from_secs(24 * 3600));
                     }
                 }
                 let tmp = crate::health::path().with_extension("json.tmp");
@@ -876,6 +955,15 @@ pub fn run(cfg: Config) -> Result<()> {
             if !p.is_empty() {
                 hw.cpu_power = p;
             }
+            // energia: integra a potência desde a última amostra
+            let dt = hw.energy_at.elapsed().as_secs_f64();
+            hw.energy_at = Instant::now();
+            hw.watts = crate::energy::power_now(&hw.cpu_power, &topo, hw.machine.base_w.unwrap_or(0.0));
+            hw.energy.add(hw.watts, dt);
+            if hw.energy_saved.elapsed() >= Duration::from_secs(300) {
+                hw.energy_saved = Instant::now();
+                let _ = hw.energy.save();
+            }
             let live = serde_json::json!({
                 "power": hw.cpu_power,
                 "temp": crate::cpuctl::package_temps(),
@@ -883,6 +971,7 @@ pub fn run(cfg: Config) -> Result<()> {
                 "gpu_profiles": hw.gpu_prof,
                 "board_fans": hw.board_manual,
                 "ryzen": hw.ryzen_info,
+                "watts": hw.watts,
             });
             let _ = std::fs::write(run_dir().join("hw.json"), live.to_string());
         }
@@ -982,6 +1071,12 @@ pub fn run(cfg: Config) -> Result<()> {
         let _ = std::fs::remove_file(&reserved_flag);
     }
     hw.restore(&topo);
+    let _ = hw.energy.save();
+    for (pci, (_, prev)) in &hw.idle {
+        if let Some(p) = prev {
+            let _ = std::fs::write(crate::util::sys(&format!("bus/pci/devices/{pci}/power_dpm_force_performance_level")), p);
+        }
+    }
     let _ = std::fs::remove_file(run_dir().join("hw.json"));
     // Ventoinhas voltam para o controle da placa.
     for pci in fan_last.keys() {
@@ -1066,6 +1161,18 @@ fn handle(
         Request::FixMemory { key } => return handle_fix_memory(uid, ctx, procs, &key),
         Request::SetGovernor { node, governor } => {
             return handle_governor(uid, ctx, node, &governor);
+        }
+        Request::SetNotify { notify } => {
+            if uid != 0 && uid < ctx.cfg.daemon.min_uid {
+                return Response::err("sem permissão");
+            }
+            if let Err(e) = notify.validate() {
+                return Response::err(e);
+            }
+            return match notify.save() {
+                Ok(()) => Response::ok(if notify.enabled { "avisos ligados" } else { "avisos desligados" }),
+                Err(e) => Response::err(format!("não consegui salvar: {e}")),
+            };
         }
         Request::SetGpuControl { .. }
         | Request::SetMachine { .. }

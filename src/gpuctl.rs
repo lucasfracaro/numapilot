@@ -121,6 +121,9 @@ pub struct GpuControl {
     pub nv_gpc_offset_mhz: Option<i32>,
     /// NVIDIA: deslocamento do clock da memória (MHz).
     pub nv_mem_offset_mhz: Option<i32>,
+    /// AMD: parada há 1 min, fica no nível mais baixo de clock/voltagem até voltar a ser usada.
+    #[serde(default)]
+    pub idle_save: bool,
 }
 
 pub fn default_curve() -> Vec<(f64, f64)> {
@@ -144,6 +147,7 @@ impl Default for GpuControl {
             clock_max_mhz: None,
             nv_gpc_offset_mhz: None,
             nv_mem_offset_mhz: None,
+            idle_save: false,
         }
     }
 }

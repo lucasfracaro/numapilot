@@ -77,6 +77,10 @@ pub struct Machine {
     pub acer: BTreeMap<String, String>,
     /// Placas de rede com Wake-on-LAN ligado (o serviço reaplica a cada boot).
     pub wol: Vec<String>,
+    /// Preço do kWh (R$) para mostrar o custo.
+    pub price_kwh: Option<f64>,
+    /// Consumo fixo do resto do PC (placa-mãe, discos, ventoinhas, perda da fonte), em W.
+    pub base_w: Option<f64>,
 }
 
 impl Default for Machine {
@@ -103,6 +107,8 @@ impl Default for Machine {
             ryzen: None,
             acer: BTreeMap::new(),
             wol: vec![],
+            price_kwh: None,
+            base_w: None,
         }
     }
 }
@@ -218,6 +224,8 @@ impl Machine {
             ryzen: keep.ryzen.clone(),
             acer: keep.acer.clone(),
             wol: keep.wol.clone(),
+            price_kwh: keep.price_kwh,
+            base_w: keep.base_w,
             platform_profile: crate::notebook::profile_for_mode(name),
             ..Default::default()
         };

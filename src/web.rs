@@ -121,6 +121,13 @@ pub fn state(topo: &Topology) -> Value {
         "daemon": ctl::send(&Request::Ping).is_ok_and(|r| r.ok),
         "gpus": gpus, "nodes": nodes, "programs": programs,
         "wol": crate::wol::nics(),
+        "watts": std::fs::read_to_string(crate::learned::run_dir().join("hw.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+            .and_then(|v| v["watts"].as_f64()),
+        "kwh_today": crate::energy::Energy::load_today(),
+        "price_kwh": crate::machine::Machine::load().price_kwh,
+        "version": env!("CARGO_PKG_VERSION"),
         "alerts": crate::health::load()
             .map(|r| crate::health::problems(&r).into_iter().filter(|p| p.0 >= 2).map(|p| p.1).collect::<Vec<_>>())
             .unwrap_or_default(),
@@ -199,6 +206,42 @@ fn act(body: &Value, topo: &Topology) -> Result<String, String> {
     }
 }
 
+/// Métricas no formato do Prometheus (para o Grafana): GPUs, processadores e os outros PCs.
+pub fn metrics(topo: &Topology) -> String {
+    let host = std::fs::read_to_string("/etc/hostname").unwrap_or_default().trim().to_string();
+    let mut out = String::new();
+    let mut line = |name: &str, labels: String, v: Option<f64>| {
+        if let Some(v) = v {
+            out.push_str(&format!("numapilot_{name}{{host=\"{host}\"{labels}}} {v}\n"));
+        }
+    };
+    for g in &topo.gpus {
+        let s = crate::gpuctl::read_sensors(&g.pci);
+        let l = format!(",gpu=\"{}\"", g.alias);
+        line("gpu_temp_celsius", l.clone(), s.control_temp());
+        line("gpu_power_watts", l.clone(), s.power_w);
+        line("gpu_fan_percent", l.clone(), s.fan_pct);
+        line("gpu_busy_percent", l.clone(), g.busy_percent().map(|b| b as f64));
+        line("gpu_vram_used_bytes", l, g.vram_used_total().map(|v| v.0 as f64));
+    }
+    let loads = crate::decide::sample_node_loads(topo, std::time::Duration::from_millis(200));
+    for n in &topo.nodes {
+        line("cpu_load_ratio", format!(",node=\"{}\"", n.id), loads.get(&n.id).copied());
+    }
+    for (k, t) in crate::cpuctl::package_temps() {
+        line("cpu_temp_celsius", format!(",package=\"{k}\""), Some(t));
+    }
+    if let Some(e) = crate::energy::Energy::load_today() {
+        line("energy_today_kwh", String::new(), Some(e));
+    }
+    for p in crate::peers::summary() {
+        let l = format!(",peer=\"{}\"", p["name"].as_str().unwrap_or(""));
+        line("peer_online", l.clone(), Some(if p["online"].as_bool() == Some(true) { 1.0 } else { 0.0 }));
+        line("peer_gpu_temp_max_celsius", l, p["hot"].as_f64());
+    }
+    out
+}
+
 fn authorized(req: &tiny_http::Request, token: &str) -> bool {
     let hdr = req
         .headers()
@@ -243,13 +286,14 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
             token_path().display()
         ),
     }
+    std::thread::spawn(crate::watch::run);
     for mut req in server.incoming_requests() {
         let path = req.url().split('?').next().unwrap_or("/").to_string();
         match (req.method(), path.as_str()) {
             (tiny_http::Method::Get, "/") => {
                 respond(req, 200, "text/html; charset=utf-8", PAGE.to_string())
             }
-            (_, p) if p.starts_with("/api/") && !authorized(&req, &token) => respond(
+            (_, p) if (p.starts_with("/api/") || p == "/metrics") && !authorized(&req, &token) => respond(
                 req,
                 401,
                 "application/json",
@@ -259,8 +303,21 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
                 respond(req, 200, "application/json", state(&topo).to_string())
             }
             (tiny_http::Method::Get, "/api/peers") => {
-                let v = serde_json::Value::Array(crate::peers::summary());
-                respond(req, 200, "application/json", v.to_string())
+                let since = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+                    .saturating_sub(24 * 3600);
+                let hist = crate::watch::read_history(since);
+                let mut v = crate::peers::summary();
+                for p in &mut v {
+                    let name = p["name"].as_str().unwrap_or("").to_string();
+                    p["hist"] = json!(crate::watch::series(&hist, &name, since, 900).into_iter().map(|x| x.1).collect::<Vec<_>>());
+                }
+                respond(req, 200, "application/json", Value::Array(v).to_string())
+            }
+            (tiny_http::Method::Get, "/metrics") => {
+                respond(req, 200, "text/plain; version=0.0.4", metrics(&topo))
             }
             (tiny_http::Method::Post, "/api/action") => {
                 let mut b = String::new();
@@ -323,7 +380,7 @@ async function load(){
  let s;try{const r=await fetch('/api/state',{headers:{'X-Token':T}});if(r.status==401){document.getElementById('err').style.display='block';document.getElementById('err').textContent='Token inválido: abra o link com ?t= mostrado no numapilot (Configurações → Painel no celular).';return}s=await r.json()}catch(e){return}
  document.getElementById('err').style.display='none';
  const al=document.getElementById('alerts');al.style.display=(s.alerts||[]).length?'block':'none';al.innerHTML=(s.alerts||[]).map(a=>'⚠ '+esc(a)).join('<br>');
- document.getElementById('host').textContent=s.host;
+ document.getElementById('host').textContent=s.host+(s.watts!=null?' · '+Math.round(s.watts)+' W':'')+(s.kwh_today!=null?' · hoje '+s.kwh_today.toFixed(2)+' kWh'+(s.price_kwh?' (R$ '+(s.kwh_today*s.price_kwh).toFixed(2)+')':''):'');
  document.getElementById('svc').innerHTML=`<span class="dot" style="background:${s.daemon?'var(--ok)':'var(--bad)'}"></span>${s.daemon?'serviço ok':'serviço parado'}`;
  document.getElementById('gpus').innerHTML=s.gpus.map(g=>`<div class="card"><div class="row"><b>${esc(g.alias)}</b><span class="mut">socket ${g.node??'?'}</span></div>
   <div class="big ${tc(g.temp)}">${g.temp!=null?Math.round(g.temp)+' °C':'—'}</div>
@@ -338,11 +395,15 @@ async function load(){
   ${PRE.map(([k,l])=>`<button onclick='act({action:"preset",key:${JSON.stringify(p.key)},label:${JSON.stringify(p.label)},preset:"${k}"})'>${l}</button>`).join('')}</div>`).join('')
   :'<div class="card mut">Nenhum programa sendo usado agora.</div>';
 }
+function spark(h){if(!h||!h.filter(v=>v!=null).length)return'';const w=200,ht=36,mx=100,mn=20,n=h.length;let d='',pen=false;
+ h.forEach((v,i)=>{if(v==null){pen=false;return}const x=(i/(n-1||1))*w,y=ht-((Math.min(Math.max(v,mn),mx)-mn)/(mx-mn))*ht;d+=(pen?'L':'M')+x.toFixed(1)+' '+y.toFixed(1)+' ';pen=true});
+ return `<svg width="${w}" height="${ht}" style="display:block;margin:4px 0"><path d="${d}" fill="none" stroke="var(--acc)" stroke-width="1.5"/></svg><div class="mut">temperatura máx., últimas 24 h</div>`}
 async function peers(){try{const r=await fetch('/api/peers',{headers:{'X-Token':T}});if(!r.ok)return;const p=await r.json();
  document.getElementById('peersbox').style.display=p.length?'block':'none';
  document.getElementById('peers').innerHTML=p.map(x=>`<div class="card"><div class="row"><b>${esc(x.name)}</b><span class="dot" style="background:${x.online?(x.daemon?'var(--ok)':'var(--warn)'):'var(--bad)'}"></span></div>
   ${x.online?`<div class="mut">${esc(x.host||'')} · ${x.gpus} GPU · ${x.programs} programas</div>
   <div class="big ${tc(x.hot)}">${x.hot!=null?Math.round(x.hot)+' °C':'—'}</div>
+  ${spark(x.hist)}
   <div class="mut">CPU ${(x.load||[]).map(l=>Math.round(l*100)+'%').join(' · ')}</div>
   <a href="${esc(x.link)}"><button>Abrir</button></a>`:`<div class="mut">desligado ou fora da rede</div>${x.can_wake?`<button onclick='act({action:"wake",name:${JSON.stringify(x.name)}})'>Ligar</button>`:''}`}</div>`).join('')}catch(e){}}
 load();setInterval(load,3000);peers();setInterval(peers,15000);

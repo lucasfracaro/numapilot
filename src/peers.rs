@@ -164,6 +164,9 @@ pub fn summary() -> Vec<serde_json::Value> {
                     .map(|n| n.iter().filter_map(|x| x["load"].as_f64()).collect())
                     .unwrap_or_default();
                 v["host"] = s["host"].clone();
+                v["power"] = s["watts"].clone();
+                v["kwh_today"] = s["kwh_today"].clone();
+                v["version"] = s["version"].clone();
                 v["daemon"] = s["daemon"].clone();
                 v["hot"] = serde_json::json!(hot);
                 v["load"] = serde_json::json!(load);

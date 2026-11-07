@@ -96,6 +96,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         web_ui(app, ui);
 
         peers_ui(app, ui);
+        ui.add_space(8.0);
+        notify_ui(app, ui);
 
         ui.add_space(8.0);
         ui.heading("Opções de boot");
@@ -214,6 +216,67 @@ fn qr(ui: &mut egui::Ui, text: &str) {
                 Color32::BLACK,
             );
         }
+    }
+}
+
+fn notify_ui(app: &mut App, ui: &mut egui::Ui) {
+    use numapilot::notify::Notify;
+    ui.label(RichText::new("Avisos no celular").strong());
+    ui.label(
+        RichText::new("Pelo app ntfy (Android/iOS, grátis): GPU quente, disco falhando, servidor de IA caiu, PC saiu da rede, undervolt pronto. Instale o ntfy e assine o tópico (ou leia o QR code).")
+            .small()
+            .weak(),
+    );
+    let saved = Notify::load();
+    let n = app.notify_edit.get_or_insert_with(|| {
+        let mut n = saved.clone();
+        if n.topic.is_empty() {
+            n.topic = numapilot::notify::random_topic();
+        }
+        n
+    });
+    ui.checkbox(&mut n.enabled, "Ligado");
+    egui::Grid::new("ntfy").num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
+        ui.label("Servidor");
+        ui.add(egui::TextEdit::singleline(&mut n.server).desired_width(260.0));
+        ui.end_row();
+        ui.label("Tópico");
+        ui.add(egui::TextEdit::singleline(&mut n.topic).desired_width(260.0));
+        ui.end_row();
+        ui.label("Token (opcional)");
+        let mut t = n.token.clone().unwrap_or_default();
+        ui.add(egui::TextEdit::singleline(&mut t).password(true).desired_width(260.0));
+        n.token = (!t.is_empty()).then_some(t);
+        ui.end_row();
+    });
+    ui.horizontal_wrapped(|ui| {
+        ui.checkbox(&mut n.gpu_hot, "GPU quente");
+        ui.add_enabled(n.gpu_hot, egui::DragValue::new(&mut n.gpu_hot_c).range(70.0..=105.0).suffix(" °C"));
+        ui.checkbox(&mut n.health, "discos/memória/bateria");
+        ui.checkbox(&mut n.llm, "servidor de IA");
+        ui.checkbox(&mut n.peers, "outros PCs");
+        ui.checkbox(&mut n.jobs, "tarefas prontas");
+    });
+    let n = n.clone();
+    ui.horizontal(|ui| {
+        if ui.add_enabled(n != saved, egui::Button::new("Salvar")).clicked() {
+            app.send(numapilot::ctl::Request::SetNotify { notify: n.clone() });
+        }
+        if ui.button("Mandar teste").clicked() {
+            match n.send_now("Teste do numapilot", "Se chegou, os avisos estão funcionando.", 3, &["white_check_mark"]) {
+                Ok(()) => app.toast("Aviso de teste enviado", true),
+                Err(e) => app.toast(e, false),
+            }
+        }
+        if ui.small_button("abrir no navegador").clicked() {
+            let _ = crate::jobs::open_url(&n.subscribe_url());
+        }
+    });
+    if !n.topic.is_empty() {
+        ui.horizontal(|ui| {
+            qr(ui, &n.subscribe_url());
+            ui.label(RichText::new(format!("Assine no app: {}\nOs avisos de IA e de outros PCs precisam do painel no celular ligado.", n.subscribe_url())).small().weak());
+        });
     }
 }
 

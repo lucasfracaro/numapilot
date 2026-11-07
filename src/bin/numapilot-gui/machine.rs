@@ -437,6 +437,58 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             });
         }
 
+        // ---------------- energia ----------------
+        ui.add_space(8.0);
+        ui.heading("Energia");
+        {
+            let e = numapilot::energy::Energy::load();
+            let today = numapilot::energy::today();
+            let kwh_today = e.days.get(&today).copied().unwrap_or(0.0);
+            let month = e.month(&today[..7]);
+            let price = m.price_kwh;
+            let money = |k: f64| price.map(|p| format!(" (R$ {:.2})", k * p)).unwrap_or_default();
+            let w = mu.hw["watts"].as_f64();
+            ui.label(format!(
+                "Agora {} · hoje {kwh_today:.2} kWh{} · este mês {month:.1} kWh{}{}",
+                w.map(|w| format!("{w:.0} W")).unwrap_or("? W".into()),
+                money(kwh_today),
+                money(month),
+                e.avg_days(30)
+                    .map(|a| format!(" · média {a:.2} kWh/dia, ~{:.0} kWh/mês{}", a * 30.0, money(a * 30.0)))
+                    .unwrap_or_default()
+            ));
+            ui.horizontal(|ui| {
+                ui.label("Preço do kWh (R$):");
+                let mut on = m.price_kwh.is_some();
+                let mut v = m.price_kwh.unwrap_or(0.9);
+                ui.checkbox(&mut on, "");
+                ui.add_enabled(on, egui::DragValue::new(&mut v).range(0.05..=5.0).speed(0.01).fixed_decimals(2));
+                m.price_kwh = on.then_some(v);
+                ui.add_space(12.0);
+                ui.label("Resto do PC (W):").on_hover_text("O serviço mede processadores e placas de vídeo. Placa-mãe, memória, discos, ventoinhas e a perda da fonte somam uns 30-80 W; informe para a conta ficar perto da tomada (ou meça com um medidor de tomada).");
+                let mut b = m.base_w.unwrap_or(0.0);
+                ui.add(egui::DragValue::new(&mut b).range(0.0..=500.0).suffix(" W"));
+                m.base_w = (b > 0.0).then_some(b);
+            });
+            let days: Vec<(&String, &f64)> = e.days.iter().rev().take(14).collect();
+            if days.len() > 1 {
+                let max = days.iter().map(|d| *d.1).fold(0.0, f64::max).max(0.01);
+                ui.horizontal(|ui| {
+                    for (d, v) in days.iter().rev() {
+                        let (r, _) = ui.allocate_exact_size(egui::vec2(14.0, 40.0), egui::Sense::hover());
+                        let h = (*v / max) as f32 * 40.0;
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_max(egui::pos2(r.left() + 2.0, r.bottom() - h), egui::pos2(r.right() - 2.0, r.bottom())),
+                            2.0,
+                            Color32::from_rgb(79, 143, 240),
+                        );
+                        ui.interact(r, ui.next_auto_id(), egui::Sense::hover()).on_hover_text(format!("{d}: {v:.2} kWh{}", money(**v)));
+                    }
+                    ui.label(RichText::new("últimos 14 dias").small().weak());
+                });
+            }
+        }
+
         // ---------------- saúde ----------------
         ui.add_space(8.0);
         ui.heading("Saúde do hardware");

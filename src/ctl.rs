@@ -34,6 +34,10 @@ pub enum Request {
     SetMachine {
         machine: crate::machine::Machine,
     },
+    /// Avisos no celular (ntfy).
+    SetNotify {
+        notify: crate::notify::Notify,
+    },
     /// Ventoinha da placa-mãe.
     SetBoardFan {
         id: String,
