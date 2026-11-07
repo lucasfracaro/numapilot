@@ -117,10 +117,38 @@ impl Tray for NumaTray {
 struct Alerts {
     streak: std::collections::HashMap<String, u32>,
     last: std::collections::HashMap<String, std::time::Instant>,
+    nv_screen_warned: bool,
 }
 
 impl Alerts {
     fn check(&mut self, topo: &Topology) {
+        // "NVIDIA só quando precisar": tela ligada na saída da NVIDIA depois do login
+        if numapilot::hybrid::session_restricted()
+            && let Some((_, nv)) = numapilot::hybrid::pair(topo)
+        {
+            let on: Vec<String> = numapilot::hybrid::outputs(&nv.pci)
+                .into_iter()
+                .filter(|o| o.connected)
+                .map(|o| o.name)
+                .collect();
+            if on.is_empty() {
+                self.nv_screen_warned = false;
+            } else if !self.nv_screen_warned {
+                self.nv_screen_warned = true;
+                let _ = spawn_detached(&[
+                    "notify-send".into(),
+                    "-a".into(),
+                    "numapilot".into(),
+                    "-i".into(),
+                    "video-display".into(),
+                    format!("Tela na saída da {}", nv.alias),
+                    format!(
+                        "{} está na placa NVIDIA, e esta sessão subiu só na integrada. Saia e entre na sessão para usar esta tela.",
+                        on.join(", ")
+                    ),
+                ]);
+            }
+        }
         for g in &topo.gpus {
             let s = gpuctl::read_sensors(&g.pci);
             let Some(t) = s.control_temp() else { continue };

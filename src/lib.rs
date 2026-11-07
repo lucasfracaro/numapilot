@@ -20,6 +20,7 @@ pub mod fans;
 pub mod gpuctl;
 pub mod health;
 pub mod history;
+pub mod hybrid;
 pub mod irqs;
 pub mod labcfg;
 pub mod learned;

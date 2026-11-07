@@ -121,6 +121,12 @@ enum Cmd {
         #[arg(long, default_value_t = 120)]
         disk: u32,
     },
+    /// Notebook com NVIDIA: status | on | off | env [--export] ("NVIDIA só quando precisar")
+    Hybrid {
+        action: Option<String>,
+        #[arg(long)]
+        export: bool,
+    },
     /// Atualiza o próprio numapilot (pacote ou pasta do código): status | run
     #[command(name = "self-update")]
     SelfUpdate { action: Option<String> },
@@ -551,6 +557,87 @@ fn real_main() -> Result<()> {
                 _ => bail!(
                     "use: numapilot vm check [GPU] | sudo numapilot vm prepare GPU | sudo numapilot vm unprepare | numapilot vm create NOME --gpu GPU --iso ARQ.iso [--mem 16 --cpus 8 --disk 120]"
                 ),
+            }
+        }
+        Cmd::Hybrid { action, export } => {
+            use numapilot::hybrid;
+            let cfg = Config::load()?;
+            let topo = Topology::load(&cfg);
+            match action.as_deref().unwrap_or("status") {
+                "env" => {
+                    for (k, v) in hybrid::session_env(&topo) {
+                        if export {
+                            println!("export {k}='{v}'");
+                        } else {
+                            println!("{k}={v}");
+                        }
+                    }
+                    Ok(())
+                }
+                "on" | "off" => {
+                    hybrid::pair(&topo).context("só para notebook com placa integrada + NVIDIA")?;
+                    hybrid::set_enabled(
+                        action.as_deref() == Some("on"),
+                        &numapilot::desktop::numapilot_bin(),
+                    )
+                    .map_err(|e| anyhow::anyhow!(e))?;
+                    println!(
+                        "{} (vale a partir do próximo login)",
+                        if action.as_deref() == Some("on") {
+                            "ligado"
+                        } else {
+                            "desligado"
+                        }
+                    );
+                    Ok(())
+                }
+                _ => {
+                    let Some((i, n)) = hybrid::pair(&topo) else {
+                        println!("Não é um notebook com placa integrada + NVIDIA.");
+                        return Ok(());
+                    };
+                    for g in [i, n] {
+                        let outs = hybrid::outputs(&g.pci);
+                        println!(
+                            "{} ({}): {}",
+                            g.alias,
+                            numapilot::notebook::dgpu_state(&g.pci),
+                            outs.iter()
+                                .map(|o| format!(
+                                    "{}{}",
+                                    o.name,
+                                    if o.connected { " [tela]" } else { "" }
+                                ))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                    }
+                    println!(
+                        "NVIDIA só quando precisar: {} · esta sessão: {}",
+                        if hybrid::enabled() {
+                            "ligado"
+                        } else {
+                            "desligado"
+                        },
+                        if hybrid::session_restricted() {
+                            "desktop só na integrada"
+                        } else {
+                            "desktop nas duas placas"
+                        }
+                    );
+                    let env = hybrid::session_env(&topo);
+                    println!(
+                        "No próximo login: {}",
+                        if !hybrid::enabled() {
+                            "normal".into()
+                        } else if env.is_empty() {
+                            "normal (há tela na saída da NVIDIA)".to_string()
+                        } else {
+                            "desktop só na integrada".into()
+                        }
+                    );
+                    Ok(())
+                }
             }
         }
         Cmd::SelfUpdate { action } => {

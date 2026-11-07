@@ -432,6 +432,10 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
                 let has_nv = topo.gpus.iter().any(|o| o.is_nvidia());
                 if g.is_nvidia() {
                     set.push(("__NV_PRIME_RENDER_OFFLOAD".into(), "1".into()));
+                    // sessão "NVIDIA só quando precisar": o login limitou o EGL ao Mesa
+                    if let Some(egl) = crate::hybrid::nvidia_egl() {
+                        set.push(("__EGL_VENDOR_LIBRARY_FILENAMES".into(), egl));
+                    }
                     set.push(("__GLX_VENDOR_LIBRARY_NAME".into(), "nvidia".into()));
                     set.push(("__VK_LAYER_NV_optimus".into(), "NVIDIA_only".into()));
                     let nvs = crate::nvctl::cuda_indices(topo);

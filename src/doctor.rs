@@ -284,7 +284,19 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         if crate::acer::is_acer() {
             let pv4 =
                 crate::util::read_trim(crate::util::sys("module/acer_wmi/parameters/predator_v4"));
-            if pv4.as_deref() == Some("Y") {
+            let pv4_conf = std::fs::read_dir("/etc/modprobe.d").ok().is_some_and(|rd| {
+                rd.flatten().any(|e| {
+                    std::fs::read_to_string(e.path())
+                        .unwrap_or_default()
+                        .lines()
+                        .any(|l| {
+                            !l.trim_start().starts_with('#')
+                                && l.contains("acer_wmi")
+                                && l.contains("predator_v4=1")
+                        })
+                })
+            });
+            if matches!(pv4.as_deref(), Some("Y") | Some("1")) || pv4_conf {
                 add(
                     "Notebook",
                     "acer_wmi predator_v4",
@@ -345,6 +357,48 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 "ligada (usada por programas tipo NitroSense que escrevem direto no EC)".into(),
                 Some(
                     "se não usa mais esses programas, remova ec_sys write_support=1 do /etc/modprobe.d",
+                ),
+            );
+        }
+        if let Some((ig, nv)) = crate::hybrid::pair(&topo) {
+            let scr = |g: &crate::topo::Gpu| {
+                let v: Vec<String> = crate::hybrid::outputs(&g.pci)
+                    .into_iter()
+                    .filter(|o| o.connected)
+                    .map(|o| o.name)
+                    .collect();
+                if v.is_empty() {
+                    "nenhuma".to_string()
+                } else {
+                    v.join(", ")
+                }
+            };
+            add(
+                "Notebook",
+                "telas",
+                Level::Ok,
+                format!("{}: {} · {}: {}", ig.alias, scr(ig), nv.alias, scr(nv)),
+                None,
+            );
+            add(
+                "Notebook",
+                "NVIDIA só quando precisar",
+                Level::Info,
+                format!(
+                    "{}; esta sessão: {}",
+                    if crate::hybrid::enabled() {
+                        "ligado"
+                    } else {
+                        "desligado"
+                    },
+                    if crate::hybrid::session_restricted() {
+                        "desktop só na integrada"
+                    } else {
+                        "desktop nas duas placas"
+                    }
+                ),
+                (!crate::hybrid::enabled()).then_some(
+                    "numapilot hybrid on (ou Máquina → Notebook) e entre de novo na sessão",
                 ),
             );
         }

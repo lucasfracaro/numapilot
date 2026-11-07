@@ -133,6 +133,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     let mut send_fan: Option<(String, BoardFanControl)> = None;
     let mut job: Option<(String, Vec<String>)> = None;
     let mut app_toast: Option<String> = None;
+    let mut app_toast_ok: Option<&str> = None;
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         let mu = &mut app.mach;
@@ -188,6 +189,60 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     b.power_w.map(|w| format!("{w:.1} W")).unwrap_or_default(),
                     b.health_pct.map(|h| format!(" · saúde {h:.0}%")).unwrap_or_default()
                 ));
+            }
+            // ---- telas e "NVIDIA só quando precisar" ----
+            if let Some((ig, nv)) = numapilot::hybrid::pair(&topo) {
+                use numapilot::hybrid;
+                let desc = |g: &numapilot::topo::Gpu| {
+                    let outs = hybrid::outputs(&g.pci);
+                    let on: Vec<String> = outs
+                        .iter()
+                        .filter(|o| o.connected)
+                        .map(|o| {
+                            if o.name.starts_with("eDP") {
+                                format!("tela do notebook ({})", o.name)
+                            } else if o.name.starts_with("DP") && g.is_integrated() {
+                                format!("{} (USB-C/Thunderbolt)", o.name)
+                            } else {
+                                o.name.clone()
+                            }
+                        })
+                        .collect();
+                    let free: Vec<String> = outs.iter().filter(|o| !o.connected && !o.name.starts_with("eDP")).map(|o| o.name.clone()).collect();
+                    format!(
+                        "{}{}",
+                        if on.is_empty() { "nenhuma tela".to_string() } else { on.join(", ") },
+                        if g.is_nvidia() && !free.is_empty() { format!(" · saídas livres: {}", free.join(", ")) } else { String::new() }
+                    )
+                };
+                ui.label(format!("Telas na {}: {}", ig.alias, desc(ig)));
+                ui.label(format!("Telas na {}: {}", nv.alias, desc(nv)));
+                let nv_screen = hybrid::outputs(&nv.pci).iter().any(|o| o.connected);
+                let mut on = hybrid::enabled();
+                if ui
+                    .checkbox(&mut on, "NVIDIA só quando precisar")
+                    .on_hover_text(
+                        "No login, se não houver tela ligada numa saída da NVIDIA, o desktop sobe só na integrada e a NVIDIA dorme; \
+                         jogos e programas escolhidos para ela continuam indo para ela. Com uma tela na saída da NVIDIA no login, \
+                         ela fica ligada para gerar a imagem. Vale a partir do próximo login.",
+                    )
+                    .changed()
+                {
+                    match hybrid::set_enabled(on, &numapilot::desktop::numapilot_bin()) {
+                        Ok(()) => app_toast_ok = Some(if on { "Ligado: vale a partir do próximo login" } else { "Desligado: vale a partir do próximo login" }),
+                        Err(e) => app_toast = Some(e),
+                    }
+                }
+                if hybrid::session_restricted() && nv_screen {
+                    ui.label(
+                        RichText::new(format!("Tela ligada na saída da {} ({}): saia e entre na sessão para ela funcionar.", nv.alias, hybrid::outputs(&nv.pci).iter().filter(|o| o.connected).map(|o| o.name.clone()).collect::<Vec<_>>().join(", ")))
+                            .color(Color32::from_rgb(230, 160, 40)),
+                    );
+                } else if hybrid::session_restricted() {
+                    ui.label(RichText::new("Esta sessão: desktop só na integrada.").small().weak());
+                } else if on && !nv_screen {
+                    ui.label(RichText::new("Esta sessão começou nas duas placas; no próximo login o desktop fica só na integrada.").small().weak());
+                }
             }
             let fans = nb::ec_fans();
             if !fans.is_empty() {
@@ -1187,6 +1242,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
     if let Some(e) = app_toast {
         app.toast(e, false);
+    }
+    if let Some(m) = app_toast_ok {
+        app.toast(m, true);
     }
     if let Some(m) = send_machine {
         app.send(Request::SetMachine { machine: m });

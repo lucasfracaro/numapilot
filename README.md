@@ -642,6 +642,14 @@ balanceamento NUMA) some.
   permite, perfil de energia do fabricante (ACPI), deixar a placa dedicada **dormir** quando ninguém
   usa (o numapilot não acorda a placa para ler sensores), **quais programas estão mantendo a placa
   acordada** e o Dynamic Boost da NVIDIA.
+- **NVIDIA só quando precisar** (Máquina → Notebook, ou `numapilot hybrid on`): mostra em qual
+  placa está cada tela (no Nitro 5: a tela do notebook e o USB-C/Thunderbolt na 680M, o HDMI na
+  NVIDIA). Ligado, a cada login o numapilot confere: sem tela numa saída da NVIDIA, o desktop sobe
+  só na integrada (`KWIN_DRM_DEVICES` e EGL do Mesa para o Xwayland e os programas comuns) e a NVIDIA
+  dorme; jogos e programas escolhidos para ela continuam indo para ela. Com tela na saída da NVIDIA
+  no login, nada muda e ela fica ligada para gerar a imagem. Se uma tela for ligada no HDMI depois do
+  login, a bandeja avisa para sair e entrar na sessão. Programas na integrada também deixam de
+  carregar o driver da NVIDIA (EGL/Vulkan), o que a acordava à toa.
 - **Ryzen de notebook**: limites de potência pelo `ryzenadj` (STAPM/sustentado, PPT lento e rápido,
   temperatura máxima), o equivalente do PL1/PL2 da Intel. O serviço reaplica quando o firmware volta
   os valores (ao trocar tomada/bateria). A preferência de energia (EPP do amd-pstate) fica na tabela
