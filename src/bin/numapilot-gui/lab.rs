@@ -1,8 +1,8 @@
 //! Aba "Laboratório e containers": liga/desliga o laboratório, abre as IDEs e mostra
 //! os containers com os apps instalados em cada um.
 
-use crate::jobs::{home, open_url, sibling, spawn_detached};
 use crate::App;
+use crate::jobs::{home, open_url, sibling, spawn_detached};
 use eframe::egui::{self, Color32, RichText};
 use numapilot::containers::{self, Container, Kind};
 use numapilot::labcfg::LabSettings;
@@ -10,11 +10,20 @@ use numapilot::labcfg::LabSettings;
 // ---------- ações (usadas também pelo ícone da bandeja) ----------
 
 pub fn jupyter_url(st: &LabSettings) -> String {
-    format!("http://{}:{}/lab?token={}", st.url_host("LAB_BIND"), st.get("LAB_PORT_JUPYTER"), st.token())
+    format!(
+        "http://{}:{}/lab?token={}",
+        st.url_host("LAB_BIND"),
+        st.get("LAB_PORT_JUPYTER"),
+        st.token()
+    )
 }
 
 pub fn code_url(st: &LabSettings) -> String {
-    format!("http://{}:{}", st.url_host("LAB_BIND"), st.get("LAB_PORT_CODE"))
+    format!(
+        "http://{}:{}",
+        st.url_host("LAB_BIND"),
+        st.get("LAB_PORT_CODE")
+    )
 }
 
 /// Garante a entrada "gfx906-lab" no ~/.ssh/config (VS Code Remote-SSH, PyCharm).
@@ -36,14 +45,29 @@ pub fn ensure_ssh_config(st: &LabSettings) -> std::io::Result<bool> {
 }
 
 pub fn open_code_app(st: &LabSettings) -> Result<(), String> {
-    let bin = ["code", "codium", "code-oss"].into_iter().find(|b| containers::which(b)).ok_or("VS Code não está instalado no PC")?;
+    let bin = ["code", "codium", "code-oss"]
+        .into_iter()
+        .find(|b| containers::which(b))
+        .ok_or("VS Code não está instalado no PC")?;
     ensure_ssh_config(st).map_err(|e| e.to_string())?;
-    spawn_detached(&[bin.into(), "--remote".into(), "ssh-remote+gfx906-lab".into(), "/workspace".into()]).map_err(|e| e.to_string())
+    spawn_detached(&[
+        bin.into(),
+        "--remote".into(),
+        "ssh-remote+gfx906-lab".into(),
+        "/workspace".into(),
+    ])
+    .map_err(|e| e.to_string())
 }
 
 pub fn open_terminal(container: &str) -> Result<(), String> {
     let eng = containers::engine().ok_or("sem podman/docker")?;
-    let inner = vec![eng, "exec".to_string(), "-it".to_string(), container.to_string(), "bash".to_string()];
+    let inner = vec![
+        eng,
+        "exec".to_string(),
+        "-it".to_string(),
+        container.to_string(),
+        "bash".to_string(),
+    ];
     let term: Vec<String> = if containers::which("konsole") {
         vec!["konsole".into(), "-e".into()]
     } else if containers::which("gnome-terminal") {
@@ -55,7 +79,9 @@ pub fn open_terminal(container: &str) -> Result<(), String> {
     } else if containers::which("xterm") {
         vec!["xterm".into(), "-e".into()]
     } else {
-        return Err("nenhum terminal encontrado (konsole, gnome-terminal, kitty, alacritty, xterm)".into());
+        return Err(
+            "nenhum terminal encontrado (konsole, gnome-terminal, kitty, alacritty, xterm)".into(),
+        );
     };
     spawn_detached(&[term, inner].concat()).map_err(|e| e.to_string())
 }
@@ -69,7 +95,11 @@ pub fn gfx(args: &[&str]) -> Vec<String> {
 // ---------- interface ----------
 
 fn status_badge(ui: &mut egui::Ui, running: bool) {
-    let (t, c) = if running { ("rodando", Color32::from_rgb(90, 180, 110)) } else { ("parado", Color32::GRAY) };
+    let (t, c) = if running {
+        ("rodando", Color32::from_rgb(90, 180, 110))
+    } else {
+        ("parado", Color32::GRAY)
+    };
     ui.label(RichText::new(t).color(c));
 }
 
@@ -82,7 +112,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     let containers: Vec<Container> = match &list {
         Some(Ok(v)) => v.clone(),
         Some(Err(e)) => {
-            ui.label(RichText::new(format!("Containers indisponíveis: {e}")).color(Color32::from_rgb(220, 80, 60)));
+            ui.label(
+                RichText::new(format!("Containers indisponíveis: {e}"))
+                    .color(Color32::from_rgb(220, 80, 60)),
+            );
             ui.label("Instale o podman:  sudo pacman -S podman");
             vec![]
         }
@@ -281,17 +314,24 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn filtered_list(ui: &mut egui::Ui, filter: &mut String, id: &str, title: &str, items: &[String]) {
-    egui::CollapsingHeader::new(format!("{title} ({})", items.len())).id_salt(id).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.label("filtrar:");
-            ui.text_edit_singleline(filter);
+    egui::CollapsingHeader::new(format!("{title} ({})", items.len()))
+        .id_salt(id)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("filtrar:");
+                ui.text_edit_singleline(filter);
+            });
+            let f = filter.to_lowercase();
+            egui::ScrollArea::vertical()
+                .id_salt(format!("{id}-scroll"))
+                .max_height(180.0)
+                .show(ui, |ui| {
+                    for it in items
+                        .iter()
+                        .filter(|i| f.is_empty() || i.to_lowercase().contains(&f))
+                    {
+                        ui.label(RichText::new(it).monospace().small());
+                    }
+                });
         });
-        let f = filter.to_lowercase();
-        egui::ScrollArea::vertical().id_salt(format!("{id}-scroll")).max_height(180.0).show(ui, |ui| {
-            for it in items.iter().filter(|i| f.is_empty() || i.to_lowercase().contains(&f)) {
-                ui.label(RichText::new(it).monospace().small());
-            }
-        });
-    });
 }
-

@@ -86,7 +86,15 @@ pub struct Gamescope {
 
 impl Default for Gamescope {
     fn default() -> Self {
-        Gamescope { render_w: None, render_h: None, out_w: None, out_h: None, fullscreen: true, fsr: false, fps_limit: None }
+        Gamescope {
+            render_w: None,
+            render_h: None,
+            out_w: None,
+            out_h: None,
+            fullscreen: true,
+            fsr: false,
+            fps_limit: None,
+        }
     }
 }
 
@@ -151,7 +159,10 @@ impl Default for Profile {
 
 impl Profile {
     pub fn is_auto(&self) -> bool {
-        let d = Profile { label: self.label.clone(), ..Default::default() };
+        let d = Profile {
+            label: self.label.clone(),
+            ..Default::default()
+        };
         *self == d
     }
 
@@ -181,8 +192,12 @@ impl Profile {
         if !["low", "normal", "high"].contains(&self.priority.as_str()) {
             return Err(format!("prioridade inválida: {}", self.priority));
         }
-        if !["auto", "3d", "compute", "vr", "video", "economia"].contains(&self.gpu_power.as_str()) {
-            return Err(format!("perfil de energia da GPU inválido: {}", self.gpu_power));
+        if !["auto", "3d", "compute", "vr", "video", "economia"].contains(&self.gpu_power.as_str())
+        {
+            return Err(format!(
+                "perfil de energia da GPU inválido: {}",
+                self.gpu_power
+            ));
         }
         if self.cores == Some(0) {
             return Err("núcleos: pelo menos 1".into());
@@ -202,7 +217,14 @@ impl Profile {
 
     /// Perfis prontos de um clique.
     pub fn preset(name: &str, base: &Profile) -> Profile {
-        let mut p = Profile { label: base.label.clone(), gpu: base.gpu.clone(), usage: base.usage.clone(), fg_gpu: base.fg_gpu.clone(), gamescope: base.gamescope.clone(), ..Default::default() };
+        let mut p = Profile {
+            label: base.label.clone(),
+            gpu: base.gpu.clone(),
+            usage: base.usage.clone(),
+            fg_gpu: base.fg_gpu.clone(),
+            gamescope: base.gamescope.clone(),
+            ..Default::default()
+        };
         match name {
             // Jogo: socket da GPU, núcleos físicos (sem dividir núcleo), memória só local,
             // prioridade alta e núcleos reservados.
@@ -270,7 +292,10 @@ impl Profiles {
         let dir = state_dir();
         std::fs::create_dir_all(&dir)?;
         let tmp = dir.join("profiles.json.tmp");
-        std::fs::write(&tmp, serde_json::to_string_pretty(&self.map).unwrap_or_default())?;
+        std::fs::write(
+            &tmp,
+            serde_json::to_string_pretty(&self.map).unwrap_or_default(),
+        )?;
         std::fs::rename(tmp, Self::path())
     }
 }

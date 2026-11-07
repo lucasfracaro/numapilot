@@ -21,8 +21,13 @@ pub struct BenchResult {
 }
 
 pub fn paths() -> Vec<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"));
-    vec![crate::learned::state_dir().join("bench.json"), home.join(".cache/numapilot/bench.json")]
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    vec![
+        crate::learned::state_dir().join("bench.json"),
+        home.join(".cache/numapilot/bench.json"),
+    ]
 }
 
 /// O resultado mais recente (do serviço ou do usuário).
@@ -47,7 +52,8 @@ pub fn save(r: &BenchResult) -> Option<PathBuf> {
 }
 
 fn bind_here(cpu: usize, mem_node: usize) -> bool {
-    procfs::set_affinity(0, &[cpu]).is_ok() && procfs::set_mempolicy(procfs::MPOL_BIND, &[mem_node]).is_ok()
+    procfs::set_affinity(0, &[cpu]).is_ok()
+        && procfs::set_mempolicy(procfs::MPOL_BIND, &[mem_node]).is_ok()
 }
 
 /// Latência média (ns) de acessos dependentes ("pointer chasing") num buffer aleatório.
@@ -108,7 +114,16 @@ fn bandwidth(cpus: &[usize], mem_node: usize, size_mb: usize) -> f64 {
                 let mut s = 0u64;
                 for _ in 0..reps {
                     for chunk in v.as_chunks::<8>().0 {
-                        s = s.wrapping_add(chunk[0] ^ chunk[1] ^ chunk[2] ^ chunk[3] ^ chunk[4] ^ chunk[5] ^ chunk[6] ^ chunk[7]);
+                        s = s.wrapping_add(
+                            chunk[0]
+                                ^ chunk[1]
+                                ^ chunk[2]
+                                ^ chunk[3]
+                                ^ chunk[4]
+                                ^ chunk[5]
+                                ^ chunk[6]
+                                ^ chunk[7],
+                        );
                     }
                 }
                 black_box(s);
@@ -127,10 +142,19 @@ fn bandwidth(cpus: &[usize], mem_node: usize, size_mb: usize) -> f64 {
             None => return f64::NAN,
         }
     }
-    if secs > 0.0 { bytes as f64 / secs / 1e9 } else { f64::NAN }
+    if secs > 0.0 {
+        bytes as f64 / secs / 1e9
+    } else {
+        f64::NAN
+    }
 }
 
-pub fn run(topo: &Topology, size_mb: usize, threads: usize, progress: impl Fn(&str)) -> BenchResult {
+pub fn run(
+    topo: &Topology,
+    size_mb: usize,
+    threads: usize,
+    progress: impl Fn(&str),
+) -> BenchResult {
     let nodes = topo.node_ids();
     let mut r = BenchResult {
         nodes: nodes.clone(),
@@ -138,7 +162,10 @@ pub fn run(topo: &Topology, size_mb: usize, threads: usize, progress: impl Fn(&s
         bandwidth_gbs: vec![vec![f64::NAN; nodes.len()]; nodes.len()],
         threads,
         size_mb,
-        time: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
+        time: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
     };
     for (i, &cn) in nodes.iter().enumerate() {
         let node = topo.node(cn).unwrap();
@@ -147,7 +174,9 @@ pub fn run(topo: &Topology, size_mb: usize, threads: usize, progress: impl Fn(&s
         let lat_cpu = firsts.first().copied().unwrap_or(node.cpus[0]);
         let bw_cpus: Vec<usize> = firsts.iter().copied().take(threads.max(1)).collect();
         for (j, &mn) in nodes.iter().enumerate() {
-            progress(&format!("CPUs do socket {cn} lendo a memória do socket {mn}..."));
+            progress(&format!(
+                "CPUs do socket {cn} lendo a memória do socket {mn}..."
+            ));
             r.latency_ns[i][j] = latency(lat_cpu, mn, size_mb);
             r.bandwidth_gbs[i][j] = bandwidth(&bw_cpus, mn, (size_mb / 2).max(16));
         }
@@ -157,23 +186,34 @@ pub fn run(topo: &Topology, size_mb: usize, threads: usize, progress: impl Fn(&s
 
 pub fn print(r: &BenchResult) {
     let head: Vec<String> = r.nodes.iter().map(|n| format!("mem {n:>2}")).collect();
-    println!("\nLatência (ns por acesso)      linhas = CPUs do socket, colunas = memória do socket");
+    println!(
+        "\nLatência (ns por acesso)      linhas = CPUs do socket, colunas = memória do socket"
+    );
     println!("          {}", head.join("  "));
     for (i, n) in r.nodes.iter().enumerate() {
-        let row: Vec<String> = r.latency_ns[i].iter().map(|v| format!("{v:>6.0}")).collect();
+        let row: Vec<String> = r.latency_ns[i]
+            .iter()
+            .map(|v| format!("{v:>6.0}"))
+            .collect();
         println!("CPU {n:>2}    {}", row.join("  "));
     }
     println!("\nBanda de leitura (GB/s, {} threads)", r.threads);
     println!("          {}", head.join("  "));
     for (i, n) in r.nodes.iter().enumerate() {
-        let row: Vec<String> = r.bandwidth_gbs[i].iter().map(|v| format!("{v:>6.1}")).collect();
+        let row: Vec<String> = r.bandwidth_gbs[i]
+            .iter()
+            .map(|v| format!("{v:>6.1}"))
+            .collect();
         println!("CPU {n:>2}    {}", row.join("  "));
     }
     if r.nodes.len() >= 2 {
         let local = r.latency_ns[0][0];
         let remote = r.latency_ns[0][1];
         if local.is_finite() && remote.is_finite() && local > 0.0 {
-            println!("\nAcessar a memória do outro socket custa {:.0}% a mais de latência.", (remote / local - 1.0) * 100.0);
+            println!(
+                "\nAcessar a memória do outro socket custa {:.0}% a mais de latência.",
+                (remote / local - 1.0) * 100.0
+            );
         }
     }
 }
@@ -199,7 +239,15 @@ mod tests {
             default_graphics: None,
         };
         let r = run(&t, 16, 1, |_| {});
-        assert!(r.latency_ns[0][0].is_finite() && r.latency_ns[0][0] > 0.1, "{:?}", r.latency_ns);
-        assert!(r.bandwidth_gbs[0][0].is_finite() && r.bandwidth_gbs[0][0] > 0.01, "{:?}", r.bandwidth_gbs);
+        assert!(
+            r.latency_ns[0][0].is_finite() && r.latency_ns[0][0] > 0.1,
+            "{:?}",
+            r.latency_ns
+        );
+        assert!(
+            r.bandwidth_gbs[0][0].is_finite() && r.bandwidth_gbs[0][0] > 0.01,
+            "{:?}",
+            r.bandwidth_gbs
+        );
     }
 }

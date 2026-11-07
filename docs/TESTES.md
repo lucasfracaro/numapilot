@@ -71,6 +71,20 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 - [ ] Alerta de GPU quente na bandeja
 - [ ] `numapilot backup` e guardar o arquivo fora do disco do sistema
 
+## Notebook (NVIDIA)
+
+- [ ] `./install.sh`, `numapilot doctor`: Intel/AMD integrada como vídeo e a NVIDIA como dedicada
+- [ ] Placas de vídeo → Driver NVIDIA: série indicada correta; "Instalar driver oficial"; reiniciar
+- [ ] `numapilot run --use graphics -- vkcube` roda na NVIDIA (PRIME); `--gpu intel-0` na integrada
+- [ ] Placa dedicada dorme parada (Máquina → Notebook mostra "dormindo") e acorda ao abrir um jogo
+- [ ] Modo automático: Silencioso na bateria, Jogo/Normal na tomada; limite de carga em 80%
+- [ ] Limite de potência e clock máximo da NVIDIA aplicam (se o notebook permitir)
+
+## Outros PCs
+
+- [ ] PC i7-5775C + BC-160 e PC CC150 + RX 9060 XT: `./install.sh`, `numapilot doctor`, aba Máquina
+- [ ] BC-250: ver o roteiro da fase 2 (governor, CUs, CPU)
+
 ## Próximas melhorias combinadas
 
 1. Otimizador do servidor de IA (tokens/s: 1 ou 2 MI50, divisão por camadas ou linhas, socket).

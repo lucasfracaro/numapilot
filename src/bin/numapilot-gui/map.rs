@@ -1,8 +1,8 @@
 //! Aba "Mapa e medições": núcleos de cada socket (uso e quem está em cada um), memória,
 //! alocações remotas, governador de frequência e a matriz de latência/banda medida.
 
-use crate::lab::gfx;
 use crate::App;
+use crate::lab::gfx;
 use eframe::egui::{self, Color32, RichText, Sense, Stroke, StrokeKind};
 use numapilot::ctl::Request;
 use numapilot::topo::Topology;
@@ -32,14 +32,23 @@ pub fn core_map(
 ) {
     let accent = ui.visuals().selection.stroke.color;
     for n in &topo.nodes {
-        let gpus: Vec<&str> = topo.gpus.iter().filter(|g| g.numa_node == Some(n.id)).map(|g| g.alias.as_str()).collect();
+        let gpus: Vec<&str> = topo
+            .gpus
+            .iter()
+            .filter(|g| g.numa_node == Some(n.id))
+            .map(|g| g.alias.as_str())
+            .collect();
         ui.label(
             RichText::new(format!(
                 "Socket {} — {} núcleos / {} threads{}",
                 n.id,
                 n.cores.len(),
                 n.cpus.len(),
-                if gpus.is_empty() { String::new() } else { format!(" — GPUs: {}", gpus.join(", ")) }
+                if gpus.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — GPUs: {}", gpus.join(", "))
+                }
             ))
             .strong(),
         );
@@ -48,7 +57,8 @@ pub fn core_map(
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 3.0;
                 for core in row {
-                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(36.0, 22.0), Sense::click());
+                    let (rect, resp) =
+                        ui.allocate_exact_size(egui::vec2(36.0, 22.0), Sense::click());
                     let p = ui.painter();
                     let w = rect.width() / core.len().max(1) as f32;
                     for (k, &c) in core.iter().enumerate() {
@@ -58,16 +68,28 @@ pub fn core_map(
                         );
                         p.rect_filled(r, 3.0, load_color(loads.get(&c).copied().unwrap_or(0.0)));
                         if selected.as_ref().is_some_and(|s| s.contains(&c)) {
-                            p.rect_stroke(r.shrink(1.0), 3.0, Stroke::new(2.0, accent), StrokeKind::Inside);
+                            p.rect_stroke(
+                                r.shrink(1.0),
+                                3.0,
+                                Stroke::new(2.0, accent),
+                                StrokeKind::Inside,
+                            );
                         }
                         if who.contains_key(&c) {
-                            p.circle_filled(r.right_top() + egui::vec2(-4.0, 4.0), 2.5, Color32::WHITE);
+                            p.circle_filled(
+                                r.right_top() + egui::vec2(-4.0, 4.0),
+                                2.5,
+                                Color32::WHITE,
+                            );
                         }
                     }
                     let tip = core
                         .iter()
                         .map(|c| {
-                            let mut s = format!("CPU {c}: {:.0}%", loads.get(c).copied().unwrap_or(0.0) * 100.0);
+                            let mut s = format!(
+                                "CPU {c}: {:.0}%",
+                                loads.get(c).copied().unwrap_or(0.0) * 100.0
+                            );
                             if let Some(ps) = who.get(c) {
                                 s.push_str(&format!(" — {}", ps.join(", ")));
                             }
@@ -109,7 +131,13 @@ fn governors(cpu: usize) -> (String, Vec<String>) {
     let cur = numapilot::util::read_trim(base.join("scaling_governor")).unwrap_or_default();
     let avail = numapilot::util::read_trim(base.join("scaling_available_governors"))
         .map(|s| s.split_whitespace().map(String::from).collect())
-        .unwrap_or_else(|| if cur.is_empty() { vec![] } else { vec![cur.clone()] });
+        .unwrap_or_else(|| {
+            if cur.is_empty() {
+                vec![]
+            } else {
+                vec![cur.clone()]
+            }
+        });
     (cur, avail)
 }
 

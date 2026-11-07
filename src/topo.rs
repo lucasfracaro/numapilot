@@ -52,12 +52,67 @@ pub struct Gpu {
 }
 
 impl Gpu {
+    /// Placa integrada ao processador (iGPU): Intel no barramento 0 ou APU AMD.
+    pub fn is_integrated(&self) -> bool {
+        match self.vendor {
+            0x8086 => self.pci.starts_with("0000:00:"),
+            0x1002 => {
+                let n = self.name.to_lowercase();
+                [
+                    "renoir",
+                    "cezanne",
+                    "rembrandt",
+                    "phoenix",
+                    "hawk point",
+                    "raphael",
+                    "barcelo",
+                    "lucienne",
+                    "picasso",
+                    "raven",
+                    "strix",
+                    "granite ridge",
+                    "van gogh",
+                    "mendocino",
+                    "dragon range",
+                    "radeon graphics",
+                    "radeon vega",
+                ]
+                .iter()
+                .any(|k| n.contains(k))
+            }
+            _ => false,
+        }
+    }
+    pub fn is_nvidia(&self) -> bool {
+        self.vendor == crate::nvctl::VENDOR
+    }
     pub fn busy_percent(&self) -> Option<u64> {
-        read_u64(sys(&format!("bus/pci/devices/{}/gpu_busy_percent", self.pci)))
+        if self.is_nvidia() {
+            return crate::nvctl::get(&self.pci)
+                .and_then(|g| g.util_pct)
+                .map(|v| v as u64);
+        }
+        read_u64(sys(&format!(
+            "bus/pci/devices/{}/gpu_busy_percent",
+            self.pci
+        )))
     }
     pub fn vram_used_total(&self) -> Option<(u64, u64)> {
-        let u = read_u64(sys(&format!("bus/pci/devices/{}/mem_info_vram_used", self.pci)))?;
-        let t = read_u64(sys(&format!("bus/pci/devices/{}/mem_info_vram_total", self.pci)))?;
+        if self.is_nvidia() {
+            let g = crate::nvctl::get(&self.pci)?;
+            return Some((
+                (g.mem_used_mb? * 1048576.0) as u64,
+                (g.mem_total_mb? * 1048576.0) as u64,
+            ));
+        }
+        let u = read_u64(sys(&format!(
+            "bus/pci/devices/{}/mem_info_vram_used",
+            self.pci
+        )))?;
+        let t = read_u64(sys(&format!(
+            "bus/pci/devices/{}/mem_info_vram_total",
+            self.pci
+        )))?;
         Some((u, t))
     }
     /// Pontuação de ocupação (menor = mais livre).
@@ -65,7 +120,13 @@ impl Gpu {
         let busy = self.busy_percent().unwrap_or(0) as f64;
         let vram = self
             .vram_used_total()
-            .map(|(u, t)| if t > 0 { u as f64 * 100.0 / t as f64 } else { 0.0 })
+            .map(|(u, t)| {
+                if t > 0 {
+                    u as f64 * 100.0 / t as f64
+                } else {
+                    0.0
+                }
+            })
             .unwrap_or(0.0);
         busy + vram
     }
@@ -106,7 +167,11 @@ impl Topology {
             });
         }
         let gpus = load_gpus(cfg, nodes.len());
-        Topology { nodes, gpus, default_graphics: cfg.graphics_gpu.clone() }
+        Topology {
+            nodes,
+            gpus,
+            default_graphics: cfg.graphics_gpu.clone(),
+        }
     }
 
     pub fn node(&self, id: usize) -> Option<&Node> {
@@ -138,15 +203,31 @@ impl Topology {
     /// - `avoid`: CPUs a evitar se houver alternativa (ex.: reservados por outro programa).
     ///
     /// Com vários nós, distribui os núcleos alternando entre eles.
-    pub fn select_cpus(&self, nodes: &[usize], count: Option<usize>, smt: bool, avoid: &[usize]) -> Vec<usize> {
+    pub fn select_cpus(
+        &self,
+        nodes: &[usize],
+        count: Option<usize>,
+        smt: bool,
+        avoid: &[usize],
+    ) -> Vec<usize> {
         let units_of = |n: &Node, free: bool| -> Vec<Vec<usize>> {
             n.cores
                 .iter()
                 .filter(|core| core.iter().all(|c| !avoid.contains(c)) == free)
-                .map(|core| if smt { core.clone() } else { core[..1].to_vec() })
+                .map(|core| {
+                    if smt {
+                        core.clone()
+                    } else {
+                        core[..1].to_vec()
+                    }
+                })
                 .collect()
         };
-        let sel_nodes: Vec<&Node> = self.nodes.iter().filter(|n| nodes.contains(&n.id)).collect();
+        let sel_nodes: Vec<&Node> = self
+            .nodes
+            .iter()
+            .filter(|n| nodes.contains(&n.id))
+            .collect();
         // Primeiro os núcleos livres, depois (se faltar) os evitados.
         let per_node: Vec<Vec<Vec<usize>>> = sel_nodes
             .iter()
@@ -156,7 +237,10 @@ impl Topology {
                 u
             })
             .collect();
-        let total: usize = per_node.iter().map(|u| u.iter().map(Vec::len).sum::<usize>()).sum();
+        let total: usize = per_node
+            .iter()
+            .map(|u| u.iter().map(Vec::len).sum::<usize>())
+            .sum();
         let want = count.unwrap_or(total).min(total);
         let mut out = Vec::with_capacity(want);
         let mut idx = vec![0usize; per_node.len()];
@@ -184,7 +268,11 @@ impl Topology {
 
     /// Nós que contêm algum dos CPUs.
     pub fn nodes_of(&self, cpus: &[usize]) -> Vec<usize> {
-        self.nodes.iter().filter(|n| n.cpus.iter().any(|c| cpus.contains(c))).map(|n| n.id).collect()
+        self.nodes
+            .iter()
+            .filter(|n| n.cpus.iter().any(|c| cpus.contains(c)))
+            .map(|n| n.id)
+            .collect()
     }
 
     /// GPU para gráficos no automático: a do config; senão a placa de vídeo com
@@ -202,8 +290,29 @@ impl Topology {
             .or_else(|| self.gpus.iter().find(|g| g.role == GpuRole::Other))
     }
 
+    /// GPU dos jogos no automático: a do config; senão, se o monitor está numa integrada e
+    /// existe uma placa dedicada (notebook com NVIDIA/AMD), a dedicada; senão a do monitor.
+    pub fn gaming_gpu(&self) -> Option<&Gpu> {
+        if self.default_graphics.is_some() {
+            return self.display_gpu();
+        }
+        let disp = self.display_gpu();
+        if disp.is_none_or(|d| d.is_integrated())
+            && let Some(d) = self
+                .gpus
+                .iter()
+                .find(|g| !g.is_integrated() && g.role != GpuRole::Compute && g.render.is_some())
+        {
+            return Some(d);
+        }
+        disp
+    }
+
     pub fn compute_gpus(&self) -> Vec<&Gpu> {
-        self.gpus.iter().filter(|g| g.role == GpuRole::Compute).collect()
+        self.gpus
+            .iter()
+            .filter(|g| g.role == GpuRole::Compute)
+            .collect()
     }
 
     pub fn gpu_by_render(&self, render: &str) -> Option<&Gpu> {
@@ -215,7 +324,11 @@ impl Topology {
     /// Avisos úteis (BIOS com NUMA desligado, GPU sem nó conhecido...).
     pub fn warnings(&self) -> Vec<String> {
         let mut w = Vec::new();
-        let all_sockets: BTreeSet<u32> = self.nodes.iter().flat_map(|n| n.sockets.iter().copied()).collect();
+        let all_sockets: BTreeSet<u32> = self
+            .nodes
+            .iter()
+            .flat_map(|n| n.sockets.iter().copied())
+            .collect();
         if self.nodes.len() == 1 && all_sockets.len() > 1 {
             w.push(format!(
                 "{} sockets mas só 1 nó NUMA: provavelmente 'Node Interleaving' está ligado na BIOS. \
@@ -251,14 +364,20 @@ fn node_meminfo(id: usize, key: &str) -> Option<u64> {
 }
 
 fn cpu_topo(cpu: usize, f: &str) -> Option<u32> {
-    read_trim(sys(&format!("devices/system/cpu/cpu{cpu}/topology/{f}")))?.parse().ok()
+    read_trim(sys(&format!("devices/system/cpu/cpu{cpu}/topology/{f}")))?
+        .parse()
+        .ok()
 }
 
 /// Agrupa CPUs lógicos por núcleo físico (pacote + core_id), na ordem do 1º CPU de cada núcleo.
 pub fn group_cores(cpus: &[usize]) -> Vec<Vec<usize>> {
-    let mut map: std::collections::BTreeMap<(u32, u32), Vec<usize>> = std::collections::BTreeMap::new();
+    let mut map: std::collections::BTreeMap<(u32, u32), Vec<usize>> =
+        std::collections::BTreeMap::new();
     for &c in cpus {
-        let k = (cpu_topo(c, "physical_package_id").unwrap_or(0), cpu_topo(c, "core_id").unwrap_or(c as u32));
+        let k = (
+            cpu_topo(c, "physical_package_id").unwrap_or(0),
+            cpu_topo(c, "core_id").unwrap_or(c as u32),
+        );
         map.entry(k).or_default().push(c);
     }
     let mut v: Vec<Vec<usize>> = map
@@ -275,27 +394,47 @@ pub fn group_cores(cpus: &[usize]) -> Vec<Vec<usize>> {
 fn count_physical(cpus: &[usize]) -> usize {
     let set: BTreeSet<(u32, u32)> = cpus
         .iter()
-        .map(|&c| (cpu_topo(c, "physical_package_id").unwrap_or(0), cpu_topo(c, "core_id").unwrap_or(c as u32)))
+        .map(|&c| {
+            (
+                cpu_topo(c, "physical_package_id").unwrap_or(0),
+                cpu_topo(c, "core_id").unwrap_or(c as u32),
+            )
+        })
         .collect();
     set.len().max(1)
 }
 
 fn sockets_of(cpus: &[usize]) -> BTreeSet<u32> {
-    cpus.iter().filter_map(|&c| cpu_topo(c, "physical_package_id")).collect()
+    cpus.iter()
+        .filter_map(|&c| cpu_topo(c, "physical_package_id"))
+        .collect()
 }
 
 fn load_nodes() -> Vec<Node> {
     let mut nodes = Vec::new();
-    let Ok(rd) = fs::read_dir(sys("devices/system/node")) else { return nodes };
+    let Ok(rd) = fs::read_dir(sys("devices/system/node")) else {
+        return nodes;
+    };
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        let Some(id) = name.strip_prefix("node").and_then(|s| s.parse::<usize>().ok()) else { continue };
-        let cpus = read_trim(e.path().join("cpulist")).map(|s| parse_cpulist(&s)).unwrap_or_default();
+        let Some(id) = name
+            .strip_prefix("node")
+            .and_then(|s| s.parse::<usize>().ok())
+        else {
+            continue;
+        };
+        let cpus = read_trim(e.path().join("cpulist"))
+            .map(|s| parse_cpulist(&s))
+            .unwrap_or_default();
         if cpus.is_empty() {
             continue; // nó só de memória: não usamos para colocar processos
         }
         let distances = read_trim(e.path().join("distance"))
-            .map(|s| s.split_whitespace().filter_map(|x| x.parse().ok()).collect())
+            .map(|s| {
+                s.split_whitespace()
+                    .filter_map(|x| x.parse().ok())
+                    .collect()
+            })
             .unwrap_or_default();
         nodes.push(Node {
             id,
@@ -314,7 +453,9 @@ fn load_nodes() -> Vec<Node> {
 /// Dados do driver KFD (ROCm) por endereço PCI: (gfx, rocr_id)
 fn load_kfd() -> HashMap<String, (String, String)> {
     let mut out = HashMap::new();
-    let Ok(rd) = fs::read_dir(sys("class/kfd/kfd/topology/nodes")) else { return out };
+    let Ok(rd) = fs::read_dir(sys("class/kfd/kfd/topology/nodes")) else {
+        return out;
+    };
     let mut ids: Vec<usize> = rd
         .flatten()
         .filter_map(|e| e.file_name().to_string_lossy().parse().ok())
@@ -322,7 +463,9 @@ fn load_kfd() -> HashMap<String, (String, String)> {
     ids.sort_unstable();
     let mut gpu_index = 0usize;
     for id in ids {
-        let Ok(props) = fs::read_to_string(sys(&format!("class/kfd/kfd/topology/nodes/{id}/properties"))) else {
+        let Ok(props) = fs::read_to_string(sys(&format!(
+            "class/kfd/kfd/topology/nodes/{id}/properties"
+        ))) else {
             continue;
         };
         let p: HashMap<&str, u64> = props
@@ -337,11 +480,21 @@ fn load_kfd() -> HashMap<String, (String, String)> {
         }
         let loc = p.get("location_id").copied().unwrap_or(0);
         let dom = p.get("domain").copied().unwrap_or(0);
-        let pci = format!("{:04x}:{:02x}:{:02x}.{:x}", dom, (loc >> 8) & 0xff, (loc >> 3) & 0x1f, loc & 0x7);
+        let pci = format!(
+            "{:04x}:{:02x}:{:02x}.{:x}",
+            dom,
+            (loc >> 8) & 0xff,
+            (loc >> 3) & 0x1f,
+            loc & 0x7
+        );
         let v = p.get("gfx_target_version").copied().unwrap_or(0);
         let gfx = format!("gfx{}{:x}{:x}", v / 10000, (v / 100) % 100, v % 100);
         let uid = p.get("unique_id").copied().unwrap_or(0);
-        let rocr = if uid != 0 { format!("GPU-{uid:016x}") } else { gpu_index.to_string() };
+        let rocr = if uid != 0 {
+            format!("GPU-{uid:016x}")
+        } else {
+            gpu_index.to_string()
+        };
         out.insert(pci, (gfx, rocr));
         gpu_index += 1;
     }
@@ -372,7 +525,9 @@ fn pci_name(vendor: u16, device: u16) -> Option<String> {
 fn load_gpus(cfg: &Config, node_count: usize) -> Vec<Gpu> {
     let kfd = load_kfd();
     let mut gpus = Vec::new();
-    let Ok(rd) = fs::read_dir(sys("bus/pci/devices")) else { return gpus };
+    let Ok(rd) = fs::read_dir(sys("bus/pci/devices")) else {
+        return gpus;
+    };
     let mut entries: Vec<_> = rd.flatten().collect();
     entries.sort_by_key(|e| e.file_name());
     for e in entries {
@@ -422,9 +577,16 @@ fn load_gpus(cfg: &Config, node_count: usize) -> Vec<Gpu> {
             .and_then(|g| g.get(..g.len().saturating_sub(2)))
             .and_then(|m| m.parse().ok())
             .unwrap_or(0);
-        // Placas com ROCm moderno (gfx9+, ex.: MI50) são "computação" mesmo com monitor ligado;
-        // elas continuam podendo rodar jogos (uso gráfico).
-        let role = if gfx.is_some() && gfx_major >= 9 {
+        // Placas de computação (Instinct/MI50: gfx906, gfx908, gfx90a, gfx94x) são "computação"
+        // mesmo com monitor ligado; continuam podendo rodar jogos (uso gráfico). As placas de
+        // jogo com ROCm (RDNA, ex.: RX 9060 XT) seguem como placa de vídeo.
+        let instinct = gfx.as_deref().is_some_and(|g| {
+            ["gfx906", "gfx908", "gfx90a", "gfx94"]
+                .iter()
+                .any(|p| g.starts_with(p))
+        });
+        let _ = gfx_major;
+        let role = if instinct {
             GpuRole::Compute
         } else if display_connected {
             GpuRole::Display
@@ -458,14 +620,26 @@ fn load_gpus(cfg: &Config, node_count: usize) -> Vec<Gpu> {
             *c += 1;
             a
         } else {
-            format!("gpu{i}")
+            let vendor = match g.vendor {
+                0x10de => "nvidia",
+                0x8086 => "intel",
+                0x1002 => "amd",
+                _ => "gpu",
+            };
+            let c = counters.entry(vendor.into()).or_insert(0);
+            let a = format!("{vendor}-{c}");
+            *c += 1;
+            let _ = i;
+            a
         };
     }
     gpus
 }
 
 fn connector_connected(card: &str) -> bool {
-    let Ok(rd) = fs::read_dir(sys("class/drm")) else { return false };
+    let Ok(rd) = fs::read_dir(sys("class/drm")) else {
+        return false;
+    };
     let prefix = format!("{card}-");
     rd.flatten().any(|e| {
         e.file_name().to_string_lossy().starts_with(&prefix)
@@ -477,7 +651,7 @@ fn connector_connected(card: &str) -> bool {
 pub mod tests {
     use super::*;
     use crate::config::{Config, CpuSpec, GpuSpec};
-    use crate::decide::{decide_launch, gpu_env, Kind, LaunchInput};
+    use crate::decide::{Kind, LaunchInput, decide_launch, gpu_env};
     use crate::learned::Learned;
     use crate::profiles::{Profile, Profiles};
     use std::path::Path;
@@ -493,15 +667,40 @@ pub mod tests {
         let _ = fs::remove_dir_all(root);
         w(root, "devices/system/cpu/online", "0-87\n");
         for cpu in 0..88usize {
-            let (pkg, core) = if (0..22).contains(&cpu) || (44..66).contains(&cpu) { (0, cpu % 22) } else { (1, cpu % 22) };
-            w(root, &format!("devices/system/cpu/cpu{cpu}/topology/physical_package_id"), &format!("{pkg}\n"));
-            w(root, &format!("devices/system/cpu/cpu{cpu}/topology/core_id"), &format!("{core}\n"));
+            let (pkg, core) = if (0..22).contains(&cpu) || (44..66).contains(&cpu) {
+                (0, cpu % 22)
+            } else {
+                (1, cpu % 22)
+            };
+            w(
+                root,
+                &format!("devices/system/cpu/cpu{cpu}/topology/physical_package_id"),
+                &format!("{pkg}\n"),
+            );
+            w(
+                root,
+                &format!("devices/system/cpu/cpu{cpu}/topology/core_id"),
+                &format!("{core}\n"),
+            );
         }
         for (n, cpus, dist) in [(0, "0-21,44-65", "10 21"), (1, "22-43,66-87", "21 10")] {
-            w(root, &format!("devices/system/node/node{n}/cpulist"), &format!("{cpus}\n"));
-            w(root, &format!("devices/system/node/node{n}/distance"), &format!("{dist}\n"));
-            w(root, &format!("devices/system/node/node{n}/meminfo"),
-              &format!("Node {n} MemTotal:       67108864 kB\nNode {n} MemFree:        50331648 kB\n"));
+            w(
+                root,
+                &format!("devices/system/node/node{n}/cpulist"),
+                &format!("{cpus}\n"),
+            );
+            w(
+                root,
+                &format!("devices/system/node/node{n}/distance"),
+                &format!("{dist}\n"),
+            );
+            w(
+                root,
+                &format!("devices/system/node/node{n}/meminfo"),
+                &format!(
+                    "Node {n} MemTotal:       67108864 kB\nNode {n} MemFree:        50331648 kB\n"
+                ),
+            );
         }
         let gpus = [
             ("0000:03:00.0", "0x67df", "0", "card0", "renderD128", "20"),
@@ -510,11 +709,23 @@ pub mod tests {
         ];
         for (pci, dev, node, card, render, busy) in gpus {
             let base = format!("bus/pci/devices/{pci}");
-            w(root, &format!("{base}/class"), if dev == "0x67df" { "0x030000\n" } else { "0x038000\n" });
+            w(
+                root,
+                &format!("{base}/class"),
+                if dev == "0x67df" {
+                    "0x030000\n"
+                } else {
+                    "0x038000\n"
+                },
+            );
             w(root, &format!("{base}/vendor"), "0x1002\n");
             w(root, &format!("{base}/device"), &format!("{dev}\n"));
             w(root, &format!("{base}/numa_node"), &format!("{node}\n"));
-            w(root, &format!("{base}/gpu_busy_percent"), &format!("{busy}\n"));
+            w(
+                root,
+                &format!("{base}/gpu_busy_percent"),
+                &format!("{busy}\n"),
+            );
             w(root, &format!("{base}/drm/{card}/dev"), "x");
             w(root, &format!("{base}/drm/{render}/dev"), "x");
         }
@@ -524,12 +735,25 @@ pub mod tests {
         let kfd = [
             (0, "simd_count 0\n"),
             (1, "simd_count 0\n"),
-            (2, "simd_count 128\ngfx_target_version 80003\nlocation_id 768\ndomain 0\nunique_id 0\n"),
-            (3, "simd_count 240\ngfx_target_version 90006\nlocation_id 1024\ndomain 0\nunique_id 1311768467463790320\n"),
-            (4, "simd_count 240\ngfx_target_version 90006\nlocation_id 33536\ndomain 0\nunique_id 81985529216486895\n"),
+            (
+                2,
+                "simd_count 128\ngfx_target_version 80003\nlocation_id 768\ndomain 0\nunique_id 0\n",
+            ),
+            (
+                3,
+                "simd_count 240\ngfx_target_version 90006\nlocation_id 1024\ndomain 0\nunique_id 1311768467463790320\n",
+            ),
+            (
+                4,
+                "simd_count 240\ngfx_target_version 90006\nlocation_id 33536\ndomain 0\nunique_id 81985529216486895\n",
+            ),
         ];
         for (id, p) in kfd {
-            w(root, &format!("class/kfd/kfd/topology/nodes/{id}/properties"), p);
+            w(
+                root,
+                &format!("class/kfd/kfd/topology/nodes/{id}/properties"),
+                p,
+            );
         }
     }
 
@@ -544,18 +768,30 @@ pub mod tests {
         assert_eq!(t.nodes.len(), 2);
         assert_eq!(t.nodes[0].cpus.len(), 44);
         assert_eq!(t.nodes[0].physical_cores, 22);
-        assert_eq!(t.nodes[1].sockets.iter().copied().collect::<Vec<_>>(), vec![1]);
+        assert_eq!(
+            t.nodes[1].sockets.iter().copied().collect::<Vec<_>>(),
+            vec![1]
+        );
         assert!(t.warnings().is_empty(), "{:?}", t.warnings());
 
         // Núcleos físicos com seus irmãos de HT (0 e 44 são o mesmo núcleo).
         assert_eq!(t.nodes[0].cores.len(), 22);
         assert_eq!(t.nodes[0].cores[0], vec![0, 44]);
         // 8 CPUs no socket 1 com HT = 4 núcleos inteiros.
-        assert_eq!(t.select_cpus(&[1], Some(8), true, &[]), vec![22, 23, 24, 25, 66, 67, 68, 69]);
+        assert_eq!(
+            t.select_cpus(&[1], Some(8), true, &[]),
+            vec![22, 23, 24, 25, 66, 67, 68, 69]
+        );
         // 8 CPUs sem HT = 8 núcleos físicos diferentes.
-        assert_eq!(t.select_cpus(&[1], Some(8), false, &[]), vec![22, 23, 24, 25, 26, 27, 28, 29]);
+        assert_eq!(
+            t.select_cpus(&[1], Some(8), false, &[]),
+            vec![22, 23, 24, 25, 26, 27, 28, 29]
+        );
         // Nos dois sockets, alterna: 2 núcleos de cada.
-        assert_eq!(t.select_cpus(&[0, 1], Some(4), false, &[]), vec![0, 1, 22, 23]);
+        assert_eq!(
+            t.select_cpus(&[0, 1], Some(4), false, &[]),
+            vec![0, 1, 22, 23]
+        );
         // Evita CPUs reservados quando possível.
         assert_eq!(t.select_cpus(&[0], Some(2), false, &[0, 1]), vec![2, 3]);
         // Sem quantidade: todos (ou só um por núcleo, sem HT).
@@ -564,12 +800,19 @@ pub mod tests {
         assert_eq!(t.nodes_of(&[3, 70]), vec![0, 1]);
 
         assert_eq!(t.gpus.len(), 3);
-        let a: Vec<_> = t.gpus.iter().map(|g| (g.alias.as_str(), g.role, g.numa_node)).collect();
-        assert_eq!(a, vec![
-            ("gfx803-0", GpuRole::Display, Some(0)),
-            ("gfx906-0", GpuRole::Compute, Some(0)),
-            ("gfx906-1", GpuRole::Compute, Some(1)),
-        ]);
+        let a: Vec<_> = t
+            .gpus
+            .iter()
+            .map(|g| (g.alias.as_str(), g.role, g.numa_node))
+            .collect();
+        assert_eq!(
+            a,
+            vec![
+                ("gfx803-0", GpuRole::Display, Some(0)),
+                ("gfx906-0", GpuRole::Compute, Some(0)),
+                ("gfx906-1", GpuRole::Compute, Some(1)),
+            ]
+        );
         assert_eq!(t.gpus[0].rocr_id.as_deref(), Some("0"));
         assert_eq!(t.gpus[1].rocr_id.as_deref(), Some("GPU-123456789abcdef0"));
         assert_eq!(t.gpus[0].dri_prime(), "pci-0000_03_00_0");
@@ -578,8 +821,12 @@ pub mod tests {
         let learned = Learned::default();
         let loads: HashMap<usize, f64> = [(0, 0.9), (1, 0.1)].into();
         let no_profiles = Profiles::default();
-        let run_full = |idents: &[&str], cpu: Option<&str>, gpu: Option<&str>, usage: Option<Kind>,
-                        learned: &Learned, profiles: &Profiles| {
+        let run_full = |idents: &[&str],
+                        cpu: Option<&str>,
+                        gpu: Option<&str>,
+                        usage: Option<Kind>,
+                        learned: &Learned,
+                        profiles: &Profiles| {
             let idents: Vec<String> = idents.iter().map(|s| s.to_string()).collect();
             let inp = LaunchInput {
                 idents: &idents,
@@ -599,7 +846,10 @@ pub mod tests {
 
         // Jogo: regra "jogos" → GPU de vídeo e socket dela.
         let d = run(&["steam"], None, None, &learned);
-        assert_eq!((d.kind, d.nodes.clone(), d.manual), (Kind::Graphics, vec![0], true));
+        assert_eq!(
+            (d.kind, d.nodes.clone(), d.manual),
+            (Kind::Graphics, vec![0], true)
+        );
         let (env, _) = gpu_env(&d, &t);
         assert!(env.contains(&("DRI_PRIME".into(), "pci-0000_03_00_0".into())));
         assert!(env.contains(&("MESA_VK_DEVICE_SELECT".into(), "1002:67df".into())));
@@ -609,7 +859,10 @@ pub mod tests {
         assert_eq!((d.kind, d.nodes.clone()), (Kind::Compute, vec![1]));
         assert_eq!(d.gpus[0].alias, "gfx906-1");
         let (env, unset) = gpu_env(&d, &t);
-        assert!(env.iter().any(|(k, v)| k == "ROCR_VISIBLE_DEVICES" && v == "GPU-0123456789abcdef"));
+        assert!(
+            env.iter()
+                .any(|(k, v)| k == "ROCR_VISIBLE_DEVICES" && v == "GPU-0123456789abcdef")
+        );
         assert!(unset.contains(&"HIP_VISIBLE_DEVICES".to_string()));
 
         // As duas MI50 (sockets diferentes) → todos os nós.
@@ -626,7 +879,10 @@ pub mod tests {
 
         // Manual: escolher GPU e socket à mão.
         let d = run(&["meuapp"], Some("1"), Some("gfx906-0"), &learned);
-        assert_eq!((d.nodes.clone(), d.gpus[0].alias.as_str(), d.manual), (vec![1], "gfx906-0", true));
+        assert_eq!(
+            (d.nodes.clone(), d.gpus[0].alias.as_str(), d.manual),
+            (vec![1], "gfx906-0", true)
+        );
 
         // Aprendido como "2 sockets" → automático já começa com todos.
         let mut l2 = Learned::default();
@@ -641,24 +897,46 @@ pub mod tests {
 
         // Jogo numa MI50 (uso gráfico): DRI_PRIME na MI50, sem MESA_VK_DEVICE_SELECT
         // (as duas MI50 têm o mesmo ID), lsfg-vk na mesma GPU, socket da MI50.
-        let d = run_full(&["meujogo"], None, Some("gfx906-1"), Some(Kind::Graphics), &learned, &no_profiles);
+        let d = run_full(
+            &["meujogo"],
+            None,
+            Some("gfx906-1"),
+            Some(Kind::Graphics),
+            &learned,
+            &no_profiles,
+        );
         assert_eq!((d.kind, d.nodes.clone()), (Kind::Graphics, vec![1]));
         let (env, unset) = gpu_env(&d, &t);
         assert!(env.contains(&("DRI_PRIME".into(), "pci-0000_83_00_0".into())));
         assert!(env.contains(&("LSFGVK_GPU".into(), "131:0.0".into())));
-        assert!(!env.iter().any(|(k, _)| k == "MESA_VK_DEVICE_SELECT" || k == "ROCR_VISIBLE_DEVICES"));
+        assert!(
+            !env.iter()
+                .any(|(k, _)| k == "MESA_VK_DEVICE_SELECT" || k == "ROCR_VISIBLE_DEVICES")
+        );
         assert!(unset.contains(&"MESA_VK_DEVICE_SELECT".to_string()));
 
         // Perfil salvo pela interface vence a regra "jogos" do config.
         let mut profs = Profiles::default();
         profs.map.insert(
             "steam:1091500".into(),
-            Profile { label: "Cyberpunk2077.exe".into(), gpu: "gfx906-0".into(), usage: "graphics".into(), fg_gpu: "gfx906-1".into(), ..Default::default() },
+            Profile {
+                label: "Cyberpunk2077.exe".into(),
+                gpu: "gfx906-0".into(),
+                usage: "graphics".into(),
+                fg_gpu: "gfx906-1".into(),
+                ..Default::default()
+            },
         );
         let d = run_full(&["Cyberpunk2077.exe"], None, None, None, &learned, &profs);
-        assert_eq!((d.kind, d.gpus[0].alias.as_str(), d.nodes.clone(), d.manual), (Kind::Graphics, "gfx906-0", vec![0], true)); // cpu auto no perfil → vale a regra "jogos" (socket da GPU)
+        assert_eq!(
+            (d.kind, d.gpus[0].alias.as_str(), d.nodes.clone(), d.manual),
+            (Kind::Graphics, "gfx906-0", vec![0], true)
+        ); // cpu auto no perfil → vale a regra "jogos" (socket da GPU)
         let (env, _) = gpu_env(&d, &t);
-        assert!(env.contains(&("LSFGVK_GPU".into(), "131:0.0".into())), "frame gen na outra MI50");
+        assert!(
+            env.contains(&("LSFGVK_GPU".into(), "131:0.0".into())),
+            "frame gen na outra MI50"
+        );
 
         // MI50 com monitor ligado continua sendo GPU de computação (e pode jogar direto).
         w(&root, "class/drm/card2-DP-1/status", "connected\n");
@@ -671,28 +949,52 @@ pub mod tests {
         let mut profs2 = Profiles::default();
         profs2.map.insert(
             "steam:1091500".into(),
-            Profile { gpu: "gfx906-1".into(), usage: "graphics".into(), cpu: "gpu".into(), cores: Some(8), smt: false,
-                      memory: "strict".into(), priority: "high".into(), ..Default::default() },
+            Profile {
+                gpu: "gfx906-1".into(),
+                usage: "graphics".into(),
+                cpu: "gpu".into(),
+                cores: Some(8),
+                smt: false,
+                memory: "strict".into(),
+                priority: "high".into(),
+                ..Default::default()
+            },
         );
         let d = run_full(&["Game.exe"], None, None, None, &learned, &profs2);
         assert_eq!(d.cpus, vec![22, 23, 24, 25, 26, 27, 28, 29]);
         assert_eq!(d.mem, crate::config::MemSpec::Bind);
         assert!(d.needs_daemon && d.limit_visible);
         let (env, _) = gpu_env(&d, &t);
-        assert!(env.contains(&("WINE_CPU_TOPOLOGY".into(), "8:22,23,24,25,26,27,28,29".into())));
+        assert!(env.contains(&(
+            "WINE_CPU_TOPOLOGY".into(),
+            "8:22,23,24,25,26,27,28,29".into()
+        )));
         assert!(env.contains(&("OMP_NUM_THREADS".into(), "8".into())));
-        assert!(env.contains(&("MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE".into(), "1".into())));
+        assert!(env.contains(&(
+            "MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE".into(),
+            "1".into()
+        )));
         // gfx906-1 sem monitor (no fake ainda) → aviso de renderizar numa placa e exibir em outra.
         let w = crate::decide::game_warnings(&t, &d);
         assert!(w.iter().any(|x| x.contains("monitor")), "{w:?}");
-        assert!(!w.iter().any(|x| x.contains("threads")), "8 threads não deveria avisar: {w:?}");
+        assert!(
+            !w.iter().any(|x| x.contains("threads")),
+            "8 threads não deveria avisar: {w:?}"
+        );
         // Sem perfil, jogo em "all" → avisa dos 2 processadores e das 88 threads.
         let d2 = run(&["meujogo"], Some("all"), Some("display"), &learned);
         let w2 = crate::decide::game_warnings(&t, &d2);
-        assert!(w2.iter().any(|x| x.contains("dois processadores")) && w2.iter().any(|x| x.contains("88 threads")), "{w2:?}");
+        assert!(
+            w2.iter().any(|x| x.contains("dois processadores"))
+                && w2.iter().any(|x| x.contains("88 threads")),
+            "{w2:?}"
+        );
 
         let mut cfg2 = cfg.clone();
         cfg2.graphics_gpu = Some("gfx906-1".into());
-        assert_eq!(Topology::load(&cfg2).display_gpu().unwrap().alias, "gfx906-1");
+        assert_eq!(
+            Topology::load(&cfg2).display_gpu().unwrap().alias,
+            "gfx906-1"
+        );
     }
 }

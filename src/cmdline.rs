@@ -38,7 +38,9 @@ impl Loader {
 }
 
 fn root() -> PathBuf {
-    std::env::var_os("NUMAPILOT_BOOT_ROOT").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    std::env::var_os("NUMAPILOT_BOOT_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// Descobre o bootloader pelo arquivo de configuração dos parâmetros.
@@ -51,7 +53,10 @@ pub fn detect() -> Option<Loader> {
         (Kind::Refind, "boot/refind_linux.conf"),
     ]
     .into_iter()
-    .map(|(k, p)| Loader { kind: k, path: r.join(p) })
+    .map(|(k, p)| Loader {
+        kind: k,
+        path: r.join(p),
+    })
     .find(|l| l.path.is_file())
 }
 
@@ -62,10 +67,26 @@ pub const KNOWN: &[(&str, &str, &str)] = &[
         "Realocar as janelas PCI",
         "Pode liberar o Resizable BAR e a VRAM inteira visível em placas X99/C612. Em algumas placas impede o boot: se acontecer, edite a entrada no menu do boot e tire o parâmetro.",
     ),
-    ("intel_iommu=on", "IOMMU da Intel", "Necessário para passar uma GPU para uma máquina virtual (VFIO)."),
-    ("iommu=pt", "IOMMU em passthrough", "Com o IOMMU ligado, evita o custo de tradução no DMA das placas que ficam no Linux."),
-    ("nowatchdog", "Sem watchdog", "Menos interrupções periódicas (o CachyOS já costuma usar)."),
-    ("pcie_aspm=off", "Sem economia no PCIe (ASPM)", "Evita quedas e latência ao acordar o link das placas; consome um pouco mais."),
+    (
+        "intel_iommu=on",
+        "IOMMU da Intel",
+        "Necessário para passar uma GPU para uma máquina virtual (VFIO).",
+    ),
+    (
+        "iommu=pt",
+        "IOMMU em passthrough",
+        "Com o IOMMU ligado, evita o custo de tradução no DMA das placas que ficam no Linux.",
+    ),
+    (
+        "nowatchdog",
+        "Sem watchdog",
+        "Menos interrupções periódicas (o CachyOS já costuma usar).",
+    ),
+    (
+        "pcie_aspm=off",
+        "Sem economia no PCIe (ASPM)",
+        "Evita quedas e latência ao acordar o link das placas; consome um pouco mais.",
+    ),
     (
         "intel_idle.max_cstate=1",
         "Limitar os estados de economia sempre",
@@ -127,8 +148,18 @@ pub const MITIGATIONS: &[Mitigation] = &[
     },
     Mitigation {
         title: "Limpeza de buffers: MDS, TAA, MMIO, RFDS",
-        vulns: &["mds", "tsx_async_abort", "mmio_stale_data", "reg_file_data_sampling"],
-        params: &["mds=off", "tsx_async_abort=off", "mmio_stale_data=off", "reg_file_data_sampling=off"],
+        vulns: &[
+            "mds",
+            "tsx_async_abort",
+            "mmio_stale_data",
+            "reg_file_data_sampling",
+        ],
+        params: &[
+            "mds=off",
+            "tsx_async_abort=off",
+            "mmio_stale_data=off",
+            "reg_file_data_sampling=off",
+        ],
         risk: "médio",
         gain: "médio a alto (limpeza a cada troca de contexto)",
         note: "As quatro usam a mesma limpeza (VERW): só há ganho desligando todas juntas.",
@@ -201,10 +232,17 @@ pub const MITIGATIONS: &[Mitigation] = &[
 
 /// (vulnerabilidade, situação) informadas pelo kernel.
 pub fn vulnerabilities() -> Vec<(String, String)> {
-    let Ok(rd) = std::fs::read_dir(crate::util::sys("devices/system/cpu/vulnerabilities")) else { return vec![] };
+    let Ok(rd) = std::fs::read_dir(crate::util::sys("devices/system/cpu/vulnerabilities")) else {
+        return vec![];
+    };
     let mut v: Vec<(String, String)> = rd
         .flatten()
-        .filter_map(|e| Some((e.file_name().to_string_lossy().to_string(), crate::util::read_trim(e.path())?)))
+        .filter_map(|e| {
+            Some((
+                e.file_name().to_string_lossy().to_string(),
+                crate::util::read_trim(e.path())?,
+            ))
+        })
         .collect();
     v.sort();
     v
@@ -214,7 +252,11 @@ pub fn vulnerabilities() -> Vec<(String, String)> {
 pub fn relevant_mitigations(vulns: &[(String, String)]) -> Vec<&'static Mitigation> {
     MITIGATIONS
         .iter()
-        .filter(|m| vulns.iter().any(|(n, s)| m.vulns.contains(&n.as_str()) && !s.starts_with("Not affected")))
+        .filter(|m| {
+            vulns
+                .iter()
+                .any(|(n, s)| m.vulns.contains(&n.as_str()) && !s.starts_with("Not affected"))
+        })
         .collect()
 }
 
@@ -251,7 +293,11 @@ const SINGLE: &[&str] = &[
 
 pub fn edit_params(cur: &str, add: &[String], remove: &[String]) -> String {
     let mut v: Vec<String> = cur.split_whitespace().map(String::from).collect();
-    v.retain(|t| !remove.iter().any(|r| r == t || (!r.contains('=') && key_of(t) == r)));
+    v.retain(|t| {
+        !remove
+            .iter()
+            .any(|r| r == t || (!r.contains('=') && key_of(t) == r))
+    });
     for a in add {
         if SINGLE.contains(&key_of(a)) {
             v.retain(|t| key_of(t) != key_of(a));
@@ -290,8 +336,14 @@ pub fn rewrite(kind: Kind, text: &str, f: &dyn Fn(&str) -> String) -> (String, O
                     None
                 }
             }
-            Kind::SdbootManage => t.starts_with("LINUX_OPTIONS=").then(|| line.find('=').and_then(|e| quoted_after(line, e))).flatten(),
-            Kind::Grub => t.starts_with("GRUB_CMDLINE_LINUX_DEFAULT=").then(|| line.find('=').and_then(|e| quoted_after(line, e))).flatten(),
+            Kind::SdbootManage => t
+                .starts_with("LINUX_OPTIONS=")
+                .then(|| line.find('=').and_then(|e| quoted_after(line, e)))
+                .flatten(),
+            Kind::Grub => t
+                .starts_with("GRUB_CMDLINE_LINUX_DEFAULT=")
+                .then(|| line.find('=').and_then(|e| quoted_after(line, e)))
+                .flatten(),
             Kind::Refind => {
                 // "Rótulo"  "opções": edita o segundo texto entre aspas
                 quoted_after(line, 0).and_then(|(_, e1)| quoted_after(line, e1 + 1))
@@ -325,24 +377,36 @@ pub fn configured() -> Option<(Loader, String)> {
 
 /// Parâmetros com que o kernel atual iniciou.
 pub fn running() -> String {
-    std::fs::read_to_string("/proc/cmdline").unwrap_or_default().trim().to_string()
+    std::fs::read_to_string("/proc/cmdline")
+        .unwrap_or_default()
+        .trim()
+        .to_string()
 }
 
 /// Edita (com backup) e regrava as entradas. Precisa de root.
 pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Result<(), String> {
     for p in add.iter().chain(remove) {
-        if p.is_empty() || p.chars().any(|c| c.is_whitespace() || c == '"' || c == '\'' || c == '\\' || c == '$' || c == '`') {
+        if p.is_empty()
+            || p.chars().any(|c| {
+                c.is_whitespace() || c == '"' || c == '\'' || c == '\\' || c == '$' || c == '`'
+            })
+        {
             return Err(format!("parâmetro inválido: {p:?}"));
         }
     }
     if !crate::util::is_root() {
         return Err("precisa de root (use sudo, ou o botão da interface pede a senha)".into());
     }
-    let l = detect().ok_or("não reconheci o bootloader (Limine, systemd-boot/sdboot-manage, GRUB ou rEFInd)")?;
-    let text = std::fs::read_to_string(&l.path).map_err(|e| format!("{}: {e}", l.path.display()))?;
+    let l = detect()
+        .ok_or("não reconheci o bootloader (Limine, systemd-boot/sdboot-manage, GRUB ou rEFInd)")?;
+    let text =
+        std::fs::read_to_string(&l.path).map_err(|e| format!("{}: {e}", l.path.display()))?;
     let (new, first) = rewrite(l.kind, &text, &|cur| edit_params(cur, add, remove));
     if first.is_none() {
-        return Err(format!("não achei a linha dos parâmetros em {}", l.path.display()));
+        return Err(format!(
+            "não achei a linha dos parâmetros em {}",
+            l.path.display()
+        ));
     }
     if new == text {
         log("Nada a mudar.");
@@ -350,25 +414,45 @@ pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Re
     }
     let ts = crate::history::now();
     let bak = (0..)
-        .map(|i| l.path.with_extension(if i == 0 { format!("numapilot-bak-{ts}") } else { format!("numapilot-bak-{ts}-{i}") }))
+        .map(|i| {
+            l.path.with_extension(if i == 0 {
+                format!("numapilot-bak-{ts}")
+            } else {
+                format!("numapilot-bak-{ts}-{i}")
+            })
+        })
         .find(|p| !p.exists())
         .unwrap();
     std::fs::write(&bak, &text).map_err(|e| format!("backup: {e}"))?;
     std::fs::write(&l.path, &new).map_err(|e| format!("{}: {e}", l.path.display()))?;
-    log(&format!("{} ({}): backup em {}", l.name(), l.path.display(), bak.display()));
+    log(&format!(
+        "{} ({}): backup em {}",
+        l.name(),
+        l.path.display(),
+        bak.display()
+    ));
     let (_, after) = rewrite(l.kind, &new, &|s| s.to_string());
     log(&format!("Parâmetros: {}", after.unwrap_or_default()));
     if let Some(cmd) = l.regen() {
         if crate::containers::which(cmd[0]) {
             log(&format!("Regravando as entradas: {}", cmd.join(" ")));
-            let st = std::process::Command::new(cmd[0]).args(&cmd[1..]).status().map_err(|e| e.to_string())?;
+            let st = std::process::Command::new(cmd[0])
+                .args(&cmd[1..])
+                .status()
+                .map_err(|e| e.to_string())?;
             if !st.success() {
                 // Volta o arquivo para não deixar meio aplicado.
                 let _ = std::fs::write(&l.path, &text);
-                return Err(format!("{} falhou ({st}); arquivo original restaurado", cmd[0]));
+                return Err(format!(
+                    "{} falhou ({st}); arquivo original restaurado",
+                    cmd[0]
+                ));
             }
         } else {
-            log(&format!("Aviso: {} não encontrado; rode o equivalente para regravar o boot.", cmd[0]));
+            log(&format!(
+                "Aviso: {} não encontrado; rode o equivalente para regravar o boot.",
+                cmd[0]
+            ));
         }
     }
     log("Pronto. Reinicie para valer.");
@@ -391,11 +475,19 @@ mod tests {
         let out = ed(Kind::Limine, lim, &["pci=realloc"], &[]);
         assert!(out.contains("KERNEL_CMDLINE[default]=\"quiet splash pci=realloc\""));
         assert!(out.contains("KERNEL_CMDLINE[\"linux-cachyos\"]=\"quiet pci=realloc\""));
-        assert!(out.contains("KERNEL_CMDLINE[fallback]=\"quiet\""), "a entrada de emergência fica intacta");
+        assert!(
+            out.contains("KERNEL_CMDLINE[fallback]=\"quiet\""),
+            "a entrada de emergência fica intacta"
+        );
         assert!(out.starts_with("# comentário\n") && out.ends_with('\n'));
 
         let sd = "LINUX_OPTIONS=\"zswap.enabled=0 nowatchdog quiet splash\"\nLINUX_FALLBACK_OPTIONS=\"\"\n";
-        let out = ed(Kind::SdbootManage, sd, &["mitigations=off"], &["nowatchdog"]);
+        let out = ed(
+            Kind::SdbootManage,
+            sd,
+            &["mitigations=off"],
+            &["nowatchdog"],
+        );
         assert!(out.starts_with("LINUX_OPTIONS=\"zswap.enabled=0 quiet splash mitigations=off\""));
 
         let grub = "GRUB_DEFAULT=0\nGRUB_CMDLINE_LINUX_DEFAULT='loglevel=3 quiet mitigations=auto'\nGRUB_CMDLINE_LINUX=\"\"\n";
@@ -408,12 +500,24 @@ mod tests {
         assert!(out.contains("\"root=PARTUUID=abc rw quiet iommu=pt\""));
         assert!(out.contains("\"Boot using default options\""));
 
-        assert_eq!(edit_params("a pci=realloc b", &[], &["pci=realloc".into()]), "a b");
-        assert_eq!(edit_params("a mds=full", &["mds=off".into()], &[]), "a mds=off");
-        let v = vec![("meltdown".to_string(), "Mitigation: PTI".to_string()), ("srbds".into(), "Not affected".into())];
+        assert_eq!(
+            edit_params("a pci=realloc b", &[], &["pci=realloc".into()]),
+            "a b"
+        );
+        assert_eq!(
+            edit_params("a mds=full", &["mds=off".into()], &[]),
+            "a mds=off"
+        );
+        let v = vec![
+            ("meltdown".to_string(), "Mitigation: PTI".to_string()),
+            ("srbds".into(), "Not affected".into()),
+        ];
         let r = relevant_mitigations(&v);
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].params, &["pti=off"]);
-        assert_eq!(edit_params("a", &["iommu=pt".into(), "iommu=pt".into()], &[]), "a iommu=pt");
+        assert_eq!(
+            edit_params("a", &["iommu=pt".into(), "iommu=pt".into()], &[]),
+            "a iommu=pt"
+        );
     }
 }

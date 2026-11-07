@@ -18,8 +18,13 @@ pub fn scope_name(key: &str) -> String {
 /// argv para criar o scope já com os PIDs.
 pub fn start_scope_argv(name: &str, pids: &[i32], description: &str) -> Vec<String> {
     let mut v: Vec<String> = [
-        "busctl", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
-        "org.freedesktop.systemd1.Manager", "StartTransientUnit", "ssa(sv)a(sa(sv))",
+        "busctl",
+        "call",
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        "StartTransientUnit",
+        "ssa(sv)a(sa(sv))",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -30,7 +35,11 @@ pub fn start_scope_argv(name: &str, pids: &[i32], description: &str) -> Vec<Stri
     v.extend(["PIDs".into(), "au".into(), pids.len().to_string()]);
     v.extend(pids.iter().map(|p| p.to_string()));
     v.extend(["Slice".into(), "s".into(), SLICE.into()]);
-    v.extend(["Description".into(), "s".into(), format!("numapilot: {description}")]);
+    v.extend([
+        "Description".into(),
+        "s".into(),
+        format!("numapilot: {description}"),
+    ]);
     v.push("0".into());
     v
 }
@@ -38,8 +47,13 @@ pub fn start_scope_argv(name: &str, pids: &[i32], description: &str) -> Vec<Stri
 /// argv para colocar mais PIDs num scope que já existe.
 pub fn attach_argv(name: &str, pids: &[i32]) -> Vec<String> {
     let mut v: Vec<String> = [
-        "busctl", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
-        "org.freedesktop.systemd1.Manager", "AttachProcessesToUnit", "ssau",
+        "busctl",
+        "call",
+        "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager",
+        "AttachProcessesToUnit",
+        "ssau",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -68,12 +82,20 @@ pub fn set_props_argv(unit: &str, l: &Limits) -> Vec<String> {
         unit.into(),
         format!("AllowedCPUs={}", nodes(&l.cpus)),
         format!("AllowedMemoryNodes={}", nodes(&l.mem_nodes)),
-        format!("MemoryMax={}", l.mem_max_bytes.map(|b| b.to_string()).unwrap_or_else(|| "infinity".into())),
+        format!(
+            "MemoryMax={}",
+            l.mem_max_bytes
+                .map(|b| b.to_string())
+                .unwrap_or_else(|| "infinity".into())
+        ),
     ]
 }
 
 fn run(argv: &[String]) -> Result<(), String> {
-    let out = Command::new(&argv[0]).args(&argv[1..]).output().map_err(|e| format!("{}: {e}", argv[0]))?;
+    let out = Command::new(&argv[0])
+        .args(&argv[1..])
+        .output()
+        .map_err(|e| format!("{}: {e}", argv[0]))?;
     if out.status.success() {
         Ok(())
     } else {
@@ -111,8 +133,16 @@ pub fn clear(key: &str) {
 
 /// Núcleos exclusivos: o resto do sistema (user.slice e system.slice) fica fora de `reserved`.
 pub fn set_reserved(all: &[usize], reserved: &[usize]) -> Result<(), String> {
-    let rest: Vec<usize> = all.iter().copied().filter(|c| !reserved.contains(c)).collect();
-    let allowed = if reserved.is_empty() || rest.is_empty() { String::new() } else { format_cpulist(&rest) };
+    let rest: Vec<usize> = all
+        .iter()
+        .copied()
+        .filter(|c| !reserved.contains(c))
+        .collect();
+    let allowed = if reserved.is_empty() || rest.is_empty() {
+        String::new()
+    } else {
+        format_cpulist(&rest)
+    };
     for slice in ["user.slice", "system.slice"] {
         run(&[
             "systemctl".into(),
@@ -135,13 +165,49 @@ mod tests {
         let tail: Vec<&str> = a.iter().skip(7).map(String::as_str).collect();
         assert_eq!(
             tail,
-            vec!["numapilot-x.scope", "fail", "3", "PIDs", "au", "2", "10", "20", "Slice", "s", "numapilot.slice", "Description", "s", "numapilot: Jogo", "0"]
+            vec![
+                "numapilot-x.scope",
+                "fail",
+                "3",
+                "PIDs",
+                "au",
+                "2",
+                "10",
+                "20",
+                "Slice",
+                "s",
+                "numapilot.slice",
+                "Description",
+                "s",
+                "numapilot: Jogo",
+                "0"
+            ]
         );
-        let p = set_props_argv("u", &Limits { cpus: Some(vec![0, 1, 2, 44]), mem_nodes: Some(vec![0]), mem_max_bytes: Some(1 << 30) });
-        assert_eq!(&p[4..], &["AllowedCPUs=0-2,44", "AllowedMemoryNodes=0", "MemoryMax=1073741824"]);
+        let p = set_props_argv(
+            "u",
+            &Limits {
+                cpus: Some(vec![0, 1, 2, 44]),
+                mem_nodes: Some(vec![0]),
+                mem_max_bytes: Some(1 << 30),
+            },
+        );
+        assert_eq!(
+            &p[4..],
+            &[
+                "AllowedCPUs=0-2,44",
+                "AllowedMemoryNodes=0",
+                "MemoryMax=1073741824"
+            ]
+        );
         let p = set_props_argv("u", &Limits::default());
-        assert_eq!(&p[4..], &["AllowedCPUs=", "AllowedMemoryNodes=", "MemoryMax=infinity"]);
+        assert_eq!(
+            &p[4..],
+            &["AllowedCPUs=", "AllowedMemoryNodes=", "MemoryMax=infinity"]
+        );
         assert_eq!(attach_argv("u", &[5])[7..], ["u", "", "1", "5"]);
-        assert!(scope_name("steam:1").starts_with("numapilot-") && scope_name("steam:1") != scope_name("steam:2"));
+        assert!(
+            scope_name("steam:1").starts_with("numapilot-")
+                && scope_name("steam:1") != scope_name("steam:2")
+        );
     }
 }

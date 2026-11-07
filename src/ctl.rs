@@ -20,13 +20,25 @@ pub enum Request {
     Ping,
     /// Salva o perfil do programa `key`. Se `pid` vier, aplica já a escolha de CPU
     /// em todos os processos desse programa (do mesmo usuário).
-    SetProfile { key: String, profile: Profile, pid: Option<i32> },
-    DeleteProfile { key: String, pid: Option<i32> },
+    SetProfile {
+        key: String,
+        profile: Profile,
+        pid: Option<i32>,
+    },
+    DeleteProfile {
+        key: String,
+        pid: Option<i32>,
+    },
     /// O `numapilot run` pede para aplicar no próprio processo o que exige root.
     /// Ajustes da máquina (modos, processadores, memória, escalonador).
-    SetMachine { machine: crate::machine::Machine },
+    SetMachine {
+        machine: crate::machine::Machine,
+    },
     /// Ventoinha da placa-mãe.
-    SetBoardFan { id: String, control: crate::fans::BoardFanControl },
+    SetBoardFan {
+        id: String,
+        control: crate::fans::BoardFanControl,
+    },
     Adopt {
         pid: i32,
         /// Perfil a usar só neste processo (otimizador de FPS); None = o salvo.
@@ -34,11 +46,19 @@ pub enum Request {
         profile: Option<crate::profiles::Profile>,
     },
     /// Move a memória de um programa de volta para o(s) socket(s) dos núcleos dele.
-    FixMemory { key: String },
+    FixMemory {
+        key: String,
+    },
     /// Governador de frequência dos CPUs de um socket (performance, schedutil, powersave...).
-    SetGovernor { node: usize, governor: String },
+    SetGovernor {
+        node: usize,
+        governor: String,
+    },
     /// Ventoinha / potência de uma GPU (por endereço PCI).
-    SetGpuControl { pci: String, control: crate::gpuctl::GpuControl },
+    SetGpuControl {
+        pci: String,
+        control: crate::gpuctl::GpuControl,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -50,15 +70,22 @@ pub struct Response {
 
 impl Response {
     pub fn ok(msg: impl Into<String>) -> Self {
-        Response { ok: true, message: msg.into() }
+        Response {
+            ok: true,
+            message: msg.into(),
+        }
     }
     pub fn err(msg: impl Into<String>) -> Self {
-        Response { ok: false, message: msg.into() }
+        Response {
+            ok: false,
+            message: msg.into(),
+        }
     }
 }
 
 pub fn send(req: &Request) -> Result<Response> {
-    let mut s = UnixStream::connect(sock_path()).context("daemon não está rodando (systemctl status numapilot)")?;
+    let mut s = UnixStream::connect(sock_path())
+        .context("daemon não está rodando (systemctl status numapilot)")?;
     s.set_read_timeout(Some(Duration::from_secs(5)))?;
     let mut line = serde_json::to_string(req)?;
     line.push('\n');

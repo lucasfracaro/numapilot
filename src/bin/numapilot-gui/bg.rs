@@ -41,7 +41,8 @@ fn http_ok(port: &str) -> Option<bool> {
     let addr = format!("127.0.0.1:{port}").parse().ok()?;
     let mut s = TcpStream::connect_timeout(&addr, Duration::from_millis(300)).ok()?;
     s.set_read_timeout(Some(Duration::from_millis(800))).ok()?;
-    s.write_all(b"GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n").ok()?;
+    s.write_all(b"GET /health HTTP/1.0\r\nHost: localhost\r\n\r\n")
+        .ok()?;
     let mut b = String::new();
     let _ = s.read_to_string(&mut b);
     Some(b.contains("\"ok\""))
@@ -61,8 +62,18 @@ pub fn sunshine_info() -> Sunshine {
     {
         s.install = Some("flatpak".into());
     }
-    for u in ["sunshine.service", "app-dev.lizardbyte.app.Sunshine.service"] {
-        let out = quick(&["systemctl", "--user", "show", "-p", "LoadState,ActiveState", u]);
+    for u in [
+        "sunshine.service",
+        "app-dev.lizardbyte.app.Sunshine.service",
+    ] {
+        let out = quick(&[
+            "systemctl",
+            "--user",
+            "show",
+            "-p",
+            "LoadState,ActiveState",
+            u,
+        ]);
         if out.contains("LoadState=loaded") {
             s.unit = Some(u.to_string());
             s.active = out.contains("ActiveState=active");
@@ -75,7 +86,11 @@ pub fn sunshine_info() -> Sunshine {
     let h = labcfg::home();
     let a = h.join(".config/sunshine/sunshine.conf");
     let b = h.join(".var/app/dev.lizardbyte.app.Sunshine/config/sunshine/sunshine.conf");
-    s.conf = Some(if s.install.as_deref() == Some("flatpak") { b } else { a });
+    s.conf = Some(if s.install.as_deref() == Some("flatpak") {
+        b
+    } else {
+        a
+    });
     s
 }
 
@@ -85,17 +100,29 @@ pub fn vaapi_encoders(render: &str) -> String {
         return "instale libva-utils para verificar".into();
     }
     let out = std::process::Command::new("vainfo")
-        .args(["--display", "drm", "--device", &format!("/dev/dri/{render}")])
+        .args([
+            "--display",
+            "drm",
+            "--device",
+            &format!("/dev/dri/{render}"),
+        ])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
         .unwrap_or_default();
     let mut c = Vec::new();
     for (key, name) in [("H264", "H.264"), ("HEVC", "HEVC"), ("AV1", "AV1")] {
-        if out.lines().any(|l| l.contains(key) && l.contains("VAEntrypointEncSlice")) {
+        if out
+            .lines()
+            .any(|l| l.contains(key) && l.contains("VAEntrypointEncSlice"))
+        {
             c.push(name);
         }
     }
-    if c.is_empty() { "sem codificação de vídeo".into() } else { c.join(", ") }
+    if c.is_empty() {
+        "sem codificação de vídeo".into()
+    } else {
+        c.join(", ")
+    }
 }
 
 pub fn start(ctx: eframe::egui::Context, renders: Vec<String>) -> Shared {
@@ -111,9 +138,14 @@ pub fn start(ctx: eframe::egui::Context, renders: Vec<String>) -> Shared {
                 .as_ref()
                 .map(|v| v.iter().any(|c| c.name == st.get("LLM_NAME") && c.running))
                 .unwrap_or(false);
-            let llm = if llm_running { Some(http_ok(&st.get("LLM_PORT")).unwrap_or(false)) } else { None };
+            let llm = if llm_running {
+                Some(http_ok(&st.get("LLM_PORT")).unwrap_or(false))
+            } else {
+                None
+            };
             let sun = sunshine_info();
-            let auto = quick(&["systemctl", "--user", "is-enabled", "gfx906-update.timer"]) == "enabled";
+            let auto =
+                quick(&["systemctl", "--user", "is-enabled", "gfx906-update.timer"]) == "enabled";
             let last = std::fs::read_to_string(labcfg::state_dir().join("last-update.json"))
                 .ok()
                 .and_then(|s| serde_json::from_str(&s).ok());
@@ -124,7 +156,12 @@ pub fn start(ctx: eframe::egui::Context, renders: Vec<String>) -> Shared {
                 .is_some_and(|d| d < Duration::from_secs(5));
             let vaapi = if first || last_vaapi.elapsed() > Duration::from_secs(600) {
                 last_vaapi = Instant::now();
-                Some(renders.iter().map(|r| (r.clone(), vaapi_encoders(r))).collect::<HashMap<_, _>>())
+                Some(
+                    renders
+                        .iter()
+                        .map(|r| (r.clone(), vaapi_encoders(r)))
+                        .collect::<HashMap<_, _>>(),
+                )
             } else {
                 None
             };
@@ -150,9 +187,10 @@ pub fn start(ctx: eframe::egui::Context, renders: Vec<String>) -> Shared {
 /// Descobre os apps de um container (em segundo plano).
 pub fn inspect(shared: &Shared, c: Container, ctx: eframe::egui::Context) {
     if let Ok(mut b) = shared.lock()
-        && !b.inspecting.insert(c.id.clone()) {
-            return;
-        }
+        && !b.inspecting.insert(c.id.clone())
+    {
+        return;
+    }
     let sh = shared.clone();
     std::thread::spawn(move || {
         let apps = containers::inspect_apps(&c);

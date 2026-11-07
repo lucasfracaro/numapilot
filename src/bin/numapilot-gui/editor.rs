@@ -1,11 +1,11 @@
 //! Janela "Ajustar programa": onde no hardware ele roda (núcleos, memória, prioridade, GPU),
 //! com perfis prontos e avisos de compatibilidade para jogos.
 
-use crate::map::core_map;
 use crate::App;
+use crate::map::core_map;
 use eframe::egui::{self, Color32, RichText};
 use numapilot::ctl::Request;
-use numapilot::decide::{decide_launch, game_warnings, LaunchInput};
+use numapilot::decide::{LaunchInput, decide_launch, game_warnings};
 use numapilot::learned::Learned;
 use numapilot::profiles::{Profile, Profiles};
 use numapilot::util::{format_cpulist, parse_cpulist};
@@ -24,8 +24,21 @@ pub struct Editor {
 }
 
 impl Editor {
-    pub fn new(key: &str, label: &str, main_pid: Option<i32>, cpus: &str, mem: &[u64], p: Profile) -> Editor {
-        let pick: BTreeSet<usize> = p.cpu_list.as_deref().map(parse_cpulist).unwrap_or_default().into_iter().collect();
+    pub fn new(
+        key: &str,
+        label: &str,
+        main_pid: Option<i32>,
+        cpus: &str,
+        mem: &[u64],
+        p: Profile,
+    ) -> Editor {
+        let pick: BTreeSet<usize> = p
+            .cpu_list
+            .as_deref()
+            .map(parse_cpulist)
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
         Editor {
             key: key.into(),
             label: label.into(),
@@ -34,16 +47,35 @@ impl Editor {
             mem: mem.to_vec(),
             picking: !pick.is_empty(),
             pick,
-            p: Profile { label: label.into(), ..p },
+            p: Profile {
+                label: label.into(),
+                ..p
+            },
         }
     }
 }
 
 const MEM_OPTS: &[(&str, &str, &str)] = &[
-    ("auto", "Automático", "o numapilot decide (normalmente: memória do socket dos núcleos)"),
-    ("strict", "Só do socket (estrito)", "menor latência; se a memória do socket encher, o programa sofre"),
-    ("prefer", "Preferir a local", "usa a do outro socket só quando faltar"),
-    ("interleave", "Intercalar entre sockets", "mais banda total; bom para render/IA na CPU (vale ao reabrir)"),
+    (
+        "auto",
+        "Automático",
+        "o numapilot decide (normalmente: memória do socket dos núcleos)",
+    ),
+    (
+        "strict",
+        "Só do socket (estrito)",
+        "menor latência; se a memória do socket encher, o programa sofre",
+    ),
+    (
+        "prefer",
+        "Preferir a local",
+        "usa a do outro socket só quando faltar",
+    ),
+    (
+        "interleave",
+        "Intercalar entre sockets",
+        "mais banda total; bom para render/IA na CPU (vale ao reabrir)",
+    ),
     ("free", "Livre", "não move a memória"),
 ];
 
@@ -64,7 +96,10 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 .weak(),
             );
             if !app.has_mangohud {
-                ui.label(RichText::new("Precisa do MangoHud: sudo pacman -S mangohud").color(Color32::from_rgb(230, 160, 40)));
+                ui.label(
+                    RichText::new("Precisa do MangoHud: sudo pacman -S mangohud")
+                        .color(Color32::from_rgb(230, 160, 40)),
+                );
             }
             if ui.button("Começar a otimização").clicked() {
                 let v = tuner::variants(&app.topo, &ed.p);
@@ -74,27 +109,37 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         }
         Some(s) => {
             let best = s.best();
-            egui::Grid::new("ed-tune").striped(true).num_columns(4).spacing([12.0, 3.0]).show(ui, |ui| {
-                for h in ["", "Configuração", "FPS médio", "1% low"] {
-                    ui.label(RichText::new(h).strong());
-                }
-                ui.end_row();
-                for (i, v) in s.variants.iter().enumerate() {
-                    ui.label(if best == Some(i) { "melhor" } else if i == s.next { "próximo" } else { "" });
-                    ui.label(&v.label);
-                    match &v.result {
-                        Some(r) => {
-                            ui.label(format!("{:.1}", r.avg));
-                            ui.label(format!("{:.1}", r.low1));
-                        }
-                        None => {
-                            ui.label("—");
-                            ui.label("—");
-                        }
+            egui::Grid::new("ed-tune")
+                .striped(true)
+                .num_columns(4)
+                .spacing([12.0, 3.0])
+                .show(ui, |ui| {
+                    for h in ["", "Configuração", "FPS médio", "1% low"] {
+                        ui.label(RichText::new(h).strong());
                     }
                     ui.end_row();
-                }
-            });
+                    for (i, v) in s.variants.iter().enumerate() {
+                        ui.label(if best == Some(i) {
+                            "melhor"
+                        } else if i == s.next {
+                            "próximo"
+                        } else {
+                            ""
+                        });
+                        ui.label(&v.label);
+                        match &v.result {
+                            Some(r) => {
+                                ui.label(format!("{:.1}", r.avg));
+                                ui.label(format!("{:.1}", r.low1));
+                            }
+                            None => {
+                                ui.label("—");
+                                ui.label("—");
+                            }
+                        }
+                        ui.end_row();
+                    }
+                });
             if let Some(v) = s.current() {
                 ui.label(format!(
                     "Próximo teste ({}/{}): {}. Abra o jogo, vá para uma cena pesada e jogue uns {} s; depois feche.",
@@ -111,7 +156,10 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                     && !s.done()
                     && ui.button("Abrir o jogo").clicked()
                 {
-                    let _ = crate::jobs::spawn_detached(&["xdg-open".into(), format!("steam://rungameid/{id}")]);
+                    let _ = crate::jobs::spawn_detached(&[
+                        "xdg-open".into(),
+                        format!("steam://rungameid/{id}"),
+                    ]);
                 }
                 if let Some(b) = best
                     && ui.button(RichText::new("Usar a melhor").strong()).clicked()
@@ -129,7 +177,11 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 }
             });
             if steam_id.is_none() {
-                ui.label(RichText::new("Abra pelo atalho do menu (numapilot run) para o teste valer.").small().weak());
+                ui.label(
+                    RichText::new("Abra pelo atalho do menu (numapilot run) para o teste valer.")
+                        .small()
+                        .weak(),
+                );
             }
         }
     }
@@ -140,12 +192,18 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         p.label = ed.label.clone();
         p.gamescope = ed.p.gamescope.clone();
         ed.p = p.clone();
-        app.send(Request::SetProfile { key: ed.key.clone(), profile: p, pid: ed.main_pid });
+        app.send(Request::SetProfile {
+            key: ed.key.clone(),
+            profile: p,
+            pid: ed.main_pid,
+        });
     }
 }
 
 pub fn window(app: &mut App, ctx: &egui::Context) {
-    let Some(mut ed) = app.editor.take() else { return };
+    let Some(mut ed) = app.editor.take() else {
+        return;
+    };
     let mut open = true;
     let mut apply = false;
     let mut fix = false;
@@ -245,8 +303,10 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     ui.end_row();
 
                     ui.label(RichText::new("Memória").strong());
+                    let multi = app.topo.nodes.len() > 1;
                     ui.vertical(|ui| {
-                        for (v, t, d) in MEM_OPTS {
+                        // Com um processador só, não há memória "do outro socket".
+                        for (v, t, d) in MEM_OPTS.iter().filter(|_| multi) {
                             ui.horizontal(|ui| {
                                 ui.radio_value(&mut ed.p.memory, v.to_string(), *t);
                                 ui.label(RichText::new(*d).small().weak());
@@ -445,10 +505,16 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         });
     if apply {
         let p = ed.p.clone();
-        app.send(Request::SetProfile { key: ed.key.clone(), profile: p, pid: ed.main_pid });
+        app.send(Request::SetProfile {
+            key: ed.key.clone(),
+            profile: p,
+            pid: ed.main_pid,
+        });
     }
     if fix {
-        app.send(Request::FixMemory { key: ed.key.clone() });
+        app.send(Request::FixMemory {
+            key: ed.key.clone(),
+        });
     }
     if open {
         app.editor = Some(ed);

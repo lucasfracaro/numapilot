@@ -39,13 +39,21 @@ pub fn sibling_abs(bin: &str) -> String {
         return s;
     }
     std::env::var_os("PATH")
-        .and_then(|p| std::env::split_paths(&p).map(|d| d.join(bin)).find(|p| p.is_file()))
+        .and_then(|p| {
+            std::env::split_paths(&p)
+                .map(|d| d.join(bin))
+                .find(|p| p.is_file())
+        })
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| format!("/usr/bin/{bin}"))
 }
 
 pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Context) -> Job {
-    let job = Job { title: title.into(), out: Arc::new(Mutex::new(String::new())), status: Arc::new(Mutex::new(None)) };
+    let job = Job {
+        title: title.into(),
+        out: Arc::new(Mutex::new(String::new())),
+        status: Arc::new(Mutex::new(None)),
+    };
     let j = job.clone();
     std::thread::spawn(move || {
         let push = |s: &str| {
@@ -99,7 +107,11 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
         }
         let _ = t.join();
         let ok = child.wait().map(|s| s.success()).unwrap_or(false);
-        push(if ok { "[concluído]" } else { "[terminou com erro]" });
+        push(if ok {
+            "[concluído]"
+        } else {
+            "[terminou com erro]"
+        });
         if let Ok(mut s) = j.status.lock() {
             *s = Some(ok);
         }
@@ -134,7 +146,10 @@ fn strip_ansi(s: &str) -> String {
 pub fn spawn_detached(argv: &[String]) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt;
     let mut c = Command::new(&argv[0]);
-    c.args(&argv[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    c.args(&argv[1..])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     unsafe {
         c.pre_exec(|| {
             libc::setsid();
@@ -149,7 +164,9 @@ pub fn open_url(url: &str) -> std::io::Result<()> {
 }
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
 /// Saída de um comando curto (ou vazio se falhar).

@@ -23,7 +23,9 @@ impl Stat {
 }
 
 pub fn list_pids() -> Vec<i32> {
-    let Ok(rd) = fs::read_dir("/proc") else { return vec![] };
+    let Ok(rd) = fs::read_dir("/proc") else {
+        return vec![];
+    };
     rd.flatten()
         .filter_map(|e| e.file_name().to_str().and_then(|s| s.parse().ok()))
         .collect()
@@ -52,12 +54,19 @@ pub fn parse_stat(s: &str) -> Option<Stat> {
 
 pub fn status_field(pid: i32, key: &str) -> Option<String> {
     let s = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
-    s.lines()
-        .find_map(|l| l.strip_prefix(key).and_then(|r| r.strip_prefix(':')).map(|r| r.trim().to_string()))
+    s.lines().find_map(|l| {
+        l.strip_prefix(key)
+            .and_then(|r| r.strip_prefix(':'))
+            .map(|r| r.trim().to_string())
+    })
 }
 
 pub fn uid(pid: i32) -> Option<u32> {
-    status_field(pid, "Uid")?.split_whitespace().next()?.parse().ok()
+    status_field(pid, "Uid")?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
 }
 
 pub fn allowed_cpus(pid: i32) -> Option<Vec<usize>> {
@@ -65,9 +74,11 @@ pub fn allowed_cpus(pid: i32) -> Option<Vec<usize>> {
 }
 
 pub fn exe(pid: i32) -> Option<String> {
-    fs::read_link(format!("/proc/{pid}/exe"))
-        .ok()
-        .map(|p| p.to_string_lossy().trim_end_matches(" (deleted)").to_string())
+    fs::read_link(format!("/proc/{pid}/exe")).ok().map(|p| {
+        p.to_string_lossy()
+            .trim_end_matches(" (deleted)")
+            .to_string()
+    })
 }
 
 pub fn cmdline(pid: i32) -> Vec<String> {
@@ -97,7 +108,8 @@ pub fn environ(pid: i32) -> Vec<(String, String)> {
             b.split(|&c| c == 0)
                 .filter_map(|kv| {
                     let kv = String::from_utf8_lossy(kv);
-                    kv.split_once('=').map(|(k, v)| (k.to_string(), v.to_string()))
+                    kv.split_once('=')
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
                 })
                 .collect()
         })
@@ -129,19 +141,41 @@ pub fn idents(comm: &str, exe: Option<&str>, argv: &[String]) -> Vec<String> {
 /// (python, wine...) usa também o script/exe passado como argumento.
 pub fn learn_key(exe: Option<&str>, argv: &[String], comm: &str) -> String {
     const INTERP: &[&str] = &[
-        "python*", "wine*", "proton*", "java", "node", "bash", "sh", "dash", "zsh", "fish", "perl", "ruby", "ld-linux*", "box64",
+        "python*",
+        "wine*",
+        "proton*",
+        "java",
+        "node",
+        "bash",
+        "sh",
+        "dash",
+        "zsh",
+        "fish",
+        "perl",
+        "ruby",
+        "ld-linux*",
+        "box64",
     ];
-    let Some(exe) = exe else { return comm.to_string() };
+    let Some(exe) = exe else {
+        return comm.to_string();
+    };
     let base = basename(exe);
     if INTERP.iter().any(|p| crate::util::glob_match(p, base)) {
         // python -m modulo / python -c "código"
         if let Some(i) = argv.iter().position(|a| a == "-m") {
-            return format!("{exe} -m {}", argv.get(i + 1).map(String::as_str).unwrap_or(""));
+            return format!(
+                "{exe} -m {}",
+                argv.get(i + 1).map(String::as_str).unwrap_or("")
+            );
         }
         if argv.iter().any(|a| a == "-c") {
             return format!("{exe} -c [{comm}]");
         }
-        let arg = argv.iter().skip(1).find(|a| !a.starts_with('-')).map(|a| basename(a).to_string());
+        let arg = argv
+            .iter()
+            .skip(1)
+            .find(|a| !a.starts_with('-'))
+            .map(|a| basename(a).to_string());
         match arg {
             Some(a) => format!("{exe} {a}"),
             None => format!("{exe} [{comm}]"),
@@ -154,25 +188,34 @@ pub fn learn_key(exe: Option<&str>, argv: &[String], comm: &str) -> String {
 /// Render nodes / cards DRM abertos pelo processo ("renderD128", "card1").
 pub fn open_drm(pid: i32) -> HashSet<String> {
     let mut out = HashSet::new();
-    let Ok(rd) = fs::read_dir(format!("/proc/{pid}/fd")) else { return out };
+    let Ok(rd) = fs::read_dir(format!("/proc/{pid}/fd")) else {
+        return out;
+    };
     for e in rd.flatten() {
         if let Ok(t) = fs::read_link(e.path())
-            && let Some(n) = t.to_str().and_then(|s| s.strip_prefix("/dev/dri/")) {
-                out.insert(n.to_string());
-            }
+            && let Some(n) = t.to_str().and_then(|s| s.strip_prefix("/dev/dri/"))
+        {
+            out.insert(n.to_string());
+        }
     }
     out
 }
 
 pub fn threads(pid: i32) -> Vec<i32> {
     fs::read_dir(format!("/proc/{pid}/task"))
-        .map(|rd| rd.flatten().filter_map(|e| e.file_name().to_str()?.parse().ok()).collect())
+        .map(|rd| {
+            rd.flatten()
+                .filter_map(|e| e.file_name().to_str()?.parse().ok())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 /// Ticks de CPU por CPU lógico a partir de /proc/stat: (ocupado, total)
 pub fn cpu_times() -> Vec<(usize, u64, u64)> {
-    let Ok(s) = fs::read_to_string("/proc/stat") else { return vec![] };
+    let Ok(s) = fs::read_to_string("/proc/stat") else {
+        return vec![];
+    };
     s.lines()
         .filter_map(|l| {
             let mut it = l.split_whitespace();
@@ -239,13 +282,24 @@ pub const MPOL_INTERLEAVE: i32 = 3;
 /// Política de memória do próprio processo (herdada pelo programa após o exec).
 pub fn set_mempolicy(mode: i32, nodes: &[usize]) -> io::Result<()> {
     let r = if mode == MPOL_DEFAULT {
-        unsafe { libc::syscall(libc::SYS_set_mempolicy, mode, std::ptr::null::<libc::c_ulong>(), 0usize) }
+        unsafe {
+            libc::syscall(
+                libc::SYS_set_mempolicy,
+                mode,
+                std::ptr::null::<libc::c_ulong>(),
+                0usize,
+            )
+        }
     } else {
         let m = nodemask(nodes);
         let maxnode = m.len() * libc::c_ulong::BITS as usize + 1;
         unsafe { libc::syscall(libc::SYS_set_mempolicy, mode, m.as_ptr(), maxnode) }
     };
-    if r != 0 { Err(io::Error::last_os_error()) } else { Ok(()) }
+    if r != 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 /// Move as páginas do processo que estão em `from` para `to`.
@@ -260,8 +314,20 @@ pub fn migrate_pages(pid: i32, from: &[usize], to: &[usize]) -> io::Result<i64> 
     f.resize(words, 0);
     t.resize(words, 0);
     let maxnode = words * libc::c_ulong::BITS as usize + 1;
-    let r = unsafe { libc::syscall(libc::SYS_migrate_pages, pid, maxnode, f.as_ptr(), t.as_ptr()) };
-    if r < 0 { Err(io::Error::last_os_error()) } else { Ok(r) }
+    let r = unsafe {
+        libc::syscall(
+            libc::SYS_migrate_pages,
+            pid,
+            maxnode,
+            f.as_ptr(),
+            t.as_ptr(),
+        )
+    };
+    if r < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(r)
+    }
 }
 
 #[cfg(test)]
@@ -281,9 +347,19 @@ mod tests {
 
     #[test]
     fn learn_keys() {
-        let argv = vec!["/usr/bin/python3".to_string(), "-u".into(), "/opt/ComfyUI/main.py".into()];
-        assert_eq!(learn_key(Some("/usr/bin/python3.12"), &argv, "python3"), "/usr/bin/python3.12 main.py");
-        assert_eq!(learn_key(Some("/usr/bin/blender"), &[], "blender"), "/usr/bin/blender");
+        let argv = vec![
+            "/usr/bin/python3".to_string(),
+            "-u".into(),
+            "/opt/ComfyUI/main.py".into(),
+        ];
+        assert_eq!(
+            learn_key(Some("/usr/bin/python3.12"), &argv, "python3"),
+            "/usr/bin/python3.12 main.py"
+        );
+        assert_eq!(
+            learn_key(Some("/usr/bin/blender"), &[], "blender"),
+            "/usr/bin/blender"
+        );
     }
 
     #[test]
@@ -297,7 +373,9 @@ mod tests {
 
     #[test]
     fn self_affinity_and_policy() {
-        let cpus = allowed_cpus(0).or_else(|| allowed_cpus(std::process::id() as i32)).unwrap();
+        let cpus = allowed_cpus(0)
+            .or_else(|| allowed_cpus(std::process::id() as i32))
+            .unwrap();
         // Aplicar a mesma afinidade atual nunca deve falhar.
         set_affinity(0, &cpus).unwrap();
         // Política padrão sempre pode ser aplicada.
@@ -349,7 +427,9 @@ pub fn priority_values(p: &str) -> (i32, i32) {
 /// Bytes de memória do processo em cada nó NUMA, a partir de /proc/PID/numa_maps.
 pub fn mem_by_node(pid: i32) -> std::collections::BTreeMap<usize, u64> {
     let mut out = std::collections::BTreeMap::new();
-    let Ok(s) = fs::read_to_string(format!("/proc/{pid}/numa_maps")) else { return out };
+    let Ok(s) = fs::read_to_string(format!("/proc/{pid}/numa_maps")) else {
+        return out;
+    };
     parse_numa_maps(&s, &mut out);
     out
 }
@@ -408,6 +488,9 @@ mod numa_tests {
     #[test]
     fn own_numa_maps_readable() {
         let m = mem_by_node(std::process::id() as i32);
-        assert!(m.values().sum::<u64>() > 0, "deveria ler o próprio numa_maps");
+        assert!(
+            m.values().sum::<u64>() > 0,
+            "deveria ler o próprio numa_maps"
+        );
     }
 }

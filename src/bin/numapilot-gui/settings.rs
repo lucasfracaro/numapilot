@@ -1,8 +1,8 @@
 //! Aba "Configurações": bandeja/início automático, atualização semanal, hardware.
 
+use crate::App;
 use crate::jobs::home;
 use crate::lab::gfx;
-use crate::App;
 use eframe::egui::{self, Color32, RichText};
 use numapilot::topo::GpuRole;
 use std::path::PathBuf;
@@ -23,7 +23,9 @@ pub fn set_autostart(on: bool) -> std::io::Result<()> {
             format!(
                 "[Desktop Entry]\nType=Application\nName=numapilot (bandeja)\nExec={} --tray\n\
                  Icon=preferences-system-performance\nX-GNOME-Autostart-enabled=true\nNoDisplay=true\n",
-                std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| "numapilot-gui".into())
+                std::env::current_exe()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "numapilot-gui".into())
             ),
         )
     } else if p.exists() {
@@ -190,7 +192,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
 /// Desenha um QR code (para abrir o painel no celular apontando a câmera).
 fn qr(ui: &mut egui::Ui, text: &str) {
-    let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else { return };
+    let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else {
+        return;
+    };
     let w = code.width();
     let colors = code.to_colors();
     let quiet = 2;
@@ -202,23 +206,38 @@ fn qr(ui: &mut egui::Ui, text: &str) {
     for (i, c) in colors.iter().enumerate() {
         if *c == qrcode::Color::Dark {
             let (x, y) = ((i % w + quiet) as f32, (i / w + quiet) as f32);
-            p.rect_filled(egui::Rect::from_min_size(r.min + egui::vec2(x * px, y * px), egui::vec2(px, px)), 0.0, Color32::BLACK);
+            p.rect_filled(
+                egui::Rect::from_min_size(r.min + egui::vec2(x * px, y * px), egui::vec2(px, px)),
+                0.0,
+                Color32::BLACK,
+            );
         }
     }
 }
 
 fn web_ui(app: &mut App, ui: &mut egui::Ui) {
     if app.web_checked.is_none_or(|t| t.elapsed().as_secs() >= 5) {
-        app.web_active = crate::jobs::quick(&["systemctl", "--user", "is-active", "numapilot-web.service"]) == "active";
+        app.web_active =
+            crate::jobs::quick(&["systemctl", "--user", "is-active", "numapilot-web.service"])
+                == "active";
         app.web_checked = Some(std::time::Instant::now());
     }
     ui.label("Veja temperaturas e uso, troque o perfil de um programa e ligue o laboratório/servidor de IA pelo celular (mesma rede).");
     let mut on = app.web_active;
-    if ui.checkbox(&mut on, "Ligar o painel (inicia junto com a sessão)").changed() {
+    if ui
+        .checkbox(&mut on, "Ligar o painel (inicia junto com a sessão)")
+        .changed()
+    {
         let verb = if on { "enable" } else { "disable" };
         app.start_job(
             "Painel no celular",
-            vec!["systemctl".into(), "--user".into(), verb.into(), "--now".into(), "numapilot-web.service".into()],
+            vec![
+                "systemctl".into(),
+                "--user".into(),
+                verb.into(),
+                "--now".into(),
+                "numapilot-web.service".into(),
+            ],
         );
         app.web_checked = None;
     }
@@ -260,7 +279,11 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
         ui.label("Quando houver versão nova:");
         let mut mode = cfg.get("UPDATE_MODE");
         let before = mode.clone();
-        ui.radio_value(&mut mode, "auto".to_string(), "instalar se passar na validação");
+        ui.radio_value(
+            &mut mode,
+            "auto".to_string(),
+            "instalar se passar na validação",
+        );
         ui.radio_value(&mut mode, "aviso".to_string(), "só me avisar");
         if mode != before {
             cfg.set("UPDATE_MODE", &mode);
@@ -280,39 +303,73 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
         .small()
         .weak(),
     );
-    let comps = [("lab", "Laboratório (PyTorch)"), ("llm", "Servidor de IA (llama.cpp)"), ("image", "Imagem ROCm"), ("rocm", "ROCm nativo")];
-    egui::Grid::new("upd").striped(true).num_columns(4).spacing([14.0, 4.0]).show(ui, |ui| {
-        for h in ["", "Em uso", "Disponível", "Travar"] {
-            ui.label(RichText::new(h).strong());
-        }
-        ui.end_row();
-        for (k, label) in comps {
-            let a = &avail[k];
-            if a.is_null() {
-                continue;
-            }
-            let short = |v: &serde_json::Value| v.as_str().unwrap_or("?").rsplit(':').next().unwrap_or("?").to_string();
-            let (cur, new) = (short(&a["current"]), short(&a["new"]));
-            ui.label(label);
-            ui.label(&cur);
-            if new != cur {
-                ui.label(RichText::new(format!("{new} (nova)")).color(Color32::from_rgb(230, 160, 40)));
-            } else {
-                ui.label(RichText::new("em dia").color(Color32::from_rgb(90, 180, 110)));
-            }
-            let hold = labcfg::cfg_dir().join(format!("hold-{k}"));
-            let mut held = hold.exists();
-            if ui.checkbox(&mut held, "").on_hover_text("Mantém a versão atual mesmo com atualização automática").changed() {
-                let _ = std::fs::create_dir_all(labcfg::cfg_dir());
-                let _ = if held { std::fs::write(&hold, "interface\n") } else { std::fs::remove_file(&hold) };
+    let comps = [
+        ("lab", "Laboratório (PyTorch)"),
+        ("llm", "Servidor de IA (llama.cpp)"),
+        ("image", "Imagem ROCm"),
+        ("rocm", "ROCm nativo"),
+    ];
+    egui::Grid::new("upd")
+        .striped(true)
+        .num_columns(4)
+        .spacing([14.0, 4.0])
+        .show(ui, |ui| {
+            for h in ["", "Em uso", "Disponível", "Travar"] {
+                ui.label(RichText::new(h).strong());
             }
             ui.end_row();
-        }
-    });
+            for (k, label) in comps {
+                let a = &avail[k];
+                if a.is_null() {
+                    continue;
+                }
+                let short = |v: &serde_json::Value| {
+                    v.as_str()
+                        .unwrap_or("?")
+                        .rsplit(':')
+                        .next()
+                        .unwrap_or("?")
+                        .to_string()
+                };
+                let (cur, new) = (short(&a["current"]), short(&a["new"]));
+                ui.label(label);
+                ui.label(&cur);
+                if new != cur {
+                    ui.label(
+                        RichText::new(format!("{new} (nova)"))
+                            .color(Color32::from_rgb(230, 160, 40)),
+                    );
+                } else {
+                    ui.label(RichText::new("em dia").color(Color32::from_rgb(90, 180, 110)));
+                }
+                let hold = labcfg::cfg_dir().join(format!("hold-{k}"));
+                let mut held = hold.exists();
+                if ui
+                    .checkbox(&mut held, "")
+                    .on_hover_text("Mantém a versão atual mesmo com atualização automática")
+                    .changed()
+                {
+                    let _ = std::fs::create_dir_all(labcfg::cfg_dir());
+                    let _ = if held {
+                        std::fs::write(&hold, "interface\n")
+                    } else {
+                        std::fs::remove_file(&hold)
+                    };
+                }
+                ui.end_row();
+            }
+        });
     if avail.is_null() {
         ui.label(RichText::new("Ainda não verificado.").weak());
     } else if let Some(t) = avail["time"].as_str() {
-        ui.label(RichText::new(format!("Verificado em {}", t.get(..16).unwrap_or(t).replace('T', " "))).small().weak());
+        ui.label(
+            RichText::new(format!(
+                "Verificado em {}",
+                t.get(..16).unwrap_or(t).replace('T', " ")
+            ))
+            .small()
+            .weak(),
+        );
     }
     ui.horizontal(|ui| {
         if ui.button("Verificar agora").clicked() {
@@ -321,7 +378,11 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
         if ui.button("Atualizar agora (com validação)").clicked() {
             app.start_job("Atualizando com validação", gfx(&["update-all"]));
         }
-        if ui.button("Validar as versões atuais").on_hover_text("Roda os testes nas GPUs e grava o desempenho de agora como referência").clicked() {
+        if ui
+            .button("Validar as versões atuais")
+            .on_hover_text("Roda os testes nas GPUs e grava o desempenho de agora como referência")
+            .clicked()
+        {
             app.start_job("Validando as versões atuais", gfx(&["validate"]));
         }
         if let Some(u) = avail["releases"].as_str()
@@ -332,33 +393,59 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
     });
     // histórico
     let hist = std::fs::read_to_string(st.join("history.jsonl")).unwrap_or_default();
-    let rows: Vec<serde_json::Value> = hist.lines().rev().take(8).filter_map(|l| serde_json::from_str(l).ok()).collect();
+    let rows: Vec<serde_json::Value> = hist
+        .lines()
+        .rev()
+        .take(8)
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect();
     if !rows.is_empty() {
         ui.collapsing("Histórico das atualizações", |ui| {
-            egui::Grid::new("updh").striped(true).num_columns(5).show(ui, |ui| {
-                for h in ["Data", "O quê", "Versão", "Resultado", "Desempenho"] {
-                    ui.label(RichText::new(h).strong());
-                }
-                ui.end_row();
-                for r in rows {
-                    let s = |k: &str| r[k].as_str().unwrap_or("").rsplit(':').next().unwrap_or("").to_string();
-                    ui.label(r["time"].as_str().unwrap_or("").get(..10).unwrap_or(""));
-                    ui.label(r["comp"].as_str().unwrap_or(""));
-                    ui.label(format!("{} → {}", s("from"), s("to")));
-                    let res = r["result"].as_str().unwrap_or("");
-                    ui.label(RichText::new(res).color(if res == "ok" { Color32::from_rgb(90, 180, 110) } else { Color32::from_rgb(230, 160, 40) }));
-                    let m = &r["metrics"];
-                    let perf = if let Some(t) = m["tflops"].as_array() {
-                        format!("fp16 {} TFLOPS", t.iter().filter_map(|x| x.as_f64()).map(|x| format!("{x:.1}")).collect::<Vec<_>>().join(" / "))
-                    } else if m["tg"].is_number() {
-                        format!("{} / {} tok/s", m["pp"], m["tg"])
-                    } else {
-                        String::new()
-                    };
-                    ui.label(perf);
+            egui::Grid::new("updh")
+                .striped(true)
+                .num_columns(5)
+                .show(ui, |ui| {
+                    for h in ["Data", "O quê", "Versão", "Resultado", "Desempenho"] {
+                        ui.label(RichText::new(h).strong());
+                    }
                     ui.end_row();
-                }
-            });
+                    for r in rows {
+                        let s = |k: &str| {
+                            r[k].as_str()
+                                .unwrap_or("")
+                                .rsplit(':')
+                                .next()
+                                .unwrap_or("")
+                                .to_string()
+                        };
+                        ui.label(r["time"].as_str().unwrap_or("").get(..10).unwrap_or(""));
+                        ui.label(r["comp"].as_str().unwrap_or(""));
+                        ui.label(format!("{} → {}", s("from"), s("to")));
+                        let res = r["result"].as_str().unwrap_or("");
+                        ui.label(RichText::new(res).color(if res == "ok" {
+                            Color32::from_rgb(90, 180, 110)
+                        } else {
+                            Color32::from_rgb(230, 160, 40)
+                        }));
+                        let m = &r["metrics"];
+                        let perf = if let Some(t) = m["tflops"].as_array() {
+                            format!(
+                                "fp16 {} TFLOPS",
+                                t.iter()
+                                    .filter_map(|x| x.as_f64())
+                                    .map(|x| format!("{x:.1}"))
+                                    .collect::<Vec<_>>()
+                                    .join(" / ")
+                            )
+                        } else if m["tg"].is_number() {
+                            format!("{} / {} tok/s", m["pp"], m["tg"])
+                        } else {
+                            String::new()
+                        };
+                        ui.label(perf);
+                        ui.end_row();
+                    }
+                });
         });
     }
 }

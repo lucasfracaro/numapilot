@@ -31,7 +31,9 @@ pub fn current_mask() -> Option<u64> {
 /// Valor definido na linha do kernel (amdgpu.ppfeaturemask=...), que tem prioridade.
 pub fn cmdline_mask() -> Option<u64> {
     let c = std::fs::read_to_string("/proc/cmdline").ok()?;
-    c.split_whitespace().find_map(|w| w.strip_prefix("amdgpu.ppfeaturemask=")).and_then(parse_hex)
+    c.split_whitespace()
+        .find_map(|w| w.strip_prefix("amdgpu.ppfeaturemask="))
+        .and_then(parse_hex)
 }
 
 /// Valor salvo no nosso arquivo.
@@ -61,7 +63,11 @@ pub fn overdrive_state() -> OverdriveState {
         Some(m) => m & OVERDRIVE_BIT != 0,
         None => saved_mask().is_some_and(|m| m & OVERDRIVE_BIT != 0),
     };
-    OverdriveState { active, on_next_boot, from_cmdline: cmd.is_some() }
+    OverdriveState {
+        active,
+        on_next_boot,
+        from_cmdline: cmd.is_some(),
+    }
 }
 
 /// Máscara a gravar: a atual com só o bit do OverDrive ligado (não mexe em mais nada).
@@ -99,12 +105,21 @@ pub fn initramfs_tool() -> Option<Vec<&'static str>> {
 
 pub fn regenerate(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     let Some(cmd) = initramfs_tool() else {
-        log("Nenhuma ferramenta de initramfs encontrada; o arquivo vale quando o módulo carregar do disco.");
+        log(
+            "Nenhuma ferramenta de initramfs encontrada; o arquivo vale quando o módulo carregar do disco.",
+        );
         return Ok(());
     };
     log(&format!("Refazendo a imagem de boot: {}", cmd.join(" ")));
-    let st = std::process::Command::new(cmd[0]).args(&cmd[1..]).status().map_err(|e| format!("{}: {e}", cmd[0]))?;
-    if st.success() { Ok(()) } else { Err(format!("{} terminou com erro ({st})", cmd[0])) }
+    let st = std::process::Command::new(cmd[0])
+        .args(&cmd[1..])
+        .status()
+        .map_err(|e| format!("{}: {e}", cmd[0]))?;
+    if st.success() {
+        Ok(())
+    } else {
+        Err(format!("{} terminou com erro ({st})", cmd[0]))
+    }
 }
 
 /// Liga/desliga o OverDrive no boot. Precisa de root.
@@ -146,7 +161,10 @@ pub fn set_overdrive(on: bool, log: &mut dyn FnMut(&str)) -> Result<(), String> 
                     std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
                 }
                 std::fs::write(&path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
-                log(&format!("Gravado {}: ppfeaturemask=0x{m:x}", path.display()));
+                log(&format!(
+                    "Gravado {}: ppfeaturemask=0x{m:x}",
+                    path.display()
+                ));
             }
         }
     }

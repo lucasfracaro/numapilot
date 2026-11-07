@@ -5,7 +5,7 @@ use crate::learned::Learned;
 use crate::procfs;
 use crate::profiles::Profiles;
 use crate::topo::{Gpu, GpuRole, Topology};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -55,8 +55,13 @@ pub fn sample_node_loads(topo: &Topology, dur: Duration) -> HashMap<usize, f64> 
     node_loads(topo, &a, &b)
 }
 
-pub fn node_loads(topo: &Topology, a: &[(usize, u64, u64)], b: &[(usize, u64, u64)]) -> HashMap<usize, f64> {
-    let prev: HashMap<usize, (u64, u64)> = a.iter().map(|&(c, busy, tot)| (c, (busy, tot))).collect();
+pub fn node_loads(
+    topo: &Topology,
+    a: &[(usize, u64, u64)],
+    b: &[(usize, u64, u64)],
+) -> HashMap<usize, f64> {
+    let prev: HashMap<usize, (u64, u64)> =
+        a.iter().map(|&(c, busy, tot)| (c, (busy, tot))).collect();
     let mut out = HashMap::new();
     for n in &topo.nodes {
         let (mut busy, mut tot) = (0u64, 0u64);
@@ -68,14 +73,25 @@ pub fn node_loads(topo: &Topology, a: &[(usize, u64, u64)], b: &[(usize, u64, u6
                 tot += bt.saturating_sub(pt);
             }
         }
-        out.insert(n.id, if tot > 0 { busy as f64 / tot as f64 } else { 0.0 });
+        out.insert(
+            n.id,
+            if tot > 0 {
+                busy as f64 / tot as f64
+            } else {
+                0.0
+            },
+        );
     }
     out
 }
 
 /// Nó menos carregado, evitando `avoid` se houver alternativa e exigindo ~5% de RAM livre.
 pub fn least_loaded_node(topo: &Topology, loads: &HashMap<usize, f64>, avoid: &[usize]) -> usize {
-    let mut cands: Vec<&crate::topo::Node> = topo.nodes.iter().filter(|n| !avoid.contains(&n.id)).collect();
+    let mut cands: Vec<&crate::topo::Node> = topo
+        .nodes
+        .iter()
+        .filter(|n| !avoid.contains(&n.id))
+        .collect();
     if cands.is_empty() {
         cands = topo.nodes.iter().collect();
     }
@@ -96,16 +112,28 @@ pub fn least_loaded_node(topo: &Topology, loads: &HashMap<usize, f64>, avoid: &[
 }
 
 /// Escolhe a(s) GPU(s). `want` força o tipo de uso (ex.: jogar numa MI50 = Compute GPU usada como Graphics).
-pub fn pick_gpus(topo: &Topology, spec: &GpuSpec, want: Option<Kind>, hint: bool) -> Result<(Vec<Gpu>, Kind)> {
+pub fn pick_gpus(
+    topo: &Topology,
+    spec: &GpuSpec,
+    want: Option<Kind>,
+    hint: bool,
+) -> Result<(Vec<Gpu>, Kind)> {
     let least_busy = |n: usize| -> Vec<Gpu> {
         let mut c: Vec<&Gpu> = topo.compute_gpus();
-        c.sort_by(|a, b| a.load_score().partial_cmp(&b.load_score()).unwrap_or(std::cmp::Ordering::Equal));
+        c.sort_by(|a, b| {
+            a.load_score()
+                .partial_cmp(&b.load_score())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let take = if n == 0 { c.len() } else { n.min(c.len()) };
         c.into_iter().take(take).cloned().collect()
     };
     Ok(match spec {
         GpuSpec::None => (vec![], Kind::NoGpu),
-        GpuSpec::Display => (topo.display_gpu().cloned().into_iter().collect(), Kind::Graphics),
+        GpuSpec::Display => (
+            topo.gaming_gpu().cloned().into_iter().collect(),
+            Kind::Graphics,
+        ),
         GpuSpec::Compute(n) => {
             let g = least_busy(*n);
             if g.is_empty() {
@@ -118,10 +146,13 @@ pub fn pick_gpus(topo: &Topology, spec: &GpuSpec, want: Option<Kind>, hint: bool
             for n in names {
                 match topo.gpus.iter().find(|g| g.matches(n)) {
                     Some(g) => v.push(g.clone()),
-                    None => bail!("GPU '{n}' não encontrada; veja os apelidos com `numapilot topo`"),
+                    None => {
+                        bail!("GPU '{n}' não encontrada; veja os apelidos com `numapilot topo`")
+                    }
                 }
             }
-            let role_kind = if v.iter().all(|g| g.role == GpuRole::Compute) && !hint_graphics(want) {
+            let role_kind = if v.iter().all(|g| g.role == GpuRole::Compute) && !hint_graphics(want)
+            {
                 Kind::Compute
             } else {
                 Kind::Graphics
@@ -129,10 +160,16 @@ pub fn pick_gpus(topo: &Topology, spec: &GpuSpec, want: Option<Kind>, hint: bool
             (v, want.unwrap_or(role_kind))
         }
         GpuSpec::Auto => match want {
-            Some(Kind::Graphics) => (topo.display_gpu().cloned().into_iter().collect(), Kind::Graphics),
+            Some(Kind::Graphics) => (
+                topo.gaming_gpu().cloned().into_iter().collect(),
+                Kind::Graphics,
+            ),
             Some(Kind::Compute) => (least_busy(1), Kind::Compute),
             _ if hint && !topo.compute_gpus().is_empty() => (least_busy(1), Kind::Compute),
-            _ => (topo.display_gpu().cloned().into_iter().collect(), Kind::Graphics),
+            _ => (
+                topo.display_gpu().cloned().into_iter().collect(),
+                Kind::Graphics,
+            ),
         },
     })
 }
@@ -177,15 +214,27 @@ pub fn decide_launch(
     };
     let cpu = match &inp.cpu {
         Some(c) => c.clone(),
-        None => CpuSpec::parse(&pick(None, profile.map(|p| p.cpu.as_str()), rule.map(|r| r.cpu.as_str())))?,
+        None => CpuSpec::parse(&pick(
+            None,
+            profile.map(|p| p.cpu.as_str()),
+            rule.map(|r| r.cpu.as_str()),
+        ))?,
     };
     let gpu = match &inp.gpu {
         Some(g) => g.clone(),
-        None => GpuSpec::parse(&pick(None, profile.map(|p| p.gpu.as_str()), rule.map(|r| r.gpu.as_str())))?,
+        None => GpuSpec::parse(&pick(
+            None,
+            profile.map(|p| p.gpu.as_str()),
+            rule.map(|r| r.gpu.as_str()),
+        ))?,
     };
     let usage = match inp.usage {
         Some(k) => Some(k),
-        None => Kind::parse_usage(&pick(None, profile.map(|p| p.usage.as_str()), rule.map(|r| r.usage.as_str())))?,
+        None => Kind::parse_usage(&pick(
+            None,
+            profile.map(|p| p.usage.as_str()),
+            rule.map(|r| r.usage.as_str()),
+        ))?,
     };
     let prof_mem = profile.and_then(|p| match p.memory.as_str() {
         "strict" => Some(MemSpec::Bind),
@@ -197,7 +246,10 @@ pub fn decide_launch(
         Some(m) => m,
         None => match prof_mem {
             Some(m) => m,
-            None => rule.map(|r| MemSpec::parse(&r.mem)).transpose()?.unwrap_or(MemSpec::Local),
+            None => rule
+                .map(|r| MemSpec::parse(&r.mem))
+                .transpose()?
+                .unwrap_or(MemSpec::Local),
         },
     };
     let hint = cfg.is_compute_hint(inp.idents);
@@ -232,8 +284,12 @@ pub fn decide_launch(
             (n.clone(), topo.cpus_of(n))
         }
         CpuSpec::Cpus(c) => {
-            let nodes: Vec<usize> =
-                topo.nodes.iter().filter(|n| n.cpus.iter().any(|x| c.contains(x))).map(|n| n.id).collect();
+            let nodes: Vec<usize> = topo
+                .nodes
+                .iter()
+                .filter(|n| n.cpus.iter().any(|x| c.contains(x)))
+                .map(|n| n.id)
+                .collect();
             (nodes, c.clone())
         }
         CpuSpec::GpuNode | CpuSpec::Auto => {
@@ -242,7 +298,8 @@ pub fn decide_launch(
                 (all.clone(), topo.all_cpus())
             } else if !gpu_nodes.is_empty() {
                 if gpu_nodes.len() > 1 {
-                    reasons.push("GPUs escolhidas estão em sockets diferentes → todos os nós".into());
+                    reasons
+                        .push("GPUs escolhidas estão em sockets diferentes → todos os nós".into());
                 } else {
                     reasons.push(format!("nó {} é o socket ligado à GPU", gpu_nodes[0]));
                 }
@@ -262,11 +319,22 @@ pub fn decide_launch(
         Some(p) if inp.cpu.is_none() => {
             if let Some(l) = &p.cpu_list {
                 let all = topo.all_cpus();
-                let v: Vec<usize> = crate::util::parse_cpulist(l).into_iter().filter(|c| all.contains(c)).collect();
-                if v.is_empty() { (nodes, cpus) } else { (topo.nodes_of(&v), v) }
+                let v: Vec<usize> = crate::util::parse_cpulist(l)
+                    .into_iter()
+                    .filter(|c| all.contains(c))
+                    .collect();
+                if v.is_empty() {
+                    (nodes, cpus)
+                } else {
+                    (topo.nodes_of(&v), v)
+                }
             } else if p.cores.is_some() || !p.smt {
                 let v = topo.select_cpus(&nodes, p.cores, p.smt, &[]);
-                reasons.push(format!("{} CPUs{} escolhidos no perfil", v.len(), if p.smt { "" } else { " (sem hyper-threading)" }));
+                reasons.push(format!(
+                    "{} CPUs{} escolhidos no perfil",
+                    v.len(),
+                    if p.smt { "" } else { " (sem hyper-threading)" }
+                ));
                 (topo.nodes_of(&v), v)
             } else {
                 (nodes, cpus)
@@ -277,12 +345,19 @@ pub fn decide_launch(
     if cpus.is_empty() {
         bail!("nenhum CPU selecionado");
     }
-    let fg_name = inp.fg_gpu.clone().or_else(|| profile.map(|p| p.fg_gpu.clone())).unwrap_or_else(|| "same".into());
+    let fg_name = inp
+        .fg_gpu
+        .clone()
+        .or_else(|| profile.map(|p| p.fg_gpu.clone()))
+        .unwrap_or_else(|| "same".into());
     let fg_gpu = match fg_name.as_str() {
         "" | "same" | "auto" => None,
         n => match topo.gpus.iter().find(|g| g.matches(n)) {
             Some(g) if gpus.first().is_none_or(|x| x.pci != g.pci) => {
-                reasons.push(format!("frame generation (lsfg-vk) na {}: requer lsfg-vk com dual GPU", g.alias));
+                reasons.push(format!(
+                    "frame generation (lsfg-vk) na {}: requer lsfg-vk com dual GPU",
+                    g.alias
+                ));
                 Some(g.clone())
             }
             Some(_) => None,
@@ -293,7 +368,9 @@ pub fn decide_launch(
     Ok(Decision {
         manual: cpu != CpuSpec::Auto || profile.is_some_and(|p| p.has_cpu_choice()),
         limit_visible: profile.is_none_or(|p| p.limit_visible) && cpus.len() < total,
-        priority: profile.map(|p| p.priority.clone()).unwrap_or_else(|| "normal".into()),
+        priority: profile
+            .map(|p| p.priority.clone())
+            .unwrap_or_else(|| "normal".into()),
         needs_daemon: profile.is_some_and(|p| p.needs_daemon()),
         nodes,
         cpus,
@@ -327,11 +404,21 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
                 set.push(("DRI_PRIME".into(), g.dri_prime()));
                 // Vulkan (jogos nativos e DirectX via DXVK/VKD3D-Proton) só enxerga esta GPU:
                 // evita que o jogo escolha sozinho outra placa (ex.: a MI50 com mais VRAM).
-                set.push(("MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE".into(), "1".into()));
+                set.push((
+                    "MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE".into(),
+                    "1".into(),
+                ));
                 // vendor:device só serve se for único (as duas MI50 têm o mesmo ID).
-                let same = topo.gpus.iter().filter(|o| o.vendor == g.vendor && o.device == g.device).count();
+                let same = topo
+                    .gpus
+                    .iter()
+                    .filter(|o| o.vendor == g.vendor && o.device == g.device)
+                    .count();
                 if same == 1 {
-                    set.push(("MESA_VK_DEVICE_SELECT".into(), format!("{:04x}:{:04x}", g.vendor, g.device)));
+                    set.push((
+                        "MESA_VK_DEVICE_SELECT".into(),
+                        format!("{:04x}:{:04x}", g.vendor, g.device),
+                    ));
                 } else {
                     unset.push("MESA_VK_DEVICE_SELECT".into());
                 }
@@ -340,15 +427,49 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
                 let fg = d.fg_gpu.as_ref().unwrap_or(g);
                 set.push(("LSFGVK_GPU".into(), pci_decimal(&fg.pci)));
                 set.push(("NUMAPILOT_FG_GPU".into(), fg.pci.clone()));
+                // Driver oficial da NVIDIA (PRIME render offload): OpenGL e Vulkan na NVIDIA,
+                // ou o contrário quando a escolhida é a outra placa num PC com NVIDIA.
+                let has_nv = topo.gpus.iter().any(|o| o.is_nvidia());
+                if g.is_nvidia() {
+                    set.push(("__NV_PRIME_RENDER_OFFLOAD".into(), "1".into()));
+                    set.push(("__GLX_VENDOR_LIBRARY_NAME".into(), "nvidia".into()));
+                    set.push(("__VK_LAYER_NV_optimus".into(), "NVIDIA_only".into()));
+                    let nvs = crate::nvctl::cuda_indices(topo);
+                    if nvs.len() > 1
+                        && let Some(i) = nvs.get(&g.pci)
+                    {
+                        set.push((
+                            "__NV_PRIME_RENDER_OFFLOAD_PROVIDER".into(),
+                            format!("NVIDIA-G{i}"),
+                        ));
+                    }
+                } else if has_nv {
+                    set.push(("__GLX_VENDOR_LIBRARY_NAME".into(), "mesa".into()));
+                    set.push(("__VK_LAYER_NV_optimus".into(), "non_NVIDIA_only".into()));
+                    unset.push("__NV_PRIME_RENDER_OFFLOAD".into());
+                }
             }
         }
         Kind::Compute => {
+            let nvs = crate::nvctl::cuda_indices(topo);
+            let cuda: Vec<String> = d
+                .gpus
+                .iter()
+                .filter_map(|g| nvs.get(&g.pci))
+                .map(|i| i.to_string())
+                .collect();
+            if !cuda.is_empty() {
+                set.push(("CUDA_DEVICE_ORDER".into(), "PCI_BUS_ID".into()));
+                set.push(("CUDA_VISIBLE_DEVICES".into(), cuda.join(",")));
+            }
             let ids: Vec<String> = d.gpus.iter().filter_map(|g| g.rocr_id.clone()).collect();
             if !ids.is_empty() {
                 set.push(("ROCR_VISIBLE_DEVICES".into(), ids.join(",")));
                 // Índices HIP/CUDA herdados apontariam para a lista já filtrada.
                 unset.push("HIP_VISIBLE_DEVICES".into());
-                unset.push("CUDA_VISIBLE_DEVICES".into());
+                if cuda.is_empty() {
+                    unset.push("CUDA_VISIBLE_DEVICES".into());
+                }
             }
         }
         Kind::NoGpu => {}
@@ -358,23 +479,57 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
         // Proton/Wine: o jogo Windows vê só estes CPUs (taskset sozinho não muda o que ele conta).
         set.push((
             "WINE_CPU_TOPOLOGY".into(),
-            format!("{n}:{}", d.cpus.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(",")),
+            format!(
+                "{n}:{}",
+                d.cpus
+                    .iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
         ));
         for k in SOFT_THREAD_VARS {
             set.push((k.to_string(), n.clone()));
         }
     }
-    let renders: Vec<String> =
-        d.gpus.iter().filter_map(|g| g.render.as_ref().map(|r| format!("/dev/dri/{r}"))).collect();
+    let renders: Vec<String> = d
+        .gpus
+        .iter()
+        .filter_map(|g| g.render.as_ref().map(|r| format!("/dev/dri/{r}")))
+        .collect();
     set.push(("NUMAPILOT_RENDER".into(), renders.join(" ")));
-    set.push(("NUMAPILOT_GPUS".into(), d.gpus.iter().map(|g| g.alias.clone()).collect::<Vec<_>>().join(",")));
-    set.push(("NUMAPILOT_GPU_PCI".into(), d.gpus.iter().map(|g| g.pci.clone()).collect::<Vec<_>>().join(",")));
-    set.push(("NUMAPILOT_CPUS".into(), crate::util::format_cpulist(&d.cpus)));
+    set.push((
+        "NUMAPILOT_GPUS".into(),
+        d.gpus
+            .iter()
+            .map(|g| g.alias.clone())
+            .collect::<Vec<_>>()
+            .join(","),
+    ));
+    set.push((
+        "NUMAPILOT_GPU_PCI".into(),
+        d.gpus
+            .iter()
+            .map(|g| g.pci.clone())
+            .collect::<Vec<_>>()
+            .join(","),
+    ));
+    set.push((
+        "NUMAPILOT_CPUS".into(),
+        crate::util::format_cpulist(&d.cpus),
+    ));
     set.push((
         "NUMAPILOT_MEMS".into(),
-        d.nodes.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(","),
+        d.nodes
+            .iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(","),
     ));
-    set.push(("NUMAPILOT_MODE".into(), if d.manual { "manual" } else { "auto" }.into()));
+    set.push((
+        "NUMAPILOT_MODE".into(),
+        if d.manual { "manual" } else { "auto" }.into(),
+    ));
     (set, unset)
 }
 
@@ -397,7 +552,8 @@ pub fn game_warnings(topo: &Topology, d: &Decision) -> Vec<String> {
         return w;
     }
     let Some(g) = d.gpus.first() else { return w };
-    if !g.display_connected {
+    // No notebook, a dedicada sempre renderiza e a integrada mostra a imagem (é o normal).
+    if !g.display_connected && !crate::notebook::is_laptop() {
         w.push(format!(
             "O jogo vai renderizar na {} mas o monitor está em outra placa. Alguns jogos e anti-cheats \
              recusam isso (ex.: Crimson Desert) e a cópia entre placas custa desempenho: ligue o monitor nesta placa.",
@@ -415,7 +571,11 @@ pub fn game_warnings(topo: &Topology, d: &Decision) -> Vec<String> {
     if d.nodes.len() > 1 && topo.nodes.len() > 1 {
         w.push("O jogo vai usar os dois processadores: em jogos isso costuma derrubar o FPS (latência de NUMA).".into());
     }
-    let visible = if d.limit_visible { d.cpus.len() } else { topo.all_cpus().len() };
+    let visible = if d.limit_visible {
+        d.cpus.len()
+    } else {
+        topo.all_cpus().len()
+    };
     if visible > 32 {
         w.push(format!(
             "O jogo vai enxergar {visible} threads. Vários jogos e o Easy Anti-Cheat falham com tantos núcleos: \

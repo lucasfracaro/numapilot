@@ -1,7 +1,7 @@
 //! Ventoinhas da placa-mãe (gabinete e processadores): pelo chip de sensores (hwmon: nct67xx,
 //! it87, ...) e, em placas de servidor, pelo IPMI (leitura; modo das ventoinhas em Supermicro).
 
-use crate::gpuctl::{curve_pct, FanMode};
+use crate::gpuctl::{FanMode, curve_pct};
 use crate::learned::state_dir;
 use crate::util::{read_trim, read_u64, sys};
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,17 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Chips que não são da placa-mãe (GPUs, discos, ...).
-const SKIP: &[&str] = &["amdgpu", "nouveau", "nvidia", "radeon", "nvme", "drivetemp", "coretemp", "k10temp", "acpitz"];
+const SKIP: &[&str] = &[
+    "amdgpu",
+    "nouveau",
+    "nvidia",
+    "radeon",
+    "nvme",
+    "drivetemp",
+    "coretemp",
+    "k10temp",
+    "acpitz",
+];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardFan {
@@ -29,7 +39,9 @@ pub struct BoardFan {
 
 pub fn list() -> Vec<BoardFan> {
     let mut v = Vec::new();
-    let Ok(rd) = fs::read_dir(sys("class/hwmon")) else { return v };
+    let Ok(rd) = fs::read_dir(sys("class/hwmon")) else {
+        return v;
+    };
     for e in rd.flatten() {
         let d = e.path();
         let chip = read_trim(d.join("name")).unwrap_or_default();
@@ -40,17 +52,27 @@ pub fn list() -> Vec<BoardFan> {
             .ok()
             .and_then(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
             .unwrap_or_else(|| e.file_name().to_string_lossy().to_string());
-        let Ok(files) = fs::read_dir(&d) else { continue };
+        let Ok(files) = fs::read_dir(&d) else {
+            continue;
+        };
         let mut idxs: Vec<u32> = files
             .flatten()
-            .filter_map(|f| f.file_name().to_string_lossy().strip_prefix("pwm").and_then(|r| r.parse().ok()))
+            .filter_map(|f| {
+                f.file_name()
+                    .to_string_lossy()
+                    .strip_prefix("pwm")
+                    .and_then(|r| r.parse().ok())
+            })
             .collect();
         idxs.sort_unstable();
         for i in idxs {
-            let max = read_u64(d.join(format!("pwm{i}_max"))).unwrap_or(255).max(1) as f64;
+            let max = read_u64(d.join(format!("pwm{i}_max")))
+                .unwrap_or(255)
+                .max(1) as f64;
             v.push(BoardFan {
                 id: format!("{chip}@{dev}/pwm{i}"),
-                label: read_trim(d.join(format!("fan{i}_label"))).unwrap_or_else(|| format!("{chip} ventoinha {i}")),
+                label: read_trim(d.join(format!("fan{i}_label")))
+                    .unwrap_or_else(|| format!("{chip} ventoinha {i}")),
                 chip: chip.clone(),
                 rpm: read_u64(d.join(format!("fan{i}_input"))),
                 pct: read_u64(d.join(format!("pwm{i}"))).map(|p| (p as f64 * 100.0 / max).round()),
@@ -79,7 +101,13 @@ impl Default for BoardFanControl {
     fn default() -> Self {
         BoardFanControl {
             fan: FanMode::Auto,
-            curve: vec![(35.0, 25.0), (50.0, 35.0), (65.0, 55.0), (75.0, 80.0), (85.0, 100.0)],
+            curve: vec![
+                (35.0, 25.0),
+                (50.0, 35.0),
+                (65.0, 55.0),
+                (75.0, 80.0),
+                (85.0, 100.0),
+            ],
             fixed_pct: 50.0,
             source: "cpu".into(),
             label: String::new(),
@@ -111,11 +139,17 @@ impl BoardFans {
         state_dir().join("fans.json")
     }
     pub fn load() -> BoardFans {
-        fs::read_to_string(Self::path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        fs::read_to_string(Self::path())
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
     }
     pub fn save(&self) -> std::io::Result<()> {
         fs::create_dir_all(state_dir())?;
-        fs::write(Self::path(), serde_json::to_string_pretty(self).unwrap_or_default())
+        fs::write(
+            Self::path(),
+            serde_json::to_string_pretty(self).unwrap_or_default(),
+        )
     }
 }
 
@@ -128,7 +162,10 @@ pub fn source_temp(source: &str, topo: &crate::topo::Topology) -> Option<f64> {
             .filter_map(|g| crate::gpuctl::read_sensors(&g.pci).control_temp())
             .fold(None, |a: Option<f64>, t| Some(a.map_or(t, |a| a.max(t))))
     };
-    let cmax = cpu.values().copied().fold(None, |a: Option<f64>, t| Some(a.map_or(t, |a| a.max(t))));
+    let cmax = cpu
+        .values()
+        .copied()
+        .fold(None, |a: Option<f64>, t| Some(a.map_or(t, |a| a.max(t))));
     match source {
         "cpu0" => cpu.get(&0).copied(),
         "cpu1" => cpu.get(&1).copied(),
@@ -151,13 +188,18 @@ pub fn set_pct(f: &BoardFan, pct: f64) -> Result<(), String> {
         fs::write(&en, "1").map_err(|e| format!("{}: {e}", en.display()))?;
     }
     let p = f.dir.join(format!("pwm{}", f.idx));
-    fs::write(&p, ((pct.clamp(0.0, 100.0) / 100.0 * max).round() as u64).to_string()).map_err(|e| format!("{}: {e}", p.display()))
+    fs::write(
+        &p,
+        ((pct.clamp(0.0, 100.0) / 100.0 * max).round() as u64).to_string(),
+    )
+    .map_err(|e| format!("{}: {e}", p.display()))
 }
 
 /// Devolve ao controle do chip (o valor de pwmN_enable de antes, ou 2 = automático).
 pub fn set_auto(f: &BoardFan, orig: Option<u8>) -> Result<(), String> {
     let en = f.dir.join(format!("pwm{}_enable", f.idx));
-    fs::write(&en, orig.filter(|&o| o != 1).unwrap_or(2).to_string()).map_err(|e| format!("{}: {e}", en.display()))
+    fs::write(&en, orig.filter(|&o| o != 1).unwrap_or(2).to_string())
+        .map_err(|e| format!("{}: {e}", en.display()))
 }
 
 /// Porcentagem desejada agora (None = automático do chip).
@@ -178,13 +220,20 @@ fn ipmitool(args: &[&str]) -> Option<String> {
     if !std::path::Path::new("/dev/ipmi0").exists() || !crate::containers::which("ipmitool") {
         return None;
     }
-    let o = std::process::Command::new("ipmitool").args(args).output().ok()?;
-    o.status.success().then(|| String::from_utf8_lossy(&o.stdout).to_string())
+    let o = std::process::Command::new("ipmitool")
+        .args(args)
+        .output()
+        .ok()?;
+    o.status
+        .success()
+        .then(|| String::from_utf8_lossy(&o.stdout).to_string())
 }
 
 /// (nome, RPM) das ventoinhas vistas pelo BMC.
 pub fn ipmi_fans() -> Vec<(String, Option<u64>)> {
-    let Some(s) = ipmitool(&["sdr", "type", "Fan"]) else { return vec![] };
+    let Some(s) = ipmitool(&["sdr", "type", "Fan"]) else {
+        return vec![];
+    };
     parse_ipmi_fans(&s)
 }
 
@@ -195,14 +244,19 @@ pub fn parse_ipmi_fans(s: &str) -> Vec<(String, Option<u64>)> {
             if c.len() < 5 {
                 return None;
             }
-            let rpm = c[4].split_whitespace().next().and_then(|x| x.parse::<f64>().ok()).map(|x| x as u64);
+            let rpm = c[4]
+                .split_whitespace()
+                .next()
+                .and_then(|x| x.parse::<f64>().ok())
+                .map(|x| x as u64);
             Some((c[0].to_string(), rpm))
         })
         .collect()
 }
 
 pub fn is_supermicro() -> bool {
-    read_trim(sys("class/dmi/id/board_vendor")).is_some_and(|v| v.to_lowercase().contains("supermicro"))
+    read_trim(sys("class/dmi/id/board_vendor"))
+        .is_some_and(|v| v.to_lowercase().contains("supermicro"))
 }
 
 /// Modo das ventoinhas no BMC Supermicro (0 padrão, 1 máximo, 2 ótimo, 4 heavy IO).
@@ -218,7 +272,9 @@ pub fn supermicro_set_mode(mode: u8) -> Result<(), String> {
     if !is_supermicro() {
         return Err("só em placas Supermicro".into());
     }
-    ipmitool(&["raw", "0x30", "0x45", "0x01", &format!("0x{mode:02x}")]).map(|_| ()).ok_or_else(|| "ipmitool falhou".into())
+    ipmitool(&["raw", "0x30", "0x45", "0x01", &format!("0x{mode:02x}")])
+        .map(|_| ())
+        .ok_or_else(|| "ipmitool falhou".into())
 }
 
 pub fn ipmi_mode_name(m: u8) -> &'static str {
@@ -238,8 +294,14 @@ mod tests {
     #[test]
     fn ipmi_parse_and_target() {
         let s = "FAN1             | 41h | ok  | 29.1 | 1500 RPM\nFAN2             | 42h | ns  | 29.2 | No Reading\n";
-        assert_eq!(parse_ipmi_fans(s), vec![("FAN1".into(), Some(1500)), ("FAN2".into(), None)]);
-        let mut c = BoardFanControl { fan: FanMode::Curve, ..Default::default() };
+        assert_eq!(
+            parse_ipmi_fans(s),
+            vec![("FAN1".into(), Some(1500)), ("FAN2".into(), None)]
+        );
+        let mut c = BoardFanControl {
+            fan: FanMode::Curve,
+            ..Default::default()
+        };
         assert!(c.validate().is_ok());
         assert_eq!(target(&c, Some(50.0), Some(50.0)), Some(35.0));
         assert_eq!(target(&c, Some(50.0), Some(92.0)), Some(100.0));

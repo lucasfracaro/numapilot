@@ -49,7 +49,10 @@ pub fn engine() -> Option<String> {
     if let Ok(e) = std::env::var("NUMAPILOT_ENGINE") {
         return Some(e);
     }
-    ["podman", "docker"].iter().find(|e| which(e)).map(|e| e.to_string())
+    ["podman", "docker"]
+        .iter()
+        .find(|e| which(e))
+        .map(|e| e.to_string())
 }
 
 pub fn which(bin: &str) -> bool {
@@ -79,7 +82,11 @@ fn parse_docker_ports(s: &str) -> Vec<Port> {
             let (host, cont) = p.trim().split_once("->")?;
             let (ip, hp) = host.rsplit_once(':')?;
             let cp = cont.split('/').next()?;
-            Some(Port { host_ip: ip.to_string(), host_port: hp.parse().ok()?, container_port: cp.parse().ok()? })
+            Some(Port {
+                host_ip: ip.to_string(),
+                host_port: hp.parse().ok()?,
+                container_port: cp.parse().ok()?,
+            })
         })
         .collect()
 }
@@ -87,9 +94,15 @@ fn parse_docker_ports(s: &str) -> Vec<Port> {
 pub fn parse_list(engine: &str, out: &str, lab: &str, llm: &str) -> Vec<Container> {
     let mut v = Vec::new();
     if engine.ends_with("podman") {
-        let Ok(Value::Array(arr)) = serde_json::from_str::<Value>(out) else { return v };
+        let Ok(Value::Array(arr)) = serde_json::from_str::<Value>(out) else {
+            return v;
+        };
         for c in arr {
-            let name = c["Names"].get(0).and_then(Value::as_str).unwrap_or("").to_string();
+            let name = c["Names"]
+                .get(0)
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             let ports = c["Ports"]
                 .as_array()
                 .map(|ps| {
@@ -116,13 +129,18 @@ pub fn parse_list(engine: &str, out: &str, lab: &str, llm: &str) -> Vec<Containe
         }
     } else {
         for line in out.lines() {
-            let Ok(c) = serde_json::from_str::<Value>(line) else { continue };
+            let Ok(c) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
             let name = c["Names"].as_str().unwrap_or("").to_string();
             let labels: serde_json::Map<String, Value> = c["Labels"]
                 .as_str()
                 .unwrap_or("")
                 .split(',')
-                .filter_map(|kv| kv.split_once('=').map(|(k, v)| (k.to_string(), Value::String(v.to_string()))))
+                .filter_map(|kv| {
+                    kv.split_once('=')
+                        .map(|(k, v)| (k.to_string(), Value::String(v.to_string())))
+                })
                 .collect();
             v.push(Container {
                 id: c["ID"].as_str().unwrap_or("").to_string(),
@@ -146,11 +164,20 @@ pub fn list(lab: &str, llm: &str) -> Result<Vec<Container>, String> {
     } else {
         &["ps", "-a", "--format", "{{json .}}"]
     };
-    let out = Command::new(&eng).args(args).stderr(Stdio::null()).output().map_err(|e| e.to_string())?;
+    let out = Command::new(&eng)
+        .args(args)
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(format!("{eng} ps falhou"));
     }
-    Ok(parse_list(&eng, &String::from_utf8_lossy(&out.stdout), lab, llm))
+    Ok(parse_list(
+        &eng,
+        &String::from_utf8_lossy(&out.stdout),
+        lab,
+        llm,
+    ))
 }
 
 /// Script rodado dentro do container para descobrir o que está instalado.
@@ -220,13 +247,28 @@ pub fn parse_apps(out: &str) -> Apps {
 }
 
 pub fn inspect_apps(c: &Container) -> Apps {
-    let Some(eng) = engine() else { return Apps { error: Some("sem podman/docker".into()), ..Default::default() } };
+    let Some(eng) = engine() else {
+        return Apps {
+            error: Some("sem podman/docker".into()),
+            ..Default::default()
+        };
+    };
     if !c.running {
-        return Apps { error: Some("ligue o container para ver os apps".into()), ..Default::default() };
+        return Apps {
+            error: Some("ligue o container para ver os apps".into()),
+            ..Default::default()
+        };
     }
-    match Command::new(&eng).args(["exec", &c.id, "sh", "-c", INSPECT_SCRIPT]).stderr(Stdio::null()).output() {
+    match Command::new(&eng)
+        .args(["exec", &c.id, "sh", "-c", INSPECT_SCRIPT])
+        .stderr(Stdio::null())
+        .output()
+    {
         Ok(o) => parse_apps(&String::from_utf8_lossy(&o.stdout)),
-        Err(e) => Apps { error: Some(e.to_string()), ..Default::default() },
+        Err(e) => Apps {
+            error: Some(e.to_string()),
+            ..Default::default()
+        },
     }
 }
 
@@ -243,15 +285,31 @@ pub fn open_command(c: &Container, exec: &str) -> Option<Vec<String>> {
     let eng = engine()?;
     let exec = clean_exec(exec);
     match c.kind {
-        Kind::Distrobox => Some(vec!["distrobox".into(), "enter".into(), c.name.clone(), "--".into(), "sh".into(), "-c".into(), exec]),
+        Kind::Distrobox => Some(vec![
+            "distrobox".into(),
+            "enter".into(),
+            c.name.clone(),
+            "--".into(),
+            "sh".into(),
+            "-c".into(),
+            exec,
+        ]),
         Kind::Lab => {
             let mut v = vec![eng, "exec".into(), "-d".into()];
             v.push("-e".into());
-            v.push(format!("DISPLAY={}", std::env::var("DISPLAY").unwrap_or_else(|_| ":0".into())));
+            v.push(format!(
+                "DISPLAY={}",
+                std::env::var("DISPLAY").unwrap_or_else(|_| ":0".into())
+            ));
             v.push("-e".into());
             v.push("XAUTHORITY=/lab/Xauthority".into());
             if std::env::var_os("WAYLAND_DISPLAY").is_some() {
-                v.extend(["-e".into(), "XDG_RUNTIME_DIR=/lab".into(), "-e".into(), "WAYLAND_DISPLAY=wayland-0".into()]);
+                v.extend([
+                    "-e".into(),
+                    "XDG_RUNTIME_DIR=/lab".into(),
+                    "-e".into(),
+                    "WAYLAND_DISPLAY=wayland-0".into(),
+                ]);
             }
             v.extend([c.id.clone(), "sh".into(), "-c".into(), exec]);
             Some(v)
@@ -270,11 +328,21 @@ mod tests {
           {"Id":"1111","Names":["arch"],"Image":"archlinux","State":"exited","Status":"Exited","Labels":{"manager":"distrobox"},"Ports":null}]"#;
         let v = parse_list("podman", podman, "gfx906-lab", "gfx906-llm");
         assert_eq!(v.len(), 2);
-        assert_eq!((v[0].kind, v[0].running, v[0].ports[0].host_port), (Kind::Lab, true, 8888));
+        assert_eq!(
+            (v[0].kind, v[0].running, v[0].ports[0].host_port),
+            (Kind::Lab, true, 8888)
+        );
         assert_eq!((v[1].kind, v[1].running), (Kind::Distrobox, false));
         let docker = r#"{"ID":"f00","Names":"gfx906-llm","Image":"x","State":"running","Status":"Up","Labels":"io.numapilot.model=a.gguf","Ports":"127.0.0.1:8080->8080/tcp"}"#;
         let v = parse_list("docker", docker, "gfx906-lab", "gfx906-llm");
-        assert_eq!((v[0].kind, v[0].ports[0].host_port, v[0].ports[0].container_port), (Kind::Llm, 8080, 8080));
+        assert_eq!(
+            (
+                v[0].kind,
+                v[0].ports[0].host_port,
+                v[0].ports[0].container_port
+            ),
+            (Kind::Llm, 8080, 8080)
+        );
     }
 
     #[test]

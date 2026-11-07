@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::ctl::{self, Request};
 use crate::profiles::{Profile, Profiles};
 use crate::topo::Topology;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::PathBuf;
@@ -93,7 +93,9 @@ pub fn state(topo: &Topology) -> Value {
     let profiles = Profiles::load();
     let mut progs: BTreeMap<String, (String, f64, String, String)> = BTreeMap::new();
     for r in crate::daemon::read_state().unwrap_or_default() {
-        let e = progs.entry(r.key.clone()).or_insert_with(|| (r.label.clone(), 0.0, r.nodes.clone(), r.gpus.clone()));
+        let e = progs
+            .entry(r.key.clone())
+            .or_insert_with(|| (r.label.clone(), 0.0, r.nodes.clone(), r.gpus.clone()));
         e.1 += r.cores;
         if e.3.is_empty() {
             e.3 = r.gpus.clone();
@@ -107,7 +109,12 @@ pub fn state(topo: &Topology) -> Value {
                    "profile": p.map(describe).unwrap_or_else(|| "automático".into())})
         })
         .collect();
-    programs.sort_by(|a, b| b["cores"].as_f64().unwrap_or(0.0).total_cmp(&a["cores"].as_f64().unwrap_or(0.0)));
+    programs.sort_by(|a, b| {
+        b["cores"]
+            .as_f64()
+            .unwrap_or(0.0)
+            .total_cmp(&a["cores"].as_f64().unwrap_or(0.0))
+    });
     programs.truncate(20);
     json!({
         "host": std::fs::read_to_string("/etc/hostname").unwrap_or_default().trim(),
@@ -148,12 +155,19 @@ fn act(body: &Value, topo: &Topology) -> Result<String, String> {
             let r = if preset == "auto" {
                 ctl::send(&Request::DeleteProfile { key, pid: None })
             } else {
-                let base = Profiles::load().get(&key).cloned().unwrap_or_else(|| Profile {
-                    label: body["label"].as_str().unwrap_or("").to_string(),
-                    ..Default::default()
-                });
+                let base = Profiles::load()
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| Profile {
+                        label: body["label"].as_str().unwrap_or("").to_string(),
+                        ..Default::default()
+                    });
                 let profile = Profile::preset(preset, &base);
-                ctl::send(&Request::SetProfile { key, profile, pid: None })
+                ctl::send(&Request::SetProfile {
+                    key,
+                    profile,
+                    pid: None,
+                })
             }
             .map_err(|e| format!("{e:#}"))?;
             if r.ok { Ok(r.message) } else { Err(r.message) }
@@ -167,43 +181,78 @@ fn act(body: &Value, topo: &Topology) -> Result<String, String> {
                 .stderr(std::process::Stdio::null())
                 .spawn()
                 .map_err(|e| e.to_string())?;
-            Ok(format!("{what}: {}", if verb == "up" { "ligando" } else { "desligando" }))
+            Ok(format!(
+                "{what}: {}",
+                if verb == "up" {
+                    "ligando"
+                } else {
+                    "desligando"
+                }
+            ))
         }
         o => Err(format!("ação desconhecida: {o}")),
     }
 }
 
 fn authorized(req: &tiny_http::Request, token: &str) -> bool {
-    let hdr = req.headers().iter().find(|h| h.field.equiv("X-Token")).map(|h| h.value.as_str().to_string());
+    let hdr = req
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("X-Token"))
+        .map(|h| h.value.as_str().to_string());
     let q = req.url().split_once('?').map(|(_, q)| q).unwrap_or("");
-    let qt = q.split('&').find_map(|kv| kv.strip_prefix("t=")).map(String::from);
+    let qt = q
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("t="))
+        .map(String::from);
     let given = hdr.or(qt).unwrap_or_default();
     // comparação em tempo constante
-    given.len() == token.len() && given.bytes().zip(token.bytes()).fold(0u8, |a, (x, y)| a | (x ^ y)) == 0
+    given.len() == token.len()
+        && given
+            .bytes()
+            .zip(token.bytes())
+            .fold(0u8, |a, (x, y)| a | (x ^ y))
+            == 0
 }
 
 fn respond(req: tiny_http::Request, code: u16, ctype: &str, body: String) {
     let h = tiny_http::Header::from_bytes(&b"Content-Type"[..], ctype.as_bytes()).unwrap();
     let nc = tiny_http::Header::from_bytes(&b"Cache-Control"[..], &b"no-store"[..]).unwrap();
-    let _ = req.respond(tiny_http::Response::from_string(body).with_status_code(code).with_header(h).with_header(nc));
+    let _ = req.respond(
+        tiny_http::Response::from_string(body)
+            .with_status_code(code)
+            .with_header(h)
+            .with_header(nc),
+    );
 }
 
 pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
     let token = token()?;
     let topo = Topology::load(cfg);
-    let server = tiny_http::Server::http(format!("{bind}:{port}")).map_err(|e| anyhow::anyhow!("porta {port}: {e}"))?;
+    let server = tiny_http::Server::http(format!("{bind}:{port}"))
+        .map_err(|e| anyhow::anyhow!("porta {port}: {e}"))?;
     match url(port) {
         Some(u) => eprintln!("Painel: {u}"),
-        None => eprintln!("Painel na porta {port} (token em {})", token_path().display()),
+        None => eprintln!(
+            "Painel na porta {port} (token em {})",
+            token_path().display()
+        ),
     }
     for mut req in server.incoming_requests() {
         let path = req.url().split('?').next().unwrap_or("/").to_string();
         match (req.method(), path.as_str()) {
-            (tiny_http::Method::Get, "/") => respond(req, 200, "text/html; charset=utf-8", PAGE.to_string()),
-            (_, p) if p.starts_with("/api/") && !authorized(&req, &token) => {
-                respond(req, 401, "application/json", r#"{"error":"token inválido"}"#.into())
+            (tiny_http::Method::Get, "/") => {
+                respond(req, 200, "text/html; charset=utf-8", PAGE.to_string())
             }
-            (tiny_http::Method::Get, "/api/state") => respond(req, 200, "application/json", state(&topo).to_string()),
+            (_, p) if p.starts_with("/api/") && !authorized(&req, &token) => respond(
+                req,
+                401,
+                "application/json",
+                r#"{"error":"token inválido"}"#.into(),
+            ),
+            (tiny_http::Method::Get, "/api/state") => {
+                respond(req, 200, "application/json", state(&topo).to_string())
+            }
             (tiny_http::Method::Post, "/api/action") => {
                 let mut b = String::new();
                 let _ = req.as_reader().take(64 * 1024).read_to_string(&mut b);

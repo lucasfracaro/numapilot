@@ -28,7 +28,12 @@ fn run(args: &[&str]) {
 }
 
 fn item(label: &str, f: impl Fn(&mut NumaTray) + Send + Sync + 'static) -> MenuItem<NumaTray> {
-    StandardItem { label: label.into(), activate: Box::new(f), ..Default::default() }.into()
+    StandardItem {
+        label: label.into(),
+        activate: Box::new(f),
+        ..Default::default()
+    }
+    .into()
 }
 
 impl Tray for NumaTray {
@@ -39,10 +44,18 @@ impl Tray for NumaTray {
         "numapilot".into()
     }
     fn icon_name(&self) -> String {
-        if self.hot { "dialog-warning".into() } else { "preferences-system-performance".into() }
+        if self.hot {
+            "dialog-warning".into()
+        } else {
+            "preferences-system-performance".into()
+        }
     }
     fn tool_tip(&self) -> ToolTip {
-        ToolTip { title: "numapilot".into(), description: self.tip.clone(), ..Default::default() }
+        ToolTip {
+            title: "numapilot".into(),
+            description: self.tip.clone(),
+            ..Default::default()
+        }
     }
     fn activate(&mut self, _x: i32, _y: i32) {
         open_window();
@@ -78,7 +91,10 @@ impl Tray for NumaTray {
                 label: "Servidor de IA".into(),
                 submenu: vec![
                     item("Abrir chat", |_| {
-                        let _ = open_url(&format!("http://127.0.0.1:{}", LabSettings::load().get("LLM_PORT")));
+                        let _ = open_url(&format!(
+                            "http://127.0.0.1:{}",
+                            LabSettings::load().get("LLM_PORT")
+                        ));
                     }),
                     item("Iniciar", |_| run(&["llm", "up"])),
                     item("Parar", |_| run(&["llm", "down"])),
@@ -110,13 +126,18 @@ impl Alerts {
             let Some(t) = s.control_temp() else { continue };
             let n = self.streak.entry(g.pci.clone()).or_default();
             *n = if t >= 90.0 { *n + 1 } else { 0 };
-            let recent = self.last.get(&g.pci).is_some_and(|l| l.elapsed() < Duration::from_secs(600));
+            let recent = self
+                .last
+                .get(&g.pci)
+                .is_some_and(|l| l.elapsed() < Duration::from_secs(600));
             if *n >= 3 && !recent {
                 self.last.insert(g.pci.clone(), std::time::Instant::now());
                 let body = format!(
                     "{} está a {t:.0} °C (ventoinha {}). Confira a ventilação ou reduza o limite de potência.",
                     g.alias,
-                    s.fan_pct.map(|p| format!("{p:.0}%")).unwrap_or_else(|| "?".into())
+                    s.fan_pct
+                        .map(|p| format!("{p:.0}%"))
+                        .unwrap_or_else(|| "?".into())
                 );
                 let _ = spawn_detached(&[
                     "notify-send".into(),
@@ -144,9 +165,12 @@ fn summary(topo: &Topology) -> (String, bool) {
         lines.push(format!(
             "{}: {} · {}% · {}",
             g.alias,
-            t.map(|t| format!("{t:.0} °C")).unwrap_or_else(|| "-".into()),
+            t.map(|t| format!("{t:.0} °C"))
+                .unwrap_or_else(|| "-".into()),
             g.busy_percent().unwrap_or(0),
-            s.power_w.map(|w| format!("{w:.0} W")).unwrap_or_else(|| "-".into())
+            s.power_w
+                .map(|w| format!("{w:.0} W"))
+                .unwrap_or_else(|| "-".into())
         ));
     }
     (lines.join("\n"), hot)
@@ -164,11 +188,12 @@ pub fn main_loop() -> Result<(), String> {
         std::thread::sleep(Duration::from_secs(5));
         alerts.check(&topo);
         let (tip, hot) = summary(&topo);
-        if handle.update(|t| {
-            t.tip = tip;
-            t.hot = hot;
-        })
-        .is_none()
+        if handle
+            .update(|t| {
+                t.tip = tip;
+                t.hot = hot;
+            })
+            .is_none()
         {
             return Ok(());
         }

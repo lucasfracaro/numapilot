@@ -43,9 +43,10 @@ pub fn parse_cpulist(s: &str) -> Vec<usize> {
         }
         if let Some((a, b)) = part.split_once('-') {
             if let (Ok(a), Ok(b)) = (a.trim().parse::<usize>(), b.trim().parse::<usize>())
-                && a <= b {
-                    v.extend(a..=b);
-                }
+                && a <= b
+            {
+                v.extend(a..=b);
+            }
         } else if let Ok(a) = part.parse() {
             v.push(a);
         }

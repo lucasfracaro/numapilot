@@ -36,7 +36,10 @@ pub struct Learned {
 }
 
 fn now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 impl Learned {
@@ -70,7 +73,10 @@ impl Learned {
         let dir = state_dir();
         std::fs::create_dir_all(&dir)?;
         let tmp = dir.join("learned.json.tmp");
-        std::fs::write(&tmp, serde_json::to_string_pretty(&self.map).unwrap_or_default())?;
+        std::fs::write(
+            &tmp,
+            serde_json::to_string_pretty(&self.map).unwrap_or_default(),
+        )?;
         std::fs::rename(tmp, Self::path())?;
         self.dirty = false;
         Ok(())

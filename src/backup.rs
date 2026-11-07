@@ -11,7 +11,9 @@ use std::process::Command;
 
 /// Prefixo para as pastas do sistema (só nos testes).
 fn sysroot() -> PathBuf {
-    std::env::var_os("NUMAPILOT_BACKUP_ROOT").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
+    std::env::var_os("NUMAPILOT_BACKUP_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
 }
 
 fn under_root(abs: &str) -> PathBuf {
@@ -20,10 +22,14 @@ fn under_root(abs: &str) -> PathBuf {
 
 /// Arquivos/pastas do sistema guardados.
 fn system_items() -> Vec<String> {
-    let mut v: Vec<String> = ["/etc/numapilot.toml", "/etc/gfx906-rocm.conf", "/etc/modprobe.d/numapilot.conf"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut v: Vec<String> = [
+        "/etc/numapilot.toml",
+        "/etc/gfx906-rocm.conf",
+        "/etc/modprobe.d/numapilot.conf",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
     v.push(crate::learned::state_dir().to_string_lossy().to_string());
     v
 }
@@ -70,7 +76,9 @@ fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/root"))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/root"))
 }
 
 /// Parâmetros do kernel que valem guardar (os que a interface do numapilot controla).
@@ -80,14 +88,20 @@ pub fn known_params(configured: &str) -> Vec<String> {
         .filter(|t| {
             *t == "mitigations=off"
                 || crate::cmdline::KNOWN.iter().any(|(p, _, _)| p == t)
-                || crate::cmdline::MITIGATIONS.iter().any(|m| m.params.contains(t))
+                || crate::cmdline::MITIGATIONS
+                    .iter()
+                    .any(|m| m.params.contains(t))
         })
         .map(String::from)
         .collect()
 }
 
 fn user_unit_enabled(u: &str) -> bool {
-    Command::new("systemctl").args(["--user", "is-enabled", u]).output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new("systemctl")
+        .args(["--user", "is-enabled", u])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// Gera o backup. `out` = arquivo ou pasta (padrão: a pasta pessoal).
@@ -99,7 +113,11 @@ pub fn create(out: Option<&Path>) -> Result<PathBuf, String> {
     for item in system_items() {
         let src = under_root(&item);
         if src.exists() {
-            copy_tree(&src, &tmp.join("sistema").join(item.trim_start_matches('/'))).map_err(|e| format!("{item}: {e}"))?;
+            copy_tree(
+                &src,
+                &tmp.join("sistema").join(item.trim_start_matches('/')),
+            )
+            .map_err(|e| format!("{item}: {e}"))?;
             n += 1;
         }
     }
@@ -119,7 +137,10 @@ pub fn create(out: Option<&Path>) -> Result<PathBuf, String> {
             if p.extension().is_some_and(|x| x == "desktop")
                 && std::fs::read_to_string(&p).is_ok_and(|s| s.contains("numapilot run"))
             {
-                let rel = format!(".local/share/applications/{}", e.file_name().to_string_lossy());
+                let rel = format!(
+                    ".local/share/applications/{}",
+                    e.file_name().to_string_lossy()
+                );
                 copy_tree(&p, &tmp.join("usuario").join(&rel)).map_err(|e| e.to_string())?;
                 desktop_files.push(rel);
             }
@@ -128,20 +149,52 @@ pub fn create(out: Option<&Path>) -> Result<PathBuf, String> {
     let m = Manifest {
         version: env!("CARGO_PKG_VERSION").into(),
         created: crate::history::now(),
-        hostname: std::fs::read_to_string("/etc/hostname").unwrap_or_default().trim().to_string(),
-        kernel_params: crate::cmdline::configured().map(|(_, p)| known_params(&p)).unwrap_or_default(),
-        user_units: USER_UNITS.iter().filter(|u| user_unit_enabled(u)).map(|s| s.to_string()).collect(),
+        hostname: std::fs::read_to_string("/etc/hostname")
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+        kernel_params: crate::cmdline::configured()
+            .map(|(_, p)| known_params(&p))
+            .unwrap_or_default(),
+        user_units: USER_UNITS
+            .iter()
+            .filter(|u| user_unit_enabled(u))
+            .map(|s| s.to_string())
+            .collect(),
         desktop_files,
     };
-    std::fs::write(tmp.join("manifesto.json"), serde_json::to_string_pretty(&m).unwrap_or_default()).map_err(|e| e.to_string())?;
-    let date = Command::new("date").arg("+%Y-%m-%d").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
-    let name = format!("numapilot-backup-{}.tar.gz", if date.is_empty() { m.created.to_string() } else { date });
+    std::fs::write(
+        tmp.join("manifesto.json"),
+        serde_json::to_string_pretty(&m).unwrap_or_default(),
+    )
+    .map_err(|e| e.to_string())?;
+    let date = Command::new("date")
+        .arg("+%Y-%m-%d")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let name = format!(
+        "numapilot-backup-{}.tar.gz",
+        if date.is_empty() {
+            m.created.to_string()
+        } else {
+            date
+        }
+    );
     let dest = match out {
         Some(p) if p.is_dir() => p.join(name),
         Some(p) => p.to_path_buf(),
         None => h.join(name),
     };
-    let st = Command::new("tar").arg("czf").arg(&dest).arg("-C").arg(&tmp).arg(".").status().map_err(|e| format!("tar: {e}"))?;
+    let st = Command::new("tar")
+        .arg("czf")
+        .arg(&dest)
+        .arg("-C")
+        .arg(&tmp)
+        .arg(".")
+        .status()
+        .map_err(|e| format!("tar: {e}"))?;
     let _ = std::fs::remove_dir_all(&tmp);
     if !st.success() {
         return Err("tar falhou".into());
@@ -160,14 +213,21 @@ fn target_user() -> (PathBuf, Option<(u32, u32)>) {
     {
         let f: Vec<&str> = l.split(':').collect();
         if f.len() >= 6 {
-            return (PathBuf::from(f[5]), Some((f[2].parse().unwrap_or(0), f[3].parse().unwrap_or(0))));
+            return (
+                PathBuf::from(f[5]),
+                Some((f[2].parse().unwrap_or(0), f[3].parse().unwrap_or(0))),
+            );
         }
     }
     (home(), None)
 }
 
 fn chown_one(p: &Path, uid: u32, gid: u32) {
-    let _ = Command::new("chown").arg("-h").arg(format!("{uid}:{gid}")).arg(p).status();
+    let _ = Command::new("chown")
+        .arg("-h")
+        .arg(format!("{uid}:{gid}"))
+        .arg(p)
+        .status();
 }
 
 /// Restaura. Precisa de root para as pastas do sistema (use sudo).
@@ -175,7 +235,13 @@ pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Resu
     let tmp = std::env::temp_dir().join(format!("numapilot-restore-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
-    let st = Command::new("tar").arg("xzf").arg(file).arg("-C").arg(&tmp).status().map_err(|e| format!("tar: {e}"))?;
+    let st = Command::new("tar")
+        .arg("xzf")
+        .arg(file)
+        .arg("-C")
+        .arg(&tmp)
+        .status()
+        .map_err(|e| format!("tar: {e}"))?;
     if !st.success() {
         return Err("não consegui abrir o arquivo de backup".into());
     }
@@ -234,12 +300,18 @@ pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Resu
     }
     if !m.kernel_params.is_empty() {
         if apply_boot {
-            log(&format!("Parâmetros do kernel do backup: {}", m.kernel_params.join(" ")));
+            log(&format!(
+                "Parâmetros do kernel do backup: {}",
+                m.kernel_params.join(" ")
+            ));
             if let Err(e) = crate::cmdline::apply(&m.kernel_params, &[], log) {
                 log(&format!("Aviso: parâmetros do kernel não aplicados: {e}"));
             }
         } else {
-            log(&format!("Parâmetros do kernel no backup (não aplicados): {}", m.kernel_params.join(" ")));
+            log(&format!(
+                "Parâmetros do kernel no backup (não aplicados): {}",
+                m.kernel_params.join(" ")
+            ));
         }
     }
     if let Ok(u) = std::env::var("SUDO_USER") {
@@ -248,10 +320,19 @@ pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Resu
                 .args(["--user", "-M", &format!("{u}@"), "enable", "--now", unit])
                 .status()
                 .is_ok_and(|s| s.success());
-            log(&format!("  serviço do usuário {unit}: {}", if ok { "ligado" } else { "ligue com systemctl --user enable --now" }));
+            log(&format!(
+                "  serviço do usuário {unit}: {}",
+                if ok {
+                    "ligado"
+                } else {
+                    "ligue com systemctl --user enable --now"
+                }
+            ));
         }
     }
-    let _ = Command::new("systemctl").args(["try-restart", "numapilot.service"]).status();
+    let _ = Command::new("systemctl")
+        .args(["try-restart", "numapilot.service"])
+        .status();
     log("Restauração concluída. Se o backup tinha OverDrive ou parâmetros do kernel, reinicie.");
     Ok(())
 }
@@ -285,10 +366,22 @@ mod tests {
             std::fs::write(p, s).unwrap();
         };
         w(a.join("etc/numapilot.toml"), "[daemon]\n");
-        w(a.join("etc/modprobe.d/numapilot.conf"), "options amdgpu ppfeaturemask=0xfff7ffff\n");
-        w(home.join(".config/gfx906-lab/settings.env"), "LLM_PORT=8081\n");
-        w(home.join(".local/share/applications/blender.desktop"), "Exec=numapilot run -- blender\n");
-        w(home.join(".local/share/applications/outro.desktop"), "Exec=outro\n");
+        w(
+            a.join("etc/modprobe.d/numapilot.conf"),
+            "options amdgpu ppfeaturemask=0xfff7ffff\n",
+        );
+        w(
+            home.join(".config/gfx906-lab/settings.env"),
+            "LLM_PORT=8081\n",
+        );
+        w(
+            home.join(".local/share/applications/blender.desktop"),
+            "Exec=numapilot run -- blender\n",
+        );
+        w(
+            home.join(".local/share/applications/outro.desktop"),
+            "Exec=outro\n",
+        );
         // Variáveis de ambiente: só este teste mexe nelas (o HOME volta no fim).
         let old_home = std::env::var_os("HOME");
         unsafe {
@@ -301,11 +394,25 @@ mod tests {
         unsafe { std::env::set_var("NUMAPILOT_BACKUP_ROOT", &b) };
         let mut log = vec![];
         restore(&f, false, &mut |m| log.push(m.to_string())).unwrap();
-        assert_eq!(std::fs::read_to_string(b.join("etc/numapilot.toml")).unwrap(), "[daemon]\n");
+        assert_eq!(
+            std::fs::read_to_string(b.join("etc/numapilot.toml")).unwrap(),
+            "[daemon]\n"
+        );
         assert!(b.join("etc/modprobe.d/numapilot.conf").exists());
-        assert_eq!(std::fs::read_to_string(home.join(".config/gfx906-lab/settings.env")).unwrap(), "LLM_PORT=8081\n");
-        assert!(home.join(".local/share/applications/blender.desktop").exists());
-        assert!(!home.join(".local/share/applications/outro.desktop").exists(), "só os atalhos do numapilot");
+        assert_eq!(
+            std::fs::read_to_string(home.join(".config/gfx906-lab/settings.env")).unwrap(),
+            "LLM_PORT=8081\n"
+        );
+        assert!(
+            home.join(".local/share/applications/blender.desktop")
+                .exists()
+        );
+        assert!(
+            !home
+                .join(".local/share/applications/outro.desktop")
+                .exists(),
+            "só os atalhos do numapilot"
+        );
         unsafe {
             std::env::remove_var("NUMAPILOT_BACKUP_ROOT");
             if let Some(h) = old_home {

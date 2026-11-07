@@ -55,6 +55,18 @@ pub struct Machine {
     pub game_uncore_max: bool,
     /// Modo das ventoinhas por IPMI (placas Supermicro): 0 padrão, 1 máximo, 2 ótimo, 4 "heavy IO".
     pub ipmi_fan_mode: Option<u8>,
+    // ---- notebook ----
+    /// Para de carregar a bateria em (%).
+    pub charge_limit: Option<u8>,
+    /// Perfil de energia da plataforma (ACPI): low-power, balanced, performance...
+    pub platform_profile: Option<String>,
+    /// Modo aplicado sozinho ao ligar na tomada / ao ir para a bateria.
+    pub ac_mode: Option<String>,
+    pub battery_mode: Option<String>,
+    /// Deixar a placa dedicada dormir quando ninguém usa.
+    pub dgpu_autosuspend: Option<bool>,
+    /// Dynamic Boost da NVIDIA (nvidia-powerd).
+    pub nvidia_powerd: Option<bool>,
 }
 
 impl Default for Machine {
@@ -72,6 +84,12 @@ impl Default for Machine {
             game_latency_us: 2,
             game_uncore_max: true,
             ipmi_fan_mode: None,
+            charge_limit: None,
+            platform_profile: None,
+            ac_mode: None,
+            battery_mode: None,
+            dgpu_autosuspend: None,
+            nvidia_powerd: None,
         }
     }
 }
@@ -87,11 +105,17 @@ impl Machine {
         state_dir().join("machine.json")
     }
     pub fn load() -> Machine {
-        std::fs::read_to_string(Self::path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        std::fs::read_to_string(Self::path())
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
     }
     pub fn save(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(state_dir())?;
-        std::fs::write(Self::path(), serde_json::to_string_pretty(self).unwrap_or_default())
+        std::fs::write(
+            Self::path(),
+            serde_json::to_string_pretty(self).unwrap_or_default(),
+        )
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -125,33 +149,66 @@ impl Machine {
         {
             return Err(format!("modo do escalonador inválido: {m}"));
         }
-        if self.ipmi_fan_mode.is_some_and(|m| ![0, 1, 2, 4].contains(&m)) {
+        for m in [&self.ac_mode, &self.battery_mode].into_iter().flatten() {
+            if !["normal", "jogo", "ia", "silencioso"].contains(&m.as_str()) {
+                return Err(format!("modo desconhecido: {m}"));
+            }
+        }
+        if self.charge_limit.is_some_and(|c| !(20..=100).contains(&c)) {
+            return Err("limite de carga entre 20% e 100%".into());
+        }
+        if self
+            .ipmi_fan_mode
+            .is_some_and(|m| ![0, 1, 2, 4].contains(&m))
+        {
             return Err("modo de ventoinha IPMI inválido".into());
         }
         Ok(())
     }
 
     /// Modos de um clique. `game_node` = socket da placa do jogo.
-    pub fn preset(name: &str, topo: &Topology, game_node: Option<usize>, keep: &Machine) -> Machine {
+    pub fn preset(
+        name: &str,
+        topo: &Topology,
+        game_node: Option<usize>,
+        keep: &Machine,
+    ) -> Machine {
         let mut m = Machine {
             mode: name.into(),
             game_latency_us: keep.game_latency_us,
             game_uncore_max: keep.game_uncore_max,
             hugepages_mb: keep.hugepages_mb.clone(),
             ipmi_fan_mode: keep.ipmi_fan_mode,
+            charge_limit: keep.charge_limit,
+            ac_mode: keep.ac_mode.clone(),
+            battery_mode: keep.battery_mode.clone(),
+            dgpu_autosuspend: keep.dgpu_autosuspend,
+            nvidia_powerd: keep.nvidia_powerd,
+            platform_profile: crate::notebook::profile_for_mode(name),
             ..Default::default()
         };
         let has_scx = crate::containers::which("scxctl");
         let uncore_max = |pkg: u32| {
-            cpuctl::uncores().into_iter().find(|u| u.package == pkg).map(|u| (u.init_max_khz.max(u.max_khz) / 1000) as u32)
+            cpuctl::uncores()
+                .into_iter()
+                .find(|u| u.package == pkg)
+                .map(|u| (u.init_max_khz.max(u.max_khz) / 1000) as u32)
         };
-        let pkg = |n: usize| topo.node(n).and_then(|n| n.sockets.iter().next().copied()).unwrap_or(n as u32);
+        let pkg = |n: usize| {
+            topo.node(n)
+                .and_then(|n| n.sockets.iter().next().copied())
+                .unwrap_or(n as u32)
+        };
         match name {
             "jogo" => {
                 m.turbo = Some(true);
                 m.numa_balancing = Some(false);
                 let g = game_node.or(topo.nodes.first().map(|n| n.id)).unwrap_or(0);
-                let mut t = SocketTune { governor: Some("performance".into()), epb: Some(0), ..Default::default() };
+                let mut t = SocketTune {
+                    governor: Some("performance".into()),
+                    epb: Some(0),
+                    ..Default::default()
+                };
                 if let Some(u) = uncore_max(pkg(g)) {
                     t.uncore_min_mhz = Some(u);
                     t.uncore_max_mhz = Some(u);
@@ -167,7 +224,11 @@ impl Machine {
                 m.numa_balancing = Some(false);
                 m.thp = Some("always".into());
                 for n in &topo.nodes {
-                    let mut t = SocketTune { governor: Some("performance".into()), epb: Some(4), ..Default::default() };
+                    let mut t = SocketTune {
+                        governor: Some("performance".into()),
+                        epb: Some(4),
+                        ..Default::default()
+                    };
                     if let Some(u) = uncore_max(pkg(n.id)) {
                         t.uncore_min_mhz = Some(u);
                         t.uncore_max_mhz = Some(u);
@@ -180,7 +241,11 @@ impl Machine {
                 let rapl = cpuctl::rapl_zones();
                 for n in &topo.nodes {
                     let cpu0 = n.cpus.first().copied().unwrap_or(0);
-                    let mut t = SocketTune { governor: Some(cpuctl::eco_governor(cpu0)), epb: Some(15), ..Default::default() };
+                    let mut t = SocketTune {
+                        governor: Some(cpuctl::eco_governor(cpu0)),
+                        epb: Some(15),
+                        ..Default::default()
+                    };
                     if let Some(z) = rapl.iter().find(|z| z.package == pkg(n.id))
                         && let Some(max) = z.max_w.or(z.limit_w)
                     {
@@ -203,7 +268,10 @@ impl Machine {
 }
 
 pub fn procsys(rel: &str) -> PathBuf {
-    std::env::var_os("NUMAPILOT_PROCSYS").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/proc/sys")).join(rel)
+    std::env::var_os("NUMAPILOT_PROCSYS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/proc/sys"))
+        .join(rel)
 }
 
 fn thp_path() -> PathBuf {
@@ -219,7 +287,9 @@ pub fn thp() -> Option<String> {
 }
 
 fn huge_path(node: usize) -> PathBuf {
-    sys(&format!("devices/system/node/node{node}/hugepages/hugepages-2048kB/nr_hugepages"))
+    sys(&format!(
+        "devices/system/node/node{node}/hugepages/hugepages-2048kB/nr_hugepages"
+    ))
 }
 
 pub fn hugepages(node: usize) -> Option<u64> {
@@ -239,11 +309,18 @@ pub struct Orig {
     pub thp: Option<String>,
     pub huge: BTreeMap<usize, u64>,
     pub ipmi: Option<u8>,
+    pub charge_limit: Option<u8>,
+    pub platform_profile: Option<String>,
+    /// power/control das placas dedicadas
+    pub dgpu_pm: BTreeMap<String, String>,
 }
 
 impl Orig {
     pub fn capture(topo: &Topology) -> Orig {
-        let mut o = Orig { turbo: cpuctl::turbo(), ..Default::default() };
+        let mut o = Orig {
+            turbo: cpuctl::turbo(),
+            ..Default::default()
+        };
         for c in topo.all_cpus() {
             if let Some(g) = cpuctl::governor(c) {
                 o.gov.insert(c, g);
@@ -269,12 +346,23 @@ impl Orig {
             }
         }
         o.ipmi = crate::fans::supermicro_mode();
+        o.charge_limit = crate::notebook::battery_info()
+            .iter()
+            .find_map(|b| b.charge_limit);
+        o.platform_profile = crate::notebook::platform_profile();
+        for g in topo.gpus.iter().filter(|g| !g.is_integrated()) {
+            if let Some(c) = crate::notebook::runtime_pm(&g.pci) {
+                o.dgpu_pm.insert(g.pci.clone(), c);
+            }
+        }
         o
     }
 }
 
 fn package_of(topo: &Topology, node: usize) -> u32 {
-    topo.node(node).and_then(|n| n.sockets.iter().next().copied()).unwrap_or(node as u32)
+    topo.node(node)
+        .and_then(|n| n.sockets.iter().next().copied())
+        .unwrap_or(node as u32)
 }
 
 /// Uncore do socket conforme o ajuste salvo (ou o de fábrica).
@@ -283,7 +371,10 @@ pub fn apply_uncore(topo: &Topology, node: usize, t: Option<&SocketTune>) -> Res
     match t.map(|t| (t.uncore_min_mhz, t.uncore_max_mhz)) {
         Some((Some(a), Some(b))) => cpuctl::set_uncore(pkg, a as u64 * 1000, b as u64 * 1000),
         Some((a, b)) if a.is_some() || b.is_some() => {
-            let u = cpuctl::uncores().into_iter().find(|u| u.package == pkg).ok_or("uncore indisponível")?;
+            let u = cpuctl::uncores()
+                .into_iter()
+                .find(|u| u.package == pkg)
+                .ok_or("uncore indisponível")?;
             let lo = a.map(|x| x as u64 * 1000).unwrap_or(u.init_min_khz);
             let hi = b.map(|x| x as u64 * 1000).unwrap_or(u.init_max_khz);
             cpuctl::set_uncore(pkg, lo, hi)
@@ -295,7 +386,13 @@ pub fn apply_uncore(topo: &Topology, node: usize, t: Option<&SocketTune>) -> Res
 
 /// Aplica tudo. `prev` = o que estava aplicado antes (para o escalonador só mudar quando precisa);
 /// `base_gov` = governor escolhido por socket na aba Mapa (vale quando o modo não define).
-pub fn apply(m: &Machine, prev: Option<&Machine>, orig: &Orig, topo: &Topology, base_gov: &BTreeMap<usize, String>) -> Vec<String> {
+pub fn apply(
+    m: &Machine,
+    prev: Option<&Machine>,
+    orig: &Orig,
+    topo: &Topology,
+    base_gov: &BTreeMap<usize, String>,
+) -> Vec<String> {
     let mut errs = Vec::new();
     let mut e = |r: Result<(), String>, what: &str| {
         if let Err(x) = r {
@@ -311,7 +408,10 @@ pub fn apply(m: &Machine, prev: Option<&Machine>, orig: &Orig, topo: &Topology, 
         let t = m.socket(n.id);
         // governor
         for &c in &n.cpus {
-            let g = t.and_then(|t| t.governor.clone()).or_else(|| base_gov.get(&n.id).cloned()).or_else(|| orig.gov.get(&c).cloned());
+            let g = t
+                .and_then(|t| t.governor.clone())
+                .or_else(|| base_gov.get(&n.id).cloned())
+                .or_else(|| orig.gov.get(&c).cloned());
             if let Some(g) = g
                 && cpuctl::governor(c).as_deref() != Some(g.as_str())
             {
@@ -324,30 +424,65 @@ pub fn apply(m: &Machine, prev: Option<&Machine>, orig: &Orig, topo: &Topology, 
                 e(cpuctl::set_epb(&[c], ep), &format!("EPB cpu{c}"));
             }
             if let Some(f) = cpuctl::freq(c) {
-                let (omin, omax) = orig.freq.get(&c).copied().unwrap_or((f.hw_min_khz, f.hw_max_khz));
-                let lo = t.and_then(|t| t.min_mhz).map(|x| x as u64 * 1000).unwrap_or(omin);
-                let hi = t.and_then(|t| t.max_mhz).map(|x| x as u64 * 1000).unwrap_or(omax);
+                let (omin, omax) = orig
+                    .freq
+                    .get(&c)
+                    .copied()
+                    .unwrap_or((f.hw_min_khz, f.hw_max_khz));
+                let lo = t
+                    .and_then(|t| t.min_mhz)
+                    .map(|x| x as u64 * 1000)
+                    .unwrap_or(omin);
+                let hi = t
+                    .and_then(|t| t.max_mhz)
+                    .map(|x| x as u64 * 1000)
+                    .unwrap_or(omax);
                 if (lo, hi) != (f.min_khz, f.max_khz) {
-                    e(cpuctl::set_freq(&[c], lo, hi), &format!("frequência cpu{c}"));
+                    e(
+                        cpuctl::set_freq(&[c], lo, hi),
+                        &format!("frequência cpu{c}"),
+                    );
                 }
             }
         }
-        e(apply_uncore(topo, n.id, t), &format!("uncore socket {}", n.id));
+        e(
+            apply_uncore(topo, n.id, t),
+            &format!("uncore socket {}", n.id),
+        );
         let pkg = package_of(topo, n.id);
-        if let Some(w) = t.and_then(|t| t.power_limit_w).or_else(|| orig.rapl.get(&pkg).copied())
-            && cpuctl::rapl_zones().iter().any(|z| z.package == pkg && z.limit_w.map(|l| (l - w).abs() > 0.5).unwrap_or(true))
+        if let Some(w) = t
+            .and_then(|t| t.power_limit_w)
+            .or_else(|| orig.rapl.get(&pkg).copied())
+            && cpuctl::rapl_zones()
+                .iter()
+                .any(|z| z.package == pkg && z.limit_w.map(|l| (l - w).abs() > 0.5).unwrap_or(true))
         {
-            e(cpuctl::set_rapl_limit(pkg, w), &format!("potência socket {}", n.id));
+            e(
+                cpuctl::set_rapl_limit(pkg, w),
+                &format!("potência socket {}", n.id),
+            );
         }
-        let want = m.hugepages_mb.get(&n.id.to_string()).map(|mb| mb / 2).or_else(|| orig.huge.get(&n.id).copied());
+        let want = m
+            .hugepages_mb
+            .get(&n.id.to_string())
+            .map(|mb| mb / 2)
+            .or_else(|| orig.huge.get(&n.id).copied());
         if let Some(h) = want
             && hugepages(n.id) != Some(h)
         {
-            e(std::fs::write(huge_path(n.id), h.to_string()).map_err(|x| x.to_string()), &format!("hugepages nó {}", n.id));
+            e(
+                std::fs::write(huge_path(n.id), h.to_string()).map_err(|x| x.to_string()),
+                &format!("hugepages nó {}", n.id),
+            );
             if let Some(got) = hugepages(n.id)
                 && got < h
             {
-                e(Err(format!("pedi {h} páginas, o kernel conseguiu {got} (memória fragmentada; tente logo após ligar)")), &format!("hugepages nó {}", n.id));
+                e(
+                    Err(format!(
+                        "pedi {h} páginas, o kernel conseguiu {got} (memória fragmentada; tente logo após ligar)"
+                    )),
+                    &format!("hugepages nó {}", n.id),
+                );
             }
         }
     }
@@ -359,16 +494,83 @@ pub fn apply(m: &Machine, prev: Option<&Machine>, orig: &Orig, topo: &Topology, 
         }
         std::fs::write(&p, &v).map_err(|x| format!("{}: {x}", p.display()))
     };
-    e(sysw("kernel/numa_balancing", m.numa_balancing.map(|b| if b { "1" } else { "0" }.to_string()).or(orig.numa_balancing.clone())), "numa_balancing");
-    e(sysw("vm/zone_reclaim_mode", m.zone_reclaim.map(|b| if b { "1" } else { "0" }.to_string()).or(orig.zone_reclaim.clone())), "zone_reclaim_mode");
+    e(
+        sysw(
+            "kernel/numa_balancing",
+            m.numa_balancing
+                .map(|b| if b { "1" } else { "0" }.to_string())
+                .or(orig.numa_balancing.clone()),
+        ),
+        "numa_balancing",
+    );
+    e(
+        sysw(
+            "vm/zone_reclaim_mode",
+            m.zone_reclaim
+                .map(|b| if b { "1" } else { "0" }.to_string())
+                .or(orig.zone_reclaim.clone()),
+        ),
+        "zone_reclaim_mode",
+    );
     if let Some(t) = m.thp.clone().or(orig.thp.clone())
         && thp().as_deref() != Some(t.as_str())
     {
-        e(std::fs::write(thp_path(), &t).map_err(|x| x.to_string()), "THP");
+        e(
+            std::fs::write(thp_path(), &t).map_err(|x| x.to_string()),
+            "THP",
+        );
     }
-    let prev_scx = prev.map(|p| (p.scx.clone(), p.scx_mode.clone())).unwrap_or((None, None));
+    let prev_scx = prev
+        .map(|p| (p.scx.clone(), p.scx_mode.clone()))
+        .unwrap_or((None, None));
     if (m.scx.clone(), m.scx_mode.clone()) != prev_scx {
-        e(apply_scx(m.scx.as_deref(), m.scx_mode.as_deref(), prev_scx.0.is_some()), "escalonador");
+        e(
+            apply_scx(
+                m.scx.as_deref(),
+                m.scx_mode.as_deref(),
+                prev_scx.0.is_some(),
+            ),
+            "escalonador",
+        );
+    }
+    // notebook
+    if let Some(c) = m.charge_limit.or(orig.charge_limit)
+        && crate::notebook::battery_info()
+            .iter()
+            .any(|b| b.charge_limit.is_some_and(|x| x != c))
+    {
+        e(crate::notebook::set_charge_limit(c), "limite de carga");
+    }
+    if let Some(p) = m.platform_profile.clone().or(orig.platform_profile.clone())
+        && crate::notebook::platform_profile().as_deref() != Some(p.as_str())
+    {
+        e(
+            crate::notebook::set_platform_profile(&p),
+            "perfil da plataforma",
+        );
+    }
+    if crate::notebook::is_laptop() {
+        for g in topo.gpus.iter().filter(|g| !g.is_integrated()) {
+            let want = match m.dgpu_autosuspend {
+                Some(true) => Some("auto".to_string()),
+                Some(false) => Some("on".to_string()),
+                None => orig.dgpu_pm.get(&g.pci).cloned(),
+            };
+            if let Some(w) = want
+                && crate::notebook::runtime_pm(&g.pci).as_deref() != Some(w.as_str())
+            {
+                e(
+                    crate::notebook::set_runtime_pm(&g.pci, w == "auto"),
+                    "placa dedicada dormir",
+                );
+            }
+        }
+    }
+    if m.nvidia_powerd != prev.and_then(|p| p.nvidia_powerd)
+        && let Some(on) = m.nvidia_powerd
+        && crate::notebook::has_nvidia_powerd()
+    {
+        e(crate::notebook::set_nvidia_powerd(on), "Dynamic Boost");
     }
     if let Some(mode) = m.ipmi_fan_mode.or(orig.ipmi)
         && crate::fans::supermicro_mode() != Some(mode)
@@ -381,9 +583,16 @@ pub fn apply(m: &Machine, prev: Option<&Machine>, orig: &Orig, topo: &Topology, 
 // ---------------- sched_ext (scx_loader / scxctl) ----------------
 
 fn scxctl(args: &[&str]) -> Result<String, String> {
-    let o = std::process::Command::new("scxctl").args(args).output().map_err(|e| format!("scxctl: {e}"))?;
+    let o = std::process::Command::new("scxctl")
+        .args(args)
+        .output()
+        .map_err(|e| format!("scxctl: {e}"))?;
     let out = String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr);
-    if o.status.success() { Ok(out) } else { Err(out.trim().to_string()) }
+    if o.status.success() {
+        Ok(out)
+    } else {
+        Err(out.trim().to_string())
+    }
 }
 
 fn apply_scx(sched: Option<&str>, mode: Option<&str>, had: bool) -> Result<(), String> {
@@ -405,12 +614,23 @@ pub fn scx_status() -> Option<(String, Vec<String>)> {
     if !crate::containers::which("scxctl") {
         return None;
     }
-    let cur = scxctl(&["get"]).unwrap_or_default().lines().next().unwrap_or("").trim().to_string();
+    let cur = scxctl(&["get"])
+        .unwrap_or_default()
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
     let list = scxctl(&["list"])
         .unwrap_or_default()
         .split(|c: char| c == ',' || c.is_whitespace() || c == '[' || c == ']' || c == '"')
         .map(|s| s.trim().trim_start_matches("scx_").to_string())
-        .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') && s != "supported" && s != "schedulers")
+        .filter(|s| {
+            !s.is_empty()
+                && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && s != "supported"
+                && s != "schedulers"
+        })
         .collect();
     Some((cur, list))
 }
@@ -467,7 +687,14 @@ mod tests {
     fn validate_and_serde() {
         let mut m = Machine::default();
         assert!(m.validate().is_ok());
-        m.sockets.insert("0".into(), SocketTune { min_mhz: Some(3000), max_mhz: Some(2000), ..Default::default() });
+        m.sockets.insert(
+            "0".into(),
+            SocketTune {
+                min_mhz: Some(3000),
+                max_mhz: Some(2000),
+                ..Default::default()
+            },
+        );
         assert!(m.validate().is_err());
         m.sockets.clear();
         m.thp = Some("sempre".into());
@@ -494,14 +721,31 @@ mod tests {
             std::fs::write(f, v).unwrap();
         };
         for c in 0..4 {
-            for (i, (n, l)) in [("POLL", 0), ("C1", 2), ("C1E", 10), ("C6", 133)].iter().enumerate() {
-                mk(&format!("devices/system/cpu/cpu{c}/cpuidle/state{i}/name"), n);
-                mk(&format!("devices/system/cpu/cpu{c}/cpuidle/state{i}/latency"), &l.to_string());
-                mk(&format!("devices/system/cpu/cpu{c}/cpuidle/state{i}/disable"), "0");
+            for (i, (n, l)) in [("POLL", 0), ("C1", 2), ("C1E", 10), ("C6", 133)]
+                .iter()
+                .enumerate()
+            {
+                mk(
+                    &format!("devices/system/cpu/cpu{c}/cpuidle/state{i}/name"),
+                    n,
+                );
+                mk(
+                    &format!("devices/system/cpu/cpu{c}/cpuidle/state{i}/latency"),
+                    &l.to_string(),
+                );
+                mk(
+                    &format!("devices/system/cpu/cpu{c}/cpuidle/state{i}/disable"),
+                    "0",
+                );
             }
         }
         let u = "devices/system/cpu/intel_uncore_frequency/package_00_die_00/";
-        for (f, v) in [("min_freq_khz", "1200000"), ("max_freq_khz", "2800000"), ("initial_min_freq_khz", "1200000"), ("initial_max_freq_khz", "2800000")] {
+        for (f, v) in [
+            ("min_freq_khz", "1200000"),
+            ("max_freq_khz", "2800000"),
+            ("initial_min_freq_khz", "1200000"),
+            ("initial_max_freq_khz", "2800000"),
+        ] {
             mk(&format!("{u}{f}"), v);
         }
         let _g = crate::util::test_sysfs_lock(&root);
@@ -514,12 +758,24 @@ mod tests {
             mem_total_kb: 0,
             distances: vec![10],
         };
-        let topo = Topology { nodes: vec![node], gpus: vec![], default_graphics: None };
+        let topo = Topology {
+            nodes: vec![node],
+            gpus: vec![],
+            default_graphics: None,
+        };
         let m = Machine::default();
         let mut ll = LowLatency::default();
         ll.set(vec![0, 1], &m, &topo);
-        let dis = |c: usize, i: usize| std::fs::read_to_string(root.join(format!("devices/system/cpu/cpu{c}/cpuidle/state{i}/disable"))).unwrap();
-        assert_eq!((dis(0, 1).as_str(), dis(0, 2).as_str(), dis(0, 3).as_str()), ("0", "1", "1"));
+        let dis = |c: usize, i: usize| {
+            std::fs::read_to_string(root.join(format!(
+                "devices/system/cpu/cpu{c}/cpuidle/state{i}/disable"
+            )))
+            .unwrap()
+        };
+        assert_eq!(
+            (dis(0, 1).as_str(), dis(0, 2).as_str(), dis(0, 3).as_str()),
+            ("0", "1", "1")
+        );
         assert_eq!(dis(2, 3), "0", "outros núcleos não mudam");
         assert_eq!(crate::cpuctl::uncores()[0].min_khz, 2800000);
         ll.set(vec![], &m, &topo);

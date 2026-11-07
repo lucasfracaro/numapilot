@@ -71,7 +71,11 @@ impl MachineUi {
                 self.configured = cmdline::running();
             }
         }
-        self.sel = self.configured.split_whitespace().map(String::from).collect();
+        self.sel = self
+            .configured
+            .split_whitespace()
+            .map(String::from)
+            .collect();
     }
 }
 
@@ -81,22 +85,36 @@ fn tri(ui: &mut egui::Ui, id: &str, v: &mut Option<bool>, on: &str, off: &str) {
         Some(true) => on,
         Some(false) => off,
     };
-    egui::ComboBox::from_id_salt(id).selected_text(txt).show_ui(ui, |ui| {
-        ui.selectable_value(v, None, "não mexer");
-        ui.selectable_value(v, Some(true), on);
-        ui.selectable_value(v, Some(false), off);
-    });
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(txt)
+        .show_ui(ui, |ui| {
+            ui.selectable_value(v, None, "não mexer");
+            ui.selectable_value(v, Some(true), on);
+            ui.selectable_value(v, Some(false), off);
+        });
 }
 
 fn opt_mhz(ui: &mut egui::Ui, v: &mut Option<u32>, def: u32, lo: u32, hi: u32) {
     let mut on = v.is_some();
     let mut x = v.unwrap_or(def);
     ui.checkbox(&mut on, "");
-    ui.add_enabled(on, egui::DragValue::new(&mut x).range(lo..=hi.max(lo)).speed(25.0).suffix(" MHz"));
+    ui.add_enabled(
+        on,
+        egui::DragValue::new(&mut x)
+            .range(lo..=hi.max(lo))
+            .speed(25.0)
+            .suffix(" MHz"),
+    );
     *v = on.then_some(x);
 }
 
-const EPB: &[(u8, &str)] = &[(0, "desempenho"), (4, "equilibrado (desempenho)"), (6, "normal"), (8, "equilibrado (economia)"), (15, "economia")];
+const EPB: &[(u8, &str)] = &[
+    (0, "desempenho"),
+    (4, "equilibrado (desempenho)"),
+    (6, "normal"),
+    (8, "equilibrado (economia)"),
+    (15, "economia"),
+];
 
 pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     app.mach.refresh();
@@ -138,6 +156,85 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         });
         let Some(m) = mu.edit.as_mut() else { return };
 
+        // ---------------- notebook ----------------
+        if numapilot::notebook::is_laptop() {
+            use numapilot::notebook as nb;
+            ui.add_space(8.0);
+            ui.heading("Notebook");
+            let ac = nb::on_ac();
+            for b in nb::battery_info() {
+                ui.label(format!(
+                    "Bateria {}: {}% · {} · {}{}",
+                    b.name,
+                    b.pct.map(|p| p.to_string()).unwrap_or("?".into()),
+                    match b.status.as_str() {
+                        "Charging" => "carregando",
+                        "Discharging" => "descarregando",
+                        "Full" => "cheia",
+                        "Not charging" => "parada no limite",
+                        o => o,
+                    },
+                    b.power_w.map(|w| format!("{w:.1} W")).unwrap_or_default(),
+                    b.health_pct.map(|h| format!(" · saúde {h:.0}%")).unwrap_or_default()
+                ));
+            }
+            egui::Grid::new("nb").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
+                let modes = [("normal", "Normal"), ("jogo", "Jogo"), ("ia", "IA"), ("silencioso", "Silencioso")];
+                let combo = |ui: &mut egui::Ui, id: &str, v: &mut Option<String>| {
+                    let txt = v.as_deref().and_then(|x| modes.iter().find(|m| m.0 == x)).map(|m| m.1).unwrap_or("não trocar");
+                    egui::ComboBox::from_id_salt(id).selected_text(txt).show_ui(ui, |ui| {
+                        ui.selectable_value(v, None, "não trocar");
+                        for (k, l) in modes {
+                            ui.selectable_value(v, Some(k.to_string()), l);
+                        }
+                    });
+                };
+                ui.label(format!("Ao ligar na tomada{}", if ac == Some(true) { " (agora)" } else { "" }));
+                combo(ui, "acm", &mut m.ac_mode);
+                ui.end_row();
+                ui.label(format!("Na bateria{}", if ac == Some(false) { " (agora)" } else { "" }));
+                combo(ui, "batm", &mut m.battery_mode);
+                ui.end_row();
+                if nb::battery_info().iter().any(|b| b.charge_limit.is_some()) {
+                    ui.label("Parar de carregar em").on_hover_text("Deixar a bateria em 80% quando o notebook fica sempre na tomada aumenta muito a vida útil dela.");
+                    ui.horizontal(|ui| {
+                        let mut on = m.charge_limit.is_some();
+                        let mut v = m.charge_limit.unwrap_or(80);
+                        ui.checkbox(&mut on, "");
+                        ui.add_enabled(on, egui::Slider::new(&mut v, 50..=100).suffix("%").step_by(5.0));
+                        m.charge_limit = on.then_some(v);
+                    });
+                    ui.end_row();
+                }
+                let ch = nb::platform_profiles();
+                if !ch.is_empty() {
+                    ui.label("Perfil de energia do notebook").on_hover_text("Perfil do fabricante (ACPI): mexe em ventoinhas e limites de potência. Os modos já escolhem um.");
+                    egui::ComboBox::from_id_salt("pp")
+                        .selected_text(m.platform_profile.clone().unwrap_or_else(|| format!("não mexer ({})", nb::platform_profile().unwrap_or_default())))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut m.platform_profile, None, "não mexer");
+                            for c in &ch {
+                                ui.selectable_value(&mut m.platform_profile, Some(c.clone()), c);
+                            }
+                        });
+                    ui.end_row();
+                }
+                for g in topo.gpus.iter().filter(|g| !g.is_integrated()) {
+                    ui.label(format!("Placa dedicada {}", g.alias));
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(nb::dgpu_state(&g.pci)).weak());
+                        tri(ui, &format!("dpm{}", g.pci), &mut m.dgpu_autosuspend, "dormir quando ninguém usa", "sempre ligada");
+                    });
+                    ui.end_row();
+                }
+                if nb::has_nvidia_powerd() {
+                    ui.label("Dynamic Boost da NVIDIA").on_hover_text("Passa potência do processador para a placa de vídeo em jogos (nvidia-powerd).");
+                    tri(ui, "powerd", &mut m.nvidia_powerd, "ligado", "desligado");
+                    ui.end_row();
+                }
+            });
+        }
+
         // ---------------- processadores ----------------
         ui.add_space(8.0);
         ui.heading("Processadores");
@@ -154,7 +251,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         egui::Grid::new("sockets").striped(true).num_columns(topo.nodes.len() + 1).spacing([18.0, 6.0]).show(ui, |ui| {
             ui.label("");
             for n in &topo.nodes {
-                ui.label(RichText::new(format!("Socket {}", n.id)).strong());
+                ui.label(RichText::new(if topo.nodes.len() == 1 { "Processador".to_string() } else { format!("Socket {}", n.id) }).strong());
             }
             ui.end_row();
             ui.label("Agora");
@@ -294,6 +391,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(8.0);
         ui.heading("Memória");
         egui::Grid::new("mem").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
+            let multi = topo.nodes.len() > 1;
+            if multi {
             ui.label("Balanceamento NUMA do kernel")
                 .on_hover_text("O kernel move páginas sozinho para perto de quem usa. Com o numapilot cuidando do lugar dos programas, desligar evita migrações que causam travadinhas.");
             tri(ui, "nb", &mut m.numa_balancing, "ligado", "desligado");
@@ -302,6 +401,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 .on_hover_text("Ligado: prefere liberar cache do mesmo nó a usar memória do outro. Bom para latência, ruim para cache de disco.");
             tri(ui, "zr", &mut m.zone_reclaim, "ligado", "desligado");
             ui.end_row();
+            }
             ui.label("Transparent Huge Pages")
                 .on_hover_text("always: menos falhas de TLB (bom para IA e render na CPU); madvise: só quem pede (padrão).");
             egui::ComboBox::from_id_salt("thp")
@@ -314,7 +414,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 });
             ui.end_row();
             for n in &topo.nodes {
-                ui.label(format!("Hugepages reservadas no socket {}", n.id)).on_hover_text(
+                ui.label(if multi { format!("Hugepages reservadas no socket {}", n.id) } else { "Hugepages reservadas".to_string() }).on_hover_text(
                     "Páginas de 2 MB separadas no boot, para programas que usam hugetlbfs (máquinas virtuais, DPDK, alguns bancos de dados). \
                      O llama.cpp e o PyTorch não usam: para eles valem THP e a memória no socket certo.",
                 );

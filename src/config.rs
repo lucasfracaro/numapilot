@@ -1,6 +1,6 @@
 //! Configuração em /etc/numapilot.toml (regras manuais e parâmetros do modo automático).
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -113,8 +113,22 @@ impl Rule {
 
 pub fn default_compute_hints() -> Vec<String> {
     [
-        "llama-*", "llama.cpp*", "ollama", "koboldcpp*", "comfyui", "main.py", "vllm", "rocminfo", "hipcc",
-        "rocm-smi", "amd-smi", "whisper*", "sd", "stable-diffusion*", "rvs", "TransferBench",
+        "llama-*",
+        "llama.cpp*",
+        "ollama",
+        "koboldcpp*",
+        "comfyui",
+        "main.py",
+        "vllm",
+        "rocminfo",
+        "hipcc",
+        "rocm-smi",
+        "amd-smi",
+        "whisper*",
+        "sd",
+        "stable-diffusion*",
+        "rvs",
+        "TransferBench",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -131,16 +145,20 @@ impl Config {
     pub fn load() -> Result<Config> {
         let p = Self::path();
         let mut cfg = match std::fs::read_to_string(&p) {
-            Ok(s) => toml::from_str::<Config>(&s).with_context(|| format!("erro ao ler {}", p.display()))?,
+            Ok(s) => toml::from_str::<Config>(&s)
+                .with_context(|| format!("erro ao ler {}", p.display()))?,
             Err(_) => Config::default(),
         };
         if cfg.compute_hints.is_empty() {
             cfg.compute_hints = default_compute_hints();
         }
         for r in &cfg.rules {
-            CpuSpec::parse(&r.cpu).with_context(|| format!("regra '{}': cpu inválido", r.label()))?;
-            GpuSpec::parse(&r.gpu).with_context(|| format!("regra '{}': gpu inválido", r.label()))?;
-            MemSpec::parse(&r.mem).with_context(|| format!("regra '{}': mem inválido", r.label()))?;
+            CpuSpec::parse(&r.cpu)
+                .with_context(|| format!("regra '{}': cpu inválido", r.label()))?;
+            GpuSpec::parse(&r.gpu)
+                .with_context(|| format!("regra '{}': gpu inválido", r.label()))?;
+            MemSpec::parse(&r.mem)
+                .with_context(|| format!("regra '{}': mem inválido", r.label()))?;
             crate::decide::Kind::parse_usage(&r.usage)
                 .with_context(|| format!("regra '{}': use inválido", r.label()))?;
         }
@@ -183,10 +201,13 @@ impl CpuSpec {
                 CpuSpec::Cpus(v)
             }
             _ => {
-                let v: Result<Vec<usize>, _> = s.split(',').map(|x| x.trim().parse::<usize>()).collect();
+                let v: Result<Vec<usize>, _> =
+                    s.split(',').map(|x| x.trim().parse::<usize>()).collect();
                 match v {
                     Ok(v) if !v.is_empty() => CpuSpec::Nodes(v),
-                    _ => bail!("use auto, all, gpu, número(s) de nó ou cpus:LISTA (recebido '{s}')"),
+                    _ => {
+                        bail!("use auto, all, gpu, número(s) de nó ou cpus:LISTA (recebido '{s}')")
+                    }
                 }
             }
         })
@@ -212,8 +233,15 @@ impl GpuSpec {
             "display" | "video" | "graphics" => GpuSpec::Display,
             "compute" => GpuSpec::Compute(1),
             "compute:all" => GpuSpec::Compute(0),
-            _ if s.starts_with("compute:") => GpuSpec::Compute(s[8..].parse().context("compute:N")?),
-            _ => GpuSpec::Named(s.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()),
+            _ if s.starts_with("compute:") => {
+                GpuSpec::Compute(s[8..].parse().context("compute:N")?)
+            }
+            _ => GpuSpec::Named(
+                s.split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect(),
+            ),
         })
     }
 }
@@ -245,11 +273,17 @@ mod tests {
         assert_eq!(CpuSpec::parse("all").unwrap(), CpuSpec::All);
         assert_eq!(CpuSpec::parse("1").unwrap(), CpuSpec::Nodes(vec![1]));
         assert_eq!(CpuSpec::parse("0,1").unwrap(), CpuSpec::Nodes(vec![0, 1]));
-        assert_eq!(CpuSpec::parse("cpus:0-3").unwrap(), CpuSpec::Cpus(vec![0, 1, 2, 3]));
+        assert_eq!(
+            CpuSpec::parse("cpus:0-3").unwrap(),
+            CpuSpec::Cpus(vec![0, 1, 2, 3])
+        );
         assert!(CpuSpec::parse("abc").is_err());
         assert_eq!(GpuSpec::parse("compute:all").unwrap(), GpuSpec::Compute(0));
         assert_eq!(GpuSpec::parse("compute:2").unwrap(), GpuSpec::Compute(2));
-        assert_eq!(GpuSpec::parse("rx470,mi50a").unwrap(), GpuSpec::Named(vec!["rx470".into(), "mi50a".into()]));
+        assert_eq!(
+            GpuSpec::parse("rx470,mi50a").unwrap(),
+            GpuSpec::Named(vec!["rx470".into(), "mi50a".into()])
+        );
     }
 
     #[test]

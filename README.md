@@ -599,7 +599,45 @@ emergência (fallback) do Limine não é mexida. Pede a senha; pela linha de com
 
 ![Mitigações](docs/mitigacoes.png)
 
-## 21. Limitações
+## 21. Outros PCs: NVIDIA, notebook, Intel e um processador só
+
+O mesmo programa serve para qualquer PC com CachyOS: ele descobre o hardware e mostra só o que
+faz sentido. Num PC de um processador, o que é de dois sockets (memória do outro socket,
+balanceamento NUMA) some.
+
+**NVIDIA (driver oficial)**
+- Na aba Placas de vídeo aparece o quadro **Driver NVIDIA**: qual série serve para a placa
+  (GTX 16/RTX 20 em diante: série atual com os módulos abertos; Maxwell, Pascal e Volta: série
+  580xx), o que está carregado, instalado e disponível, e os botões **Instalar driver oficial** e
+  **Atualizar**. A instalação atualiza o sistema e usa o `chwd` do CachyOS (ou os pacotes certos
+  para cada kernel instalado, removendo a outra série se for preciso). No CachyOS o driver é
+  atualizado junto com o sistema: atualizar só ele quebraria as dependências. Pela linha de comando:
+  `numapilot driver status`, `sudo numapilot driver install`, `sudo numapilot driver update`.
+- Temperatura, consumo, uso e VRAM pelo `nvidia-smi`; limite de potência e **clock máximo
+  travado** (o driver não permite mexer na voltagem pelo Linux; potência e clock limitados são o
+  mais próximo de um undervolt).
+- Escolher a NVIDIA para um programa usa o PRIME render offload oficial
+  (`__NV_PRIME_RENDER_OFFLOAD`, `__GLX_VENDOR_LIBRARY_NAME`, `__VK_LAYER_NV_optimus`); escolher a
+  outra placa num PC com NVIDIA esconde a NVIDIA. Para computação, `CUDA_VISIBLE_DEVICES`.
+
+**Notebook**
+- Jogos vão para a placa dedicada no automático (a integrada continua mostrando a imagem).
+- Máquina → Notebook: bateria (carga, consumo, saúde), **modo automático na tomada e na bateria**
+  (ex.: Jogo na tomada, Silencioso na bateria), **parar de carregar em 80%** quando o notebook
+  permite, perfil de energia do fabricante (ACPI), deixar a placa dedicada **dormir** quando ninguém
+  usa (o numapilot não acorda a placa para ler sensores) e o Dynamic Boost da NVIDIA.
+
+**Intel**: frequência máxima da GPU integrada (i915). Os controles de processador (turbo,
+frequências, RAPL/limites de potência, C-states) da aba Máquina valem para Intel e AMD.
+
+**Resizable BAR**: cada placa mostra quanto da VRAM a CPU enxerga e o que fazer. Sem a opção na
+BIOS, ainda dá: com "Above 4G Decoding" ligado, o driver das placas AMD aumenta a janela sozinho no
+boot; se faltar espaço, o parâmetro `pci=realloc` (Máquina → Parâmetros do kernel) pede ao Linux
+para reorganizar. A NVIDIA só usa o BAR grande com a opção ligada na BIOS.
+
+![NVIDIA e notebook](docs/nvidia.png)
+
+## 22. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice

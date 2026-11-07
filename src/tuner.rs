@@ -17,7 +17,15 @@ pub fn user_state_dir() -> PathBuf {
 }
 
 pub fn safe_key(key: &str) -> String {
-    key.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' { c } else { '_' }).collect()
+    key.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 pub fn log_dir(key: &str) -> PathBuf {
@@ -92,7 +100,10 @@ impl Tuner {
         user_state_dir().join("tuner.json")
     }
     pub fn load() -> Tuner {
-        std::fs::read_to_string(Self::path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        std::fs::read_to_string(Self::path())
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
     }
     pub fn save(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(user_state_dir())?;
@@ -104,7 +115,14 @@ impl Tuner {
         let _ = std::fs::remove_dir_all(log_dir(key));
         self.sessions.insert(
             key.to_string(),
-            Session { key: key.into(), label: label.into(), variants, next: 0, started: crate::history::now(), seconds: 60 },
+            Session {
+                key: key.into(),
+                label: label.into(),
+                variants,
+                next: 0,
+                started: crate::history::now(),
+                seconds: 60,
+            },
         );
     }
 }
@@ -122,7 +140,12 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
             .find(|g| g.alias == b.gpu || g.pci == b.gpu)
             .or_else(|| topo.display_gpu())
             .and_then(|g| g.numa_node);
-        topo.nodes.iter().find(|n| Some(n.id) == gn).or(topo.nodes.first()).map(|n| n.physical_cores).unwrap_or(8)
+        topo.nodes
+            .iter()
+            .find(|n| Some(n.id) == gn)
+            .or(topo.nodes.first())
+            .map(|n| n.physical_cores)
+            .unwrap_or(8)
     };
     let mk = |label: String, cpu: &str, cores: Option<usize>, smt: bool, exclusive: bool| Variant {
         label,
@@ -142,16 +165,46 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
     let mut v = Vec::new();
     let p = gpu_node_cores;
     let c16 = p.min(16);
-    v.push(mk(format!("{c16} núcleos sem HT (socket da GPU)"), "gpu", Some(c16), false, true));
+    v.push(mk(
+        format!("{c16} núcleos sem HT (socket da GPU)"),
+        "gpu",
+        Some(c16),
+        false,
+        true,
+    ));
     if p > 8 {
-        v.push(mk("8 núcleos sem HT (socket da GPU)".into(), "gpu", Some(8), false, true));
+        v.push(mk(
+            "8 núcleos sem HT (socket da GPU)".into(),
+            "gpu",
+            Some(8),
+            false,
+            true,
+        ));
     }
-    v.push(mk(format!("{} núcleos com HT ({} threads)", c16.min(8), c16.min(8) * 2), "gpu", Some(c16.min(8) * 2), true, true));
+    v.push(mk(
+        format!("{} núcleos com HT ({} threads)", c16.min(8), c16.min(8) * 2),
+        "gpu",
+        Some(c16.min(8) * 2),
+        true,
+        true,
+    ));
     if p > 16 {
-        v.push(mk(format!("socket da GPU inteiro sem HT ({p} núcleos)"), "gpu", None, false, true));
+        v.push(mk(
+            format!("socket da GPU inteiro sem HT ({p} núcleos)"),
+            "gpu",
+            None,
+            false,
+            true,
+        ));
     }
     if topo.nodes.len() > 1 {
-        let mut w = mk("os dois sockets sem HT (comparação)".into(), "all", Some(32.min(p * topo.nodes.len())), false, false);
+        let mut w = mk(
+            "os dois sockets sem HT (comparação)".into(),
+            "all",
+            Some(32.min(p * topo.nodes.len())),
+            false,
+            false,
+        );
         w.profile.memory = "auto".into();
         v.push(w);
     }
@@ -161,7 +214,13 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
             if g.alias == b.gpu || g.render.is_none() {
                 continue;
             }
-            let mut x = mk(format!("{c16} núcleos sem HT na {}", g.alias), "gpu", Some(c16), false, true);
+            let mut x = mk(
+                format!("{c16} núcleos sem HT na {}", g.alias),
+                "gpu",
+                Some(c16),
+                false,
+                true,
+            );
             x.profile.gpu = g.alias.clone();
             v.push(x);
         }
@@ -181,14 +240,20 @@ pub fn mangohud_env(key: &str, seconds: u32) -> Vec<(String, String)> {
         Ok(c) if !c.trim().is_empty() => format!("{c},{mine}"),
         _ => mine,
     };
-    vec![("MANGOHUD".into(), "1".into()), ("MANGOHUD_CONFIG".into(), cfg)]
+    vec![
+        ("MANGOHUD".into(), "1".into()),
+        ("MANGOHUD_CONFIG".into(), cfg),
+    ]
 }
 
 pub fn newest_csv(dir: &Path, since: u64) -> Option<PathBuf> {
     std::fs::read_dir(dir)
         .ok()?
         .flatten()
-        .filter(|e| e.path().extension().is_some_and(|x| x == "csv") && !e.file_name().to_string_lossy().ends_with("_summary.csv"))
+        .filter(|e| {
+            e.path().extension().is_some_and(|x| x == "csv")
+                && !e.file_name().to_string_lossy().ends_with("_summary.csv")
+        })
         .filter_map(|e| {
             let m = e.metadata().ok()?.modified().ok()?;
             let t = m.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
@@ -201,7 +266,9 @@ pub fn newest_csv(dir: &Path, since: u64) -> Option<PathBuf> {
 /// Lê o CSV do MangoHud (linhas de sistema, depois o cabeçalho "fps,frametime,...").
 pub fn parse_csv(text: &str) -> Option<FpsResult> {
     let mut lines = text.lines();
-    let header = lines.by_ref().find(|l| l.starts_with("fps,") || l.contains(",frametime"))?;
+    let header = lines
+        .by_ref()
+        .find(|l| l.starts_with("fps,") || l.contains(",frametime"))?;
     let cols: Vec<&str> = header.split(',').map(str::trim).collect();
     let fi = cols.iter().position(|c| *c == "frametime")?;
     let mut ft: Vec<f64> = lines
@@ -219,7 +286,13 @@ pub fn parse_csv(text: &str) -> Option<FpsResult> {
         let m: f64 = ft[..n].iter().sum::<f64>() / n as f64;
         1000.0 / m
     };
-    Some(FpsResult { avg, low1: low(0.01), low01: low(0.001), frames: ft.len(), seconds: total_ms / 1000.0 })
+    Some(FpsResult {
+        avg,
+        low1: low(0.01),
+        low01: low(0.001),
+        frames: ft.len(),
+        seconds: total_ms / 1000.0,
+    })
 }
 
 #[cfg(test)]
@@ -228,7 +301,9 @@ mod tests {
 
     #[test]
     fn csv() {
-        let mut s = String::from("os,cpu,gpu,ram,kernel,driver,cpuscheduler\nArch,Xeon,MI50,128,6.12,mesa,\nfps,frametime,cpu_load,gpu_load,elapsed\n");
+        let mut s = String::from(
+            "os,cpu,gpu,ram,kernel,driver,cpuscheduler\nArch,Xeon,MI50,128,6.12,mesa,\nfps,frametime,cpu_load,gpu_load,elapsed\n",
+        );
         for i in 0..990 {
             s.push_str(&format!("60,{:.3},10,90,{i}\n", 1000.0 / 60.0));
         }
@@ -244,12 +319,25 @@ mod tests {
 
     #[test]
     fn best_by_score() {
-        let mut s = Session { key: "k".into(), label: "x".into(), variants: vec![], next: 0, started: 0, seconds: 60 };
+        let mut s = Session {
+            key: "k".into(),
+            label: "x".into(),
+            variants: vec![],
+            next: 0,
+            started: 0,
+            seconds: 60,
+        };
         for (a, l) in [(70.0, 30.0), (62.0, 50.0), (80.0, 20.0)] {
             s.variants.push(Variant {
                 label: String::new(),
                 profile: Profile::default(),
-                result: Some(FpsResult { avg: a, low1: l, low01: l, frames: 100, seconds: 1.0 }),
+                result: Some(FpsResult {
+                    avg: a,
+                    low1: l,
+                    low01: l,
+                    frames: 100,
+                    seconds: 1.0,
+                }),
             });
         }
         assert_eq!(s.best(), Some(1));

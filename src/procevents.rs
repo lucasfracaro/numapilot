@@ -2,7 +2,7 @@
 //! Assim o daemon posiciona o programa logo após o exec(), antes de ele alocar memória.
 //! Precisa de root (CAP_NET_ADMIN); sem isso o daemon continua só com a varredura.
 
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 
 const NETLINK_CONNECTOR: i32 = 11;
 const CN_IDX_PROC: u32 = 1;
@@ -20,7 +20,8 @@ fn put_u16(b: &mut Vec<u8>, v: u16) {
     b.extend_from_slice(&v.to_ne_bytes());
 }
 fn get_u32(b: &[u8], off: usize) -> Option<u32> {
-    b.get(off..off + 4).map(|s| u32::from_ne_bytes(s.try_into().unwrap()))
+    b.get(off..off + 4)
+        .map(|s| u32::from_ne_bytes(s.try_into().unwrap()))
 }
 
 /// Mensagem de inscrição (nlmsghdr + cn_msg + operação).
@@ -46,7 +47,9 @@ pub fn parse_exec_pids(buf: &[u8]) -> Vec<i32> {
     let mut out = Vec::new();
     let mut off = 0usize;
     while off + NLMSG_HDR <= buf.len() {
-        let Some(len) = get_u32(buf, off).map(|l| l as usize) else { break };
+        let Some(len) = get_u32(buf, off).map(|l| l as usize) else {
+            break;
+        };
         if len < NLMSG_HDR || off + len > buf.len() {
             break;
         }
@@ -64,7 +67,11 @@ pub fn parse_exec_pids(buf: &[u8]) -> Vec<i32> {
 /// Abre o canal de eventos. Retorna None se não for possível (sem root, kernel sem suporte...).
 pub fn start() -> Option<Receiver<i32>> {
     unsafe {
-        let fd = libc::socket(libc::AF_NETLINK, libc::SOCK_DGRAM | libc::SOCK_CLOEXEC, NETLINK_CONNECTOR);
+        let fd = libc::socket(
+            libc::AF_NETLINK,
+            libc::SOCK_DGRAM | libc::SOCK_CLOEXEC,
+            NETLINK_CONNECTOR,
+        );
         if fd < 0 {
             return None;
         }
@@ -72,7 +79,12 @@ pub fn start() -> Option<Receiver<i32>> {
         addr.nl_family = libc::AF_NETLINK as u16;
         addr.nl_pid = std::process::id();
         addr.nl_groups = CN_IDX_PROC;
-        if libc::bind(fd, &addr as *const _ as *const libc::sockaddr, std::mem::size_of::<libc::sockaddr_nl>() as u32) != 0 {
+        if libc::bind(
+            fd,
+            &addr as *const _ as *const libc::sockaddr,
+            std::mem::size_of::<libc::sockaddr_nl>() as u32,
+        ) != 0
+        {
             libc::close(fd);
             return None;
         }
@@ -89,7 +101,8 @@ pub fn start() -> Option<Receiver<i32>> {
                 loop {
                     let n = libc::recv(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len(), 0);
                     if n <= 0 {
-                        if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                        if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted
+                        {
                             continue;
                         }
                         // ENOBUFS (muitos eventos de uma vez): segue; a varredura cobre o resto.
@@ -140,7 +153,10 @@ mod tests {
         let Some(rx) = start() else { return };
         let mut child = std::process::Command::new("true").spawn().unwrap();
         let pid = child.id() as i32;
-        let got = (0..50).any(|_| rx.recv_timeout(std::time::Duration::from_millis(100)).is_ok_and(|p| p == pid));
+        let got = (0..50).any(|_| {
+            rx.recv_timeout(std::time::Duration::from_millis(100))
+                .is_ok_and(|p| p == pid)
+        });
         let _ = child.wait();
         assert!(got, "não recebi o PROC_EVENT_EXEC do processo filho");
     }

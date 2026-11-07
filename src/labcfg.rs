@@ -5,11 +5,16 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
 pub fn cfg_dir() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".config")).join("gfx906-lab")
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".config"))
+        .join("gfx906-lab")
 }
 
 pub fn state_dir() -> PathBuf {
@@ -51,8 +56,17 @@ pub fn parse_env(s: &str) -> BTreeMap<String, String> {
         }
         if let Some((k, v)) = l.split_once('=') {
             let k = k.trim();
-            if k.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') && !k.is_empty() {
-                let v = v.split(" #").next().unwrap_or("").trim().trim_matches('"').to_string();
+            if k.chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                && !k.is_empty()
+            {
+                let v = v
+                    .split(" #")
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches('"')
+                    .to_string();
                 m.insert(k.to_string(), v);
             }
         }
@@ -66,8 +80,10 @@ impl LabSettings {
     }
 
     pub fn load() -> LabSettings {
-        let mut values: BTreeMap<String, String> =
-            DEFAULTS.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let mut values: BTreeMap<String, String> = DEFAULTS
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         if let Ok(s) = std::fs::read_to_string("/etc/gfx906-rocm.conf") {
             values.extend(parse_env(&s));
         }
@@ -88,12 +104,19 @@ impl LabSettings {
 
     /// Grava só as chaves que o usuário mexeu pela interface.
     pub fn save_keys(&self, keys: &[&str]) -> std::io::Result<()> {
-        let mut cur = std::fs::read_to_string(Self::path()).map(|s| parse_env(&s)).unwrap_or_default();
+        let mut cur = std::fs::read_to_string(Self::path())
+            .map(|s| parse_env(&s))
+            .unwrap_or_default();
         for k in keys {
-            cur.insert(k.to_string(), self.values.get(*k).cloned().unwrap_or_default());
+            cur.insert(
+                k.to_string(),
+                self.values.get(*k).cloned().unwrap_or_default(),
+            );
         }
         std::fs::create_dir_all(cfg_dir())?;
-        let mut out = String::from("# Ajustes feitos pelo numapilot (interface gráfica). Lido pelo gfx906-rocm.\n");
+        let mut out = String::from(
+            "# Ajustes feitos pelo numapilot (interface gráfica). Lido pelo gfx906-rocm.\n",
+        );
         for (k, v) in cur {
             out.push_str(&format!("{k}=\"{}\"\n", v.replace('"', "")));
         }
@@ -101,18 +124,29 @@ impl LabSettings {
     }
 
     pub fn token(&self) -> String {
-        std::fs::read_to_string(cfg_dir().join("token")).map(|s| s.trim().to_string()).unwrap_or_default()
+        std::fs::read_to_string(cfg_dir().join("token"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
     }
 
     pub fn url_host(&self, key: &str) -> String {
         let h = self.get(key);
-        if h == "0.0.0.0" { "127.0.0.1".into() } else { h }
+        if h == "0.0.0.0" {
+            "127.0.0.1".into()
+        } else {
+            h
+        }
     }
 }
 
 /// Modelos .gguf (só a 1ª parte dos arquivos divididos), com tamanho total em bytes.
 pub fn list_models(dir: &std::path::Path) -> Vec<(String, u64)> {
-    fn walk(base: &std::path::Path, d: &std::path::Path, out: &mut Vec<(String, u64)>, depth: usize) {
+    fn walk(
+        base: &std::path::Path,
+        d: &std::path::Path,
+        out: &mut Vec<(String, u64)>,
+        depth: usize,
+    ) {
         if depth > 4 {
             return;
         }
@@ -122,14 +156,22 @@ pub fn list_models(dir: &std::path::Path) -> Vec<(String, u64)> {
             if p.is_dir() {
                 walk(base, &p, out, depth + 1);
             } else if p.extension().and_then(|x| x.to_str()) == Some("gguf") {
-                let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let name = p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 if let Some(i) = name.find("-of-")
                     && name.get(i.saturating_sub(5)..i) != Some("00001")
                 {
                     continue;
                 }
                 let size = p.metadata().map(|m| m.len()).unwrap_or(0);
-                let rel = p.strip_prefix(base).unwrap_or(&p).to_string_lossy().to_string();
+                let rel = p
+                    .strip_prefix(base)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .to_string();
                 out.push((rel, size));
             }
         }
@@ -146,9 +188,14 @@ mod tests {
 
     #[test]
     fn env_parsing() {
-        let m = parse_env("# x\nLLM_PORT=8081\nLLM_ARGS=\"--flash-attn on\"  # comentário\nfoo=bar\nLAB_BIND=\"0.0.0.0\"\n");
+        let m = parse_env(
+            "# x\nLLM_PORT=8081\nLLM_ARGS=\"--flash-attn on\"  # comentário\nfoo=bar\nLAB_BIND=\"0.0.0.0\"\n",
+        );
         assert_eq!(m.get("LLM_PORT").map(String::as_str), Some("8081"));
-        assert_eq!(m.get("LLM_ARGS").map(String::as_str), Some("--flash-attn on"));
+        assert_eq!(
+            m.get("LLM_ARGS").map(String::as_str),
+            Some("--flash-attn on")
+        );
         assert_eq!(m.get("LAB_BIND").map(String::as_str), Some("0.0.0.0"));
         assert!(!m.contains_key("foo"));
     }
@@ -158,7 +205,12 @@ mod tests {
         let d = std::env::temp_dir().join("numapilot-models-test");
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(d.join("q")).unwrap();
-        for f in ["a.gguf", "q/big-00001-of-00003.gguf", "q/big-00002-of-00003.gguf", "q/readme.txt"] {
+        for f in [
+            "a.gguf",
+            "q/big-00001-of-00003.gguf",
+            "q/big-00002-of-00003.gguf",
+            "q/readme.txt",
+        ] {
             std::fs::write(d.join(f), b"x").unwrap();
         }
         let m: Vec<String> = list_models(&d).into_iter().map(|x| x.0).collect();

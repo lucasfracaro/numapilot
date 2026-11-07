@@ -126,13 +126,19 @@ pub fn to_string(v: &Vdf) -> String {
 impl Vdf {
     pub fn get(&self, key: &str) -> Option<&Vdf> {
         match self {
-            Vdf::Obj(o) => o.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v),
+            Vdf::Obj(o) => o
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v),
             _ => None,
         }
     }
     pub fn get_mut(&mut self, key: &str) -> Option<&mut Vdf> {
         match self {
-            Vdf::Obj(o) => o.iter_mut().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v),
+            Vdf::Obj(o) => o
+                .iter_mut()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v),
             _ => None,
         }
     }
@@ -170,7 +176,9 @@ impl Vdf {
 // ---------------- Steam ----------------
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
 pub fn roots() -> Vec<PathBuf> {
@@ -213,22 +221,35 @@ pub fn libraries() -> Vec<PathBuf> {
 }
 
 fn is_tool(name: &str) -> bool {
-    ["Proton", "Steam Linux Runtime", "Steamworks Common", "SteamVR"].iter().any(|t| name.contains(t))
+    [
+        "Proton",
+        "Steam Linux Runtime",
+        "Steamworks Common",
+        "SteamVR",
+    ]
+    .iter()
+    .any(|t| name.contains(t))
 }
 
 /// (appid, nome) dos jogos instalados (sem Proton/runtimes).
 pub fn installed_games() -> Vec<(String, String)> {
     let mut v = Vec::new();
     for lib in libraries() {
-        let Ok(rd) = std::fs::read_dir(&lib) else { continue };
+        let Ok(rd) = std::fs::read_dir(&lib) else {
+            continue;
+        };
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().to_string();
             if !(n.starts_with("appmanifest_") && n.ends_with(".acf")) {
                 continue;
             }
-            let Ok(s) = std::fs::read_to_string(e.path()) else { continue };
+            let Ok(s) = std::fs::read_to_string(e.path()) else {
+                continue;
+            };
             let m = parse(&s);
-            let Some(st) = m.get("AppState") else { continue };
+            let Some(st) = m.get("AppState") else {
+                continue;
+            };
             if let (Some(id), Some(name)) = (st.str("appid"), st.str("name"))
                 && !is_tool(name)
             {
@@ -259,13 +280,22 @@ pub fn find_localconfigs() -> Vec<PathBuf> {
 }
 
 fn apps_mut(root: &mut Vdf) -> &mut Vdf {
-    root.child("UserLocalConfigStore").child("Software").child("Valve").child("Steam").child("apps")
+    root.child("UserLocalConfigStore")
+        .child("Software")
+        .child("Valve")
+        .child("Steam")
+        .child("apps")
 }
 
 pub fn read_launch_options(path: &Path) -> Option<HashMap<String, String>> {
     let s = std::fs::read_to_string(path).ok()?;
     let v = parse(&s);
-    let apps = v.get("UserLocalConfigStore")?.get("Software")?.get("Valve")?.get("Steam")?.get("apps")?;
+    let apps = v
+        .get("UserLocalConfigStore")?
+        .get("Software")?
+        .get("Valve")?
+        .get("Steam")?
+        .get("apps")?;
     Some(
         apps.entries()
             .iter()
@@ -324,14 +354,19 @@ pub fn apply_all(path: &Path, games: &[(String, String)], enable: bool) -> Resul
     }
     let s = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let ts = crate::history::now();
-    std::fs::write(path.with_extension(format!("vdf.numapilot-bak-{ts}")), &s).map_err(|e| format!("backup: {e}"))?;
+    std::fs::write(path.with_extension(format!("vdf.numapilot-bak-{ts}")), &s)
+        .map_err(|e| format!("backup: {e}"))?;
     let mut v = parse(&s);
     let apps = apps_mut(&mut v);
     let mut changed = 0;
     for (id, _) in games {
         let app = apps.child(id);
         let cur = app.str("LaunchOptions").unwrap_or("").to_string();
-        let new = if enable { wrap_option(&cur) } else { unwrap_option(&cur) };
+        let new = if enable {
+            wrap_option(&cur)
+        } else {
+            unwrap_option(&cur)
+        };
         if new != cur {
             app.set_str("LaunchOptions", &new);
             changed += 1;
@@ -380,13 +415,32 @@ mod tests {
         let v = parse(LC);
         let s = to_string(&v);
         assert_eq!(parse(&s), v, "ida e volta preserva tudo");
-        assert_eq!(v.get("UserLocalConfigStore").unwrap().get("friends").unwrap().str("x"), Some("a \"quoted\" value"));
+        assert_eq!(
+            v.get("UserLocalConfigStore")
+                .unwrap()
+                .get("friends")
+                .unwrap()
+                .str("x"),
+            Some("a \"quoted\" value")
+        );
 
         assert_eq!(wrap_option(""), "numapilot run -- %command%");
-        assert_eq!(wrap_option("PROTON_LOG=1 %command% -dx12"), "PROTON_LOG=1 numapilot run -- %command% -dx12");
-        assert_eq!(wrap_option("-skipStartScreen"), "numapilot run -- %command% -skipStartScreen");
-        assert_eq!(wrap_option("numapilot run -- %command%"), "numapilot run -- %command%");
-        assert_eq!(unwrap_option("PROTON_LOG=1 numapilot run -- %command% -dx12"), "PROTON_LOG=1 %command% -dx12");
+        assert_eq!(
+            wrap_option("PROTON_LOG=1 %command% -dx12"),
+            "PROTON_LOG=1 numapilot run -- %command% -dx12"
+        );
+        assert_eq!(
+            wrap_option("-skipStartScreen"),
+            "numapilot run -- %command% -skipStartScreen"
+        );
+        assert_eq!(
+            wrap_option("numapilot run -- %command%"),
+            "numapilot run -- %command%"
+        );
+        assert_eq!(
+            unwrap_option("PROTON_LOG=1 numapilot run -- %command% -dx12"),
+            "PROTON_LOG=1 %command% -dx12"
+        );
         assert_eq!(unwrap_option("numapilot run -- %command%"), "");
     }
 
@@ -397,19 +451,31 @@ mod tests {
         std::fs::create_dir_all(&d).unwrap();
         let p = d.join("localconfig.vdf");
         std::fs::write(&p, LC).unwrap();
-        let games = vec![("1245620".to_string(), "ELDEN RING".to_string()), ("1091500".into(), "Cyberpunk 2077".into()), ("999".into(), "Novo".into())];
+        let games = vec![
+            ("1245620".to_string(), "ELDEN RING".to_string()),
+            ("1091500".into(), "Cyberpunk 2077".into()),
+            ("999".into(), "Novo".into()),
+        ];
         if steam_running() {
             return;
         }
         assert_eq!(apply_all(&p, &games, true).unwrap(), 3);
         let o = read_launch_options(&p).unwrap();
-        assert_eq!(o["1245620"], "PROTON_LOG=1 numapilot run -- %command% -dx12");
+        assert_eq!(
+            o["1245620"],
+            "PROTON_LOG=1 numapilot run -- %command% -dx12"
+        );
         assert_eq!(o["999"], "numapilot run -- %command%");
         assert_eq!(apply_all(&p, &games, true).unwrap(), 0, "idempotente");
         assert_eq!(apply_all(&p, &games, false).unwrap(), 3);
         let o = read_launch_options(&p).unwrap();
         assert_eq!(o["1091500"], "-skipStartScreen");
         assert_eq!(o["999"], "");
-        assert!(std::fs::read_dir(&d).unwrap().flatten().any(|e| e.file_name().to_string_lossy().contains("numapilot-bak")));
+        assert!(
+            std::fs::read_dir(&d)
+                .unwrap()
+                .flatten()
+                .any(|e| e.file_name().to_string_lossy().contains("numapilot-bak"))
+        );
     }
 }

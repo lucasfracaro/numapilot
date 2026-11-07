@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 const MARK: &str = "X-Numapilot=true";
 
 fn home() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"))
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
 pub fn user_dir() -> PathBuf {
@@ -20,7 +22,8 @@ pub fn user_dir() -> PathBuf {
 
 fn search_dirs() -> Vec<PathBuf> {
     let mut v = vec![user_dir()];
-    let sys = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let sys =
+        std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
     for d in sys.split(':').filter(|d| !d.is_empty()) {
         v.push(Path::new(d).join("applications"));
     }
@@ -67,16 +70,23 @@ pub fn find_for_exe(exe: &str) -> Option<PathBuf> {
             if p.extension().and_then(|e| e.to_str()) != Some("desktop") {
                 continue;
             }
-            let Ok(c) = fs::read_to_string(&p) else { continue };
-            let Some(prog) = exec_line(&c).and_then(exec_program) else { continue };
-            let prog = prog.trim_start_matches(&format!("{} run -- ", numapilot_bin())).to_string();
+            let Ok(c) = fs::read_to_string(&p) else {
+                continue;
+            };
+            let Some(prog) = exec_line(&c).and_then(exec_program) else {
+                continue;
+            };
+            let prog = prog
+                .trim_start_matches(&format!("{} run -- ", numapilot_bin()))
+                .to_string();
             if basename(&prog) == exe_base {
                 return Some(p);
             }
             if let (Some(a), Some(b)) = (&exe_canon, which(&prog))
-                && *a == b {
-                    return Some(p);
-                }
+                && *a == b
+            {
+                return Some(p);
+            }
         }
     }
     None
@@ -87,7 +97,10 @@ fn which(prog: &str) -> Option<PathBuf> {
         return fs::canonicalize(prog).ok();
     }
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(prog)).find(|p| p.is_file()).and_then(|p| fs::canonicalize(p).ok())
+    std::env::split_paths(&path)
+        .map(|d| d.join(prog))
+        .find(|p| p.is_file())
+        .and_then(|p| fs::canonicalize(p).ok())
 }
 
 pub fn numapilot_bin() -> String {
@@ -165,8 +178,14 @@ mod tests {
 
     #[test]
     fn exec_parsing_and_wrap() {
-        assert_eq!(exec_program("env FOO=1 /usr/bin/blender %f").as_deref(), Some("/usr/bin/blender"));
-        assert_eq!(exec_program("\"/opt/My App/app\" --x").as_deref(), Some("/opt/My"));
+        assert_eq!(
+            exec_program("env FOO=1 /usr/bin/blender %f").as_deref(),
+            Some("/usr/bin/blender")
+        );
+        assert_eq!(
+            exec_program("\"/opt/My App/app\" --x").as_deref(),
+            Some("/opt/My")
+        );
         let c = "[Desktop Entry]\nName=Blender\nExec=blender %f\nDBusActivatable=true\n\n[Desktop Action new]\nExec=blender --new\n";
         let w = wrap_content(c, "/usr/local/bin/numapilot");
         assert!(w.contains("Exec=/usr/local/bin/numapilot run -- blender %f"));
@@ -174,6 +193,11 @@ mod tests {
         assert!(w.contains("DBusActivatable=false"));
         assert!(w.contains(MARK));
         // Idempotente.
-        assert_eq!(wrap_content(&w, "/usr/local/bin/numapilot").matches("run --").count(), 2);
+        assert_eq!(
+            wrap_content(&w, "/usr/local/bin/numapilot")
+                .matches("run --")
+                .count(),
+            2
+        );
     }
 }

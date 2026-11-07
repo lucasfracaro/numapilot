@@ -42,7 +42,10 @@ pub fn cstates(cpu: usize) -> Vec<CState> {
 }
 
 pub fn set_cstate_disabled(cpu: usize, idx: usize, off: bool) -> Result<(), String> {
-    w(cstate_dir(cpu, idx).join("disable"), if off { "1" } else { "0" })
+    w(
+        cstate_dir(cpu, idx).join("disable"),
+        if off { "1" } else { "0" },
+    )
 }
 
 /// Desliga, nos CPUs dados, os estados com latência de saída acima de `max_us`.
@@ -51,7 +54,11 @@ pub fn limit_latency(cpus: &[usize], max_us: u64) -> Vec<(usize, usize)> {
     let mut changed = Vec::new();
     for &c in cpus {
         for s in cstates(c) {
-            if s.index > 0 && s.latency_us > max_us && !s.disabled && set_cstate_disabled(c, s.index, true).is_ok() {
+            if s.index > 0
+                && s.latency_us > max_us
+                && !s.disabled
+                && set_cstate_disabled(c, s.index, true).is_ok()
+            {
                 changed.push((c, s.index));
             }
         }
@@ -118,9 +125,11 @@ pub fn set_freq(cpus: &[usize], min_khz: u64, max_khz: u64) -> Result<(), String
     for &c in cpus {
         let cur_max = read_u64(cpufreq(c, "scaling_max_freq")).unwrap_or(u64::MAX);
         let r = if min_khz > cur_max {
-            w(cpufreq(c, "scaling_max_freq"), &max_khz.to_string()).and(w(cpufreq(c, "scaling_min_freq"), &min_khz.to_string()))
+            w(cpufreq(c, "scaling_max_freq"), &max_khz.to_string())
+                .and(w(cpufreq(c, "scaling_min_freq"), &min_khz.to_string()))
         } else {
-            w(cpufreq(c, "scaling_min_freq"), &min_khz.to_string()).and(w(cpufreq(c, "scaling_max_freq"), &max_khz.to_string()))
+            w(cpufreq(c, "scaling_min_freq"), &min_khz.to_string())
+                .and(w(cpufreq(c, "scaling_max_freq"), &max_khz.to_string()))
         };
         if let Err(e) = r {
             err = Some(e);
@@ -165,13 +174,20 @@ pub fn eco_governor(cpu: usize) -> String {
 
 /// Energy Performance Bias: 0 = desempenho ... 15 = economia.
 pub fn epb(cpu: usize) -> Option<u8> {
-    read_trim(sys(&format!("devices/system/cpu/cpu{cpu}/power/energy_perf_bias")))?.parse().ok()
+    read_trim(sys(&format!(
+        "devices/system/cpu/cpu{cpu}/power/energy_perf_bias"
+    )))?
+    .parse()
+    .ok()
 }
 
 pub fn set_epb(cpus: &[usize], v: u8) -> Result<(), String> {
     let mut err = None;
     for &c in cpus {
-        if let Err(e) = w(sys(&format!("devices/system/cpu/cpu{c}/power/energy_perf_bias")), &v.to_string()) {
+        if let Err(e) = w(
+            sys(&format!("devices/system/cpu/cpu{c}/power/energy_perf_bias")),
+            &v.to_string(),
+        ) {
             err = Some(e);
         }
     }
@@ -194,7 +210,9 @@ pub struct Uncore {
 /// Zonas do driver intel_uncore_frequency (uma por socket).
 pub fn uncores() -> Vec<Uncore> {
     let base = sys("devices/system/cpu/intel_uncore_frequency");
-    let Ok(rd) = fs::read_dir(&base) else { return vec![] };
+    let Ok(rd) = fs::read_dir(&base) else {
+        return vec![];
+    };
     let mut v: Vec<Uncore> = rd
         .flatten()
         .filter_map(|e| {
@@ -225,7 +243,10 @@ pub fn uncores() -> Vec<Uncore> {
 }
 
 pub fn set_uncore(package: u32, min_khz: u64, max_khz: u64) -> Result<(), String> {
-    let u = uncores().into_iter().find(|u| u.package == package).ok_or("uncore indisponível (modprobe intel_uncore_frequency)")?;
+    let u = uncores()
+        .into_iter()
+        .find(|u| u.package == package)
+        .ok_or("uncore indisponível (modprobe intel_uncore_frequency)")?;
     if min_khz > u.max_khz {
         w(u.dir.join("max_freq_khz"), &max_khz.to_string())?;
         w(u.dir.join("min_freq_khz"), &min_khz.to_string())
@@ -237,7 +258,10 @@ pub fn set_uncore(package: u32, min_khz: u64, max_khz: u64) -> Result<(), String
 
 /// Volta para os valores de fábrica.
 pub fn reset_uncore(package: u32) -> Result<(), String> {
-    let u = uncores().into_iter().find(|u| u.package == package).ok_or("uncore indisponível")?;
+    let u = uncores()
+        .into_iter()
+        .find(|u| u.package == package)
+        .ok_or("uncore indisponível")?;
     if u.init_max_khz == 0 {
         return Ok(());
     }
@@ -258,7 +282,9 @@ pub struct Rapl {
 
 pub fn rapl_zones() -> Vec<Rapl> {
     let base = sys("class/powercap");
-    let Ok(rd) = fs::read_dir(&base) else { return vec![] };
+    let Ok(rd) = fs::read_dir(&base) else {
+        return vec![];
+    };
     let mut v: Vec<Rapl> = rd
         .flatten()
         .filter_map(|e| {
@@ -272,7 +298,12 @@ pub fn rapl_zones() -> Vec<Rapl> {
             let name = read_trim(d.join("name"))?;
             let package = name.strip_prefix("package-")?.parse().ok()?;
             let uw = |f: &str| read_u64(d.join(f)).map(|v| v as f64 / 1e6);
-            Some(Rapl { package, limit_w: uw("constraint_0_power_limit_uw"), max_w: uw("constraint_0_max_power_uw"), dir: d })
+            Some(Rapl {
+                package,
+                limit_w: uw("constraint_0_power_limit_uw"),
+                max_w: uw("constraint_0_max_power_uw"),
+                dir: d,
+            })
         })
         .collect();
     v.sort_by_key(|r| r.package);
@@ -280,11 +311,17 @@ pub fn rapl_zones() -> Vec<Rapl> {
 }
 
 pub fn set_rapl_limit(package: u32, watts: f64) -> Result<(), String> {
-    let z = rapl_zones().into_iter().find(|r| r.package == package).ok_or("RAPL indisponível neste socket")?;
+    let z = rapl_zones()
+        .into_iter()
+        .find(|r| r.package == package)
+        .ok_or("RAPL indisponível neste socket")?;
     if watts < 20.0 {
         return Err("limite muito baixo (mínimo 20 W)".into());
     }
-    w(z.dir.join("constraint_0_power_limit_uw"), &((watts * 1e6) as u64).to_string())
+    w(
+        z.dir.join("constraint_0_power_limit_uw"),
+        &((watts * 1e6) as u64).to_string(),
+    )
 }
 
 /// Mede a potência de cada socket pela diferença do contador de energia (precisa de root).
@@ -297,7 +334,9 @@ impl PowerMeter {
     pub fn sample(&mut self) -> BTreeMap<u32, f64> {
         let mut out = BTreeMap::new();
         for z in rapl_zones() {
-            let Some(e) = read_u64(z.dir.join("energy_uj")) else { continue };
+            let Some(e) = read_u64(z.dir.join("energy_uj")) else {
+                continue;
+            };
             let max = read_u64(z.dir.join("max_energy_range_uj")).unwrap_or(u64::MAX);
             let now = Instant::now();
             if let Some((pe, pt)) = self.last.get(&z.package) {
@@ -316,15 +355,21 @@ impl PowerMeter {
 /// Temperatura do pacote (coretemp "Package id N").
 pub fn package_temps() -> BTreeMap<u32, f64> {
     let mut out = BTreeMap::new();
-    let Ok(rd) = fs::read_dir(sys("class/hwmon")) else { return out };
+    let Ok(rd) = fs::read_dir(sys("class/hwmon")) else {
+        return out;
+    };
     for e in rd.flatten() {
         let d = e.path();
         if read_trim(d.join("name")).as_deref() != Some("coretemp") {
             continue;
         }
         for i in 1..=4 {
-            let Some(l) = read_trim(d.join(format!("temp{i}_label"))) else { continue };
-            if let Some(p) = l.strip_prefix("Package id ").and_then(|x| x.trim().parse().ok())
+            let Some(l) = read_trim(d.join(format!("temp{i}_label"))) else {
+                continue;
+            };
+            if let Some(p) = l
+                .strip_prefix("Package id ")
+                .and_then(|x| x.trim().parse().ok())
                 && let Some(v) = read_u64(d.join(format!("temp{i}_input")))
             {
                 out.insert(p, v as f64 / 1000.0);
@@ -347,19 +392,46 @@ mod tests {
             fs::create_dir_all(f.parent().unwrap()).unwrap();
             fs::write(f, v).unwrap();
         };
-        for (i, (n, l)) in [("POLL", 0), ("C1", 2), ("C1E", 10), ("C6", 133)].iter().enumerate() {
+        for (i, (n, l)) in [("POLL", 0), ("C1", 2), ("C1E", 10), ("C6", 133)]
+            .iter()
+            .enumerate()
+        {
             mk(&format!("devices/system/cpu/cpu0/cpuidle/state{i}/name"), n);
-            mk(&format!("devices/system/cpu/cpu0/cpuidle/state{i}/latency"), &l.to_string());
-            mk(&format!("devices/system/cpu/cpu0/cpuidle/state{i}/disable"), "0");
+            mk(
+                &format!("devices/system/cpu/cpu0/cpuidle/state{i}/latency"),
+                &l.to_string(),
+            );
+            mk(
+                &format!("devices/system/cpu/cpu0/cpuidle/state{i}/disable"),
+                "0",
+            );
         }
         mk("devices/system/cpu/intel_pstate/no_turbo", "0");
-        mk("devices/system/cpu/intel_uncore_frequency/package_01_die_00/min_freq_khz", "1200000");
-        mk("devices/system/cpu/intel_uncore_frequency/package_01_die_00/max_freq_khz", "2800000");
-        mk("devices/system/cpu/intel_uncore_frequency/package_01_die_00/initial_min_freq_khz", "1200000");
-        mk("devices/system/cpu/intel_uncore_frequency/package_01_die_00/initial_max_freq_khz", "2800000");
+        mk(
+            "devices/system/cpu/intel_uncore_frequency/package_01_die_00/min_freq_khz",
+            "1200000",
+        );
+        mk(
+            "devices/system/cpu/intel_uncore_frequency/package_01_die_00/max_freq_khz",
+            "2800000",
+        );
+        mk(
+            "devices/system/cpu/intel_uncore_frequency/package_01_die_00/initial_min_freq_khz",
+            "1200000",
+        );
+        mk(
+            "devices/system/cpu/intel_uncore_frequency/package_01_die_00/initial_max_freq_khz",
+            "2800000",
+        );
         mk("class/powercap/intel-rapl:1/name", "package-1");
-        mk("class/powercap/intel-rapl:1/constraint_0_power_limit_uw", "150000000");
-        mk("class/powercap/intel-rapl:1/constraint_0_max_power_uw", "150000000");
+        mk(
+            "class/powercap/intel-rapl:1/constraint_0_power_limit_uw",
+            "150000000",
+        );
+        mk(
+            "class/powercap/intel-rapl:1/constraint_0_max_power_uw",
+            "150000000",
+        );
         mk("class/powercap/intel-rapl:1:0/name", "dram");
         mk("class/hwmon/hwmon3/name", "coretemp");
         mk("class/hwmon/hwmon3/temp1_label", "Package id 1");

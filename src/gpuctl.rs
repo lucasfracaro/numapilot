@@ -15,7 +15,11 @@ pub const EMERGENCY_C: f64 = 95.0;
 
 pub fn hwmon_dir(pci: &str) -> Option<PathBuf> {
     let base = sys(&format!("bus/pci/devices/{pci}/hwmon"));
-    let mut v: Vec<PathBuf> = fs::read_dir(base).ok()?.flatten().map(|e| e.path()).collect();
+    let mut v: Vec<PathBuf> = fs::read_dir(base)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
     v.sort();
     v.into_iter().next()
 }
@@ -49,11 +53,18 @@ fn num(p: PathBuf) -> Option<f64> {
 }
 
 pub fn read_sensors(pci: &str) -> Sensors {
-    let Some(h) = hwmon_dir(pci) else { return Sensors::default() };
+    if crate::nvctl::is_nvidia(pci) {
+        return crate::nvctl::sensors(pci);
+    }
+    let Some(h) = hwmon_dir(pci) else {
+        return Sensors::default();
+    };
     let mut s = Sensors::default();
     for i in 1..=4 {
         let label = read_trim(h.join(format!("temp{i}_label"))).unwrap_or_default();
-        let Some(v) = num(h.join(format!("temp{i}_input"))) else { continue };
+        let Some(v) = num(h.join(format!("temp{i}_input"))) else {
+            continue;
+        };
         let c = v / 1000.0;
         match label.as_str() {
             "edge" => s.edge_c = Some(c),
@@ -98,15 +109,30 @@ pub struct GpuControl {
     pub power_cap_w: Option<f64>,
     /// Clock/voltagem (OverDrive). None = padrão de fábrica.
     pub od: Option<OdSettings>,
+    /// NVIDIA: clock máximo travado (MHz). None = normal.
+    pub clock_max_mhz: Option<u32>,
 }
 
 pub fn default_curve() -> Vec<(f64, f64)> {
-    vec![(40.0, 25.0), (60.0, 40.0), (75.0, 65.0), (85.0, 90.0), (95.0, 100.0)]
+    vec![
+        (40.0, 25.0),
+        (60.0, 40.0),
+        (75.0, 65.0),
+        (85.0, 90.0),
+        (95.0, 100.0),
+    ]
 }
 
 impl Default for GpuControl {
     fn default() -> Self {
-        GpuControl { fan: FanMode::Auto, curve: default_curve(), fixed_pct: 50.0, power_cap_w: None, od: None }
+        GpuControl {
+            fan: FanMode::Auto,
+            curve: default_curve(),
+            fixed_pct: 50.0,
+            power_cap_w: None,
+            od: None,
+            clock_max_mhz: None,
+        }
     }
 }
 
@@ -115,7 +141,8 @@ impl GpuControl {
         if self.curve.len() < 2 {
             return Err("a curva precisa de pelo menos 2 pontos".into());
         }
-        self.curve.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        self.curve
+            .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         for p in &mut self.curve {
             p.1 = p.1.clamp(0.0, 100.0);
         }
@@ -176,7 +203,10 @@ impl GpuControls {
     pub fn save(&self) -> io::Result<()> {
         fs::create_dir_all(state_dir())?;
         let tmp = state_dir().join("gpu.json.tmp");
-        fs::write(&tmp, serde_json::to_string_pretty(&self.map).unwrap_or_default())?;
+        fs::write(
+            &tmp,
+            serde_json::to_string_pretty(&self.map).unwrap_or_default(),
+        )?;
         fs::rename(tmp, Self::path())
     }
     pub fn get(&self, pci: &str) -> GpuControl {
@@ -203,6 +233,9 @@ pub fn set_fan_pct(pci: &str, pct: f64) -> io::Result<()> {
 
 /// Limite de potência em W (respeitando o mínimo e o máximo da placa). None = volta ao padrão.
 pub fn set_power_cap(pci: &str, watts: Option<f64>) -> io::Result<f64> {
+    if crate::nvctl::is_nvidia(pci) {
+        return crate::nvctl::set_power_limit(pci, watts).map_err(io::Error::other);
+    }
     let h = hwmon_dir(pci).ok_or_else(|| io::Error::other("sem hwmon"))?;
     let w = |f: &str| num(h.join(f)).map(|v| v / 1_000_000.0);
     let target = match watts {
@@ -214,7 +247,10 @@ pub fn set_power_cap(pci: &str, watts: Option<f64>) -> io::Result<f64> {
     let lo = w("power1_cap_min").unwrap_or(0.0);
     let hi = w("power1_cap_max").unwrap_or(target);
     let v = target.clamp(lo, hi);
-    fs::write(h.join("power1_cap"), ((v * 1_000_000.0).round() as u64).to_string())?;
+    fs::write(
+        h.join("power1_cap"),
+        ((v * 1_000_000.0).round() as u64).to_string(),
+    )?;
     Ok(v)
 }
 
@@ -229,13 +265,24 @@ mod tests {
         assert_eq!(curve_pct(&c, 50.0), 32.5);
         assert_eq!(curve_pct(&c, 85.0), 90.0);
         assert_eq!(curve_pct(&c, 120.0), 100.0);
-        let mut g = GpuControl { fan: FanMode::Fixed, fixed_pct: 30.0, ..Default::default() };
+        let mut g = GpuControl {
+            fan: FanMode::Fixed,
+            fixed_pct: 30.0,
+            ..Default::default()
+        };
         assert_eq!(g.target_pct(Some(60.0)), Some(30.0));
-        assert_eq!(g.target_pct(Some(96.0)), Some(100.0), "emergência ignora o modo");
+        assert_eq!(
+            g.target_pct(Some(96.0)),
+            Some(100.0),
+            "emergência ignora o modo"
+        );
         g.fan = FanMode::Auto;
         assert_eq!(g.target_pct(Some(60.0)), None);
         assert_eq!(g.target_pct(None), None);
-        let mut bad = GpuControl { curve: vec![(70.0, 150.0), (30.0, 10.0)], ..Default::default() };
+        let mut bad = GpuControl {
+            curve: vec![(70.0, 150.0), (30.0, 10.0)],
+            ..Default::default()
+        };
         bad.validate().unwrap();
         assert_eq!(bad.curve, vec![(30.0, 10.0), (70.0, 100.0)]);
     }
@@ -259,7 +306,10 @@ pub struct Od {
 }
 
 fn nums(s: &str) -> Vec<u32> {
-    s.split(|c: char| !c.is_ascii_digit()).filter(|x| !x.is_empty()).filter_map(|x| x.parse().ok()).collect()
+    s.split(|c: char| !c.is_ascii_digit())
+        .filter(|x| !x.is_empty())
+        .filter_map(|x| x.parse().ok())
+        .collect()
 }
 
 pub fn parse_od(s: &str) -> Od {
@@ -289,7 +339,9 @@ pub fn parse_od(s: &str) -> Od {
                     od.range_mclk = Some((n[0], n[1]));
                 } else if l.starts_with("VDDC_CURVE_SCLK[") && n.len() >= 3 {
                     od.range_curve_sclk.push((n[1], n[2]));
-                } else if (l.starts_with("VDDC_CURVE_VOLT[") || l.starts_with("VDDC_CURVE_VOFF[")) && n.len() >= 3 {
+                } else if (l.starts_with("VDDC_CURVE_VOLT[") || l.starts_with("VDDC_CURVE_VOFF["))
+                    && n.len() >= 3
+                {
                     od.range_curve_volt.push((n[1], n[2]));
                 }
             }
@@ -307,7 +359,11 @@ pub fn od_path(pci: &str) -> PathBuf {
 pub fn read_od(pci: &str) -> Option<Od> {
     let s = fs::read_to_string(od_path(pci)).ok()?;
     let od = parse_od(&s);
-    if od.sclk.is_empty() && od.curve.is_empty() { None } else { Some(od) }
+    if od.sclk.is_empty() && od.curve.is_empty() {
+        None
+    } else {
+        Some(od)
+    }
 }
 
 /// O que o usuário escolheu (None/vazio = manter o padrão da placa).
@@ -331,7 +387,9 @@ pub fn od_commands(od: &Od, s: &OdSettings) -> Result<Vec<String>, String> {
     let mut v = Vec::new();
     let check = |val: u32, r: Option<(u32, u32)>, what: &str| -> Result<(), String> {
         match r {
-            Some((lo, hi)) if val < lo || val > hi => Err(format!("{what} {val} fora da faixa {lo}–{hi}")),
+            Some((lo, hi)) if val < lo || val > hi => {
+                Err(format!("{what} {val} fora da faixa {lo}–{hi}"))
+            }
             _ => Ok(()),
         }
     };
@@ -344,8 +402,16 @@ pub fn od_commands(od: &Od, s: &OdSettings) -> Result<Vec<String>, String> {
         v.push(format!("m 1 {x}"));
     }
     for (i, (mhz, mv)) in s.curve.iter().enumerate() {
-        check(*mhz, od.range_curve_sclk.get(i).copied(), &format!("ponto {i} (MHz)"))?;
-        check(*mv, od.range_curve_volt.get(i).copied(), &format!("ponto {i} (mV)"))?;
+        check(
+            *mhz,
+            od.range_curve_sclk.get(i).copied(),
+            &format!("ponto {i} (MHz)"),
+        )?;
+        check(
+            *mv,
+            od.range_curve_volt.get(i).copied(),
+            &format!("ponto {i} (mV)"),
+        )?;
         v.push(format!("vc {i} {mhz} {mv}"));
     }
     v.push("c".into());
@@ -355,7 +421,9 @@ pub fn od_commands(od: &Od, s: &OdSettings) -> Result<Vec<String>, String> {
 /// Aplica (ou, com `None`, volta ao padrão de fábrica).
 pub fn apply_od(pci: &str, s: Option<&OdSettings>) -> Result<(), String> {
     let p = od_path(pci);
-    let lvl = sys(&format!("bus/pci/devices/{pci}/power_dpm_force_performance_level"));
+    let lvl = sys(&format!(
+        "bus/pci/devices/{pci}/power_dpm_force_performance_level"
+    ));
     let write = |cmd: &str| fs::write(&p, cmd).map_err(|e| format!("'{cmd}': {e}"));
     match s {
         None => {
@@ -379,8 +447,113 @@ pub fn apply_od(pci: &str, s: Option<&OdSettings>) -> Result<(), String> {
 
 /// (VRAM visível pela CPU, VRAM total) em bytes. Se forem ~iguais, o Resizable BAR está ativo.
 pub fn bar_info(pci: &str) -> Option<(u64, u64)> {
-    let r = |f: &str| read_trim(sys(&format!("bus/pci/devices/{pci}/{f}")))?.parse::<u64>().ok();
+    let r = |f: &str| {
+        read_trim(sys(&format!("bus/pci/devices/{pci}/{f}")))?
+            .parse::<u64>()
+            .ok()
+    };
     Some((r("mem_info_vis_vram_total")?, r("mem_info_vram_total")?))
+}
+
+// ---------- Intel (i915) ----------
+
+fn drm_card_dir(pci: &str) -> Option<PathBuf> {
+    let d = sys(&format!("bus/pci/devices/{pci}/drm"));
+    fs::read_dir(&d)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name().is_some_and(|n| {
+                let n = n.to_string_lossy();
+                n.starts_with("card") && !n.contains('-')
+            })
+        })
+}
+
+/// (atual, mín, máx, mín de fábrica, máx de fábrica) em MHz da GPU integrada Intel.
+pub fn intel_freq(pci: &str) -> Option<(u32, u32, u32, u32, u32)> {
+    let c = drm_card_dir(pci)?;
+    let r = |f: &str| read_trim(c.join(f)).and_then(|s| s.parse::<u32>().ok());
+    Some((
+        r("gt_cur_freq_mhz")?,
+        r("gt_min_freq_mhz")?,
+        r("gt_max_freq_mhz")?,
+        r("gt_RPn_freq_mhz").unwrap_or(0),
+        r("gt_RP0_freq_mhz").unwrap_or(0),
+    ))
+}
+
+/// Teto de frequência da GPU Intel (None = o de fábrica).
+pub fn set_intel_max_freq(pci: &str, mhz: Option<u32>) -> Result<(), String> {
+    let c = drm_card_dir(pci).ok_or("sem placa DRM")?;
+    let (_, min, _, _, hw_max) = intel_freq(pci).ok_or("o driver não expõe as frequências")?;
+    let v = mhz.unwrap_or(hw_max).clamp(min, hw_max.max(min));
+    fs::write(c.join("gt_max_freq_mhz"), v.to_string()).map_err(|e| e.to_string())
+}
+
+/// Situação do Resizable BAR de qualquer placa (AMD, NVIDIA, Intel), pelo PCI.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BarStatus {
+    /// Maior janela de memória da placa vista pela CPU (bytes).
+    pub bar_bytes: u64,
+    pub vram_bytes: Option<u64>,
+    /// A janela está acima de 4 GB (a BIOS tem "Above 4G Decoding" ligado).
+    pub above_4g: bool,
+    /// Maior tamanho que a placa aceita (capacidade Resizable BAR), se informado.
+    pub max_bytes: Option<u64>,
+}
+
+impl BarStatus {
+    pub fn full(&self) -> bool {
+        match self.vram_bytes {
+            Some(v) => self.bar_bytes * 10 >= v * 9,
+            None => self.bar_bytes > (512 << 20),
+        }
+    }
+}
+
+/// Lê o arquivo "resource" (início fim flags por BAR) e os tamanhos aceitos (resourceN_resize).
+pub fn bar_status(pci: &str) -> Option<BarStatus> {
+    let s = fs::read_to_string(sys(&format!("bus/pci/devices/{pci}/resource"))).ok()?;
+    let hex = |x: &str| u64::from_str_radix(x.trim_start_matches("0x"), 16).ok();
+    let mut best: Option<(usize, u64, u64)> = None;
+    for (i, l) in s.lines().take(6).enumerate() {
+        let f: Vec<&str> = l.split_whitespace().collect();
+        let (Some(a), Some(b)) = (
+            f.first().and_then(|x| hex(x)),
+            f.get(1).and_then(|x| hex(x)),
+        ) else {
+            continue;
+        };
+        if b <= a {
+            continue;
+        }
+        let size = b - a + 1;
+        if best.is_none_or(|(_, _, s)| size > s) {
+            best = Some((i, a, size));
+        }
+    }
+    let (idx, start, size) = best?;
+    let max_bytes = read_trim(sys(&format!("bus/pci/devices/{pci}/resource{idx}_resize")))
+        .and_then(|m| u64::from_str_radix(m.trim_start_matches("0x"), 16).ok())
+        .filter(|m| *m != 0)
+        .map(|m| 1u64 << (20 + 63 - m.leading_zeros() as u64));
+    let vram = bar_info(pci).map(|(_, t)| t).or_else(|| {
+        crate::nvctl::is_nvidia(pci)
+            .then(|| {
+                crate::nvctl::get(pci)
+                    .and_then(|g| g.mem_total_mb)
+                    .map(|m| (m * 1048576.0) as u64)
+            })
+            .flatten()
+    });
+    Some(BarStatus {
+        bar_bytes: size,
+        vram_bytes: vram,
+        above_4g: start > 0xffff_ffff,
+        max_bytes,
+    })
 }
 
 pub fn rebar_active(pci: &str) -> Option<bool> {
@@ -401,10 +574,30 @@ mod od_tests {
         assert_eq!(od.curve[2], (2, 1801, 1078));
         assert_eq!(od.range_sclk, Some((808, 2200)));
         assert_eq!(od.range_curve_volt.len(), 3);
-        let s = OdSettings { sclk_max: Some(1700), mclk_max: None, curve: vec![(808, 740), (1304, 800), (1700, 1000)] };
-        assert_eq!(od_commands(&od, &s).unwrap(), vec!["s 1 1700", "vc 0 808 740", "vc 1 1304 800", "vc 2 1700 1000", "c"]);
-        let bad = OdSettings { curve: vec![(808, 600)], ..Default::default() };
-        assert!(od_commands(&od, &bad).unwrap_err().contains("fora da faixa"));
+        let s = OdSettings {
+            sclk_max: Some(1700),
+            mclk_max: None,
+            curve: vec![(808, 740), (1304, 800), (1700, 1000)],
+        };
+        assert_eq!(
+            od_commands(&od, &s).unwrap(),
+            vec![
+                "s 1 1700",
+                "vc 0 808 740",
+                "vc 1 1304 800",
+                "vc 2 1700 1000",
+                "c"
+            ]
+        );
+        let bad = OdSettings {
+            curve: vec![(808, 600)],
+            ..Default::default()
+        };
+        assert!(
+            od_commands(&od, &bad)
+                .unwrap_err()
+                .contains("fora da faixa")
+        );
     }
 }
 
@@ -415,7 +608,8 @@ mod od_tests {
 pub type PowerProfiles = (Vec<(u32, String)>, Option<u32>);
 
 pub fn power_profiles(pci: &str) -> Option<PowerProfiles> {
-    let s = fs::read_to_string(sys(&format!("bus/pci/devices/{pci}/pp_power_profile_mode"))).ok()?;
+    let s =
+        fs::read_to_string(sys(&format!("bus/pci/devices/{pci}/pp_power_profile_mode"))).ok()?;
     Some(parse_power_profiles(&s))
 }
 
@@ -424,11 +618,19 @@ pub fn parse_power_profiles(s: &str) -> PowerProfiles {
     let mut active = None;
     for l in s.lines() {
         let mut it = l.split_whitespace();
-        let (Some(a), Some(b)) = (it.next(), it.next()) else { continue };
+        let (Some(a), Some(b)) = (it.next(), it.next()) else {
+            continue;
+        };
         let Ok(i) = a.parse::<u32>() else { continue };
         let star = b.contains('*');
-        let name = b.trim_end_matches(':').trim_end_matches('*').trim_end_matches(':').to_string();
-        if !name.chars().any(|c| c.is_ascii_uppercase()) || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        let name = b
+            .trim_end_matches(':')
+            .trim_end_matches('*')
+            .trim_end_matches(':')
+            .to_string();
+        if !name.chars().any(|c| c.is_ascii_uppercase())
+            || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
             continue;
         }
         if star {
@@ -458,16 +660,25 @@ pub fn profile_driver_name(short: &str) -> Option<&'static str> {
 pub fn set_power_profile(pci: &str, short: &str) -> Result<(), String> {
     let want = profile_driver_name(short).ok_or("perfil desconhecido")?;
     let (list, active) = power_profiles(pci).ok_or("a placa não tem pp_power_profile_mode")?;
-    let (idx, _) = list.iter().find(|(_, n)| n == want).ok_or(format!("a placa não tem o perfil {want}"))?;
+    let (idx, _) = list
+        .iter()
+        .find(|(_, n)| n == want)
+        .ok_or(format!("a placa não tem o perfil {want}"))?;
     if active == Some(*idx) {
         return Ok(());
     }
-    let lvl = sys(&format!("bus/pci/devices/{pci}/power_dpm_force_performance_level"));
+    let lvl = sys(&format!(
+        "bus/pci/devices/{pci}/power_dpm_force_performance_level"
+    ));
     // Fora do padrão o driver exige o nível "manual"; no padrão, volta para "auto".
     if want != "BOOTUP_DEFAULT" {
         let _ = fs::write(&lvl, "manual");
     }
-    let r = fs::write(sys(&format!("bus/pci/devices/{pci}/pp_power_profile_mode")), idx.to_string()).map_err(|e| e.to_string());
+    let r = fs::write(
+        sys(&format!("bus/pci/devices/{pci}/pp_power_profile_mode")),
+        idx.to_string(),
+    )
+    .map_err(|e| e.to_string());
     if want == "BOOTUP_DEFAULT" {
         let _ = fs::write(&lvl, "auto");
     }
@@ -510,7 +721,12 @@ pub fn pcie_link(pci: &str) -> Option<PcieLink> {
             break;
         }
         let r = |f: &str| read_trim(d.join(f));
-        if let (Some(cs), Some(cw), Some(ms), Some(mw)) = (r("current_link_speed"), r("current_link_width"), r("max_link_speed"), r("max_link_width")) {
+        if let (Some(cs), Some(cw), Some(ms), Some(mw)) = (
+            r("current_link_speed"),
+            r("current_link_width"),
+            r("max_link_speed"),
+            r("max_link_width"),
+        ) {
             let l = PcieLink {
                 generation: gen_of(&cs).unwrap_or(0),
                 width: cw.parse().unwrap_or(0),
@@ -537,6 +753,29 @@ pub fn pcie_link(pci: &str) -> Option<PcieLink> {
 #[cfg(test)]
 mod profile_tests {
     use super::*;
+
+    #[test]
+    fn bar_from_resource() {
+        let root = std::env::temp_dir().join("numapilot-bar-test");
+        let _ = std::fs::remove_dir_all(&root);
+        let d = root.join("bus/pci/devices/0000:03:00.0");
+        std::fs::create_dir_all(&d).unwrap();
+        // BAR0 256 MB acima de 4 GB, BAR2 2 MB, BAR5 512 KB
+        std::fs::write(
+            d.join("resource"),
+            "0x000000bff0000000 0x000000bfffffffff 0x000000000014220c\n0x0000000000000000 0x0000000000000000 0x0000000000000000\n0x000000bfe0000000 0x000000bfe01fffff 0x000000000014220c\n0x0000000000000000 0x0000000000000000 0x0000000000000000\n0x0000000000000000 0x0000000000000000 0x0000000000000000\n0x00000000fbe00000 0x00000000fbe7ffff 0x0000000000040200\n",
+        )
+        .unwrap();
+        std::fs::write(d.join("resource0_resize"), "0000000000003f00").unwrap();
+        std::fs::write(d.join("mem_info_vram_total"), "8589934592").unwrap();
+        std::fs::write(d.join("mem_info_vis_vram_total"), "268435456").unwrap();
+        let _g = crate::util::test_sysfs_lock(&root);
+        let b = bar_status("0000:03:00.0").unwrap();
+        assert_eq!(b.bar_bytes, 256 << 20);
+        assert!(b.above_4g);
+        assert_eq!(b.max_bytes, Some(8 << 30), "bit 13 = 8 GB");
+        assert!(!b.full());
+    }
 
     #[test]
     fn vega20_profiles() {

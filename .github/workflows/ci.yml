@@ -12,10 +12,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Dependências do sistema
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl-dev libdbus-1-dev shellcheck
+      - name: Formatação
+        run: cargo fmt --check
       - name: Testes
         run: cargo test --release
       - name: Clippy
