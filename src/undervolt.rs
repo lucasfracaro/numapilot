@@ -178,7 +178,7 @@ fn kernel_log_since(t: std::time::SystemTime) -> String {
 /// Programa de carga: vkmark sem janela (funciona até em placa sem monitor) ou glmark2.
 pub fn stress_cmd() -> Option<Vec<String>> {
     if crate::containers::which("vkmark") {
-        return Some(vec!["vkmark".into(), "--winsys".into(), "headless".into(), "--run-forever".into(), "-s".into(), "1920x1080".into()]);
+        return Some(vec!["vkmark".into(), "--winsys".into(), "headless".into(), "-s".into(), "1920x1080".into()]);
     }
     if crate::containers::which("glmark2") {
         return Some(vec!["glmark2".into(), "--off-screen".into(), "--run-forever".into(), "-s".into(), "1920x1080".into()]);
@@ -207,13 +207,17 @@ fn stress_env(g: &Gpu, topo: &Topology) -> Vec<(String, String)> {
 fn stress(g: &Gpu, topo: &Topology, secs: u64, out: &mut dyn FnMut(&str)) -> Result<(), String> {
     let cmd = stress_cmd().ok_or("instale o vkmark ou o glmark2 (sudo pacman -S vkmark glmark2)")?;
     let since = std::time::SystemTime::now();
-    let mut ch = Command::new(&cmd[0])
-        .args(&cmd[1..])
-        .envs(stress_env(g, topo))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("{}: {e}", cmd[0]))?;
+    let env = stress_env(g, topo);
+    let spawn = || {
+        Command::new(&cmd[0])
+            .args(&cmd[1..])
+            .envs(env.clone())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("{}: {e}", cmd[0]))
+    };
+    let mut ch = spawn()?;
     let t0 = Instant::now();
     let mut last = 0;
     let res = loop {
@@ -222,7 +226,15 @@ fn stress(g: &Gpu, topo: &Topology, secs: u64, out: &mut dyn FnMut(&str)) -> Res
             break Err("interrompido".into());
         }
         if let Ok(Some(st)) = ch.try_wait() {
-            break Err(format!("o teste de carga parou sozinho ({st})"));
+            // terminou a rodada normalmente: começa outra
+            if st.success() {
+                ch = match spawn() {
+                    Ok(c) => c,
+                    Err(e) => break Err(e),
+                };
+            } else {
+                break Err(format!("o teste de carga caiu ({st})"));
+            }
         }
         let el = t0.elapsed().as_secs();
         if el / 10 != last {

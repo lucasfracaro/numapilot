@@ -368,11 +368,32 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
                 });
         }
     }
+    if od.vddgfx_offset.is_some() || !od.curve.is_empty() {
+        auto_undervolt_button(ui, pci);
+    }
     ui.label(
         RichText::new("Se a placa travar ou o jogo fechar sozinho, volte um passo. Ao reiniciar o PC o serviço reaplica; desmarcar \"personalizar\" volta ao padrão.")
             .small()
             .color(Color32::from_rgb(230, 160, 40)),
     );
+}
+
+/// Botão do undervolt automático: abre um terminal com `numapilot undervolt` (mostra o passo a
+/// passo; Ctrl+C para e volta ao que era).
+fn auto_undervolt_button(ui: &mut egui::Ui, pci: &str) {
+    ui.horizontal(|ui| {
+        let have = numapilot::undervolt::stress_cmd().is_some();
+        if ui
+            .add_enabled(have, egui::Button::new("Achar o undervolt sozinho"))
+            .on_hover_text("Testa passo a passo com carga (1 min cada) e grava o último estável com 1 passo de margem. Deixe o PC parado; leva de 10 a 30 min.")
+            .clicked()
+        {
+            let _ = crate::jobs::in_terminal(&[crate::jobs::sibling_abs("numapilot"), "undervolt".into(), pci.to_string()]);
+        }
+        if !have {
+            ui.label(RichText::new("precisa do vkmark: sudo pacman -S vkmark").small().weak());
+        }
+    });
 }
 
 /// NVIDIA: travar o clock máximo (o driver não deixa mexer na voltagem pelo Linux).
@@ -415,6 +436,7 @@ fn nv_clock_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
             ui.add(egui::Slider::new(v, -500..=1500).suffix(" MHz").step_by(50.0));
         }
     });
+    auto_undervolt_button(ui, pci);
     if edit.nv_gpc_offset_mhz.is_some_and(|v| v > 0) && edit.clock_max_mhz.is_none() {
         ui.label(
             RichText::new("Sem travar o clock máximo, o deslocamento vira overclock (mais clock, mesma voltagem). Para undervolt, trave o clock também.")
