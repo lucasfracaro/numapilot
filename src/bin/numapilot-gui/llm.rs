@@ -174,6 +174,28 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.end_row();
         });
 
+    let model = cfg.get("LLM_MODEL");
+    if !model.is_empty() {
+        let f = numapilot::labcfg::cfg_dir()
+            .join("llm-tune")
+            .join(format!("{}.env", model.trim_end_matches(".gguf")));
+        if let Ok(t) = std::fs::read_to_string(&f) {
+            let res = t.lines().find_map(|l| l.strip_prefix("# geração ")).unwrap_or("");
+            let args = t
+                .lines()
+                .find_map(|l| l.strip_prefix("LLM_TUNED_ARGS="))
+                .unwrap_or("")
+                .trim_matches('"');
+            let one = t.lines().any(|l| l == "LLM_TUNED_ONE=1");
+            ui.label(
+                RichText::new(format!(
+                    "Otimizado: {}{args} ({res})",
+                    if one { "1 GPU, " } else { "" }
+                ))
+                .color(Color32::from_rgb(110, 190, 120)),
+            );
+        }
+    }
     ui.add_space(6.0);
     let port = cfg.get("LLM_PORT");
     ui.horizontal_wrapped(|ui| {
@@ -207,6 +229,19 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
         if ui.button("Atualizar llama.cpp").clicked() {
             app.start_job("Atualizando o llama.cpp", gfx(&["llm", "update"]));
+        }
+        if ui
+            .add_enabled(has_model && state.is_none(), egui::Button::new("Otimizar (tokens/s)"))
+            .on_hover_text("Testa 1 ou todas as GPUs, divisão por camadas ou linhas, flash attention e cache q8_0 com o modelo escolhido e grava a combinação mais rápida. Com o servidor parado; leva alguns minutos.")
+            .clicked()
+        {
+            save(app, &cfg);
+            let m = cfg.get("LLM_MODEL");
+            let mut c = gfx(&["llm", "tune"]);
+            c.push(m);
+            if let Err(e) = crate::jobs::in_terminal(&c) {
+                app.toast(e, false);
+            }
         }
         let eng = numapilot::containers::engine().unwrap_or_else(|| "podman".into());
         if ui

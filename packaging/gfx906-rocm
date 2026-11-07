@@ -141,6 +141,9 @@ Uso: gfx906-rocm <comando> [args]
                                  update [--check|--force] (testa nas GPUs e volta se falhar) | rollback | pycharm
   llm [comando]                servidor de IA (llama.cpp nas MI50, API compatível com OpenAI):
                                  models | up [modelo.gguf] | down | info | logs | update [--check]
+                                 tune [modelo.gguf]: testa as combinações (1 ou todas as GPUs,
+                                 divisão por camadas/linhas, flash attention, cache q8_0) e grava
+                                 a mais rápida em tokens/s; o "up" passa a usar
   check                        procura versões novas sem mudar nada
   validate [lab|llm|image]     valida as versões em uso nas GPUs e grava como referência
   update-all                   atualiza o que tiver versão nova: cada uma é validada ANTES de trocar
@@ -761,7 +764,17 @@ llm_run() {
         [[ -n ${NUMAPILOT_MEMS:-} ]] && args+=(--cpuset-mems "$NUMAPILOT_MEMS")
     fi
     local srv=(-m "/models/$model" --host 0.0.0.0 --port 8080 -ngl 999 -c "$LLM_CTX" --jinja)
-    ((ngpu > 1)) && srv+=(--split-mode layer)
+    local LLM_TUNED_ARGS="" LLM_TUNED_ONE=0 tf
+    tf=$(tune_file "$model")
+    # shellcheck source=/dev/null
+    [[ -r $tf ]] && source "$tf" && info "usando o ajuste do otimizador: $LLM_TUNED_ARGS$( ((LLM_TUNED_ONE)) && echo ' (1 GPU)')"
+    if ((LLM_TUNED_ONE)); then
+        args+=(-e HIP_VISIBLE_DEVICES=0 -e CUDA_VISIBLE_DEVICES=0 -e GGML_VK_VISIBLE_DEVICES=0)
+    elif [[ -z $LLM_TUNED_ARGS ]] && ((ngpu > 1)); then
+        srv+=(--split-mode layer)
+    fi
+    # shellcheck disable=SC2206
+    [[ -n $LLM_TUNED_ARGS ]] && srv+=($LLM_TUNED_ARGS)
     # shellcheck disable=SC2206
     [[ -n $LLM_ARGS ]] && srv+=($LLM_ARGS)
     # shellcheck disable=SC2016
@@ -904,13 +917,102 @@ cmd_llm() {
     info | status) llm_info ;;
     logs) exec "$(engine)" logs -f "$LLM_NAME" ;;
     update) llm_update "$@" ;;
-    *) die "uso: gfx906-rocm llm models|up [modelo.gguf]|down|info|logs|update [--check]" ;;
+    tune) llm_tune "$@" ;;
+    *) die "uso: gfx906-rocm llm models|up [modelo.gguf]|down|info|logs|update [--check]|tune [modelo.gguf]" ;;
     esac
 }
 
 # ---------------------------------------------------------------- validação antes de trocar de versão
 STATE_DIR="$(dirname "$UPDATE_LOG")"
 RELEASES_URL="https://github.com/mixa3607/ML-gfx906/releases"
+
+tune_file() { echo "$(lab_cfg_dir)/llm-tune/${1%.gguf}.env"; }
+
+llm_tune() { # [modelo]: mede as combinações com o llama-bench e grava a mais rápida
+    local model=${1:-$LLM_MODEL} img eng args ngpu=0 r out
+    [[ -n $model ]] || die "diga o modelo: gfx906-rocm llm tune modelo.gguf (veja: gfx906-rocm llm models)"
+    [[ -f $LLM_MODELS/$model ]] || die "modelo não encontrado: $LLM_MODELS/$model"
+    if llm_running; then die "pare o servidor antes (gfx906-rocm llm down): o teste usa as mesmas GPUs"; fi
+    eng=$(engine)
+    img=$(llm_image)
+    "$eng" image inspect "$img" >/dev/null 2>&1 || "$eng" pull "$img"
+    mapfile -t args < <(gpu_args)
+    mapfile -t -O "${#args[@]}" args < <(stack_env)
+    for r in $(compgen -G '/dev/dri/renderD*' || true); do ngpu=$((ngpu + 1)); done
+    [[ $GPU_STACK == cuda ]] && ngpu=$(nvidia-smi -L 2>/dev/null | wc -l || echo 1)
+    [[ $GPU_STACK == gfx906 ]] && ngpu=$(expected_gpus)
+    [[ -n ${LLM_TUNE_GPUS:-} ]] && ngpu=$LLM_TUNE_GPUS
+    ((ngpu >= 1)) || ngpu=1
+    local tmp
+    tmp=$(mktemp -d)
+    # combinações: nome | ambiente | argumentos do llama-bench | argumentos do llama-server
+    local combos=() gsets=("all")
+    ((ngpu > 1)) && gsets+=("one")
+    local g fa
+    for g in "${gsets[@]}"; do
+        local sms=("none")
+        [[ $g == all ]] && ((ngpu > 1)) && sms=("layer" "row")
+        local sm
+        for sm in "${sms[@]}"; do
+            for fa in "0|f16" "1|f16" "1|q8_0"; do
+                combos+=("$g|$sm|$fa")
+            done
+        done
+    done
+    info "otimizando $model: ${#combos[@]} combinações (prompt 512, geração 128, 2 rodadas cada)"
+    local c i=0 best="" best_tg=0 best_pp=0
+    : >"$tmp/res"
+    for c in "${combos[@]}"; do
+        i=$((i + 1))
+        IFS='|' read -r g sm fa kv <<<"$c"
+        local env=() bargs=(-ngl 999 -p 512 -n 128 -r 2 -o json -fa "$fa" -ctk "$kv" -ctv "$kv")
+        [[ $g == one ]] && env=(-e HIP_VISIBLE_DEVICES=0 -e CUDA_VISIBLE_DEVICES=0 -e GGML_VK_VISIBLE_DEVICES=0)
+        [[ $sm != none ]] && bargs+=(-sm "$sm")
+        printf '  [%d/%d] %s GPU, divisão %s, flash attention %s, cache %s ... ' "$i" "${#combos[@]}" \
+            "$([[ $g == one ]] && echo 1 || echo "$ngpu")" "$([[ $sm == none ]] && echo "—" || echo "$sm")" "$([[ $fa == 1 ]] && echo sim || echo não)" "$kv" >&2
+        # shellcheck disable=SC2016
+        if out=$("$eng" run --rm "${args[@]}" "${env[@]}" -v "$LLM_MODELS:/models:ro" --entrypoint sh "$img" -c \
+            'b=$(command -v llama-bench || echo /app/llama-bench); m=$1; shift; exec "$b" -m "/models/$m" "$@"' sh "$model" "${bargs[@]}" 2>/dev/null); then
+            local res
+            res=$(python3 -c '
+import json, sys
+d = json.loads(sys.stdin.read())
+pp = [r["avg_ts"] for r in d if r.get("n_prompt", 0) > 0 and r.get("n_gen", 0) == 0]
+tg = [r["avg_ts"] for r in d if r.get("n_gen", 0) > 0 and r.get("n_prompt", 0) == 0]
+print("%.1f %.1f" % (tg[0] if tg else 0, pp[0] if pp else 0))
+' <<<"$out" 2>/dev/null || echo "0 0")
+            local tg pp
+            read -r tg pp <<<"$res"
+            echo "gera $tg tok/s, prompt $pp tok/s" >&2
+            echo "$c|$tg|$pp" >>"$tmp/res"
+            # melhor = mais rápido para gerar; empate (até 2%) decide pelo prompt
+            if python3 -c 'import sys; tg,pp,btg,bpp=map(float,sys.argv[1:]); sys.exit(0 if tg>btg*1.02 or (tg>=btg*0.98 and pp>bpp) else 1)' "$tg" "$pp" "$best_tg" "$best_pp"; then
+                best=$c best_tg=$tg best_pp=$pp
+            fi
+        else
+            echo "falhou (memória insuficiente ou combinação não suportada)" >&2
+        fi
+    done
+    [[ -n $best ]] || { rm -rf "$tmp"; die "nenhuma combinação rodou"; }
+    IFS='|' read -r g sm fa kv <<<"$best"
+    local sargs="--flash-attn off"
+    [[ $fa == 1 ]] && sargs="--flash-attn on"
+    [[ $kv != f16 ]] && sargs+=" --cache-type-k $kv --cache-type-v $kv"
+    [[ $sm != none ]] && sargs+=" --split-mode $sm"
+    local f
+    f=$(tune_file "$model")
+    mkdir -p "$(dirname "$f")"
+    {
+        echo "# gfx906-rocm llm tune $(date -Iseconds) imagem $img"
+        echo "# geração $best_tg tok/s, prompt $best_pp tok/s"
+        echo "LLM_TUNED_ARGS=\"$sargs\""
+        echo "LLM_TUNED_ONE=$([[ $g == one ]] && echo 1 || echo 0)"
+    } >"$f"
+    sort -t'|' -k5 -gr "$tmp/res" >"${f%.env}.results"
+    rm -rf "$tmp"
+    info "melhor: $([[ $g == one ]] && echo '1 GPU' || echo "$ngpu GPUs"), $sargs: $best_tg tok/s (prompt $best_pp)"
+    info "gravado em $f; o próximo 'gfx906-rocm llm up $model' usa isto (apague o arquivo para voltar ao padrão)"
+}
 
 stack_env() { # variáveis extras por placa (uma linha cada)
     # BC-250: memória unificada; o llama.cpp com Vulkan gera texto 5-12% mais rápido na memória
