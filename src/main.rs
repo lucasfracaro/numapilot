@@ -121,7 +121,7 @@ enum Cmd {
         #[arg(long, default_value_t = 120)]
         disk: u32,
     },
-    /// Notebook com NVIDIA: status | on | off | env [--export] ("NVIDIA só quando precisar")
+    /// Notebook com NVIDIA: status | on | off | sempre | bateria | env [--export] ("NVIDIA só quando precisar")
     Hybrid {
         action: Option<String>,
         #[arg(long)]
@@ -574,6 +574,15 @@ fn real_main() -> Result<()> {
                     }
                     Ok(())
                 }
+                "sempre" | "bateria" => {
+                    hybrid::set_policy(action.as_deref().unwrap_or("sempre"))
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    println!(
+                        "quando: {} (vale a partir do próximo login)",
+                        hybrid::policy()
+                    );
+                    Ok(())
+                }
                 "on" | "off" => {
                     hybrid::pair(&topo).context("só para notebook com placa integrada + NVIDIA")?;
                     hybrid::set_enabled(
@@ -613,11 +622,16 @@ fn real_main() -> Result<()> {
                         );
                     }
                     println!(
-                        "NVIDIA só quando precisar: {} · esta sessão: {}",
+                        "NVIDIA só quando precisar: {} ({}) · esta sessão: {}",
                         if hybrid::enabled() {
                             "ligado"
                         } else {
                             "desligado"
+                        },
+                        if hybrid::policy() == "bateria" {
+                            "só se o login for na bateria"
+                        } else {
+                            "sempre"
                         },
                         if hybrid::session_restricted() {
                             "desktop só na integrada"

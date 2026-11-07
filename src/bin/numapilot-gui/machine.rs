@@ -233,6 +233,22 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         Err(e) => app_toast = Some(e),
                     }
                 }
+                if on {
+                    ui.horizontal(|ui| {
+                        ui.label("Quando:");
+                        let mut pol = hybrid::policy();
+                        let before = pol.clone();
+                        ui.radio_value(&mut pol, "sempre".to_string(), "sempre")
+                            .on_hover_text("Também na tomada: menos calor e barulho; o HDMI só funciona se estiver ligado no login (ou depois de sair e entrar).");
+                        ui.radio_value(&mut pol, "bateria".to_string(), "só se o login for na bateria")
+                            .on_hover_text("Na tomada o desktop usa as duas placas e o HDMI funciona a qualquer hora (a NVIDIA fica ligada).");
+                        if pol != before
+                            && let Err(e) = hybrid::set_policy(&pol)
+                        {
+                            app_toast = Some(e);
+                        }
+                    });
+                }
                 if hybrid::session_restricted() && nv_screen {
                     ui.label(
                         RichText::new(format!("Tela ligada na saída da {} ({}): saia e entre na sessão para ela funcionar.", nv.alias, hybrid::outputs(&nv.pci).iter().filter(|o| o.connected).map(|o| o.name.clone()).collect::<Vec<_>>().join(", ")))

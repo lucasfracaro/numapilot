@@ -118,11 +118,61 @@ struct Alerts {
     streak: std::collections::HashMap<String, u32>,
     last: std::collections::HashMap<String, std::time::Instant>,
     nv_screen_warned: bool,
+    probe_at: Option<std::time::Instant>,
+    battery_warned: bool,
 }
 
 impl Alerts {
     fn check(&mut self, topo: &Topology) {
         // "NVIDIA só quando precisar": tela ligada na saída da NVIDIA depois do login
+        // O notebook não avisa quando um cabo é ligado na NVIDIA dormindo: confere de tempos em
+        // tempos (acorda a placa por um instante): 20 s na tomada, 60 s na bateria.
+        if numapilot::hybrid::session_restricted()
+            && let Some((_, nv)) = numapilot::hybrid::pair(topo)
+        {
+            let every = if numapilot::notebook::on_ac() == Some(false) {
+                60
+            } else {
+                20
+            };
+            if self
+                .probe_at
+                .is_none_or(|t| t.elapsed() >= Duration::from_secs(every))
+            {
+                self.probe_at = Some(std::time::Instant::now());
+                let _ = numapilot::hybrid::probe_connected(&nv.pci);
+            }
+        }
+        // Login na tomada (desktop nas duas placas) e depois foi para a bateria: a NVIDIA fica
+        // presa pelo desktop até sair e entrar.
+        if numapilot::hybrid::enabled()
+            && !numapilot::hybrid::session_restricted()
+            && let Some((_, nv)) = numapilot::hybrid::pair(topo)
+        {
+            let on_batt = numapilot::notebook::on_ac() == Some(false);
+            let nv_screen = numapilot::hybrid::outputs(&nv.pci)
+                .iter()
+                .any(|o| o.connected);
+            if on_batt
+                && !nv_screen
+                && !numapilot::notebook::dgpu_state(&nv.pci).starts_with("dormindo")
+            {
+                if !self.battery_warned {
+                    self.battery_warned = true;
+                    let _ = spawn_detached(&[
+                        "notify-send".into(),
+                        "-a".into(),
+                        "numapilot".into(),
+                        "-i".into(),
+                        "battery".into(),
+                        format!("{} ligada na bateria", nv.alias),
+                        "Esta sessão começou na tomada com o desktop nas duas placas. Para a NVIDIA dormir e economizar bateria, saia e entre na sessão.".into(),
+                    ]);
+                }
+            } else if !on_batt {
+                self.battery_warned = false;
+            }
+        }
         if numapilot::hybrid::session_restricted()
             && let Some((_, nv)) = numapilot::hybrid::pair(topo)
         {

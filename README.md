@@ -648,7 +648,12 @@ balanceamento NUMA) some.
   só na integrada (`KWIN_DRM_DEVICES` e EGL do Mesa para o Xwayland e os programas comuns) e a NVIDIA
   dorme; jogos e programas escolhidos para ela continuam indo para ela. Com tela na saída da NVIDIA
   no login, nada muda e ela fica ligada para gerar a imagem. Se uma tela for ligada no HDMI depois do
-  login, a bandeja avisa para sair e entrar na sessão. Programas na integrada também deixam de
+  login, a bandeja avisa para sair e entrar na sessão: como o notebook não avisa quando um cabo é
+  ligado na NVIDIA dormindo, o numapilot confere de verdade no login e, durante a sessão, a cada 20 s
+  na tomada e 60 s na bateria (a placa acorda por um instante). **Quando**: "sempre" (também na
+  tomada: menos calor e barulho) ou "só se o login for na bateria" (na tomada o desktop usa as duas
+  placas e o HDMI funciona a qualquer hora). Trocar tomada/bateria no meio da sessão não troca as
+  placas do desktop; se a sessão começou na tomada e foi para a bateria, a bandeja avisa. Programas na integrada também deixam de
   carregar o driver da NVIDIA (EGL/Vulkan), o que a acordava à toa.
 - **Ryzen de notebook**: limites de potência pelo `ryzenadj` (STAPM/sustentado, PPT lento e rápido,
   temperatura máxima), o equivalente do PL1/PL2 da Intel. O serviço reaplica quando o firmware volta

@@ -59,6 +59,62 @@ pub fn outputs(pci: &str) -> Vec<Output> {
     v
 }
 
+/// Como root: manda cada saída da placa se conferir de novo ("detect"). A placa acorda por um
+/// instante e o estado fica certo mesmo quando o notebook não avisa que um cabo foi ligado.
+pub fn probe_root(pci: &str) -> usize {
+    let Some(c) = card(pci) else { return 0 };
+    let Ok(rd) = std::fs::read_dir(sys("class/drm")) else {
+        return 0;
+    };
+    let mut n = 0;
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.starts_with(&format!("{c}-"))
+            && !name.contains("Writeback")
+            && std::fs::write(e.path().join("status"), "detect").is_ok()
+        {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// Confere as saídas da placa de verdade (pelo serviço, que é root; sem ele, pelo que o driver
+/// já sabe) e diz se há tela ligada.
+pub fn probe_connected(pci: &str) -> bool {
+    if crate::util::is_root() {
+        probe_root(pci);
+    } else {
+        let _ = crate::ctl::send(&crate::ctl::Request::ProbeOutputs {
+            pci: pci.to_string(),
+        });
+    }
+    outputs(pci).iter().any(|o| o.connected)
+}
+
+/// Quando restringir: "sempre" ou só se o login for na "bateria" (na tomada, desktop nas duas
+/// placas e o HDMI funciona a qualquer hora).
+pub fn policy_file() -> PathBuf {
+    config_home().join("numapilot/hybrid-policy")
+}
+
+pub fn policy() -> String {
+    read_trim(policy_file())
+        .filter(|p| p == "bateria")
+        .unwrap_or_else(|| "sempre".into())
+}
+
+pub fn set_policy(p: &str) -> Result<(), String> {
+    if p != "sempre" && p != "bateria" {
+        return Err("use sempre ou bateria".into());
+    }
+    let f = policy_file();
+    if let Some(d) = f.parent() {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&f, p).map_err(|e| e.to_string())
+}
+
 /// Notebook com integrada + NVIDIA dedicada: (integrada, NVIDIA).
 pub fn pair(topo: &Topology) -> Option<(&Gpu, &Gpu)> {
     if !crate::notebook::is_laptop() {
@@ -77,7 +133,10 @@ pub fn session_env(topo: &Topology) -> Vec<(String, String)> {
     let Some((igpu, nv)) = pair(topo) else {
         return vec![];
     };
-    if outputs(&nv.pci).iter().any(|o| o.connected) {
+    if policy() == "bateria" && crate::notebook::on_ac() != Some(false) {
+        return vec![];
+    }
+    if probe_connected(&nv.pci) {
         return vec![];
     }
     let Some(c) = card(&igpu.pci) else {

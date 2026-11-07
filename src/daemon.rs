@@ -1256,6 +1256,16 @@ fn handle(
         Request::SetGovernor { node, governor } => {
             return handle_governor(uid, ctx, node, &governor);
         }
+        Request::ProbeOutputs { pci } => {
+            if uid != 0 && uid < ctx.cfg.daemon.min_uid {
+                return Response::err("sem permissão");
+            }
+            if !ctx.topo.gpus.iter().any(|g| g.pci == pci) {
+                return Response::err(format!("GPU {pci} não existe"));
+            }
+            let n = crate::hybrid::probe_root(&pci);
+            return Response::ok(format!("{n} saída(s) conferidas"));
+        }
         Request::SetNotify { notify } => {
             if uid != 0 && uid < ctx.cfg.daemon.min_uid {
                 return Response::err("sem permissão");

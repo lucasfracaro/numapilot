@@ -98,8 +98,9 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 - [x] Telas: com os adaptadores USB-C/Thunderbolt, DP-9 e DP-10 aparecem na 680M; o HDMI é da NVIDIA
 - [ ] `numapilot hybrid on`, sair e entrar: `numapilot hybrid` mostra "desktop só na integrada" e a NVIDIA
       fica "dormindo" com as telas USB-C ligadas; um jogo com perfil na NVIDIA ainda roda nela
-- [ ] Com o HDMI ligado antes do login: desktop nas duas placas e a tela do HDMI funciona;
-      ligar o HDMI depois do login: aviso na bandeja
+- [ ] Com o HDMI ligado antes do login (notebook desligado ao ligar o cabo): desktop nas duas
+      placas e a tela do HDMI funciona; ligar o HDMI depois do login: aviso na bandeja em até 20 s
+- [ ] "só se o login for na bateria": login na tomada = duas placas; login na bateria = só a 680M
 - [ ] Máquina → Notebook: "Acordada por" lista quem segura a NVIDIA; fechar e ver "dormindo"
 - [ ] Limites do Ryzen (ryzenadj): STAPM 35 W e 85 °C aplicam; voltam sozinhos depois de tirar/pôr na tomada
 - [ ] EPP (power/balance_power) aplica no modo Silencioso
