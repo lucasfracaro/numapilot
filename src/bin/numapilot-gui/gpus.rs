@@ -308,7 +308,25 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
             "memória máx.",
         );
     });
-    ui.horizontal(|ui| {
+    if let Some(cur) = od.vddgfx_offset {
+        // RDNA2/3/4: undervolt por deslocamento
+        ui.horizontal(|ui| {
+            let mut on = s.voltage_offset_mv.is_some();
+            ui.checkbox(&mut on, "deslocar a voltagem");
+            let (lo, hi) = od.range_vo.unwrap_or((-200, 0));
+            let mut v = s.voltage_offset_mv.unwrap_or(cur);
+            ui.add_enabled(
+                on,
+                egui::Slider::new(&mut v, lo..=hi)
+                    .suffix(" mV")
+                    .step_by(5.0),
+            );
+            s.voltage_offset_mv = on.then_some(v);
+            ui.label(RichText::new("negativo = undervolt").small().weak());
+        });
+    }
+    if !od.curve.is_empty() {
+        ui.horizontal(|ui| {
         let mut custom = !s.curve.is_empty();
         if ui.checkbox(&mut custom, "curva de voltagem").changed() {
             s.curve = if custom { od.curve.iter().map(|c| (c.1, c.2)).collect() } else { vec![] };
@@ -327,27 +345,28 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
             }
         }
     });
-    if !s.curve.is_empty() {
-        egui::Grid::new(format!("od-{pci}"))
-            .num_columns(3)
-            .show(ui, |ui| {
-                for (i, pt) in s.curve.iter_mut().enumerate() {
-                    ui.label(format!("ponto {}", i + 1));
-                    let rs = od.range_curve_sclk.get(i).copied().unwrap_or((500, 2500));
-                    let rv = od.range_curve_volt.get(i).copied().unwrap_or((700, 1250));
-                    ui.add(
-                        egui::DragValue::new(&mut pt.0)
-                            .range(rs.0..=rs.1)
-                            .suffix(" MHz"),
-                    );
-                    ui.add(
-                        egui::DragValue::new(&mut pt.1)
-                            .range(rv.0..=rv.1)
-                            .suffix(" mV"),
-                    );
-                    ui.end_row();
-                }
-            });
+        if !s.curve.is_empty() {
+            egui::Grid::new(format!("od-{pci}"))
+                .num_columns(3)
+                .show(ui, |ui| {
+                    for (i, pt) in s.curve.iter_mut().enumerate() {
+                        ui.label(format!("ponto {}", i + 1));
+                        let rs = od.range_curve_sclk.get(i).copied().unwrap_or((500, 2500));
+                        let rv = od.range_curve_volt.get(i).copied().unwrap_or((700, 1250));
+                        ui.add(
+                            egui::DragValue::new(&mut pt.0)
+                                .range(rs.0..=rs.1)
+                                .suffix(" MHz"),
+                        );
+                        ui.add(
+                            egui::DragValue::new(&mut pt.1)
+                                .range(rv.0..=rv.1)
+                                .suffix(" mV"),
+                        );
+                        ui.end_row();
+                    }
+                });
+        }
     }
     ui.label(
         RichText::new("Se a placa travar ou o jogo fechar sozinho, volte um passo. Ao reiniciar o PC o serviço reaplica; desmarcar \"personalizar\" volta ao padrão.")
@@ -449,6 +468,180 @@ fn nv_driver_panel(app: &mut App, ui: &mut egui::Ui) {
     ui.add_space(4.0);
 }
 
+/// Arquitetura (o que serve para computação e upscaling) e ajustes da comunidade da placa.
+fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
+    let rec = numapilot::recipes::load();
+    if let Some(a) = rec.arch_for(g) {
+        let up: Vec<&str> = a
+            .upscale
+            .iter()
+            .map(|u| match u.as_str() {
+                "fsr4" => "FSR 4",
+                "fsr4-rdna3" => "FSR 4 (via vkd3d-proton)",
+                "fsr4-int8-experimental" => "FSR 4 INT8 (experimental)",
+                "fsr3" => "FSR 3.1 (OptiScaler)",
+                "xess" => "XeSS",
+                "dlss" => "DLSS",
+                "fsr1-gamescope" => "FSR 1 (gamescope)",
+                "lsfg" => "geração de quadros (lsfg-vk)",
+                o => o,
+            })
+            .collect();
+        let compute = match a.compute.as_str() {
+            "rocm" => "ROCm oficial",
+            "rocm-comunidade" => "ROCm da comunidade",
+            "vulkan" => "Vulkan (llama.cpp)",
+            "cuda" => "CUDA",
+            o => o,
+        };
+        ui.label(
+            RichText::new(format!(
+                "{} · IA: {compute} · upscaling: {}",
+                a.family,
+                up.join(", ")
+            ))
+            .small()
+            .weak(),
+        );
+    }
+    let Some(b) = rec.board_for(g).cloned() else {
+        return;
+    };
+    if b.notes.is_empty() && b.governor_services.is_empty() {
+        return;
+    }
+    egui::CollapsingHeader::new(RichText::new(format!("{}: ajustes da comunidade", b.name)).strong())
+        .id_salt(format!("board-{}", g.pci))
+        .default_open(!b.governor_services.is_empty())
+        .show(ui, |ui| {
+            for n in &b.notes {
+                ui.label(RichText::new(format!("• {n}")).small());
+            }
+            if !b.governor_services.is_empty() {
+                let sv = numapilot::boards::services(&b);
+                match sv.iter().find(|s| s.active) {
+                    Some(s) => {
+                        ui.label(RichText::new(format!("Governor de clock: {} rodando", s.name)).color(Color32::from_rgb(110, 190, 120)));
+                    }
+                    None => {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Nenhum governor rodando: a GPU fica com clock fixo.").color(Color32::from_rgb(230, 160, 40)));
+                            if let Some(s) = sv.iter().find(|s| s.installed) {
+                                if ui.button(format!("Ligar {}", s.name)).clicked() {
+                                    app.start_job(
+                                        "Governor",
+                                        vec!["pkexec".into(), "systemctl".into(), "enable".into(), "--now".into(), format!("{}.service", s.name)],
+                                    );
+                                }
+                            } else if let Some(pkg) = b.governor_aur.first()
+                                && ui.button("Instalar o governor (AUR)").on_hover_text("Abre um terminal com o paru/yay").clicked()
+                            {
+                                let helper = if numapilot::containers::which("paru") { "paru" } else { "yay" };
+                                if let Err(e) = crate::jobs::in_terminal(&[helper.into(), "-S".into(), pkg.clone()]) {
+                                    app.toast(e, false);
+                                }
+                            }
+                        });
+                    }
+                }
+                if let Some(path) = numapilot::boards::governor_config(&b) {
+                    let text = std::fs::read_to_string(&path).unwrap_or_default();
+                    if app.board_edit.as_ref().is_none_or(|(p, t, _)| *p != path || *t != text) {
+                        app.board_edit = numapilot::boards::fields(&text).ok().map(|f| (path.clone(), text.clone(), f));
+                    }
+                    if let Some((_, orig, fields)) = app.board_edit.as_mut() {
+                        ui.label(RichText::new(format!("Configuração: {path}")).small().weak());
+                        let before = numapilot::boards::fields(orig).unwrap_or_default();
+                        egui::Grid::new(format!("gov-{}", g.pci)).num_columns(2).show(ui, |ui| {
+                            for f in fields.iter_mut() {
+                                match f {
+                                    numapilot::boards::Field::Num { key, value, int } => {
+                                        ui.label(key.as_str());
+                                        let unit = if key.contains("freq") { " MHz" } else if key.contains("volt") { " mV" } else { "" };
+                                        let mut d = egui::DragValue::new(value).suffix(unit);
+                                        if *int {
+                                            d = d.fixed_decimals(0).speed(5.0);
+                                        }
+                                        ui.add(d);
+                                    }
+                                    numapilot::boards::Field::Points { key, value } => {
+                                        ui.label(key.as_str());
+                                        ui.horizontal_wrapped(|ui| {
+                                            for p in value.iter_mut() {
+                                                ui.add(egui::DragValue::new(&mut p.0).fixed_decimals(0).suffix(" MHz").speed(5.0));
+                                                ui.add(egui::DragValue::new(&mut p.1).fixed_decimals(0).suffix(" mV").speed(5.0));
+                                                ui.add_space(8.0);
+                                            }
+                                        });
+                                    }
+                                }
+                                ui.end_row();
+                            }
+                        });
+                        let changed = *fields != before;
+                        let mut save = None;
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(changed, egui::Button::new("Salvar e reiniciar o governor"))
+                                .on_hover_text("Faz backup da configuração, grava a nova e reinicia o serviço; se ele não subir, volta a anterior. Pede a senha.")
+                                .clicked()
+                            {
+                                save = numapilot::boards::apply_fields(orig, fields).ok();
+                            }
+                            if ui.add_enabled(changed, egui::Button::new("Desfazer")).clicked() {
+                                *fields = before.clone();
+                            }
+                        });
+                        ui.label(
+                            RichText::new("Suba o clock e a voltagem aos poucos e teste a estabilidade (ex.: Unigine Superposition) a cada passo.")
+                                .small()
+                                .color(Color32::from_rgb(230, 160, 40)),
+                        );
+                        if let Some(newtext) = save {
+                            let tmp = std::env::temp_dir().join("numapilot-governor.toml");
+                            match std::fs::write(&tmp, newtext) {
+                                Ok(()) => {
+                                    app.start_job(
+                                        "Governor da GPU",
+                                        vec![
+                                            "pkexec".into(),
+                                            crate::jobs::sibling_abs("numapilot"),
+                                            "board".into(),
+                                            "governor-apply".into(),
+                                            tmp.to_string_lossy().to_string(),
+                                        ],
+                                    );
+                                    app.board_edit = None;
+                                }
+                                Err(e) => app.toast(e.to_string(), false),
+                            }
+                        }
+                    }
+                }
+            }
+            if !b.cpu_oc_tools.is_empty() {
+                let have = b.cpu_oc_tools.iter().all(|t| numapilot::containers::which(t));
+                ui.horizontal(|ui| {
+                    ui.label(if have {
+                        "Overclock/undervolt da CPU pela SMU: ferramentas instaladas (bc250-detect / bc250-apply)."
+                    } else {
+                        "Overclock/undervolt da CPU pela SMU: instale o bc250_smu_oc."
+                    });
+                    if let Some(u) = &b.cpu_oc_url
+                        && ui.small_button("abrir").clicked()
+                    {
+                        let _ = crate::jobs::open_url(u);
+                    }
+                });
+            }
+            if let Some(d) = &b.docs
+                && ui.small_button("Guia da comunidade").clicked()
+            {
+                let _ = crate::jobs::open_url(d);
+            }
+        });
+}
+
 pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     if app.hist_at.is_none_or(|t| t.elapsed().as_secs() >= 30) {
         app.hist = History::load();
@@ -512,6 +705,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.label(format!("VRAM {:.1}/{:.0} GB", u as f64 / 1073741824.0, t as f64 / 1073741824.0));
                     }
                 });
+                board_ui(app, ui, g);
                 ui.horizontal_wrapped(|ui| {
                     if let Some(l) = gpuctl::pcie_link(&g.pci) {
                         let txt = format!("PCIe Gen{} x{} (máx. Gen{} x{})", l.generation, l.width, l.max_gen, l.max_width);
@@ -546,15 +740,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         return;
                     }
                 }
-                if !s.fan_controllable && s.power_cap_max_w.is_none() && gpuctl::read_od(&g.pci).is_none() && !g.is_nvidia() && gpuctl::intel_freq(&g.pci).is_none() {
+                if !s.fan_controllable && !s.fw_fan_curve && s.power_cap_max_w.is_none() && gpuctl::read_od(&g.pci).is_none() && !g.is_nvidia() && gpuctl::intel_freq(&g.pci).is_none() {
                     ui.label(RichText::new("O driver não expõe controles de ventoinha/potência para esta placa.").weak());
                     return;
                 }
                 let edit = app.gpu_edit.entry(g.pci.clone()).or_insert_with(|| saved.clone());
                 ui.add_space(4.0);
-                if s.fan_controllable {
+                if s.fan_controllable || s.fw_fan_curve {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Ventoinha:").strong());
+                        if s.fw_fan_curve {
+                            ui.label(RichText::new("(curva gravada no firmware da placa)").small().weak());
+                        }
                         ui.radio_value(&mut edit.fan, FanMode::Auto, "da placa (automática)");
                         ui.radio_value(&mut edit.fan, FanMode::Curve, "curva");
                         ui.radio_value(&mut edit.fan, FanMode::Fixed, "fixa");

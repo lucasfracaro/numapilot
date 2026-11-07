@@ -241,6 +241,76 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             );
         }
     }
+    // ---- placas especiais e receitas da comunidade ----
+    let rec = crate::recipes::load();
+    for (b, g) in rec.boards(&topo) {
+        let area = b.name.clone();
+        let k = crate::recipes::running_kernel();
+        if crate::recipes::kernel_in(&k, &b.bad_kernels) {
+            add(
+                &area,
+                "kernel",
+                Level::Fail,
+                format!("{k} está na lista de kernels que quebram esta placa"),
+                Some("Instale outra versão (ex.: linux-cachyos-lts) e escolha no boot"),
+            );
+        } else if !b.bad_kernels.is_empty() {
+            add(&area, "kernel", Level::Ok, k, None);
+        }
+        if let Some(min) = &b.min_mesa {
+            match crate::recipes::mesa_version() {
+                Some(m) if crate::recipes::version_ge(&m, min) => {
+                    add(&area, "Mesa", Level::Ok, m, None)
+                }
+                Some(m) => add(
+                    &area,
+                    "Mesa",
+                    Level::Fail,
+                    format!("{m} (precisa de {min} ou mais novo)"),
+                    Some("sudo pacman -Syu"),
+                ),
+                None => {}
+            }
+        }
+        if !b.governor_services.is_empty() {
+            let sv = crate::boards::services(b);
+            match sv.iter().find(|s| s.active) {
+                Some(s) => add(
+                    &area,
+                    "governor de clock",
+                    Level::Ok,
+                    format!("{} rodando", s.name),
+                    None,
+                ),
+                None => add(
+                    &area,
+                    "governor de clock",
+                    Level::Warn,
+                    "nenhum rodando: a GPU fica com clock fixo".into(),
+                    Some("Placas de vídeo → instalar/ligar o governor"),
+                ),
+            }
+        }
+        let cmd = crate::cmdline::running();
+        for p in &b.kernel_params {
+            if !cmd.split_whitespace().any(|t| t == p) {
+                add(
+                    &area,
+                    &format!("parâmetro {p}"),
+                    Level::Info,
+                    "recomendado pela comunidade".into(),
+                    Some("Máquina → Parâmetros do kernel"),
+                );
+            }
+        }
+        let _ = g;
+        for n in &b.notes {
+            add(&area, "dica", Level::Info, n.clone(), None);
+        }
+    }
+    for n in rec.cpu_notes(&crate::recipes::cpu_model()) {
+        add("Processador", "dica", Level::Info, n, None);
+    }
     // ---- processador ----
     let unc = crate::cpuctl::uncores();
     if unc.is_empty() {

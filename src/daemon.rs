@@ -625,6 +625,12 @@ pub fn run(cfg: Config) -> Result<()> {
         {
             eprintln!("[numapilot] GPU {pci}: clock máximo não aplicado: {e}");
         }
+        if c.fan != FanMode::Auto
+            && gpuctl::read_sensors(pci).fw_fan_curve
+            && let Err(e) = gpuctl::apply_fw_fan(pci, c)
+        {
+            eprintln!("[numapilot] GPU {pci}: curva da ventoinha não aplicada: {e}");
+        }
         if let Some(od) = &c.od
             && let Err(e) = gpuctl::apply_od(pci, Some(od))
         {
@@ -899,6 +905,11 @@ pub fn run(cfg: Config) -> Result<()> {
     // Ventoinhas voltam para o controle da placa.
     for pci in fan_last.keys() {
         let _ = gpuctl::set_fan_auto(pci);
+    }
+    for (pci, c) in &gpuc.map {
+        if c.fan != FanMode::Auto && gpuctl::read_sensors(pci).fw_fan_curve {
+            let _ = gpuctl::apply_fw_fan_curve(pci, None);
+        }
     }
     let _ = learned.save();
     let _ = std::fs::remove_file(state_path());
@@ -1239,10 +1250,19 @@ fn handle_gpu(
         return Response::err(e);
     }
     let s = gpuctl::read_sensors(&pci);
-    if control.fan != FanMode::Auto && !s.fan_controllable {
+    let old = gpuc.get(&pci);
+    if s.fw_fan_curve
+        && (control.fan != old.fan
+            || control.curve != old.curve
+            || control.fixed_pct != old.fixed_pct)
+    {
+        match gpuctl::apply_fw_fan(&pci, &control) {
+            Ok(()) => {}
+            Err(e) => return Response::err(format!("ventoinha: {e}")),
+        }
+    } else if control.fan != FanMode::Auto && !s.fan_controllable {
         return Response::err("esta placa não permite controlar a ventoinha (sem pwm1 no hwmon)");
     }
-    let old = gpuc.get(&pci);
     let mut msg = Vec::new();
     if control.power_cap_w != old.power_cap_w {
         match gpuctl::set_power_cap(&pci, control.power_cap_w) {

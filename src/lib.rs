@@ -1,6 +1,7 @@
 //! numapilot: escolhe socket NUMA, memória e GPU para cada programa.
 pub mod backup;
 pub mod bench;
+pub mod boards;
 pub mod bootcfg;
 pub mod cgroup;
 pub mod cmdline;
@@ -24,6 +25,7 @@ pub mod nvctl;
 pub mod procevents;
 pub mod procfs;
 pub mod profiles;
+pub mod recipes;
 pub mod steam;
 pub mod topo;
 pub mod tuner;

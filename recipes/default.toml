@@ -1,0 +1,127 @@
+# Receitas da comunidade: o que o numapilot sabe sobre cada placa e GPU.
+# Atualizável sem recompilar: `numapilot recipes update` grava uma cópia nova em
+# /var/lib/numapilot/recipes.toml, que tem prioridade sobre esta.
+version = 1
+
+[[board]]
+id = "bc250"
+name = "AMD BC-250 (Cyan Skillfish)"
+gpu_ids = ["1002:13fe"]
+gfx = ["gfx1013"]
+name_contains = ["cyan skillfish"]
+# Kernels que quebram o driver da GPU da BC-250 (intervalos fechados).
+bad_kernels = [["6.15.0", "6.15.6"], ["6.17.8", "6.17.10"]]
+min_mesa = "25.1"
+governor_services = ["cyan-skillfish-governor-smu", "cyan-skillfish-governor-tt", "cyan-skillfish-governor", "oberon-governor"]
+governor_configs = [
+    "/etc/cyan-skillfish-governor-smu/config.toml",
+    "/etc/cyan-skillfish-governor-tt/config.toml",
+    "/etc/cyan-skillfish-governor/config.toml",
+]
+governor_aur = ["cyan-skillfish-governor-smu", "cyan-skillfish-governor"]
+kernel_params = ["amd_iommu=off"]
+cpu_oc_tools = ["bc250-detect", "bc250-apply"]
+cpu_oc_url = "https://github.com/bc250-collective/bc250_smu_oc"
+docs = "https://elektricm.github.io/amd-bc250-docs/"
+notes = [
+    "O clock da GPU precisa de um governor da comunidade (o -smu dispensa kernel com patch); sem ele a GPU fica parada em ~1000-1500 MHz e gasta ~20 W a mais parada.",
+    "O IOMMU causa travamentos na BC-250: use amd_iommu=off (aba Máquina, Parâmetros do kernel).",
+    "Overclock da CPU pela SMU (bc250_smu_oc): mesmo na frequência de fábrica ele aplica um undervolt grande.",
+    "Os 40 CUs exigem um kernel com o patch da comunidade (ex.: o do SkillFishOS); a quantidade de VRAM (UMA) se muda na BIOS.",
+    "Se a GPU travar com o governor rodando, pare o governor antes de jogos problemáticos.",
+]
+
+[[board]]
+id = "bc160"
+name = "AMD BC-160 (Navi 12)"
+gpu_ids = ["1002:7360"]
+gfx = ["gfx1011"]
+name_contains = ["navi 12"]
+headless = true
+notes = [
+    "Placa sem saída de vídeo: renderiza nela e mostra a imagem pela outra placa (como as MI50).",
+    "Clock e voltagem pela curva de 3 pontos (como Vega20/RDNA1), ventoinha blower pelo hwmon.",
+    "Sem ROCm oficial (gfx1011): para IA, use o llama.cpp com Vulkan.",
+]
+
+[[board]]
+id = "mi50"
+name = "AMD Instinct MI50 / Radeon VII (gfx906)"
+gfx = ["gfx906"]
+notes = [
+    "ROCm pela comunidade (mixa3607/ML-gfx906), com validação antes de cada atualização (gfx906-rocm).",
+]
+
+[[cpu]]
+match = "i7-5775C"
+notes = [
+    "Broadwell com 128 MB de eDRAM (funciona como cache L4) e Iris Pro 6200.",
+    "Undervolt pela ferramenta intel-undervolt (AUR), se a BIOS não bloquear.",
+]
+
+[[cpu]]
+match = "CC150"
+notes = [
+    "Comet Lake de 8 núcleos/16 threads com multiplicador travado: o que dá para ajustar são os limites de potência (PL1/PL2) na aba Máquina.",
+]
+
+[[cpu]]
+match = "E5-2696 v4"
+notes = [
+    "Broadwell-EP: uncore no máximo e jogos num socket só fazem a maior diferença; mitigações custam caro nesta geração.",
+]
+
+# Arquiteturas de GPU: computação e upscaling que funcionam em cada uma.
+[[arch]]
+prefix = "gfx906"
+family = "Vega 20 (GCN 5)"
+compute = "rocm-comunidade"
+upscale = ["fsr3", "xess", "fsr1-gamescope", "lsfg"]
+
+[[arch]]
+prefix = "gfx101"
+family = "RDNA 1"
+compute = "vulkan"
+upscale = ["fsr3", "xess", "fsr1-gamescope", "lsfg"]
+
+[[arch]]
+prefix = "gfx1013"
+family = "RDNA 2 (BC-250 / Cyan Skillfish)"
+compute = "vulkan"
+upscale = ["fsr3", "xess", "fsr1-gamescope", "lsfg"]
+
+[[arch]]
+prefix = "gfx103"
+family = "RDNA 2"
+compute = "rocm"
+upscale = ["fsr4-int8-experimental", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
+
+[[arch]]
+prefix = "gfx110"
+family = "RDNA 3"
+compute = "rocm"
+upscale = ["fsr4-rdna3", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
+
+[[arch]]
+prefix = "gfx115"
+family = "RDNA 3.5 (APU)"
+compute = "rocm"
+upscale = ["fsr4-int8-experimental", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
+
+[[arch]]
+prefix = "gfx120"
+family = "RDNA 4"
+compute = "rocm"
+upscale = ["fsr4", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
+
+[[arch]]
+prefix = "nvidia"
+family = "NVIDIA"
+compute = "cuda"
+upscale = ["dlss", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
+
+[[arch]]
+prefix = "intel"
+family = "Intel"
+compute = "vulkan"
+upscale = ["xess", "fsr3", "fsr1-gamescope", "lsfg"]

@@ -21,6 +21,8 @@ pub struct SocketTune {
     pub uncore_min_mhz: Option<u32>,
     pub uncore_max_mhz: Option<u32>,
     pub power_limit_w: Option<f64>,
+    /// PL2: pico de curto prazo (W).
+    pub power_limit2_w: Option<f64>,
 }
 
 impl SocketTune {
@@ -304,6 +306,7 @@ pub struct Orig {
     pub freq: BTreeMap<usize, (u64, u64)>,
     pub epb: BTreeMap<usize, u8>,
     pub rapl: BTreeMap<u32, f64>,
+    pub rapl2: BTreeMap<u32, f64>,
     pub numa_balancing: Option<String>,
     pub zone_reclaim: Option<String>,
     pub thp: Option<String>,
@@ -335,6 +338,9 @@ impl Orig {
         for z in cpuctl::rapl_zones() {
             if let Some(l) = z.limit_w {
                 o.rapl.insert(z.package, l);
+            }
+            if let Some(l) = z.limit2_w {
+                o.rapl2.insert(z.package, l);
             }
         }
         o.numa_balancing = read_trim(procsys("kernel/numa_balancing"));
@@ -460,6 +466,18 @@ pub fn apply(
             e(
                 cpuctl::set_rapl_limit(pkg, w),
                 &format!("potência socket {}", n.id),
+            );
+        }
+        if let Some(w) = t
+            .and_then(|t| t.power_limit2_w)
+            .or_else(|| orig.rapl2.get(&pkg).copied())
+            && cpuctl::rapl_zones()
+                .iter()
+                .any(|z| z.package == pkg && z.limit2_w.is_some_and(|l| (l - w).abs() > 0.5))
+        {
+            e(
+                cpuctl::set_rapl_limit2(pkg, w),
+                &format!("pico de potência socket {}", n.id),
             );
         }
         let want = m

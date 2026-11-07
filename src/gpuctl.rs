@@ -39,6 +39,9 @@ pub struct Sensors {
     pub power_cap_w: Option<f64>,
     pub power_cap_min_w: Option<f64>,
     pub power_cap_max_w: Option<f64>,
+    /// A ventoinha é controlada por uma curva no firmware (RDNA3/RDNA4), não pelo pwm1.
+    #[serde(default)]
+    pub fw_fan_curve: bool,
 }
 
 impl Sensors {
@@ -78,7 +81,9 @@ pub fn read_sensors(pci: &str) -> Sensors {
     let pwm_max = num(h.join("pwm1_max")).unwrap_or(255.0).max(1.0);
     s.fan_pct = num(h.join("pwm1")).map(|v| (v * 100.0 / pwm_max).round());
     s.fan_mode_raw = num(h.join("pwm1_enable")).map(|v| v as u8);
-    s.fan_controllable = h.join("pwm1").exists() && h.join("pwm1_enable").exists();
+    s.fw_fan_curve = fan_curve_path(pci).exists();
+    s.fan_controllable =
+        !s.fw_fan_curve && h.join("pwm1").exists() && h.join("pwm1_enable").exists();
     let w = |f: &str| num(h.join(f)).map(|v| v / 1_000_000.0);
     s.power_w = w("power1_average").or_else(|| w("power1_input"));
     s.power_cap_w = w("power1_cap");
@@ -303,6 +308,28 @@ pub struct Od {
     /// por ponto: faixa de MHz e de mV
     pub range_curve_sclk: Vec<(u32, u32)>,
     pub range_curve_volt: Vec<(u32, u32)>,
+    /// RDNA2/3/4: deslocamento de voltagem atual (mV) e faixa permitida.
+    pub vddgfx_offset: Option<i32>,
+    pub range_vo: Option<(i32, i32)>,
+}
+
+fn signed(s: &str) -> Vec<i32> {
+    let mut v = Vec::new();
+    let mut cur = String::new();
+    for c in s.chars().chain(std::iter::once(' ')) {
+        if c.is_ascii_digit() || (c == '-' && cur.is_empty()) {
+            cur.push(c);
+        } else {
+            if let Ok(x) = cur.parse() {
+                v.push(x);
+            }
+            cur.clear();
+            if c == '-' {
+                cur.push(c);
+            }
+        }
+    }
+    v
 }
 
 fn nums(s: &str) -> Vec<u32> {
@@ -322,6 +349,7 @@ pub fn parse_od(s: &str) -> Od {
                 "OD_SCLK:" => "s",
                 "OD_MCLK:" => "m",
                 "OD_VDDC_CURVE:" => "v",
+                "OD_VDDGFX_OFFSET:" => "o",
                 "OD_RANGE:" => "r",
                 _ => "",
             };
@@ -332,9 +360,15 @@ pub fn parse_od(s: &str) -> Od {
             "s" if n.len() >= 2 => od.sclk.push((n[0], n[1])),
             "m" if n.len() >= 2 => od.mclk.push((n[0], n[1])),
             "v" if n.len() >= 3 => od.curve.push((n[0], n[1], n[2])),
+            "o" => od.vddgfx_offset = signed(l).first().copied(),
             "r" => {
                 if l.starts_with("SCLK:") && n.len() >= 2 {
                     od.range_sclk = Some((n[0], n[1]));
+                } else if l.starts_with("VDDGFX_OFFSET:") {
+                    let v = signed(l);
+                    if v.len() >= 2 {
+                        od.range_vo = Some((v[0], v[1]));
+                    }
                 } else if l.starts_with("MCLK:") && n.len() >= 2 {
                     od.range_mclk = Some((n[0], n[1]));
                 } else if l.starts_with("VDDC_CURVE_SCLK[") && n.len() >= 3 {
@@ -359,7 +393,7 @@ pub fn od_path(pci: &str) -> PathBuf {
 pub fn read_od(pci: &str) -> Option<Od> {
     let s = fs::read_to_string(od_path(pci)).ok()?;
     let od = parse_od(&s);
-    if od.sclk.is_empty() && od.curve.is_empty() {
+    if od.sclk.is_empty() && od.curve.is_empty() && od.vddgfx_offset.is_none() {
         None
     } else {
         Some(od)
@@ -372,13 +406,19 @@ pub fn read_od(pci: &str) -> Option<Od> {
 pub struct OdSettings {
     pub sclk_max: Option<u32>,
     pub mclk_max: Option<u32>,
-    /// (MHz, mV) para cada um dos 3 pontos
+    /// (MHz, mV) para cada um dos 3 pontos (Vega20 e RDNA1)
     pub curve: Vec<(u32, u32)>,
+    /// RDNA2/3/4: deslocamento de voltagem em mV (negativo = undervolt)
+    #[serde(default)]
+    pub voltage_offset_mv: Option<i32>,
 }
 
 impl OdSettings {
     pub fn is_default(&self) -> bool {
-        self.sclk_max.is_none() && self.mclk_max.is_none() && self.curve.is_empty()
+        self.sclk_max.is_none()
+            && self.mclk_max.is_none()
+            && self.curve.is_empty()
+            && self.voltage_offset_mv.is_none()
     }
 }
 
@@ -395,7 +435,21 @@ pub fn od_commands(od: &Od, s: &OdSettings) -> Result<Vec<String>, String> {
     };
     if let Some(x) = s.sclk_max {
         check(x, od.range_sclk, "clock da GPU (MHz)")?;
+        if !od.sclk.iter().any(|(i, _)| *i == 1) {
+            return Err("esta placa não permite mudar o clock máximo da GPU".into());
+        }
         v.push(format!("s 1 {x}"));
+    }
+    if let Some(o) = s.voltage_offset_mv {
+        if od.vddgfx_offset.is_none() {
+            return Err("esta placa não aceita deslocamento de voltagem (use a curva)".into());
+        }
+        if let Some((lo, hi)) = od.range_vo
+            && (o < lo || o > hi)
+        {
+            return Err(format!("deslocamento {o} mV fora da faixa {lo}–{hi}"));
+        }
+        v.push(format!("vo {o}"));
     }
     if let Some(x) = s.mclk_max {
         check(x, od.range_mclk, "clock da memória (MHz)")?;
@@ -492,6 +546,79 @@ pub fn set_intel_max_freq(pci: &str, mhz: Option<u32>) -> Result<(), String> {
     fs::write(c.join("gt_max_freq_mhz"), v.to_string()).map_err(|e| e.to_string())
 }
 
+// ---------- curva da ventoinha no firmware (RDNA3/RDNA4: gpu_od/fan_ctrl) ----------
+
+pub fn fan_curve_path(pci: &str) -> PathBuf {
+    sys(&format!("bus/pci/devices/{pci}/gpu_od/fan_ctrl/fan_curve"))
+}
+
+/// Pontos (°C, %) e faixas permitidas da curva de firmware.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct FwFanCurve {
+    pub points: Vec<(u32, u32)>,
+    pub temp_range: Option<(u32, u32)>,
+    pub pct_range: Option<(u32, u32)>,
+}
+
+pub fn parse_fan_curve(s: &str) -> FwFanCurve {
+    let mut f = FwFanCurve::default();
+    let mut range = false;
+    for l in s.lines() {
+        let l = l.trim();
+        if l.starts_with("OD_RANGE") {
+            range = true;
+            continue;
+        }
+        let n = nums(l);
+        if range {
+            if l.contains("temp") && n.len() >= 2 {
+                f.temp_range = Some((n[n.len() - 2], n[n.len() - 1]));
+            } else if l.contains("speed") && n.len() >= 2 {
+                f.pct_range = Some((n[n.len() - 2], n[n.len() - 1]));
+            }
+        } else if n.len() >= 3 && l.contains('C') {
+            f.points.push((n[1], n[2]));
+        }
+    }
+    f
+}
+
+pub fn read_fan_curve(pci: &str) -> Option<FwFanCurve> {
+    let c = parse_fan_curve(&fs::read_to_string(fan_curve_path(pci)).ok()?);
+    (!c.points.is_empty()).then_some(c)
+}
+
+/// Aplica o modo da ventoinha pela curva do firmware (fixa = curva plana).
+pub fn apply_fw_fan(pci: &str, c: &GpuControl) -> Result<(), String> {
+    match c.fan {
+        FanMode::Auto => apply_fw_fan_curve(pci, None),
+        FanMode::Curve => apply_fw_fan_curve(pci, Some(&c.curve)),
+        FanMode::Fixed => {
+            apply_fw_fan_curve(pci, Some(&[(0.0, c.fixed_pct), (100.0, c.fixed_pct)]))
+        }
+    }
+}
+
+/// Grava a curva do usuário (interpolada nos pontos que o firmware tem) e confirma.
+pub fn apply_fw_fan_curve(pci: &str, curve: Option<&[(f64, f64)]>) -> Result<(), String> {
+    let p = fan_curve_path(pci);
+    let write = |cmd: &str| fs::write(&p, cmd).map_err(|e| format!("'{cmd}': {e}"));
+    let Some(user) = curve else {
+        write("r")?;
+        return write("c");
+    };
+    let fw = read_fan_curve(pci).ok_or("a placa não tem curva de ventoinha no firmware")?;
+    let (tlo, thi) = fw.temp_range.unwrap_or((25, 100));
+    let (plo, phi) = fw.pct_range.unwrap_or((15, 100));
+    let n = fw.points.len().max(2);
+    for i in 0..n {
+        let t = tlo + (thi - tlo) * i as u32 / (n as u32 - 1).max(1);
+        let pct = (curve_pct(user, t as f64).round() as u32).clamp(plo, phi);
+        write(&format!("{i} {t} {pct}"))?;
+    }
+    write("c")
+}
+
 /// Situação do Resizable BAR de qualquer placa (AMD, NVIDIA, Intel), pelo PCI.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BarStatus {
@@ -578,6 +705,7 @@ mod od_tests {
             sclk_max: Some(1700),
             mclk_max: None,
             curve: vec![(808, 740), (1304, 800), (1700, 1000)],
+            voltage_offset_mv: None,
         };
         assert_eq!(
             od_commands(&od, &s).unwrap(),
@@ -753,6 +881,40 @@ pub fn pcie_link(pci: &str) -> Option<PcieLink> {
 #[cfg(test)]
 mod profile_tests {
     use super::*;
+
+    #[test]
+    fn rdna_offset_and_fw_curve() {
+        let od = parse_od(
+            "OD_SCLK:\n0: 500Mhz\n1: 2700Mhz\nOD_MCLK:\n0: 97Mhz\n1: 1250MHz\nOD_VDDGFX_OFFSET:\n0mV\nOD_RANGE:\nSCLK:     500Mhz       4000Mhz\nMCLK:     674Mhz       1500Mhz\nVDDGFX_OFFSET:    -200mv          0mv\n",
+        );
+        assert_eq!(od.vddgfx_offset, Some(0));
+        assert_eq!(od.range_vo, Some((-200, 0)));
+        let cmds = od_commands(
+            &od,
+            &OdSettings {
+                voltage_offset_mv: Some(-60),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(cmds, vec!["vo -60", "c"]);
+        assert!(
+            od_commands(
+                &od,
+                &OdSettings {
+                    voltage_offset_mv: Some(-300),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+        );
+        let fc = parse_fan_curve(
+            "OD_FAN_CURVE:\n0: 0C 0%\n1: 45C 15%\n2: 50C 30%\n3: 55C 70%\n4: 65C 100%\nOD_RANGE:\nFAN_CURVE(hotspot temp): 25C 100C\nFAN_CURVE(fan speed): 15% 100%\n",
+        );
+        assert_eq!(fc.points.len(), 5);
+        assert_eq!(fc.temp_range, Some((25, 100)));
+        assert_eq!(fc.pct_range, Some((15, 100)));
+    }
 
     #[test]
     fn bar_from_resource() {

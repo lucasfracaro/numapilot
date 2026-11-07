@@ -83,7 +83,12 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 ## Outros PCs
 
 - [ ] PC i7-5775C + BC-160 e PC CC150 + RX 9060 XT: `./install.sh`, `numapilot doctor`, aba Máquina
-- [ ] BC-250: ver o roteiro da fase 2 (governor, CUs, CPU)
+- [ ] BC-250: `numapilot doctor` (kernel, Mesa, governor, IOMMU); instalar/ligar o governor; editar a
+      configuração pela aba Placas de vídeo e conferir o clock subindo (`cat .../pp_dpm_sclk`)
+- [ ] BC-250: descobrir a interface de CUs do kernel com patch (para ligar/desligar pela interface)
+      e o caminho de configuração do bc250_smu_oc (para aplicar o overclock da CPU pelo app)
+- [ ] RX 9060 XT: deslocamento de voltagem (-50 mV), curva da ventoinha no firmware, link PCIe
+- [ ] BC-160: curva de 3 pontos e ventoinha; renderizar nela com o monitor na outra placa
 
 ## Próximas melhorias combinadas
 

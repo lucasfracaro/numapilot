@@ -278,6 +278,8 @@ pub struct Rapl {
     pub limit_w: Option<f64>,
     /// Potência de projeto (TDP), quando o kernel mostra.
     pub max_w: Option<f64>,
+    /// Limite de curto prazo (PL2), quando existe.
+    pub limit2_w: Option<f64>,
 }
 
 pub fn rapl_zones() -> Vec<Rapl> {
@@ -302,6 +304,7 @@ pub fn rapl_zones() -> Vec<Rapl> {
                 package,
                 limit_w: uw("constraint_0_power_limit_uw"),
                 max_w: uw("constraint_0_max_power_uw"),
+                limit2_w: uw("constraint_1_power_limit_uw"),
                 dir: d,
             })
         })
@@ -320,6 +323,21 @@ pub fn set_rapl_limit(package: u32, watts: f64) -> Result<(), String> {
     }
     w(
         z.dir.join("constraint_0_power_limit_uw"),
+        &((watts * 1e6) as u64).to_string(),
+    )
+}
+
+/// Limite de curto prazo (PL2: o pico que o processador pode puxar por alguns segundos).
+pub fn set_rapl_limit2(package: u32, watts: f64) -> Result<(), String> {
+    let z = rapl_zones()
+        .into_iter()
+        .find(|r| r.package == package)
+        .ok_or("RAPL indisponível neste socket")?;
+    if watts < 20.0 {
+        return Err("limite muito baixo (mínimo 20 W)".into());
+    }
+    w(
+        z.dir.join("constraint_1_power_limit_uw"),
         &((watts * 1e6) as u64).to_string(),
     )
 }

@@ -78,6 +78,11 @@ pub const KNOWN: &[(&str, &str, &str)] = &[
         "Com o IOMMU ligado, evita o custo de tradução no DMA das placas que ficam no Linux.",
     ),
     (
+        "amd_iommu=off",
+        "Desligar o IOMMU da AMD",
+        "Recomendado na BC-250 (o IOMMU dela causa travamentos). Impede passar placas para máquinas virtuais.",
+    ),
+    (
         "nowatchdog",
         "Sem watchdog",
         "Menos interrupções periódicas (o CachyOS já costuma usar).",

@@ -83,6 +83,13 @@ enum Cmd {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
+    /// Placas especiais (BC-250...): status | governor-apply ARQUIVO (com sudo)
+    Board {
+        action: String,
+        file: Option<std::path::PathBuf>,
+    },
+    /// Receitas da comunidade: show | update [URL] (update com sudo)
+    Recipes { action: String, url: Option<String> },
     /// Driver oficial da NVIDIA: status | install | update (install/update com sudo)
     Driver { action: String },
     /// Guarda todas as configurações num .tar.gz (para reinstalar depois de formatar).
@@ -225,6 +232,87 @@ fn real_main() -> Result<()> {
         Cmd::Tune { action, key } => cmd_tune(&cfg, &action, key),
         Cmd::Boot { what, args } => cmd_boot(&what, &args),
         Cmd::Machine { action, value } => cmd_machine(&cfg, &action, value.as_deref()),
+        Cmd::Board { action, file } => {
+            let topo = Topology::load(&cfg);
+            let r = numapilot::recipes::load();
+            let boards = r.boards(&topo);
+            if boards.is_empty() {
+                println!("Nenhuma placa especial conhecida neste PC.");
+                return Ok(());
+            }
+            match action.as_str() {
+                "status" => {
+                    for (b, g) in &boards {
+                        println!("{} ({}, {})", b.name, g.alias, g.pci);
+                        for s in numapilot::boards::services(b)
+                            .iter()
+                            .filter(|s| s.installed)
+                        {
+                            println!(
+                                "  governor {}: {}",
+                                s.name,
+                                if s.active { "rodando" } else { "parado" }
+                            );
+                        }
+                        if let Some(c) = numapilot::boards::governor_config(b) {
+                            println!("  configuração: {c}");
+                        }
+                        for n in &b.notes {
+                            println!("  - {n}");
+                        }
+                    }
+                    Ok(())
+                }
+                "governor-apply" => {
+                    let f = file.context("faltou o arquivo")?;
+                    let b = boards
+                        .iter()
+                        .map(|x| x.0)
+                        .find(|b| !b.governor_configs.is_empty())
+                        .context("nenhuma placa com governor")?;
+                    numapilot::boards::governor_apply(b, &f, &mut |m| println!("{m}"))
+                        .map_err(|e| anyhow::anyhow!(e))
+                }
+                _ => bail!(
+                    "use: numapilot board status | sudo numapilot board governor-apply ARQUIVO"
+                ),
+            }
+        }
+        Cmd::Recipes { action, url } => match action.as_str() {
+            "show" => {
+                let r = numapilot::recipes::load();
+                println!(
+                    "Receitas versão {}: {} placas, {} processadores, {} arquiteturas",
+                    r.version,
+                    r.board.len(),
+                    r.cpu.len(),
+                    r.arch.len()
+                );
+                let topo = Topology::load(&cfg);
+                for g in &topo.gpus {
+                    if let Some(a) = r.arch_for(g) {
+                        println!(
+                            "  {}: {} · computação {} · upscaling {}",
+                            g.alias,
+                            a.family,
+                            a.compute,
+                            a.upscale.join(", ")
+                        );
+                    }
+                }
+                for n in r.cpu_notes(&numapilot::recipes::cpu_model()) {
+                    println!("  - {n}");
+                }
+                Ok(())
+            }
+            "update" => {
+                let u = url.unwrap_or_else(|| numapilot::recipes::DEFAULT_URL.to_string());
+                let v = numapilot::recipes::update(&u).map_err(|e| anyhow::anyhow!(e))?;
+                println!("Receitas atualizadas (versão {v}).");
+                Ok(())
+            }
+            _ => bail!("use: numapilot recipes show | sudo numapilot recipes update [URL]"),
+        },
         Cmd::Driver { action } => {
             use numapilot::driver;
             let topo = Topology::load(&cfg);

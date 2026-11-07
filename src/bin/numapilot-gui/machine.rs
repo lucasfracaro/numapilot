@@ -352,6 +352,28 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
             ui.end_row();
+            if rapl.iter().any(|r| r.limit2_w.is_some()) {
+                ui.label("Pico de potência (PL2)").on_hover_text("Quanto o processador pode puxar por alguns segundos antes de cair para o limite acima.");
+                for n in &topo.nodes {
+                    let pkg = n.sockets.iter().next().copied().unwrap_or(n.id as u32);
+                    let t = m.socket_mut(n.id);
+                    match rapl.iter().find(|r| r.package == pkg).and_then(|r| r.limit2_w) {
+                        Some(cur) => {
+                            ui.horizontal(|ui| {
+                                let mut on = t.power_limit2_w.is_some();
+                                ui.checkbox(&mut on, "");
+                                let mut w = t.power_limit2_w.unwrap_or(cur);
+                                ui.add_enabled(on, egui::Slider::new(&mut w, 40.0..=(cur * 1.5).max(100.0)).suffix(" W").step_by(5.0));
+                                t.power_limit2_w = on.then_some(w);
+                            });
+                        }
+                        None => {
+                            ui.label("");
+                        }
+                    }
+                }
+                ui.end_row();
+            }
         });
 
         // ---------------- latência ----------------

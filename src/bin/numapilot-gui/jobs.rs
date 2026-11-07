@@ -178,3 +178,24 @@ pub fn quick(argv: &[&str]) -> String {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default()
 }
+
+/// Abre um terminal rodando o comando (para o que pede senha ou confirmação, como o paru).
+pub fn in_terminal(cmd: &[String]) -> Result<(), String> {
+    let has = |b: &str| numapilot::containers::which(b);
+    let term: Vec<String> = if has("konsole") {
+        vec!["konsole".into(), "--hold".into(), "-e".into()]
+    } else if has("gnome-terminal") {
+        vec!["gnome-terminal".into(), "--".into()]
+    } else if has("kitty") {
+        vec!["kitty".into(), "--hold".into()]
+    } else if has("alacritty") {
+        vec!["alacritty".into(), "--hold".into(), "-e".into()]
+    } else if has("xterm") {
+        vec!["xterm".into(), "-hold".into(), "-e".into()]
+    } else {
+        return Err(
+            "nenhum terminal encontrado (konsole, gnome-terminal, kitty, alacritty, xterm)".into(),
+        );
+    };
+    spawn_detached(&[term, cmd.to_vec()].concat()).map_err(|e| e.to_string())
+}

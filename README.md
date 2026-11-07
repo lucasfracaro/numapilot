@@ -637,6 +637,24 @@ para reorganizar. A NVIDIA só usa o BAR grande com a opção ligada na BIOS.
 
 ![NVIDIA e notebook](docs/nvidia.png)
 
+**AMD de qualquer geração**: clock e voltagem pela curva de 3 pontos (Vega 20/MI50, RDNA 1/BC-160)
+ou por **deslocamento de voltagem** (RDNA 2, 3 e 4, ex.: RX 9060 XT: negativo = undervolt); nas
+RDNA 3/4 a ventoinha usa a **curva gravada no firmware** da placa (a interface é a mesma).
+Processadores com limite de curto prazo ganham o **pico de potência (PL2)** na aba Máquina.
+
+**Placas da comunidade** (receitas em `recipes/default.toml`, atualizáveis com
+`sudo numapilot recipes update` sem recompilar):
+- **BC-250**: o diagnóstico confere kernel (as versões que quebram a GPU), Mesa mínimo, governor
+  de clock e `amd_iommu=off`. Na aba Placas de vídeo: dicas, instalar/ligar o governor e **editar
+  a configuração dele** (frequências, voltagens, pontos), salvando com backup e reiniciando o
+  serviço (volta a anterior se ele não subir); link para o overclock da CPU pela SMU.
+- **BC-160**: placa sem saída de vídeo (renderiza nela e mostra pela outra, como as MI50).
+- Cada placa mostra a arquitetura e o que serve para IA (ROCm, ROCm da comunidade, Vulkan, CUDA)
+  e para upscaling. Dicas por processador (i7-5775C, CC150, E5-2696 v4).
+- `numapilot board status`, `numapilot recipes show`.
+
+![BC-250](docs/bc250.png)
+
 ## 22. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
