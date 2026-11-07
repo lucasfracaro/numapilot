@@ -672,7 +672,28 @@ baixa a build nova, compara e valida antes de trocar, guardando a anterior. Os t
 TheRock usam a família da placa (ex.: `gfx120X`). Na NVIDIA, o instalador sugere o
 `nvidia-container-toolkit` e libera a placa para os containers (CDI).
 
-## 22. Limitações
+## 22. Upscaling por jogo
+
+No **Ajustar…** de um jogo, a seção **Upscaling** mostra o que funciona na placa em que ele vai
+rodar (pela arquitetura das receitas) e aplica ao abrir pelo numapilot:
+
+| Modo | Para quem | Como |
+|---|---|---|
+| FSR 4 | RDNA 4 (ex.: RX 9060 XT) | `PROTON_FSR4_UPGRADE=1`: troca o FSR 3.1 do jogo pelo FSR 4 |
+| FSR 4 para RDNA 3 | RX 7000 | `PROTON_FSR4_RDNA3_UPGRADE=1` |
+| FSR 3.1 / DLSS / XeSS mais novos | quem o jogo já suporta | `PROTON_FSR3_UPGRADE`, `PROTON_DLSS_UPGRADE`, `PROTON_XESS_UPGRADE` |
+| OptiScaler | qualquer placa (MI50, BC-250, BC-160, Intel...) | instalado na pasta do jogo; FSR/XeSS em jogos que só têm DLSS; opção de forçar o FSR 4 INT8 (experimental) |
+
+As trocas automáticas precisam do proton-cachyos ou do GE-Proton. O OptiScaler é baixado do
+GitHub (versão estável mais nova, precisa do `7zip`) e copiado como `dxgi.dll` para a pasta do
+executável (achada sozinha, inclusive o `Binaries/Win64` dos jogos Unreal), com
+`WINEDLLOVERRIDES=dxgi=n,b`. Uma `dxgi.dll` que já existia (ex.: ReShade) vira `dxgi-original.dll`
+e é carregada pelo OptiScaler; **Remover do jogo** tira só o que foi colocado e devolve a original.
+Não use o OptiScaler em jogos online (anti-cheat). FSR 1 pelo gamescope e geração de quadros pelo
+lsfg-vk continuam valendo para qualquer placa.
+Linha de comando: `numapilot upscale fetch | status|install|remove APPID [--int8]`.
+
+## 23. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice

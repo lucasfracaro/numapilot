@@ -80,6 +80,7 @@ RECOMMENDED=(
     "numactl|informações de NUMA no diagnóstico"
     "mangohud|otimizador de FPS"
     "gamescope|gamescope por jogo"
+    "7zip|baixar o OptiScaler (upscaling por jogo)"
     "lm_sensors|ventoinhas e sensores da placa-mãe"
     "libnotify|alertas de GPU quente e de atualização"
     "libva-utils|aba Streaming (GPUs que codificam vídeo)"

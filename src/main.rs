@@ -90,6 +90,13 @@ enum Cmd {
     },
     /// Receitas da comunidade: show | update [URL] (update com sudo)
     Recipes { action: String, url: Option<String> },
+    /// Upscaling: fetch (baixa o OptiScaler) | status|install|remove APPID [--int8]
+    Upscale {
+        action: String,
+        appid: Option<String>,
+        #[arg(long)]
+        int8: bool,
+    },
     /// Driver oficial da NVIDIA: status | install | update (install/update com sudo)
     Driver { action: String },
     /// Guarda todas as configurações num .tar.gz (para reinstalar depois de formatar).
@@ -313,6 +320,53 @@ fn real_main() -> Result<()> {
             }
             _ => bail!("use: numapilot recipes show | sudo numapilot recipes update [URL]"),
         },
+        Cmd::Upscale {
+            action,
+            appid,
+            int8,
+        } => {
+            use numapilot::upscale;
+            if action == "fetch" {
+                let v = upscale::fetch(&mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))?;
+                println!("OptiScaler {v} pronto.");
+                return Ok(());
+            }
+            let id = appid.context("faltou o appid da Steam")?;
+            let root = upscale::steam_game_root(&id)
+                .context("jogo não encontrado nas bibliotecas da Steam")?;
+            let dir = upscale::exe_dir(&root).context("não achei o executável do jogo")?;
+            match action.as_str() {
+                "status" => {
+                    println!("Pasta do executável: {}", dir.display());
+                    match upscale::installed(&dir) {
+                        Some(i) => println!(
+                            "OptiScaler {} instalado ({} arquivos)",
+                            i.version,
+                            i.files.len()
+                        ),
+                        None => println!("OptiScaler não instalado"),
+                    }
+                    Ok(())
+                }
+                "install" => {
+                    if upscale::local_release().is_none() {
+                        upscale::fetch(&mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))?;
+                    }
+                    let v = upscale::install(&dir, int8).map_err(|e| anyhow::anyhow!(e))?;
+                    println!(
+                        "OptiScaler {v} instalado em {}. Não use em jogos online (anti-cheat pode banir).",
+                        dir.display()
+                    );
+                    Ok(())
+                }
+                "remove" => {
+                    upscale::remove(&dir).map_err(|e| anyhow::anyhow!(e))?;
+                    println!("OptiScaler removido de {}", dir.display());
+                    Ok(())
+                }
+                _ => bail!("use: numapilot upscale fetch | status|install|remove APPID [--int8]"),
+            }
+        }
         Cmd::Driver { action } => {
             use numapilot::driver;
             let topo = Topology::load(&cfg);
@@ -658,6 +712,26 @@ fn cmd_run(
     }
     for k in unset {
         c.env_remove(k);
+    }
+    if let Some(u) = profiles
+        .get(&pkey)
+        .and_then(|p| p.upscale.clone())
+        .filter(|u| u.mode != "nenhum" && !u.mode.is_empty())
+    {
+        if u.mode == "optiscaler"
+            && let Some(id) = pkey.strip_prefix("steam:")
+            && numapilot::upscale::steam_game_root(id)
+                .and_then(|r| numapilot::upscale::exe_dir(&r))
+                .and_then(|d| numapilot::upscale::installed(&d))
+                .is_none()
+        {
+            eprintln!(
+                "numapilot: aviso: OptiScaler escolhido mas não instalado na pasta do jogo (Ajustar… → Upscaling → Instalar)"
+            );
+        }
+        for (k, v) in numapilot::upscale::env(&u) {
+            c.env(k, v);
+        }
     }
     if let Some((i, _, secs, _)) = tuning {
         for (k, v) in numapilot::tuner::mangohud_env(&pkey, secs) {

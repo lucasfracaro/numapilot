@@ -61,6 +61,20 @@ pub struct Profile {
     /// Abre o jogo dentro do gamescope (resolução interna, FSR, limite de FPS).
     #[serde(default)]
     pub gamescope: Option<Gamescope>,
+    /// Upscaling do jogo (FSR 4/DLSS/XeSS pelo Proton, ou OptiScaler).
+    #[serde(default)]
+    pub upscale: Option<Upscale>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct Upscale {
+    /// nenhum | fsr4 | fsr4-rdna3 | fsr3 | dlss | xess | optiscaler
+    pub mode: String,
+    /// Mostra a marca d'água do FSR 4/DLSS (para conferir se pegou).
+    pub indicator: bool,
+    /// OptiScaler: força o FSR 4 INT8 em placas sem suporte oficial (experimental).
+    pub int8: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -153,6 +167,7 @@ impl Default for Profile {
             low_latency: false,
             gpu_power: auto(),
             gamescope: None,
+            upscale: None,
         }
     }
 }
@@ -223,6 +238,7 @@ impl Profile {
             usage: base.usage.clone(),
             fg_gpu: base.fg_gpu.clone(),
             gamescope: base.gamescope.clone(),
+            upscale: base.upscale.clone(),
             ..Default::default()
         };
         match name {

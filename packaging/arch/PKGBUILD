@@ -18,6 +18,8 @@ optdepends=(
   'gamescope: gamescope por jogo (resolução interna, FSR, limite de FPS)'
   'vulkan-tools: numapilot doctor testa a seleção de GPU no Vulkan'
   'libnotify: alerta de GPU quente na bandeja'
+  '7zip: baixar o OptiScaler (upscaling por jogo)'
+  'nvidia-container-toolkit: IA em container na NVIDIA'
 )
 provides=('numapilot')
 conflicts=('numapilot')

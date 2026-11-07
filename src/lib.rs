@@ -29,5 +29,6 @@ pub mod recipes;
 pub mod steam;
 pub mod topo;
 pub mod tuner;
+pub mod upscale;
 pub mod util;
 pub mod web;

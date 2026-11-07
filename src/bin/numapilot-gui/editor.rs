@@ -79,6 +79,143 @@ const MEM_OPTS: &[(&str, &str, &str)] = &[
     ("free", "Livre", "não move a memória"),
 ];
 
+fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
+    use numapilot::upscale;
+    ui.label(RichText::new("Upscaling").strong());
+    // placa em que o jogo vai rodar → o que funciona nela
+    let gpu = app
+        .topo
+        .gpus
+        .iter()
+        .find(|g| g.alias == ed.p.gpu || g.pci == ed.p.gpu)
+        .or_else(|| app.topo.gaming_gpu())
+        .cloned();
+    let rec = numapilot::recipes::load();
+    let sug: Vec<&str> = gpu
+        .as_ref()
+        .and_then(|g| rec.arch_for(g))
+        .map(|a| upscale::suggested(&a.upscale))
+        .unwrap_or_default();
+    if let (Some(g), Some(a)) = (gpu.as_ref(), gpu.as_ref().and_then(|g| rec.arch_for(g))) {
+        ui.label(
+            RichText::new(format!(
+                "Na {} ({}), funcionam: {}",
+                g.alias,
+                a.family,
+                sug.join(", ")
+            ))
+            .small()
+            .weak(),
+        );
+    }
+    let mut u =
+        ed.p.upscale
+            .clone()
+            .unwrap_or_else(|| numapilot::profiles::Upscale {
+                mode: "nenhum".into(),
+                ..Default::default()
+            });
+    let cur = upscale::MODES
+        .iter()
+        .find(|m| m.0 == u.mode)
+        .map(|m| m.1)
+        .unwrap_or("Nenhum");
+    egui::ComboBox::from_id_salt("ed-up")
+        .selected_text(cur)
+        .width(240.0)
+        .show_ui(ui, |ui| {
+            for (k, l, d) in upscale::MODES {
+                let ok = *k == "nenhum" || sug.contains(k);
+                let label = if ok {
+                    l.to_string()
+                } else {
+                    format!("{l} (não indicado para esta placa)")
+                };
+                ui.selectable_value(&mut u.mode, k.to_string(), label)
+                    .on_hover_text(*d);
+            }
+        });
+    if u.mode != "nenhum" {
+        ui.label(
+            RichText::new(
+                upscale::MODES
+                    .iter()
+                    .find(|m| m.0 == u.mode)
+                    .map(|m| m.2)
+                    .unwrap_or(""),
+            )
+            .small()
+            .weak(),
+        );
+        if u.mode != "optiscaler" {
+            ui.label(RichText::new("Precisa do proton-cachyos ou do GE-Proton como ferramenta de compatibilidade do jogo.").small().weak());
+        }
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut u.indicator, "mostrar a marca do FSR 4/DLSS (para conferir)");
+            if u.mode == "optiscaler" {
+                ui.checkbox(&mut u.int8, "forçar FSR 4 INT8 (experimental)")
+                    .on_hover_text("Para placas sem FSR 4 oficial (RDNA 2/3.5, Intel, NVIDIA). Placas sem INT8 não ganham FSR 4.");
+            }
+        });
+    }
+    if u.mode == "optiscaler" {
+        ui.label(
+            RichText::new("Não use o OptiScaler em jogos online: o anti-cheat pode banir.")
+                .small()
+                .color(Color32::from_rgb(230, 120, 60)),
+        );
+        if let Some(id) = ed.key.strip_prefix("steam:") {
+            let dir = upscale::steam_game_root(id).and_then(|r| upscale::exe_dir(&r));
+            ui.horizontal(|ui| {
+                match dir.as_ref().and_then(|d| upscale::installed(d)) {
+                    Some(i) => {
+                        ui.label(RichText::new(format!("OptiScaler {} instalado", i.version)).color(Color32::from_rgb(110, 190, 120)));
+                        if ui.button("Remover do jogo").clicked() {
+                            app.start_job("OptiScaler", vec![crate::jobs::sibling("numapilot"), "upscale".into(), "remove".into(), id.into()]);
+                        }
+                        if ui.button("Reinstalar (versão nova)").clicked() {
+                            let mut v = vec![crate::jobs::sibling("numapilot"), "upscale".into(), "install".into(), id.into()];
+                            if u.int8 {
+                                v.push("--int8".into());
+                            }
+                            app.start_job("OptiScaler", v);
+                        }
+                    }
+                    None if dir.is_some() => {
+                        if ui.button(RichText::new("Instalar no jogo").strong()).on_hover_text("Baixa a versão estável mais nova e copia para a pasta do executável, guardando o que for do jogo").clicked() {
+                            let mut v = vec![crate::jobs::sibling("numapilot"), "upscale".into(), "install".into(), id.into()];
+                            if u.int8 {
+                                v.push("--int8".into());
+                            }
+                            app.start_job("OptiScaler", v);
+                        }
+                    }
+                    None => {
+                        ui.label(RichText::new("Pasta do jogo não encontrada nas bibliotecas da Steam.").weak());
+                    }
+                }
+            });
+            if let Some(d) = dir {
+                ui.label(
+                    RichText::new(format!("Pasta: {}", d.display()))
+                        .small()
+                        .weak(),
+                );
+            }
+        } else {
+            ui.label(RichText::new("Para instalar pela interface, abra o jogo pela Steam com o numapilot (o perfil fica ligado ao appid).").small().weak());
+        }
+    }
+    let new = if u.mode == "nenhum" && !u.indicator {
+        None
+    } else {
+        Some(u)
+    };
+    if new != ed.p.upscale {
+        ed.p.upscale = new;
+    }
+}
+
 fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
     use numapilot::tuner::{self, Tuner};
     let mut t = Tuner::load();
@@ -451,6 +588,10 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             .weak(),
                     );
                 }
+
+                // Upscaling
+                ui.separator();
+                upscale_ui(app, ui, &mut ed);
 
                 // Otimizador de FPS
                 ui.separator();
