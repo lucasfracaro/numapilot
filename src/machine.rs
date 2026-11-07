@@ -81,6 +81,53 @@ pub struct Machine {
     pub price_kwh: Option<f64>,
     /// Consumo fixo do resto do PC (placa-mãe, discos, ventoinhas, perda da fonte), em W.
     pub base_w: Option<f64>,
+    /// Modos por horário (ex.: Silencioso das 0:00 às 7:00).
+    pub schedule: Vec<Sched>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Sched {
+    /// "HH:MM"
+    pub from: String,
+    pub to: String,
+    pub mode: String,
+}
+
+fn hm(s: &str) -> Option<u32> {
+    let (h, m) = s.trim().split_once(':')?;
+    let (h, m): (u32, u32) = (h.parse().ok()?, m.parse().ok()?);
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+impl Sched {
+    pub fn valid(&self) -> bool {
+        hm(&self.from).is_some() && hm(&self.to).is_some() && ["normal", "jogo", "ia", "silencioso"].contains(&self.mode.as_str())
+    }
+    /// Vale no minuto do dia `now` (0..1440)? Atravessa a meia-noite se `to` < `from`.
+    pub fn active_at(&self, now: u32) -> bool {
+        let (Some(a), Some(b)) = (hm(&self.from), hm(&self.to)) else { return false };
+        if a <= b { now >= a && now < b } else { now >= a || now < b }
+    }
+}
+
+/// Minuto do dia no horário local.
+pub fn local_minute() -> u32 {
+    let t = unsafe { libc::time(std::ptr::null_mut()) };
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    unsafe { libc::localtime_r(&t, &mut tm) };
+    (tm.tm_hour * 60 + tm.tm_min) as u32
+}
+
+/// Modo que as regras automáticas pedem agora: programa aberto (jogo > ia > silencioso > normal)
+/// tem prioridade sobre o horário.
+pub fn auto_mode(program_modes: &[String], schedule: &[Sched], minute: u32) -> Option<String> {
+    for m in ["jogo", "ia", "silencioso", "normal"] {
+        if program_modes.iter().any(|x| x == m) {
+            return Some(m.to_string());
+        }
+    }
+    schedule.iter().find(|s| s.valid() && s.active_at(minute)).map(|s| s.mode.clone())
 }
 
 impl Default for Machine {
@@ -109,6 +156,7 @@ impl Default for Machine {
             wol: vec![],
             price_kwh: None,
             base_w: None,
+            schedule: vec![],
         }
     }
 }
@@ -168,6 +216,9 @@ impl Machine {
         if let Some(r) = &self.ryzen {
             r.validate()?;
         }
+        if let Some(s) = self.schedule.iter().find(|s| !s.valid()) {
+            return Err(format!("horário inválido: {} às {} ({})", s.from, s.to, s.mode));
+        }
         for (k, v) in &self.acer {
             crate::acer::validate(k, v)?;
         }
@@ -226,6 +277,7 @@ impl Machine {
             wol: keep.wol.clone(),
             price_kwh: keep.price_kwh,
             base_w: keep.base_w,
+            schedule: keep.schedule.clone(),
             platform_profile: crate::notebook::profile_for_mode(name),
             ..Default::default()
         };
@@ -811,6 +863,17 @@ impl LowLatency {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_rules() {
+        let night = Sched { from: "23:00".into(), to: "07:00".into(), mode: "silencioso".into() };
+        assert!(night.active_at(23 * 60 + 5) && night.active_at(60) && !night.active_at(12 * 60));
+        let s = vec![night];
+        assert_eq!(auto_mode(&[], &s, 60).as_deref(), Some("silencioso"));
+        assert_eq!(auto_mode(&["ia".into(), "jogo".into()], &s, 60).as_deref(), Some("jogo"));
+        assert_eq!(auto_mode(&[], &s, 12 * 60), None);
+        assert!(!Sched { from: "25:00".into(), to: "1:00".into(), mode: "jogo".into() }.valid());
+    }
 
     #[test]
     fn ryzen_and_acer_apply() {

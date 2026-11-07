@@ -477,6 +477,17 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     });
                     ui.end_row();
 
+                    ui.label(RichText::new("Modo da máquina").strong())
+                        .on_hover_text("Enquanto o programa está aberto a máquina fica neste modo (aba Máquina) e volta ao anterior quando ele fecha.");
+                    let modes = [(None, "não trocar"), (Some("jogo"), "Jogo"), (Some("ia"), "IA"), (Some("silencioso"), "Silencioso")];
+                    let cur = modes.iter().find(|m| m.0 == ed.p.machine_mode.as_deref()).map(|m| m.1).unwrap_or("?");
+                    egui::ComboBox::from_id_salt("ed-mmode").selected_text(cur).show_ui(ui, |ui| {
+                        for (k, l) in modes {
+                            ui.selectable_value(&mut ed.p.machine_mode, k.map(String::from), l);
+                        }
+                    });
+                    ui.end_row();
+
                     ui.label(RichText::new("Placa de vídeo").strong());
                     ui.vertical(|ui| {
                         let cur = (ed.p.gpu.clone(), ed.p.usage.clone());

@@ -52,6 +52,11 @@ struct Hw {
     watts: f64,
     /// GPU parada: desde quando, e o nível que estava antes de baixarmos.
     idle: HashMap<String, (Option<Instant>, Option<String>)>,
+    /// Modo posto pelas regras automáticas (programa/horário) e o modo manual para voltar.
+    auto_mode: Option<String>,
+    manual_mode: Option<String>,
+    /// O usuário trocou o modo à mão enquanto uma regra valia: não reaplica a mesma regra.
+    auto_suppressed: Option<String>,
 }
 
 fn base_governors() -> BTreeMap<usize, String> {
@@ -90,6 +95,9 @@ impl Hw {
             energy_saved: Instant::now(),
             watts: 0.0,
             idle: HashMap::new(),
+            auto_mode: None,
+            manual_mode: None,
+            auto_suppressed: None,
         }
     }
 
@@ -106,6 +114,11 @@ impl Hw {
             self.machine.battery_mode.clone()
         };
         let Some(name) = target else { return };
+        if self.auto_mode.is_some() {
+            // uma regra automática manda agora; vale ao terminar
+            self.manual_mode = Some(name);
+            return;
+        }
         if name == self.machine.mode {
             return;
         }
@@ -142,6 +155,46 @@ impl Hw {
             }
         }
         self.ryzen_info = info;
+    }
+
+    /// Regras automáticas: modo por programa aberto e por horário.
+    fn auto_mode_tick(&mut self, topo: &Topology, procs: &HashMap<i32, Tracked>) {
+        let progs: Vec<String> = procs
+            .values()
+            .filter(|t| t.state == St::Placed)
+            .filter_map(|t| t.profile.as_ref().and_then(|p| p.machine_mode.clone()))
+            .collect();
+        let want = machine::auto_mode(&progs, &self.machine.schedule, machine::local_minute());
+        if want != self.auto_suppressed {
+            self.auto_suppressed = None;
+        } else if want.is_some() {
+            return;
+        }
+        if want == self.auto_mode {
+            return;
+        }
+        let target = match &want {
+            Some(m) => {
+                if self.auto_mode.is_none() {
+                    self.manual_mode = Some(self.machine.mode.clone());
+                }
+                m.clone()
+            }
+            None => self.manual_mode.take().unwrap_or_else(|| "normal".into()),
+        };
+        self.auto_mode = want;
+        if target == self.machine.mode {
+            return;
+        }
+        let game_node = topo.gaming_gpu().and_then(|g| g.numa_node);
+        let m = Machine::preset(&target, topo, game_node, &self.machine);
+        let prev = std::mem::replace(&mut self.machine, m);
+        let _ = self.machine.save();
+        self.apply_machine(topo, Some(&prev));
+        eprintln!(
+            "[numapilot] modo {target} ({})",
+            if self.auto_mode.is_some() { "regra automática" } else { "fim da regra, volta ao anterior" }
+        );
     }
 
     fn apply_machine(&mut self, topo: &Topology, prev: Option<&Machine>) -> Vec<String> {
@@ -893,6 +946,9 @@ pub fn run(cfg: Config) -> Result<()> {
         if tick.is_multiple_of(15) {
             hw.ryzen_tick();
         }
+        if tick.is_multiple_of(3) {
+            hw.auto_mode_tick(&topo, &procs);
+        }
         // Aviso de GPU quente no celular (3 leituras seguidas acima do limite).
         if tick.is_multiple_of(5) {
             let n = crate::notify::Notify::load();
@@ -1586,6 +1642,11 @@ fn handle_machine(uid: u32, ctx: &Ctx, hw: &mut Hw, m: Machine) -> Response {
     let prev = std::mem::replace(&mut hw.machine, m);
     if let Err(e) = hw.machine.save() {
         return Response::err(format!("não consegui salvar: {e}"));
+    }
+    // Trocou o modo à mão enquanto uma regra automática valia: respeita até a regra mudar.
+    if hw.auto_mode.is_some() && prev.mode != hw.machine.mode {
+        hw.auto_suppressed = hw.auto_mode.take();
+        hw.manual_mode = None;
     }
     let errs = hw.apply_machine(ctx.topo, Some(&prev));
     eprintln!("[numapilot] modo da máquina: {}", hw.machine.mode);

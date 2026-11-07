@@ -64,6 +64,9 @@ pub struct Profile {
     /// Upscaling do jogo (FSR 4/DLSS/XeSS pelo Proton, ou OptiScaler).
     #[serde(default)]
     pub upscale: Option<Upscale>,
+    /// Modo da máquina enquanto o programa está aberto (jogo, ia, silencioso); volta ao fechar.
+    #[serde(default)]
+    pub machine_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -168,6 +171,7 @@ impl Default for Profile {
             gpu_power: auto(),
             gamescope: None,
             upscale: None,
+            machine_mode: None,
         }
     }
 }
@@ -239,6 +243,7 @@ impl Profile {
             fg_gpu: base.fg_gpu.clone(),
             gamescope: base.gamescope.clone(),
             upscale: base.upscale.clone(),
+            machine_mode: base.machine_mode.clone(),
             ..Default::default()
         };
         match name {

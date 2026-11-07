@@ -437,6 +437,41 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             });
         }
 
+        // ---------------- horários ----------------
+        ui.add_space(8.0);
+        ui.heading("Modos por horário");
+        ui.label(
+            RichText::new("Ex.: Silencioso das 23:00 às 07:00. Programa com \"modo da máquina\" no perfil (Ajustar…) tem prioridade; trocar o modo à mão vale até a regra mudar.")
+                .small()
+                .weak(),
+        );
+        let mut del = None;
+        for (i, s) in m.schedule.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label("das");
+                ui.add(egui::TextEdit::singleline(&mut s.from).desired_width(48.0));
+                ui.label("às");
+                ui.add(egui::TextEdit::singleline(&mut s.to).desired_width(48.0));
+                egui::ComboBox::from_id_salt(format!("sch{i}")).selected_text(s.mode.clone()).show_ui(ui, |ui| {
+                    for k in ["silencioso", "normal", "ia", "jogo"] {
+                        ui.selectable_value(&mut s.mode, k.to_string(), k);
+                    }
+                });
+                if !s.valid() {
+                    ui.label(RichText::new("horário inválido (use HH:MM)").color(Color32::from_rgb(229, 83, 75)));
+                }
+                if ui.small_button("remover").clicked() {
+                    del = Some(i);
+                }
+            });
+        }
+        if let Some(i) = del {
+            m.schedule.remove(i);
+        }
+        if ui.small_button("+ horário").clicked() {
+            m.schedule.push(machine::Sched { from: "23:00".into(), to: "07:00".into(), mode: "silencioso".into() });
+        }
+
         // ---------------- energia ----------------
         ui.add_space(8.0);
         ui.heading("Energia");
