@@ -180,7 +180,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             .join("llm-tune")
             .join(format!("{}.env", model.trim_end_matches(".gguf")));
         if let Ok(t) = std::fs::read_to_string(&f) {
-            let res = t.lines().find_map(|l| l.strip_prefix("# geração ")).unwrap_or("");
+            let res = t
+                .lines()
+                .find_map(|l| l.strip_prefix("# geração "))
+                .unwrap_or("");
             let args = t
                 .lines()
                 .find_map(|l| l.strip_prefix("LLM_TUNED_ARGS="))

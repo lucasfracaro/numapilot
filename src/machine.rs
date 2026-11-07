@@ -102,12 +102,20 @@ fn hm(s: &str) -> Option<u32> {
 
 impl Sched {
     pub fn valid(&self) -> bool {
-        hm(&self.from).is_some() && hm(&self.to).is_some() && ["normal", "jogo", "ia", "silencioso"].contains(&self.mode.as_str())
+        hm(&self.from).is_some()
+            && hm(&self.to).is_some()
+            && ["normal", "jogo", "ia", "silencioso"].contains(&self.mode.as_str())
     }
     /// Vale no minuto do dia `now` (0..1440)? Atravessa a meia-noite se `to` < `from`.
     pub fn active_at(&self, now: u32) -> bool {
-        let (Some(a), Some(b)) = (hm(&self.from), hm(&self.to)) else { return false };
-        if a <= b { now >= a && now < b } else { now >= a || now < b }
+        let (Some(a), Some(b)) = (hm(&self.from), hm(&self.to)) else {
+            return false;
+        };
+        if a <= b {
+            now >= a && now < b
+        } else {
+            now >= a || now < b
+        }
     }
 }
 
@@ -127,7 +135,10 @@ pub fn auto_mode(program_modes: &[String], schedule: &[Sched], minute: u32) -> O
             return Some(m.to_string());
         }
     }
-    schedule.iter().find(|s| s.valid() && s.active_at(minute)).map(|s| s.mode.clone())
+    schedule
+        .iter()
+        .find(|s| s.valid() && s.active_at(minute))
+        .map(|s| s.mode.clone())
 }
 
 impl Default for Machine {
@@ -217,7 +228,10 @@ impl Machine {
             r.validate()?;
         }
         if let Some(s) = self.schedule.iter().find(|s| !s.valid()) {
-            return Err(format!("horário inválido: {} às {} ({})", s.from, s.to, s.mode));
+            return Err(format!(
+                "horário inválido: {} às {} ({})",
+                s.from, s.to, s.mode
+            ));
         }
         for (k, v) in &self.acer {
             crate::acer::validate(k, v)?;
@@ -866,13 +880,27 @@ mod tests {
 
     #[test]
     fn auto_rules() {
-        let night = Sched { from: "23:00".into(), to: "07:00".into(), mode: "silencioso".into() };
+        let night = Sched {
+            from: "23:00".into(),
+            to: "07:00".into(),
+            mode: "silencioso".into(),
+        };
         assert!(night.active_at(23 * 60 + 5) && night.active_at(60) && !night.active_at(12 * 60));
         let s = vec![night];
         assert_eq!(auto_mode(&[], &s, 60).as_deref(), Some("silencioso"));
-        assert_eq!(auto_mode(&["ia".into(), "jogo".into()], &s, 60).as_deref(), Some("jogo"));
+        assert_eq!(
+            auto_mode(&["ia".into(), "jogo".into()], &s, 60).as_deref(),
+            Some("jogo")
+        );
         assert_eq!(auto_mode(&[], &s, 12 * 60), None);
-        assert!(!Sched { from: "25:00".into(), to: "1:00".into(), mode: "jogo".into() }.valid());
+        assert!(
+            !Sched {
+                from: "25:00".into(),
+                to: "1:00".into(),
+                mode: "jogo".into()
+            }
+            .valid()
+        );
     }
 
     #[test]

@@ -41,11 +41,22 @@ fn detect() -> How {
 
 /// Há commits novos no repositório? (None = não deu para saber)
 pub fn source_behind(dir: &std::path::Path) -> Option<u32> {
-    let ok = Command::new("git").arg("-C").arg(dir).args(["fetch", "--quiet"]).status().ok()?.success();
+    let ok = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["fetch", "--quiet"])
+        .status()
+        .ok()?
+        .success();
     if !ok {
         return None;
     }
-    let o = Command::new("git").arg("-C").arg(dir).args(["rev-list", "--count", "HEAD..@{u}"]).output().ok()?;
+    let o = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-list", "--count", "HEAD..@{u}"])
+        .output()
+        .ok()?;
     String::from_utf8_lossy(&o.stdout).trim().parse().ok()
 }
 

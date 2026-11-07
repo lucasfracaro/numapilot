@@ -449,8 +449,17 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     if topo.nodes.len() > 1 {
         let devs = crate::irqs::devices();
         if !devs.is_empty() {
-            let desc: Vec<String> = devs.iter().map(|d| format!("{} {} no socket {}", d.kind, d.pci, d.node)).collect();
-            add("Interrupções", "discos e rede", Level::Ok, desc.join(", "), None);
+            let desc: Vec<String> = devs
+                .iter()
+                .map(|d| format!("{} {} no socket {}", d.kind, d.pci, d.node))
+                .collect();
+            add(
+                "Interrupções",
+                "discos e rede",
+                Level::Ok,
+                desc.join(", "),
+                None,
+            );
         }
         if crate::irqs::irqbalance_active() {
             add(

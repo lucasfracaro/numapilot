@@ -222,11 +222,16 @@ fn act(body: &Value, topo: &Topology) -> Result<String, String> {
 
 /// Métricas no formato do Prometheus (para o Grafana): GPUs, processadores e os outros PCs.
 pub fn metrics(topo: &Topology) -> String {
-    let host = std::fs::read_to_string("/etc/hostname").unwrap_or_default().trim().to_string();
+    let host = std::fs::read_to_string("/etc/hostname")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
     let mut out = String::new();
     let mut line = |name: &str, labels: String, v: Option<f64>| {
         if let Some(v) = v {
-            out.push_str(&format!("numapilot_{name}{{host=\"{host}\"{labels}}} {v}\n"));
+            out.push_str(&format!(
+                "numapilot_{name}{{host=\"{host}\"{labels}}} {v}\n"
+            ));
         }
     };
     for g in &topo.gpus {
@@ -235,12 +240,24 @@ pub fn metrics(topo: &Topology) -> String {
         line("gpu_temp_celsius", l.clone(), s.control_temp());
         line("gpu_power_watts", l.clone(), s.power_w);
         line("gpu_fan_percent", l.clone(), s.fan_pct);
-        line("gpu_busy_percent", l.clone(), g.busy_percent().map(|b| b as f64));
-        line("gpu_vram_used_bytes", l, g.vram_used_total().map(|v| v.0 as f64));
+        line(
+            "gpu_busy_percent",
+            l.clone(),
+            g.busy_percent().map(|b| b as f64),
+        );
+        line(
+            "gpu_vram_used_bytes",
+            l,
+            g.vram_used_total().map(|v| v.0 as f64),
+        );
     }
     let loads = crate::decide::sample_node_loads(topo, std::time::Duration::from_millis(200));
     for n in &topo.nodes {
-        line("cpu_load_ratio", format!(",node=\"{}\"", n.id), loads.get(&n.id).copied());
+        line(
+            "cpu_load_ratio",
+            format!(",node=\"{}\"", n.id),
+            loads.get(&n.id).copied(),
+        );
     }
     for (k, t) in crate::cpuctl::package_temps() {
         line("cpu_temp_celsius", format!(",package=\"{k}\""), Some(t));
@@ -250,7 +267,15 @@ pub fn metrics(topo: &Topology) -> String {
     }
     for p in crate::peers::summary() {
         let l = format!(",peer=\"{}\"", p["name"].as_str().unwrap_or(""));
-        line("peer_online", l.clone(), Some(if p["online"].as_bool() == Some(true) { 1.0 } else { 0.0 }));
+        line(
+            "peer_online",
+            l.clone(),
+            Some(if p["online"].as_bool() == Some(true) {
+                1.0
+            } else {
+                0.0
+            }),
+        );
         line("peer_gpu_temp_max_celsius", l, p["hot"].as_f64());
     }
     out
@@ -270,7 +295,10 @@ fn spawn_quiet(cmd: &[&str]) -> Result<(), String> {
 
 /// Liga o Sunshine: serviço do usuário, Flatpak ou o executável.
 fn sunshine_start() -> Result<String, String> {
-    for unit in ["sunshine.service", "app-dev.lizardbyte.app.Sunshine.service"] {
+    for unit in [
+        "sunshine.service",
+        "app-dev.lizardbyte.app.Sunshine.service",
+    ] {
         let ok = std::process::Command::new("systemctl")
             .args(["--user", "start", unit])
             .output()
@@ -345,12 +373,14 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
             (tiny_http::Method::Get, "/") => {
                 respond(req, 200, "text/html; charset=utf-8", PAGE.to_string())
             }
-            (_, p) if (p.starts_with("/api/") || p == "/metrics") && !authorized(&req, &token) => respond(
-                req,
-                401,
-                "application/json",
-                r#"{"error":"token inválido"}"#.into(),
-            ),
+            (_, p) if (p.starts_with("/api/") || p == "/metrics") && !authorized(&req, &token) => {
+                respond(
+                    req,
+                    401,
+                    "application/json",
+                    r#"{"error":"token inválido"}"#.into(),
+                )
+            }
             (tiny_http::Method::Get, "/api/state") => {
                 respond(req, 200, "application/json", state(&topo).to_string())
             }
@@ -364,23 +394,43 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
                 let mut v = crate::peers::summary();
                 for p in &mut v {
                     let name = p["name"].as_str().unwrap_or("").to_string();
-                    p["hist"] = json!(crate::watch::series(&hist, &name, since, 900).into_iter().map(|x| x.1).collect::<Vec<_>>());
+                    p["hist"] = json!(
+                        crate::watch::series(&hist, &name, since, 900)
+                            .into_iter()
+                            .map(|x| x.1)
+                            .collect::<Vec<_>>()
+                    );
                 }
                 respond(req, 200, "application/json", Value::Array(v).to_string())
             }
             (tiny_http::Method::Get, "/api/profiles") => {
-                let v = serde_json::to_string(&crate::profiles::Profiles::load().map).unwrap_or_default();
+                let v = serde_json::to_string(&crate::profiles::Profiles::load().map)
+                    .unwrap_or_default();
                 respond(req, 200, "application/json", v)
             }
             (tiny_http::Method::Get, "/api/backup") => {
-                let f = std::env::temp_dir().join(format!("numapilot-web-backup-{}.tar.gz", std::process::id()));
-                match crate::backup::create(Some(&f)).and_then(|p| std::fs::read(&p).map_err(|e| e.to_string())) {
+                let f = std::env::temp_dir().join(format!(
+                    "numapilot-web-backup-{}.tar.gz",
+                    std::process::id()
+                ));
+                match crate::backup::create(Some(&f))
+                    .and_then(|p| std::fs::read(&p).map_err(|e| e.to_string()))
+                {
                     Ok(bytes) => {
                         let _ = std::fs::remove_file(&f);
-                        let h = tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/gzip"[..]).unwrap();
+                        let h = tiny_http::Header::from_bytes(
+                            &b"Content-Type"[..],
+                            &b"application/gzip"[..],
+                        )
+                        .unwrap();
                         let _ = req.respond(tiny_http::Response::from_data(bytes).with_header(h));
                     }
-                    Err(e) => respond(req, 500, "application/json", json!({"error": e}).to_string()),
+                    Err(e) => respond(
+                        req,
+                        500,
+                        "application/json",
+                        json!({"error": e}).to_string(),
+                    ),
                 }
             }
             (tiny_http::Method::Get, "/api/games") => {

@@ -73,6 +73,15 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 - [ ] Meus PCs: colar o link do painel da BC-250 e do notebook no servidor; no celular, ver os três e abrir cada um
 - [ ] Wake-on-LAN: ligar na BC-250 (Máquina → Ligar pela rede e na BIOS), desligar e ligar pelo botão do painel
 - [ ] Undervolt automático numa MI50 e na RX 9060 XT; saúde mostra o ECC das MI50
+- [ ] Servidor de IA: Otimizar (tokens/s) com um modelo de 7-14B; o `llm up` usa a combinação gravada
+- [ ] Avisos: ntfy no celular, "Mandar teste"; GPU quente (baixe o limite para 50 °C para testar); derrubar o container da IA
+- [ ] Modo automático: jogo com "Modo da máquina: Jogo" muda e volta ao fechar; horário Silencioso
+- [ ] Energia: preço do kWh e "resto do PC"; comparar com um medidor de tomada; MI50 com "Economia quando parada"
+- [ ] Painel: abrir um jogo da Steam e ligar o Sunshine pelo celular; gráfico de 24 h dos outros PCs
+- [ ] Copiar perfis do servidor para o notebook; `numapilot peers backup`
+- [ ] Atualizar o numapilot pela interface
+- [ ] Servidor: `numapilot doctor` mostra NVMe e rede no socket certo
+- [ ] VM Windows com a RX470: Conferir, Preparar, reiniciar, Criar, instalar o Windows e o driver
 
 ## Notebook (NVIDIA)
 

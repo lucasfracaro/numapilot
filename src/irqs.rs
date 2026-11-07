@@ -16,7 +16,9 @@ pub struct Dev {
 
 /// Placas de disco NVMe e de rede com nó NUMA conhecido.
 pub fn devices() -> Vec<Dev> {
-    let Ok(rd) = std::fs::read_dir(sys("bus/pci/devices")) else { return vec![] };
+    let Ok(rd) = std::fs::read_dir(sys("bus/pci/devices")) else {
+        return vec![];
+    };
     let mut v = vec![];
     for e in rd.flatten() {
         let d = e.path();
@@ -28,14 +30,26 @@ pub fn devices() -> Vec<Dev> {
         } else {
             continue;
         };
-        let Some(node) = read_trim(d.join("numa_node")).and_then(|n| n.parse::<i64>().ok()).filter(|n| *n >= 0) else {
+        let Some(node) = read_trim(d.join("numa_node"))
+            .and_then(|n| n.parse::<i64>().ok())
+            .filter(|n| *n >= 0)
+        else {
             continue;
         };
         let mut irqs: Vec<u32> = std::fs::read_dir(d.join("msi_irqs"))
-            .map(|rd| rd.flatten().filter_map(|e| e.file_name().to_string_lossy().parse().ok()).collect())
+            .map(|rd| {
+                rd.flatten()
+                    .filter_map(|e| e.file_name().to_string_lossy().parse().ok())
+                    .collect()
+            })
             .unwrap_or_default();
         irqs.sort_unstable();
-        v.push(Dev { pci: e.file_name().to_string_lossy().to_string(), kind, node: node as usize, irqs });
+        v.push(Dev {
+            pci: e.file_name().to_string_lossy().to_string(),
+            kind,
+            node: node as usize,
+            irqs,
+        });
     }
     v.sort_by(|a, b| a.pci.cmp(&b.pci));
     v
@@ -58,7 +72,8 @@ pub fn apply(topo: &crate::topo::Topology) -> usize {
         }
         for irq in &d.irqs {
             let p = format!("{}/{irq}/smp_affinity_list", irq_root());
-            if read_trim(&p).as_deref() != Some(cpus.as_str()) && std::fs::write(&p, &cpus).is_ok() {
+            if read_trim(&p).as_deref() != Some(cpus.as_str()) && std::fs::write(&p, &cpus).is_ok()
+            {
                 n += 1;
             }
         }
@@ -93,7 +108,10 @@ mod tests {
         let _g = crate::util::test_sysfs_lock(&root);
         let d = super::devices();
         assert_eq!(d.len(), 2);
-        assert_eq!((d[1].kind, d[1].node, d[1].irqs.clone()), ("nvme", 1, vec![120]));
+        assert_eq!(
+            (d[1].kind, d[1].node, d[1].irqs.clone()),
+            ("nvme", 1, vec![120])
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 }

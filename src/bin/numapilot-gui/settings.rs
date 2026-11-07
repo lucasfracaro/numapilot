@@ -240,22 +240,34 @@ fn notify_ui(app: &mut App, ui: &mut egui::Ui) {
         n
     });
     ui.checkbox(&mut n.enabled, "Ligado");
-    egui::Grid::new("ntfy").num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
-        ui.label("Servidor");
-        ui.add(egui::TextEdit::singleline(&mut n.server).desired_width(260.0));
-        ui.end_row();
-        ui.label("Tópico");
-        ui.add(egui::TextEdit::singleline(&mut n.topic).desired_width(260.0));
-        ui.end_row();
-        ui.label("Token (opcional)");
-        let mut t = n.token.clone().unwrap_or_default();
-        ui.add(egui::TextEdit::singleline(&mut t).password(true).desired_width(260.0));
-        n.token = (!t.is_empty()).then_some(t);
-        ui.end_row();
-    });
+    egui::Grid::new("ntfy")
+        .num_columns(2)
+        .spacing([12.0, 4.0])
+        .show(ui, |ui| {
+            ui.label("Servidor");
+            ui.add(egui::TextEdit::singleline(&mut n.server).desired_width(260.0));
+            ui.end_row();
+            ui.label("Tópico");
+            ui.add(egui::TextEdit::singleline(&mut n.topic).desired_width(260.0));
+            ui.end_row();
+            ui.label("Token (opcional)");
+            let mut t = n.token.clone().unwrap_or_default();
+            ui.add(
+                egui::TextEdit::singleline(&mut t)
+                    .password(true)
+                    .desired_width(260.0),
+            );
+            n.token = (!t.is_empty()).then_some(t);
+            ui.end_row();
+        });
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut n.gpu_hot, "GPU quente");
-        ui.add_enabled(n.gpu_hot, egui::DragValue::new(&mut n.gpu_hot_c).range(70.0..=105.0).suffix(" °C"));
+        ui.add_enabled(
+            n.gpu_hot,
+            egui::DragValue::new(&mut n.gpu_hot_c)
+                .range(70.0..=105.0)
+                .suffix(" °C"),
+        );
         ui.checkbox(&mut n.health, "discos/memória/bateria");
         ui.checkbox(&mut n.llm, "servidor de IA");
         ui.checkbox(&mut n.peers, "outros PCs");
@@ -263,11 +275,19 @@ fn notify_ui(app: &mut App, ui: &mut egui::Ui) {
     });
     let n = n.clone();
     ui.horizontal(|ui| {
-        if ui.add_enabled(n != saved, egui::Button::new("Salvar")).clicked() {
+        if ui
+            .add_enabled(n != saved, egui::Button::new("Salvar"))
+            .clicked()
+        {
             app.send(numapilot::ctl::Request::SetNotify { notify: n.clone() });
         }
         if ui.button("Mandar teste").clicked() {
-            match n.send_now("Teste do numapilot", "Se chegou, os avisos estão funcionando.", 3, &["white_check_mark"]) {
+            match n.send_now(
+                "Teste do numapilot",
+                "Se chegou, os avisos estão funcionando.",
+                3,
+                &["white_check_mark"],
+            ) {
                 Ok(()) => app.toast("Aviso de teste enviado", true),
                 Err(e) => app.toast(e, false),
             }

@@ -447,8 +447,11 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
                 "pull" => {
-                    let m = peers::pull_profiles(&arg.context("faltou o nome")?, name.as_deref() == Some("todos"))
-                        .map_err(|e| anyhow::anyhow!(e))?;
+                    let m = peers::pull_profiles(
+                        &arg.context("faltou o nome")?,
+                        name.as_deref() == Some("todos"),
+                    )
+                    .map_err(|e| anyhow::anyhow!(e))?;
                     println!("{m}");
                     Ok(())
                 }
@@ -464,14 +467,29 @@ fn real_main() -> Result<()> {
                     println!("{m}");
                     Ok(())
                 }
-                _ => bail!("use: numapilot peers list | add LINK [NOME] | remove NOME | wake NOME | pull NOME [todos] | backup"),
+                _ => bail!(
+                    "use: numapilot peers list | add LINK [NOME] | remove NOME | wake NOME | pull NOME [todos] | backup"
+                ),
             }
         }
-        Cmd::Vm { action, arg, gpu, iso, mem, cpus, disk } => {
+        Cmd::Vm {
+            action,
+            arg,
+            gpu,
+            iso,
+            mem,
+            cpus,
+            disk,
+        } => {
             use numapilot::vm;
             let cfg = Config::load()?;
             let topo = Topology::load(&cfg);
-            let find = |a: &str| topo.gpus.iter().find(|g| g.alias == a || g.pci == a).cloned();
+            let find = |a: &str| {
+                topo.gpus
+                    .iter()
+                    .find(|g| g.alias == a || g.pci == a)
+                    .cloned()
+            };
             match action.as_str() {
                 "check" => {
                     let g = arg.as_deref().or(gpu.as_deref()).and_then(find);
@@ -480,7 +498,11 @@ fn real_main() -> Result<()> {
                             "[{}] {}{}{}",
                             if c.ok { " ok " } else { "falta" },
                             c.name,
-                            if c.detail.is_empty() { String::new() } else { format!(": {}", c.detail) },
+                            if c.detail.is_empty() {
+                                String::new()
+                            } else {
+                                format!(": {}", c.detail)
+                            },
                             match (&c.fix, c.ok) {
                                 (Some(f), false) => format!("\n        → {f}"),
                                 _ => String::new(),
@@ -488,25 +510,47 @@ fn real_main() -> Result<()> {
                         );
                     }
                     if g.is_none() {
-                        println!("(diga a placa para conferir ela também: numapilot vm check rx470-0)");
+                        println!(
+                            "(diga a placa para conferir ela também: numapilot vm check rx470-0)"
+                        );
                     }
                     Ok(())
                 }
                 "prepare" => {
-                    let g = arg.as_deref().or(gpu.as_deref()).and_then(find).context("diga a placa (veja numapilot topo)")?;
+                    let g = arg
+                        .as_deref()
+                        .or(gpu.as_deref())
+                        .and_then(find)
+                        .context("diga a placa (veja numapilot topo)")?;
                     vm::prepare(&topo, &g, &mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
                 }
-                "unprepare" => vm::unprepare(&mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e)),
+                "unprepare" => {
+                    vm::unprepare(&mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
+                }
                 "create" => {
                     let name = arg.context("diga o nome da VM")?;
                     let g = gpu.as_deref().and_then(find).context("--gpu PLACA")?;
                     let iso = iso.context("--iso arquivo do Windows (.iso)")?;
-                    vm::create(&topo, &g, &vm::NewVm { name: name.clone(), iso, mem_gb: mem, cpus, disk_gb: disk })
-                        .map_err(|e| anyhow::anyhow!(e))?;
-                    println!("VM {name} criada: abra no virt-manager para instalar o Windows. Depois instale o driver da placa dentro dela.");
+                    vm::create(
+                        &topo,
+                        &g,
+                        &vm::NewVm {
+                            name: name.clone(),
+                            iso,
+                            mem_gb: mem,
+                            cpus,
+                            disk_gb: disk,
+                        },
+                    )
+                    .map_err(|e| anyhow::anyhow!(e))?;
+                    println!(
+                        "VM {name} criada: abra no virt-manager para instalar o Windows. Depois instale o driver da placa dentro dela."
+                    );
                     Ok(())
                 }
-                _ => bail!("use: numapilot vm check [GPU] | sudo numapilot vm prepare GPU | sudo numapilot vm unprepare | numapilot vm create NOME --gpu GPU --iso ARQ.iso [--mem 16 --cpus 8 --disk 120]"),
+                _ => bail!(
+                    "use: numapilot vm check [GPU] | sudo numapilot vm prepare GPU | sudo numapilot vm unprepare | numapilot vm create NOME --gpu GPU --iso ARQ.iso [--mem 16 --cpus 8 --disk 120]"
+                ),
             }
         }
         Cmd::SelfUpdate { action } => {

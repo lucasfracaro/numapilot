@@ -752,7 +752,66 @@ cada 30 min o serviço lê o SMART dos discos (vida útil usada, setores ruins, 
 TB escritos; precisa do `smartmontools`), os erros da memória ECC (EDAC), os erros corrigidos e não
 corrigidos das placas AMD com ECC (HBM2 das MI50) e o desgaste da bateria.
 
-## 24. Limitações
+## 24. Servidor de IA otimizado, avisos, modos automáticos e energia
+
+**Otimizador do servidor de IA** (aba Servidor de IA → **Otimizar (tokens/s)**, ou
+`gfx906-rocm llm tune modelo.gguf`): mede com o `llama-bench` cada combinação de 1 ou todas as GPUs,
+divisão por camadas ou por linhas, flash attention e cache q8_0, e grava a mais rápida para gerar
+texto (empate decide pelo prompt) em `~/.config/gfx906-lab/llm-tune/MODELO.env`. O `llm up` passa a
+usar sozinho; apague o arquivo para voltar ao padrão. Vale para MI50, 9060 XT, BC-250 e NVIDIA.
+
+**Avisos no celular** (Configurações → Avisos no celular): pelo app [ntfy](https://ntfy.sh)
+(grátis, Android/iOS; o QR code assina o tópico). Avisa GPU quente (limite ajustável), disco/memória
+com problema, servidor de IA que parou sozinho, outro PC que saiu da rede (e quando volta) e
+undervolt automático pronto. Os dois últimos tipos precisam do painel no celular ligado.
+
+**Modo automático**: no **Ajustar…** de um programa, "Modo da máquina" (Jogo, IA, Silencioso) vale
+enquanto ele está aberto e volta ao anterior quando fecha. Em Máquina → **Modos por horário** (ex.:
+Silencioso das 23:00 às 07:00). Programa tem prioridade sobre horário; trocar o modo à mão vale até a
+regra mudar; a troca tomada/bateria do notebook espera a regra terminar.
+
+**Energia** (Máquina → Energia): potência agora, kWh e custo de hoje, do mês e a média diária (com o
+preço do kWh). O serviço mede processadores (RAPL) e placas de vídeo; informe o "resto do PC" (placa-
+mãe, discos, fonte) para ficar perto da tomada. Em cada placa AMD, **Economia quando parada** põe a
+placa no nível mais baixo depois de 1 min sem uso e devolve quando volta a ser usada (MI50 paradas).
+
+**Meus PCs** ganhou: gráfico de temperatura das últimas 24 h de cada PC (o PC principal guarda 7
+dias, um ponto por minuto, em `~/.local/share/numapilot/peers-history.jsonl`), versão de cada um,
+**copiar perfis** de outro PC (`numapilot peers pull NOME [todos]`) e **backup diário** de cada PC em
+`~/numapilot-backups/NOME/` (7 mais novos; `numapilot peers backup` faz na hora). Para o Grafana:
+`http://IP:8577/metrics?t=TOKEN` no formato do Prometheus.
+
+**Jogos pelo celular**: o painel lista os jogos instalados da Steam com **Abrir** (o Steam precisa
+estar aberto na sessão) e **Ligar Sunshine**. Junto com o Ligar (Wake-on-LAN) dá para ligar a BC-250,
+abrir o jogo e conectar pelo Moonlight sem levantar do sofá.
+
+**Atualizar o numapilot**: Configurações → **Atualizar o numapilot** (ou
+`numapilot self-update run`): pelo pacote, ou `git pull` + `install.sh --yes` na pasta de onde ele
+foi instalado.
+
+**Interrupções no socket certo** (2 sockets): além das GPUs, as interrupções das placas de rede e
+dos NVMe vão para o socket onde a placa está ligada (`device_irq` no `numapilot.toml`). O serviço
+reaplica a cada 5 min (o irqbalance desfaz).
+
+## 25. Máquina virtual Windows (jogos com anti-cheat)
+
+Configurações → **Máquina virtual Windows**: uma placa fica só para o Windows numa VM (VFIO), com os
+núcleos e a memória do socket dela, e o Linux continua na outra placa.
+
+1. **Conferir**: virtualização e IOMMU na BIOS, QEMU/libvirt/OVMF/TPM instalados, a placa isolada
+   no grupo do IOMMU, modelo único, sem o monitor do Linux nela e, nas AMD com defeito de reset
+   (RX 470/480/580, Vega, MI50, Navi 10/12), o `vendor-reset`.
+2. **Preparar a placa** (`sudo numapilot vm prepare GPU`): prende a placa e o áudio dela no
+   `vfio-pci` em `/etc/modprobe.d`, põe os módulos do vfio na imagem de boot e liga
+   `intel_iommu=on iommu=pt`. Reinicie. **Devolver ao Linux** desfaz.
+3. **Criar a VM** (`numapilot vm create NOME --gpu GPU --iso Win11.iso`): UEFI, TPM 2.0, CPUs
+   presas no socket da placa (deixando os primeiros para o Linux), memória só daquele socket, a placa
+   e o áudio dela. Instale o Windows pelo virt-manager e depois o driver da placa dentro dele.
+
+No servidor, a candidata é a RX470 (as MI50 não têm saída de vídeo). Alguns anti-cheats (Vanguard e
+jogos que configuram o EasyAntiCheat/BattlEye para isso) recusam máquina virtual: confira o jogo antes.
+
+## 26. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice

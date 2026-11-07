@@ -21,7 +21,12 @@ pub fn today() -> String {
     let t = unsafe { libc::time(std::ptr::null_mut()) };
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     unsafe { libc::localtime_r(&t, &mut tm) };
-    format!("{:04}-{:02}-{:02}", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday)
+    format!(
+        "{:04}-{:02}-{:02}",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday
+    )
 }
 
 impl Energy {
@@ -57,13 +62,24 @@ impl Energy {
 
     /// kWh do mês ("AAAA-MM").
     pub fn month(&self, ym: &str) -> f64 {
-        self.days.iter().filter(|(d, _)| d.starts_with(ym)).map(|(_, v)| v).sum()
+        self.days
+            .iter()
+            .filter(|(d, _)| d.starts_with(ym))
+            .map(|(_, v)| v)
+            .sum()
     }
 
     /// Média por dia dos últimos `n` dias completos.
     pub fn avg_days(&self, n: usize) -> Option<f64> {
         let t = today();
-        let v: Vec<f64> = self.days.iter().rev().filter(|(d, _)| **d != t).take(n).map(|(_, v)| *v).collect();
+        let v: Vec<f64> = self
+            .days
+            .iter()
+            .rev()
+            .filter(|(d, _)| **d != t)
+            .take(n)
+            .map(|(_, v)| *v)
+            .collect();
         (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
     }
 }

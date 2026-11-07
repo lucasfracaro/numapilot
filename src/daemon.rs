@@ -193,7 +193,11 @@ impl Hw {
         self.apply_machine(topo, Some(&prev));
         eprintln!(
             "[numapilot] modo {target} ({})",
-            if self.auto_mode.is_some() { "regra automática" } else { "fim da regra, volta ao anterior" }
+            if self.auto_mode.is_some() {
+                "regra automática"
+            } else {
+                "fim da regra, volta ao anterior"
+            }
         );
     }
 
@@ -889,11 +893,15 @@ pub fn run(cfg: Config) -> Result<()> {
         }
         // GPU parada: nível baixo até voltar a ser usada.
         for (pci, c) in &gpuc.map {
-            let Some(g) = topo.gpus.iter().find(|g| &g.pci == pci) else { continue };
+            let Some(g) = topo.gpus.iter().find(|g| &g.pci == pci) else {
+                continue;
+            };
             if g.vendor != 0x1002 {
                 continue;
             }
-            let lvl_path = crate::util::sys(&format!("bus/pci/devices/{pci}/power_dpm_force_performance_level"));
+            let lvl_path = crate::util::sys(&format!(
+                "bus/pci/devices/{pci}/power_dpm_force_performance_level"
+            ));
             let e = hw.idle.entry(pci.clone()).or_insert((None, None));
             if !c.idle_save {
                 if let Some(prev) = e.1.take() {
@@ -986,7 +994,9 @@ pub fn run(cfg: Config) -> Result<()> {
                                         "{} está a {t:.0} °C (ventoinha {}, {}). Confira a ventilação ou reduza a potência.",
                                         g.alias,
                                         s.fan_pct.map(|p| format!("{p:.0}%")).unwrap_or("?".into()),
-                                        s.power_w.map(|p| format!("{p:.0} W")).unwrap_or("?".into())
+                                        s.power_w
+                                            .map(|p| format!("{p:.0} W"))
+                                            .unwrap_or("?".into())
                                     ),
                                     5,
                                     Duration::from_secs(30 * 60),
@@ -1012,7 +1022,14 @@ pub fn run(cfg: Config) -> Result<()> {
                 for (lvl, p) in crate::health::problems(&r) {
                     if lvl >= 2 {
                         eprintln!("[numapilot] saúde: {p}");
-                        crate::notify::event("health", &p, "Problema no hardware", &p, 4, Duration::from_secs(24 * 3600));
+                        crate::notify::event(
+                            "health",
+                            &p,
+                            "Problema no hardware",
+                            &p,
+                            4,
+                            Duration::from_secs(24 * 3600),
+                        );
                     }
                 }
                 let tmp = crate::health::path().with_extension("json.tmp");
@@ -1029,7 +1046,8 @@ pub fn run(cfg: Config) -> Result<()> {
             // energia: integra a potência desde a última amostra
             let dt = hw.energy_at.elapsed().as_secs_f64();
             hw.energy_at = Instant::now();
-            hw.watts = crate::energy::power_now(&hw.cpu_power, &topo, hw.machine.base_w.unwrap_or(0.0));
+            hw.watts =
+                crate::energy::power_now(&hw.cpu_power, &topo, hw.machine.base_w.unwrap_or(0.0));
             hw.energy.add(hw.watts, dt);
             if hw.energy_saved.elapsed() >= Duration::from_secs(300) {
                 hw.energy_saved = Instant::now();
@@ -1145,7 +1163,12 @@ pub fn run(cfg: Config) -> Result<()> {
     let _ = hw.energy.save();
     for (pci, (_, prev)) in &hw.idle {
         if let Some(p) = prev {
-            let _ = std::fs::write(crate::util::sys(&format!("bus/pci/devices/{pci}/power_dpm_force_performance_level")), p);
+            let _ = std::fs::write(
+                crate::util::sys(&format!(
+                    "bus/pci/devices/{pci}/power_dpm_force_performance_level"
+                )),
+                p,
+            );
         }
     }
     let _ = std::fs::remove_file(run_dir().join("hw.json"));
@@ -1241,7 +1264,11 @@ fn handle(
                 return Response::err(e);
             }
             return match notify.save() {
-                Ok(()) => Response::ok(if notify.enabled { "avisos ligados" } else { "avisos desligados" }),
+                Ok(()) => Response::ok(if notify.enabled {
+                    "avisos ligados"
+                } else {
+                    "avisos desligados"
+                }),
                 Err(e) => Response::err(format!("não consegui salvar: {e}")),
             };
         }

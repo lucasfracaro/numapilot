@@ -63,7 +63,11 @@ fn append(points: &[Point]) {
     if let Some(d) = p.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&p)
+    {
         for x in points {
             let _ = writeln!(f, "{}", serde_json::to_string(x).unwrap_or_default());
         }
@@ -74,7 +78,10 @@ fn trim(days: u64) {
     let keep = read_history(now().saturating_sub(days * 86400));
     let p = history_path();
     let tmp = p.with_extension("jsonl.tmp");
-    let body: String = keep.iter().map(|x| serde_json::to_string(x).unwrap_or_default() + "\n").collect();
+    let body: String = keep
+        .iter()
+        .map(|x| serde_json::to_string(x).unwrap_or_default() + "\n")
+        .collect();
     if std::fs::write(&tmp, body).is_ok() {
         let _ = std::fs::rename(tmp, p);
     }
@@ -83,12 +90,18 @@ fn trim(days: u64) {
 fn llm_state() -> Option<String> {
     let eng = crate::containers::engine()?;
     let name = crate::labcfg::LabSettings::load().get("LLM_NAME");
-    let name = if name.is_empty() { "gfx906-llm".to_string() } else { name };
+    let name = if name.is_empty() {
+        "gfx906-llm".to_string()
+    } else {
+        name
+    };
     let o = std::process::Command::new(eng)
         .args(["inspect", "-f", "{{.State.Status}}", &name])
         .output()
         .ok()?;
-    o.status.success().then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    o.status
+        .success()
+        .then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
 /// Laço do vigia (thread).
@@ -110,7 +123,9 @@ pub fn run() {
                 "llm",
                 "llm-down",
                 "Servidor de IA parou",
-                &format!("O container do llama.cpp está \"{s}\". Veja o log na aba Servidor de IA."),
+                &format!(
+                    "O container do llama.cpp está \"{s}\". Veja o log na aba Servidor de IA."
+                ),
                 4,
                 Duration::from_secs(30 * 60),
             );
@@ -127,11 +142,25 @@ pub fn run() {
                 let v: Vec<f64> = a.iter().filter_map(|x| x.as_f64()).collect();
                 (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
             });
-            pts.push(Point { t, name: name.clone(), online, hot: p["hot"].as_f64(), load, power: p["power"].as_f64() });
+            pts.push(Point {
+                t,
+                name: name.clone(),
+                online,
+                hot: p["hot"].as_f64(),
+                load,
+                power: p["power"].as_f64(),
+            });
             let c = offline.entry(name.clone()).or_default();
             if online {
                 if *c >= 3 {
-                    crate::notify::event("peers", &format!("up-{name}"), &format!("{name} voltou"), &format!("{name} está ligado de novo."), 2, Duration::from_secs(60));
+                    crate::notify::event(
+                        "peers",
+                        &format!("up-{name}"),
+                        &format!("{name} voltou"),
+                        &format!("{name} está ligado de novo."),
+                        2,
+                        Duration::from_secs(60),
+                    );
                 }
                 *c = 0;
             } else {
@@ -141,7 +170,9 @@ pub fn run() {
                         "peers",
                         &format!("down-{name}"),
                         &format!("{name} saiu da rede"),
-                        &format!("{name} não responde há 3 minutos (desligou, travou ou perdeu a rede)."),
+                        &format!(
+                            "{name} não responde há 3 minutos (desligou, travou ou perdeu a rede)."
+                        ),
                         4,
                         Duration::from_secs(3600),
                     );
@@ -171,9 +202,30 @@ mod tests {
     fn buckets() {
         let base = now() - 3600;
         let pts = vec![
-            Point { t: base + 10, name: "a".into(), online: true, hot: Some(50.0), load: None, power: None },
-            Point { t: base + 20, name: "a".into(), online: true, hot: Some(70.0), load: None, power: None },
-            Point { t: base + 700, name: "b".into(), online: true, hot: Some(90.0), load: None, power: None },
+            Point {
+                t: base + 10,
+                name: "a".into(),
+                online: true,
+                hot: Some(50.0),
+                load: None,
+                power: None,
+            },
+            Point {
+                t: base + 20,
+                name: "a".into(),
+                online: true,
+                hot: Some(70.0),
+                load: None,
+                power: None,
+            },
+            Point {
+                t: base + 700,
+                name: "b".into(),
+                online: true,
+                hot: Some(90.0),
+                load: None,
+                power: None,
+            },
         ];
         let s = series(&pts, "a", base, 300);
         assert_eq!(s[0].1, Some(70.0));

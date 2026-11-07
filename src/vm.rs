@@ -45,7 +45,11 @@ fn ids(pci: &str) -> Option<String> {
     let d = sys(&format!("bus/pci/devices/{pci}"));
     let v = read_trim(d.join("vendor"))?;
     let dv = read_trim(d.join("device"))?;
-    Some(format!("{}:{}", v.trim_start_matches("0x"), dv.trim_start_matches("0x")))
+    Some(format!(
+        "{}:{}",
+        v.trim_start_matches("0x"),
+        dv.trim_start_matches("0x")
+    ))
 }
 
 fn class(pci: &str) -> String {
@@ -76,7 +80,20 @@ pub fn needs_vendor_reset(g: &Gpu) -> bool {
         && matches!(
             g.device,
             // Polaris 10/11/12 (RX 470/480/570/580/550/560), Vega 10/20, Navi 10/12/14
-            0x67df | 0x67ef | 0x67ff | 0x699f | 0x6987 | 0x687f | 0x6863 | 0x66a0 | 0x66a1 | 0x66af | 0x731f | 0x7340 | 0x7360 | 0x7362
+            0x67df
+                | 0x67ef
+                | 0x67ff
+                | 0x699f
+                | 0x6987
+                | 0x687f
+                | 0x6863
+                | 0x66a0
+                | 0x66a1
+                | 0x66af
+                | 0x731f
+                | 0x7340
+                | 0x7360
+                | 0x7362
         )
 }
 
@@ -87,32 +104,99 @@ fn has(bin: &str) -> bool {
 pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
     let mut v = vec![];
     let mut add = |name: &str, ok: bool, detail: String, fix: Option<&str>| {
-        v.push(Check { name: name.into(), ok, detail, fix: fix.map(String::from) });
+        v.push(Check {
+            name: name.into(),
+            ok,
+            detail,
+            fix: fix.map(String::from),
+        });
     };
     let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
     let virt = cpuinfo.contains(" vmx") || cpuinfo.contains(" svm");
-    add("virtualização da CPU", virt, if virt { "VT-x/AMD-V ligado".into() } else { "desligada".into() }, Some("ligue VT-x / SVM na BIOS"));
-    let groups = std::fs::read_dir(sys("kernel/iommu_groups")).map(|r| r.count()).unwrap_or(0);
+    add(
+        "virtualização da CPU",
+        virt,
+        if virt {
+            "VT-x/AMD-V ligado".into()
+        } else {
+            "desligada".into()
+        },
+        Some("ligue VT-x / SVM na BIOS"),
+    );
+    let groups = std::fs::read_dir(sys("kernel/iommu_groups"))
+        .map(|r| r.count())
+        .unwrap_or(0);
     let intel = cpuinfo.contains("GenuineIntel");
     add(
         "IOMMU",
         groups > 0,
-        if groups > 0 { format!("{groups} grupos") } else { "desligado".into() },
-        Some(if intel { "ligue VT-d na BIOS; numapilot vm prepare adiciona intel_iommu=on iommu=pt" } else { "ligue IOMMU/AMD-Vi na BIOS" }),
+        if groups > 0 {
+            format!("{groups} grupos")
+        } else {
+            "desligado".into()
+        },
+        Some(if intel {
+            "ligue VT-d na BIOS; numapilot vm prepare adiciona intel_iommu=on iommu=pt"
+        } else {
+            "ligue IOMMU/AMD-Vi na BIOS"
+        }),
     );
     let qemu = has("qemu-system-x86_64");
-    add("QEMU", qemu, String::new(), Some("sudo pacman -S qemu-desktop"));
+    add(
+        "QEMU",
+        qemu,
+        String::new(),
+        Some("sudo pacman -S qemu-desktop"),
+    );
     let lv = has("virsh");
-    add("libvirt", lv, String::new(), Some("sudo pacman -S libvirt dnsmasq && sudo systemctl enable --now libvirtd"));
-    add("virt-install", has("virt-install"), String::new(), Some("sudo pacman -S virt-install"));
-    add("virt-manager (janela da VM)", has("virt-manager"), String::new(), Some("sudo pacman -S virt-manager"));
-    let ovmf = ["/usr/share/edk2/x64/OVMF_CODE.4m.fd", "/usr/share/edk2-ovmf/x64/OVMF_CODE.fd", "/usr/share/OVMF/OVMF_CODE.fd"]
-        .iter()
-        .any(|p| Path::new(p).exists());
-    add("UEFI da VM (OVMF)", ovmf, String::new(), Some("sudo pacman -S edk2-ovmf"));
-    add("TPM da VM (Windows 11)", has("swtpm"), String::new(), Some("sudo pacman -S swtpm"));
-    let in_group = Command::new("id").arg("-nG").output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().any(|g| g == "libvirt"));
-    add("você no grupo libvirt", in_group, String::new(), Some("sudo usermod -aG libvirt $USER (e entre de novo)"));
+    add(
+        "libvirt",
+        lv,
+        String::new(),
+        Some("sudo pacman -S libvirt dnsmasq && sudo systemctl enable --now libvirtd"),
+    );
+    add(
+        "virt-install",
+        has("virt-install"),
+        String::new(),
+        Some("sudo pacman -S virt-install"),
+    );
+    add(
+        "virt-manager (janela da VM)",
+        has("virt-manager"),
+        String::new(),
+        Some("sudo pacman -S virt-manager"),
+    );
+    let ovmf = [
+        "/usr/share/edk2/x64/OVMF_CODE.4m.fd",
+        "/usr/share/edk2-ovmf/x64/OVMF_CODE.fd",
+        "/usr/share/OVMF/OVMF_CODE.fd",
+    ]
+    .iter()
+    .any(|p| Path::new(p).exists());
+    add(
+        "UEFI da VM (OVMF)",
+        ovmf,
+        String::new(),
+        Some("sudo pacman -S edk2-ovmf"),
+    );
+    add(
+        "TPM da VM (Windows 11)",
+        has("swtpm"),
+        String::new(),
+        Some("sudo pacman -S swtpm"),
+    );
+    let in_group = Command::new("id").arg("-nG").output().is_ok_and(|o| {
+        String::from_utf8_lossy(&o.stdout)
+            .split_whitespace()
+            .any(|g| g == "libvirt")
+    });
+    add(
+        "você no grupo libvirt",
+        in_group,
+        String::new(),
+        Some("sudo usermod -aG libvirt $USER (e entre de novo)"),
+    );
     if let Some(g) = gpu {
         let fns = functions(&g.pci);
         match iommu_group(&g.pci) {
@@ -127,12 +211,26 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
                     if extra.is_empty() {
                         format!("grupo só com {}", fns.join(", "))
                     } else {
-                        format!("divide o grupo com {}", extra.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "))
+                        format!(
+                            "divide o grupo com {}",
+                            extra
+                                .iter()
+                                .map(|s| s.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
                     },
-                    Some("troque a placa de slot (os ligados direto na CPU costumam ficar isolados)"),
+                    Some(
+                        "troque a placa de slot (os ligados direto na CPU costumam ficar isolados)",
+                    ),
                 );
             }
-            None => add(&format!("{} no IOMMU", g.alias), false, "sem grupo (IOMMU desligado?)".into(), None),
+            None => add(
+                &format!("{} no IOMMU", g.alias),
+                false,
+                "sem grupo (IOMMU desligado?)".into(),
+                None,
+            ),
         }
         let drv = std::fs::read_link(sys(&format!("bus/pci/devices/{}/driver", g.pci)))
             .ok()
@@ -141,7 +239,10 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
         add(
             &format!("{} presa no vfio-pci", g.alias),
             drv == "vfio-pci",
-            format!("driver agora: {}", if drv.is_empty() { "nenhum" } else { &drv }),
+            format!(
+                "driver agora: {}",
+                if drv.is_empty() { "nenhum" } else { &drv }
+            ),
             Some(&format!("sudo numapilot vm prepare {} e reinicie", g.alias)),
         );
         if g.display_connected {
@@ -152,11 +253,19 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
                 None,
             );
         }
-        let same = topo.gpus.iter().filter(|o| o.vendor == g.vendor && o.device == g.device).count();
+        let same = topo
+            .gpus
+            .iter()
+            .filter(|o| o.vendor == g.vendor && o.device == g.device)
+            .count();
         add(
             "modelo único",
             same == 1,
-            if same == 1 { String::new() } else { format!("{same} placas com o mesmo modelo: todas iriam para o vfio") },
+            if same == 1 {
+                String::new()
+            } else {
+                format!("{same} placas com o mesmo modelo: todas iriam para o vfio")
+            },
             None,
         );
         if needs_vendor_reset(g) {
@@ -165,7 +274,9 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
                 "vendor-reset",
                 vr,
                 "este modelo não reinicia sozinho depois de desligar a VM".into(),
-                Some("paru -S vendor-reset-dkms-git && echo vendor-reset | sudo tee /etc/modules-load.d/vendor-reset.conf"),
+                Some(
+                    "paru -S vendor-reset-dkms-git && echo vendor-reset | sudo tee /etc/modules-load.d/vendor-reset.conf",
+                ),
             );
         }
     }
@@ -177,7 +288,13 @@ pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<()
     if !crate::util::is_root() {
         return Err("precisa de root (sudo)".into());
     }
-    if topo.gpus.iter().filter(|o| o.vendor == g.vendor && o.device == g.device).count() > 1 {
+    if topo
+        .gpus
+        .iter()
+        .filter(|o| o.vendor == g.vendor && o.device == g.device)
+        .count()
+        > 1
+    {
         return Err("há outra placa com o mesmo modelo: as duas iriam para o vfio".into());
     }
     if topo.gpus.len() < 2 {
@@ -194,24 +311,41 @@ pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<()
         idlist.join(",")
     );
     std::fs::write(vfio_conf(), text).map_err(|e| format!("{}: {e}", vfio_conf().display()))?;
-    log(&format!("Gravado {} (ids {})", vfio_conf().display(), idlist.join(",")));
+    log(&format!(
+        "Gravado {} (ids {})",
+        vfio_conf().display(),
+        idlist.join(",")
+    ));
     if Path::new("/etc/mkinitcpio.conf.d").exists() || has("mkinitcpio") {
         let _ = std::fs::create_dir_all("/etc/mkinitcpio.conf.d");
-        std::fs::write(MKINITCPIO_CONF, "MODULES+=(vfio_pci vfio vfio_iommu_type1)\n").map_err(|e| e.to_string())?;
+        std::fs::write(
+            MKINITCPIO_CONF,
+            "MODULES+=(vfio_pci vfio vfio_iommu_type1)\n",
+        )
+        .map_err(|e| e.to_string())?;
         log(&format!("Gravado {MKINITCPIO_CONF}"));
     }
     if has("dracut") {
         let _ = std::fs::create_dir_all("/etc/dracut.conf.d");
-        std::fs::write(DRACUT_CONF, "force_drivers+=\" vfio_pci vfio vfio_iommu_type1 \"\n").map_err(|e| e.to_string())?;
+        std::fs::write(
+            DRACUT_CONF,
+            "force_drivers+=\" vfio_pci vfio vfio_iommu_type1 \"\n",
+        )
+        .map_err(|e| e.to_string())?;
         log(&format!("Gravado {DRACUT_CONF}"));
     }
-    let intel = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default().contains("GenuineIntel");
+    let intel = std::fs::read_to_string("/proc/cpuinfo")
+        .unwrap_or_default()
+        .contains("GenuineIntel");
     let mut params = vec!["iommu=pt".to_string()];
     if intel {
         params.push("intel_iommu=on".into());
     }
     let running = crate::cmdline::running();
-    let missing: Vec<String> = params.into_iter().filter(|p| !running.split_whitespace().any(|t| t == p)).collect();
+    let missing: Vec<String> = params
+        .into_iter()
+        .filter(|p| !running.split_whitespace().any(|t| t == p))
+        .collect();
     if !missing.is_empty() {
         crate::cmdline::apply(&missing, &[], log)?;
     }
@@ -225,7 +359,11 @@ pub fn unprepare(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
         return Err("precisa de root (sudo)".into());
     }
-    for f in [vfio_conf(), PathBuf::from(MKINITCPIO_CONF), PathBuf::from(DRACUT_CONF)] {
+    for f in [
+        vfio_conf(),
+        PathBuf::from(MKINITCPIO_CONF),
+        PathBuf::from(DRACUT_CONF),
+    ] {
         if f.exists() {
             std::fs::remove_file(&f).map_err(|e| format!("{}: {e}", f.display()))?;
             log(&format!("Removido {}", f.display()));
@@ -302,11 +440,18 @@ pub fn create(topo: &Topology, g: &Gpu, vm: &NewVm) -> Result<(), String> {
     if !vm.iso.is_file() {
         return Err(format!("ISO não encontrada: {}", vm.iso.display()));
     }
-    if !vm.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if !vm
+        .name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err("nome da VM: letras, números, - e _".into());
     }
     let a = virt_install_args(topo, g, vm);
-    let st = Command::new("virt-install").args(&a).status().map_err(|e| format!("virt-install: {e}"))?;
+    let st = Command::new("virt-install")
+        .args(&a)
+        .status()
+        .map_err(|e| format!("virt-install: {e}"))?;
     if st.success() {
         Ok(())
     } else {
@@ -327,7 +472,10 @@ mod tests {
         std::fs::write(root.join("bus/pci/devices/0000:03:00.0/vendor"), "0x1002").unwrap();
         std::fs::write(root.join("bus/pci/devices/0000:03:00.0/device"), "0x67df").unwrap();
         let _g = crate::util::test_sysfs_lock(&root);
-        assert_eq!(functions("0000:03:00.0"), vec!["0000:03:00.0", "0000:03:00.1"]);
+        assert_eq!(
+            functions("0000:03:00.0"),
+            vec!["0000:03:00.0", "0000:03:00.1"]
+        );
         assert_eq!(ids("0000:03:00.0").as_deref(), Some("1002:67df"));
         let _ = std::fs::remove_dir_all(root);
     }

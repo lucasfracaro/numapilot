@@ -446,7 +446,11 @@ pub fn run(
         "jobs",
         &format!("uv-{}", g.pci),
         &format!("Undervolt de {} pronto", g.alias),
-        &format!("{} ({} passo(s) estáveis)", describe(&final_c, &m), ok_steps),
+        &format!(
+            "{} ({} passo(s) estáveis)",
+            describe(&final_c, &m),
+            ok_steps
+        ),
         3,
         Duration::from_secs(1),
     );

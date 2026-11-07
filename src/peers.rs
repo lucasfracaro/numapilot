@@ -117,23 +117,40 @@ pub fn fetch(p: &Peer) -> Option<serde_json::Value> {
 
 fn get(p: &Peer, path: &str, out: Option<&std::path::Path>, secs: u32) -> Result<Vec<u8>, String> {
     let mut c = std::process::Command::new("curl");
-    c.args(["-fsS", "--noproxy", "*", "--max-time", &secs.to_string(), "-H"])
-        .arg(format!("X-Token: {}", p.token));
+    c.args([
+        "-fsS",
+        "--noproxy",
+        "*",
+        "--max-time",
+        &secs.to_string(),
+        "-H",
+    ])
+    .arg(format!("X-Token: {}", p.token));
     if let Some(o) = out {
         c.arg("-o").arg(o);
     }
-    let o = c.arg(format!("{}{path}", p.url)).output().map_err(|e| format!("curl: {e}"))?;
+    let o = c
+        .arg(format!("{}{path}", p.url))
+        .output()
+        .map_err(|e| format!("curl: {e}"))?;
     if o.status.success() {
         Ok(o.stdout)
     } else {
-        Err(format!("{}: {}", p.name, String::from_utf8_lossy(&o.stderr).trim()))
+        Err(format!(
+            "{}: {}",
+            p.name,
+            String::from_utf8_lossy(&o.stderr).trim()
+        ))
     }
 }
 
 /// Copia os perfis de programa de outro PC (os que este não tem; com `all`, todos).
 /// Perfis de jogos da Steam (steam:APPID) valem em qualquer PC.
 pub fn pull_profiles(name: &str, all: bool) -> Result<String, String> {
-    let p = load().into_iter().find(|p| p.name == name).ok_or_else(|| format!("PC {name} não está na lista"))?;
+    let p = load()
+        .into_iter()
+        .find(|p| p.name == name)
+        .ok_or_else(|| format!("PC {name} não está na lista"))?;
     let body = get(&p, "/api/profiles", None, 10)?;
     let theirs: std::collections::BTreeMap<String, crate::profiles::Profile> =
         serde_json::from_slice(&body).map_err(|e| format!("resposta inválida: {e}"))?;
@@ -143,8 +160,12 @@ pub fn pull_profiles(name: &str, all: bool) -> Result<String, String> {
         if !all && mine.get(&k).is_some() {
             continue;
         }
-        let r = crate::ctl::send(&crate::ctl::Request::SetProfile { key: k.clone(), profile: prof, pid: None })
-            .map_err(|e| format!("serviço numapilot: {e}"))?;
+        let r = crate::ctl::send(&crate::ctl::Request::SetProfile {
+            key: k.clone(),
+            profile: prof,
+            pid: None,
+        })
+        .map_err(|e| format!("serviço numapilot: {e}"))?;
         if r.ok {
             n += 1;
         }
@@ -182,7 +203,12 @@ pub fn backup_all() -> Vec<String> {
             }
         }
         let mut files: Vec<_> = std::fs::read_dir(&dir)
-            .map(|rd| rd.flatten().map(|e| e.path()).filter(|x| x.extension().is_some_and(|e| e == "gz")).collect())
+            .map(|rd| {
+                rd.flatten()
+                    .map(|e| e.path())
+                    .filter(|x| x.extension().is_some_and(|e| e == "gz"))
+                    .collect()
+            })
             .unwrap_or_default();
         files.sort();
         while files.len() > 7 {

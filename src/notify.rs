@@ -56,7 +56,10 @@ impl Notify {
 
     pub fn save(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(crate::learned::state_dir())?;
-        std::fs::write(Self::path(), serde_json::to_string_pretty(self).unwrap_or_default())
+        std::fs::write(
+            Self::path(),
+            serde_json::to_string_pretty(self).unwrap_or_default(),
+        )
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -66,7 +69,12 @@ impl Notify {
         if !(self.server.starts_with("https://") || self.server.starts_with("http://")) {
             return Err("servidor deve começar com https://".into());
         }
-        if self.topic.len() < 6 || !self.topic.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        if self.topic.len() < 6
+            || !self
+                .topic
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
             return Err("tópico: pelo menos 6 letras, números, - ou _".into());
         }
         Ok(())
@@ -82,7 +90,10 @@ impl Notify {
         if self.topic.is_empty() {
             return Err("sem tópico configurado".into());
         }
-        let host = std::fs::read_to_string("/etc/hostname").unwrap_or_default().trim().to_string();
+        let host = std::fs::read_to_string("/etc/hostname")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         let msg = serde_json::json!({
             "topic": self.topic,
             "title": if host.is_empty() { title.to_string() } else { format!("[{host}] {title}") },
@@ -91,7 +102,13 @@ impl Notify {
             "tags": tags,
         });
         let mut c = std::process::Command::new("curl");
-        c.args(["-fsS", "--max-time", "10", "-H", "Content-Type: application/json"]);
+        c.args([
+            "-fsS",
+            "--max-time",
+            "10",
+            "-H",
+            "Content-Type: application/json",
+        ]);
         if let Some(t) = self.token.as_deref().filter(|t| !t.is_empty()) {
             c.arg("-H").arg(format!("Authorization: Bearer {t}"));
         }
@@ -104,7 +121,10 @@ impl Notify {
         if o.status.success() {
             Ok(())
         } else {
-            Err(format!("ntfy: {}", String::from_utf8_lossy(&o.stderr).trim()))
+            Err(format!(
+                "ntfy: {}",
+                String::from_utf8_lossy(&o.stderr).trim()
+            ))
         }
     }
 }
@@ -153,14 +173,21 @@ pub fn random_topic() -> String {
         use std::io::Read;
         let _ = f.read_exact(&mut b);
     }
-    format!("numapilot-{}", b.iter().map(|x| format!("{x:02x}")).collect::<String>())
+    format!(
+        "numapilot-{}",
+        b.iter().map(|x| format!("{x:02x}")).collect::<String>()
+    )
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn validate() {
-        let mut n = super::Notify { enabled: true, topic: "numapilot-abc123".into(), ..Default::default() };
+        let mut n = super::Notify {
+            enabled: true,
+            topic: "numapilot-abc123".into(),
+            ..Default::default()
+        };
         assert!(n.validate().is_ok());
         assert_eq!(n.subscribe_url(), "https://ntfy.sh/numapilot-abc123");
         n.topic = "a b".into();
