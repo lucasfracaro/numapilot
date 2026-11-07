@@ -303,7 +303,7 @@ pub fn dgpu_holders(pci: &str) -> Vec<Holder> {
                 continue;
             };
             let t = t.to_string_lossy().to_string();
-            if nodes.iter().any(|n| *n == t) {
+            if nodes.contains(&t) {
                 any = true;
                 if !t.starts_with("/dev/dri/card") {
                     client = true;
