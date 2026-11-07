@@ -75,6 +75,8 @@ pub struct Machine {
     pub ryzen: Option<crate::ryzen::Limits>,
     /// Acer Predator/Nitro (Linuwu-Sense): chave -> valor.
     pub acer: BTreeMap<String, String>,
+    /// Placas de rede com Wake-on-LAN ligado (o serviço reaplica a cada boot).
+    pub wol: Vec<String>,
 }
 
 impl Default for Machine {
@@ -100,6 +102,7 @@ impl Default for Machine {
             nvidia_powerd: None,
             ryzen: None,
             acer: BTreeMap::new(),
+            wol: vec![],
         }
     }
 }
@@ -214,6 +217,7 @@ impl Machine {
             nvidia_powerd: keep.nvidia_powerd,
             ryzen: keep.ryzen.clone(),
             acer: keep.acer.clone(),
+            wol: keep.wol.clone(),
             platform_profile: crate::notebook::profile_for_mode(name),
             ..Default::default()
         };
@@ -671,6 +675,14 @@ pub fn apply(
         for k in p.acer.keys().filter(|k| !m.acer.contains_key(*k)) {
             if let Some(o) = orig.acer.get(k) {
                 e(crate::acer::set(k, o), &format!("Acer {k} (original)"));
+            }
+        }
+    }
+    if !m.wol.is_empty() {
+        let nics = crate::wol::nics();
+        for i in &m.wol {
+            if nics.iter().any(|n| &n.iface == i && n.wol.as_deref() != Some("g")) {
+                e(crate::wol::enable(i), &format!("Wake-on-LAN {i}"));
             }
         }
     }

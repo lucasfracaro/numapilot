@@ -33,6 +33,8 @@ pub struct Board {
     pub cus: Option<(u32, u32)>,
     /// Programas da comunidade feitos para esta placa.
     pub apps: Vec<CommunityApp>,
+    /// Sem codificador de vídeo funcionando (streaming por software).
+    pub no_video_encoder: bool,
 }
 
 /// Programa da comunidade: o numapilot mostra, instala (AUR) e abre; não reimplementa.

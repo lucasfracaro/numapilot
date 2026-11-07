@@ -35,6 +35,8 @@ pub struct MachineUi {
     custom: String,
     dgpu_at: Option<Instant>,
     dgpu_users: Vec<(u32, String)>,
+    nics: Vec<numapilot::wol::Nic>,
+    nics_at: Option<Instant>,
 }
 
 impl MachineUi {
@@ -52,6 +54,10 @@ impl MachineUi {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
         self.fans = fans::list();
+        if self.nics_at.is_none_or(|t| t.elapsed().as_secs() >= 10) {
+            self.nics_at = Some(Instant::now());
+            self.nics = numapilot::wol::nics();
+        }
         self.fans_saved = BoardFans::load();
         if !self.boot_loaded {
             self.boot_loaded = true;
@@ -426,6 +432,41 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ui.end_row();
                 }
             });
+        }
+
+        // ---------------- rede: ligar pela rede ----------------
+        if !mu.nics.is_empty() {
+            ui.add_space(8.0);
+            ui.heading("Ligar pela rede (Wake-on-LAN)");
+            ui.label(
+                RichText::new("Deixa este PC ser ligado pelo painel de outro (Meus PCs → Ligar). Precisa também da opção na BIOS (Wake on LAN / Power on by PCI-E) e do cabo de rede.")
+                    .small()
+                    .weak(),
+            );
+            for n in &mu.nics {
+                ui.horizontal(|ui| {
+                    let mut on = m.wol.contains(&n.iface);
+                    let supports = n.supports.as_deref().is_none_or(|s| s.contains('g'));
+                    if ui.add_enabled(supports, egui::Checkbox::new(&mut on, format!("{} ({})", n.iface, n.mac))).changed() {
+                        m.wol.retain(|i| i != &n.iface);
+                        if on {
+                            m.wol.push(n.iface.clone());
+                        }
+                    }
+                    ui.label(
+                        RichText::new(match n.wol.as_deref() {
+                            Some("g") => "agora: ligado".to_string(),
+                            Some("d") => "agora: desligado".to_string(),
+                            Some(o) => format!("agora: {o}"),
+                            None => "agora: ? (instale o ethtool)".to_string(),
+                        })
+                        .weak(),
+                    );
+                    if !supports {
+                        ui.label(RichText::new("esta placa não suporta").small().weak());
+                    }
+                });
+            }
         }
 
         // ---------------- processadores ----------------

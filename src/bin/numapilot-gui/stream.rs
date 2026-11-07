@@ -7,26 +7,34 @@ use std::path::Path;
 
 /// Lê `adapter_name` do sunshine.conf.
 pub fn read_adapter(conf: &Path) -> Option<String> {
+    read_key(conf, "adapter_name")
+}
+
+pub fn read_key(conf: &Path, key: &str) -> Option<String> {
     std::fs::read_to_string(conf).ok()?.lines().find_map(|l| {
         let (k, v) = l.split_once('=')?;
-        (k.trim() == "adapter_name").then(|| v.trim().to_string())
+        (k.trim() == key).then(|| v.trim().to_string())
     })
 }
 
 /// Grava (ou remove, se None) `adapter_name` no sunshine.conf, preservando o resto.
 pub fn write_adapter(conf: &Path, dev: Option<&str>) -> std::io::Result<()> {
+    write_key(conf, "adapter_name", dev)
+}
+
+pub fn write_key(conf: &Path, key: &str, val: Option<&str>) -> std::io::Result<()> {
     let cur = std::fs::read_to_string(conf).unwrap_or_default();
     let mut out: Vec<String> = cur
         .lines()
         .filter(|l| {
             l.split_once('=')
-                .map(|(k, _)| k.trim() != "adapter_name")
+                .map(|(k, _)| k.trim() != key)
                 .unwrap_or(true)
         })
         .map(String::from)
         .collect();
-    if let Some(d) = dev {
-        out.push(format!("adapter_name = {d}"));
+    if let Some(d) = val {
+        out.push(format!("{key} = {d}"));
     }
     if let Some(p) = conf.parent() {
         std::fs::create_dir_all(p)?;
@@ -73,8 +81,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     });
     ui.label(
         RichText::new(
-            "Jogue no celular, notebook ou TV pelo Moonlight. O jogo roda aqui (na MI50 ou na RX470) \
-             e uma GPU codifica o vídeo.",
+            "Jogue no celular, notebook ou TV pelo Moonlight. O jogo roda aqui e uma GPU (ou a CPU) \
+             codifica o vídeo.",
         )
         .weak(),
     );
@@ -178,6 +186,73 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
         });
+    ui.add_space(8.0);
+    ui.label(RichText::new("Codificador").strong());
+    let rec = numapilot::recipes::load();
+    let no_enc: Vec<String> = rec
+        .boards(&app.topo)
+        .into_iter()
+        .filter(|(b, _)| b.no_video_encoder)
+        .map(|(b, _)| b.name.clone())
+        .collect();
+    if !no_enc.is_empty() {
+        ui.label(
+            RichText::new(format!(
+                "{}: não tem codificador de vídeo funcionando. Use o codificador por software (CPU) abaixo, ou instale o driver VA-API da comunidade pelo BC250 Control Center (H.264 na GPU).",
+                no_enc.join(", ")
+            ))
+            .color(Color32::from_rgb(230, 160, 40)),
+        );
+    }
+    let enc = read_key(&conf, "encoder");
+    let preset = read_key(&conf, "sw_preset");
+    ui.horizontal(|ui| {
+        let mut e = enc.clone();
+        egui::ComboBox::from_id_salt("sunenc")
+            .selected_text(match e.as_deref() {
+                None => "automático",
+                Some("software") => "software (CPU, x264)",
+                Some("vaapi") => "VA-API (AMD/Intel)",
+                Some("nvenc") => "NVENC (NVIDIA)",
+                Some("quicksync") => "Quick Sync (Intel)",
+                Some(o) => o,
+            })
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut e, None, "automático");
+                ui.selectable_value(&mut e, Some("vaapi".into()), "VA-API (AMD/Intel)");
+                ui.selectable_value(&mut e, Some("nvenc".into()), "NVENC (NVIDIA)");
+                ui.selectable_value(&mut e, Some("quicksync".into()), "Quick Sync (Intel)");
+                ui.selectable_value(&mut e, Some("software".into()), "software (CPU, x264)");
+            });
+        if e != enc {
+            match write_key(&conf, "encoder", e.as_deref()) {
+                Ok(()) => app.toast("Codificador salvo; reinicie o Sunshine", true),
+                Err(err) => app.toast(err.to_string(), false),
+            }
+        }
+        if e.as_deref() == Some("software") {
+            let mut p = preset.clone();
+            ui.label("velocidade:");
+            egui::ComboBox::from_id_salt("sunpreset")
+                .selected_text(p.clone().unwrap_or_else(|| "padrão (superfast)".into()))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut p, None, "padrão (superfast)");
+                    for x in ["ultrafast", "superfast", "veryfast", "faster", "fast"] {
+                        ui.selectable_value(&mut p, Some(x.to_string()), x);
+                    }
+                });
+            if p != preset {
+                let _ = write_key(&conf, "sw_preset", p.as_deref());
+                let _ = write_key(&conf, "sw_tune", Some("zerolatency"));
+                app.toast("Velocidade salva; reinicie o Sunshine", true);
+            }
+        }
+    });
+    ui.label(
+        RichText::new("Software: ultrafast gasta menos CPU (imagem pior); veryfast fica mais bonito mas pesa. Comece em superfast a 1080p60.")
+            .small()
+            .weak(),
+    );
     ui.add_space(6.0);
     ui.label(
         RichText::new(

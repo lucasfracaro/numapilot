@@ -10,6 +10,9 @@ pub struct Peer {
     /// http://ip:porta
     pub url: String,
     pub token: String,
+    /// MAC da placa de rede com Wake-on-LAN (aprendido quando o PC está ligado).
+    #[serde(default)]
+    pub mac: Option<String>,
 }
 
 impl Peer {
@@ -76,7 +79,8 @@ pub fn add(link: &str, name: Option<&str>) -> Result<Peer, String> {
         .unwrap_or_else(|| url.clone());
     let mut v = load();
     v.retain(|p| p.url != url && p.name != name);
-    let p = Peer { name, url, token };
+    let mut p = Peer { name, url, token, mac: None };
+    p.mac = fetch(&p).and_then(|s| wol_mac(&s));
     v.push(p.clone());
     save(&v).map_err(|e| e.to_string())?;
     Ok(p)
@@ -104,6 +108,20 @@ pub fn fetch(p: &Peer) -> Option<serde_json::Value> {
         .success()
         .then(|| serde_json::from_slice(&o.stdout).ok())
         .flatten()
+}
+
+/// MAC com Wake-on-LAN ligado no estado do outro PC.
+fn wol_mac(s: &serde_json::Value) -> Option<String> {
+    s["wol"].as_array()?.iter().find(|n| n["wol"].as_str() == Some("g")).and_then(|n| n["mac"].as_str()).map(String::from)
+}
+
+/// Liga o PC pela rede (precisa do MAC aprendido com ele ligado e do WoL ligado nele).
+pub fn wake(name: &str) -> Result<String, String> {
+    let p = load().into_iter().find(|p| p.name == name).ok_or_else(|| format!("PC {name} não está na lista"))?;
+    let mac = p.mac.ok_or("ainda não sei o endereço dele: ligue o Wake-on-LAN lá (Máquina → Rede) e abra este painel com ele ligado uma vez")?;
+    let ip = p.url.split("//").nth(1).and_then(|h| h.split(':').next()).map(String::from);
+    crate::wol::wake(&mac, ip.as_deref())?;
+    Ok(format!("pacote para ligar {name} enviado ({mac})"))
 }
 
 /// Resumo de cada PC para o painel: nome, link, online, GPU mais quente, uso dos processadores.

@@ -120,6 +120,7 @@ pub fn state(topo: &Topology) -> Value {
         "host": std::fs::read_to_string("/etc/hostname").unwrap_or_default().trim(),
         "daemon": ctl::send(&Request::Ping).is_ok_and(|r| r.ok),
         "gpus": gpus, "nodes": nodes, "programs": programs,
+        "wol": crate::wol::nics(),
     })
 }
 
@@ -149,6 +150,7 @@ fn describe(p: &Profile) -> String {
 fn act(body: &Value, topo: &Topology) -> Result<String, String> {
     let _ = topo;
     match body["action"].as_str().unwrap_or("") {
+        "wake" => crate::peers::wake(body["name"].as_str().ok_or("falta name")?),
         "preset" => {
             let key = body["key"].as_str().ok_or("falta key")?.to_string();
             let preset = body["preset"].as_str().unwrap_or("auto");
@@ -337,7 +339,7 @@ async function peers(){try{const r=await fetch('/api/peers',{headers:{'X-Token':
   ${x.online?`<div class="mut">${esc(x.host||'')} · ${x.gpus} GPU · ${x.programs} programas</div>
   <div class="big ${tc(x.hot)}">${x.hot!=null?Math.round(x.hot)+' °C':'—'}</div>
   <div class="mut">CPU ${(x.load||[]).map(l=>Math.round(l*100)+'%').join(' · ')}</div>
-  <a href="${esc(x.link)}"><button>Abrir</button></a>`:'<div class="mut">desligado ou fora da rede</div>'}</div>`).join('')}catch(e){}}
+  <a href="${esc(x.link)}"><button>Abrir</button></a>`:`<div class="mut">desligado ou fora da rede</div>${x.can_wake?`<button onclick='act({action:"wake",name:${JSON.stringify(x.name)}})'>Ligar</button>`:''}`}</div>`).join('')}catch(e){}}
 load();setInterval(load,3000);peers();setInterval(peers,15000);
 </script></body></html>
 "##;

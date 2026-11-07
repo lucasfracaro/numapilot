@@ -37,3 +37,4 @@ pub mod undervolt;
 pub mod upscale;
 pub mod util;
 pub mod web;
+pub mod wol;

@@ -23,6 +23,7 @@ kernel_params = ["amd_iommu=off"]
 cpu_oc_tools = ["bc250-detect", "bc250-apply"]
 cpu_oc_url = "https://github.com/bc250-collective/bc250_smu_oc"
 docs = "https://elektricm.github.io/amd-bc250-docs/"
+no_video_encoder = true
 cores = [6, 8]
 cus = [24, 40]
 apps = [

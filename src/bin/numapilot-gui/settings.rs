@@ -232,6 +232,14 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
             if ui.small_button("abrir").clicked() {
                 let _ = crate::jobs::open_url(&p.link());
             }
+            if p.mac.is_some()
+                && ui.small_button("ligar").on_hover_text("Manda o pacote do Wake-on-LAN").clicked()
+            {
+                match numapilot::peers::wake(&p.name) {
+                    Ok(m) => app.toast(m, true),
+                    Err(e) => app.toast(e, false),
+                }
+            }
             if ui.small_button("remover").clicked() {
                 let _ = numapilot::peers::remove(&p.name);
             }

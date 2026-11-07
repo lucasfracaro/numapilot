@@ -97,7 +97,7 @@ enum Cmd {
         #[arg(long)]
         int8: bool,
     },
-    /// Outros PCs no painel do celular: list | add LINK [NOME] | remove NOME
+    /// Outros PCs no painel do celular: list | add LINK [NOME] | remove NOME | wake NOME (liga pela rede)
     Peers {
         action: String,
         arg: Option<String>,
@@ -425,7 +425,12 @@ fn real_main() -> Result<()> {
                     println!("removido");
                     Ok(())
                 }
-                _ => bail!("use: numapilot peers list | add LINK [NOME] | remove NOME"),
+                "wake" => {
+                    let m = peers::wake(&arg.context("faltou o nome")?).map_err(|e| anyhow::anyhow!(e))?;
+                    println!("{m}");
+                    Ok(())
+                }
+                _ => bail!("use: numapilot peers list | add LINK [NOME] | remove NOME | wake NOME"),
             }
         }
         Cmd::Undervolt { gpu, secs, margin, clock, step } => {
