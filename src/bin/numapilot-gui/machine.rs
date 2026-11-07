@@ -298,6 +298,27 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     });
             }
             ui.end_row();
+            let c0 = topo.nodes.first().and_then(|n| n.cpus.first().copied()).unwrap_or(0);
+            if !cpuctl::epp_available(c0).is_empty() {
+                ui.label("Preferência de energia (EPP)").on_hover_text(
+                    "O ajuste principal do Ryzen (amd-pstate): de performance a power. Com o governor performance o driver fixa em performance.",
+                );
+                for n in &topo.nodes {
+                    let c = n.cpus.first().copied().unwrap_or(0);
+                    let t = m.socket_mut(n.id);
+                    egui::ComboBox::from_id_salt(format!("epp{}", n.id))
+                        .selected_text(t.epp.clone().unwrap_or_else(|| format!("não mexer ({})", cpuctl::epp(c).unwrap_or_default())))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut t.epp, None, "não mexer");
+                            for e in cpuctl::epp_available(c) {
+                                if e != "default" {
+                                    ui.selectable_value(&mut t.epp, Some(e.clone()), e);
+                                }
+                            }
+                        });
+                }
+                ui.end_row();
+            }
             ui.label("Frequência mín. / máx.");
             for n in &topo.nodes {
                 let c = n.cpus.first().copied().unwrap_or(0);

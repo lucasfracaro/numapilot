@@ -304,6 +304,66 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             }
         }
         let _ = g;
+        if let Some((stock, full)) = b.cores {
+            let n = crate::boards::active_cores();
+            if n >= full {
+                add(
+                    &area,
+                    "núcleos da CPU",
+                    Level::Ok,
+                    format!("{n} de {full} (desbloqueados)"),
+                    None,
+                );
+            } else if n > 0 {
+                add(
+                    &area,
+                    "núcleos da CPU",
+                    Level::Info,
+                    format!("{n} de {full} ativos (de fábrica: {stock})"),
+                    Some(
+                        "Dá para desbloquear pelos programas da comunidade (Placas de vídeo → ajustes da comunidade)",
+                    ),
+                );
+            }
+        }
+        if let Some((stock, full)) = b.cus {
+            match crate::boards::active_cu() {
+                Some(n) if n >= full => add(
+                    &area,
+                    "CUs da GPU",
+                    Level::Ok,
+                    format!("{n} de {full} (desbloqueados)"),
+                    None,
+                ),
+                Some(n) => add(
+                    &area,
+                    "CUs da GPU",
+                    Level::Info,
+                    format!("{n} de {full} ativos no boot (de fábrica: {stock})"),
+                    Some(
+                        "Desbloqueio sem trocar o kernel pelos programas da comunidade (Placas de vídeo → ajustes da comunidade)",
+                    ),
+                ),
+                None => {}
+            }
+        }
+        for a in &b.apps {
+            add(
+                &area,
+                &a.name,
+                if a.installed_bin().is_some() {
+                    Level::Ok
+                } else {
+                    Level::Info
+                },
+                if a.installed_bin().is_some() {
+                    "instalado".into()
+                } else {
+                    format!("não instalado: {}", a.about)
+                },
+                a.aur.as_ref().map(|p| format!("paru -S {p}")).as_deref(),
+            );
+        }
         for n in &b.notes {
             add(&area, "dica", Level::Info, n.clone(), None);
         }

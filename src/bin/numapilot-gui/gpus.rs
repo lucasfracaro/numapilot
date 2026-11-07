@@ -619,6 +619,60 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                     }
                 }
             }
+            let ok = Color32::from_rgb(110, 190, 120);
+            if let Some((stock, full)) = b.cores {
+                let n = numapilot::boards::active_cores();
+                ui.label(if n >= full {
+                    RichText::new(format!("CPU: {n} de {full} núcleos ativos (desbloqueados)")).color(ok)
+                } else {
+                    RichText::new(format!("CPU: {n} de {full} núcleos ativos (de fábrica: {stock}); dá para desbloquear pelos programas abaixo"))
+                });
+            }
+            if let Some((stock, full)) = b.cus
+                && let Some(n) = numapilot::boards::active_cu()
+            {
+                ui.label(if n >= full {
+                    RichText::new(format!("GPU: {n} de {full} CUs ativos no boot (desbloqueados)")).color(ok)
+                } else {
+                    RichText::new(format!("GPU: {n} de {full} CUs ativos no boot (de fábrica: {stock}); o desbloqueio ao vivo não aparece aqui"))
+                });
+            }
+            if !b.apps.is_empty() {
+                ui.add_space(4.0);
+                ui.label(RichText::new("Programas da comunidade").strong());
+                for a in &b.apps {
+                    ui.horizontal(|ui| {
+                        match a.installed_bin() {
+                            Some(bin) => {
+                                if ui.button(format!("Abrir {}", a.name)).clicked() {
+                                    let bin = bin.to_string();
+                                    if let Err(e) = std::process::Command::new(&bin).spawn() {
+                                        app.toast(format!("{bin}: {e}"), false);
+                                    }
+                                }
+                            }
+                            None => {
+                                ui.label(RichText::new(&a.name).strong());
+                                if let Some(pkg) = &a.aur
+                                    && ui.small_button("instalar (AUR)").on_hover_text("Abre um terminal com o paru/yay").clicked()
+                                {
+                                    let helper = if numapilot::containers::which("paru") { "paru" } else { "yay" };
+                                    if let Err(e) = crate::jobs::in_terminal(&[helper.into(), "-S".into(), pkg.clone()]) {
+                                        app.toast(e, false);
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(u) = &a.url
+                            && ui.small_button("página").clicked()
+                        {
+                            let _ = crate::jobs::open_url(u);
+                        }
+                    });
+                    ui.label(RichText::new(&a.about).small().weak());
+                }
+                ui.add_space(4.0);
+            }
             if !b.cpu_oc_tools.is_empty() {
                 let have = b.cpu_oc_tools.iter().all(|t| numapilot::containers::which(t));
                 ui.horizontal(|ui| {

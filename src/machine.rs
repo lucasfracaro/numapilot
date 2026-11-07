@@ -16,6 +16,8 @@ pub struct SocketTune {
     pub governor: Option<String>,
     /// Energy Performance Bias: 0 desempenho, 4, 6 normal, 8, 15 economia.
     pub epb: Option<u8>,
+    /// Energy Performance Preference (Ryzen com amd-pstate, Intel com HWP).
+    pub epp: Option<String>,
     pub min_mhz: Option<u32>,
     pub max_mhz: Option<u32>,
     pub uncore_min_mhz: Option<u32>,
@@ -135,6 +137,18 @@ impl Machine {
             if t.epb.is_some_and(|e| e > 15) {
                 return Err("EPB vai de 0 a 15".into());
             }
+            if let Some(e) = &t.epp
+                && ![
+                    "performance",
+                    "balance_performance",
+                    "balance_power",
+                    "power",
+                    "default",
+                ]
+                .contains(&e.as_str())
+            {
+                return Err(format!("EPP inválido: {e}"));
+            }
         }
         if let Some(t) = &self.thp
             && !["always", "madvise", "never"].contains(&t.as_str())
@@ -246,6 +260,10 @@ impl Machine {
                     let mut t = SocketTune {
                         governor: Some(cpuctl::eco_governor(cpu0)),
                         epb: Some(15),
+                        epp: cpuctl::epp_available(cpu0)
+                            .iter()
+                            .any(|e| e == "power")
+                            .then(|| "power".into()),
                         ..Default::default()
                     };
                     if let Some(z) = rapl.iter().find(|z| z.package == pkg(n.id))
@@ -305,6 +323,7 @@ pub struct Orig {
     pub gov: BTreeMap<usize, String>,
     pub freq: BTreeMap<usize, (u64, u64)>,
     pub epb: BTreeMap<usize, u8>,
+    pub epp: BTreeMap<usize, String>,
     pub rapl: BTreeMap<u32, f64>,
     pub rapl2: BTreeMap<u32, f64>,
     pub numa_balancing: Option<String>,
@@ -333,6 +352,9 @@ impl Orig {
             }
             if let Some(e) = cpuctl::epb(c) {
                 o.epb.insert(c, e);
+            }
+            if let Some(e) = cpuctl::epp(c) {
+                o.epp.insert(c, e);
             }
         }
         for z in cpuctl::rapl_zones() {
@@ -428,6 +450,14 @@ pub fn apply(
                 && cpuctl::epb(c) != Some(ep)
             {
                 e(cpuctl::set_epb(&[c], ep), &format!("EPB cpu{c}"));
+            }
+            let pp = t
+                .and_then(|t| t.epp.clone())
+                .or_else(|| orig.epp.get(&c).cloned());
+            if let Some(pp) = pp
+                && cpuctl::epp(c).as_deref() != Some(pp.as_str())
+            {
+                e(cpuctl::set_epp(&[c], &pp), &format!("EPP cpu{c}"));
             }
             if let Some(f) = cpuctl::freq(c) {
                 let (omin, omax) = orig

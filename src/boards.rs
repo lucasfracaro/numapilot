@@ -236,3 +236,82 @@ mod tests {
         assert!(new.contains("2175") && new.contains("1050"));
     }
 }
+
+/// Núcleos físicos ativos (pares pacote/núcleo distintos).
+pub fn active_cores() -> usize {
+    let mut set = std::collections::BTreeSet::new();
+    if let Ok(rd) = std::fs::read_dir(crate::util::sys("devices/system/cpu")) {
+        for e in rd.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if !n.starts_with("cpu") || !n[3..].chars().all(|c| c.is_ascii_digit()) || n.len() == 3
+            {
+                continue;
+            }
+            let t = e.path().join("topology");
+            let rd = |f: &str| {
+                std::fs::read_to_string(t.join(f))
+                    .ok()
+                    .map(|s| s.trim().to_string())
+            };
+            if let (Some(p), Some(c)) = (rd("physical_package_id"), rd("core_id")) {
+                set.insert((p, c));
+            }
+        }
+    }
+    set.len()
+}
+
+/// CUs ativos da GPU no boot, pela mensagem do amdgpu ("active_cu_number N"). Lido uma vez por
+/// execução; um desbloqueio feito depois do boot (ao vivo, pelo umr) não aparece aqui.
+pub fn active_cu() -> Option<u32> {
+    static CU: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+    *CU.get_or_init(read_active_cu)
+}
+
+fn read_active_cu() -> Option<u32> {
+    let out = Command::new("journalctl")
+        .args([
+            "-k",
+            "-b",
+            "0",
+            "-o",
+            "cat",
+            "--no-pager",
+            "--grep",
+            "active_cu_number",
+        ])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .filter(|s| s.contains("active_cu_number"))
+        .or_else(|| {
+            Command::new("dmesg")
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        })?;
+    parse_active_cu(&out)
+}
+
+pub fn parse_active_cu(log: &str) -> Option<u32> {
+    log.lines()
+        .filter_map(|l| l.split("active_cu_number").nth(1))
+        .filter_map(|r| {
+            r.trim_start_matches([':', ' ', '='])
+                .split(|c: char| !c.is_ascii_digit())
+                .next()?
+                .parse()
+                .ok()
+        })
+        .last()
+}
+
+#[cfg(test)]
+mod unlock_tests {
+    #[test]
+    fn cu_log() {
+        let l = "amdgpu 0000:01:00.0: amdgpu: SE 1, SH per SE 2, CU per SH 12, active_cu_number 24\nfoo\n";
+        assert_eq!(super::parse_active_cu(l), Some(24));
+        assert_eq!(super::parse_active_cu("nada"), None);
+    }
+}

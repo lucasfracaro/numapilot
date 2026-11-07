@@ -194,6 +194,32 @@ pub fn set_epb(cpus: &[usize], v: u8) -> Result<(), String> {
     err.map_or(Ok(()), Err)
 }
 
+/// Energy Performance Preference (amd-pstate/intel_pstate em modo ativo):
+/// performance, balance_performance, balance_power, power.
+pub fn epp(cpu: usize) -> Option<String> {
+    read_trim(cpufreq(cpu, "energy_performance_preference"))
+}
+
+pub fn epp_available(cpu: usize) -> Vec<String> {
+    read_trim(cpufreq(cpu, "energy_performance_available_preferences"))
+        .map(|s| s.split_whitespace().map(String::from).collect())
+        .unwrap_or_default()
+}
+
+/// Grava o EPP. Com o governor performance o driver trava o EPP em performance: isso não é erro.
+pub fn set_epp(cpus: &[usize], v: &str) -> Result<(), String> {
+    let mut err = None;
+    for &c in cpus {
+        if governor(c).as_deref() == Some("performance") {
+            continue;
+        }
+        if let Err(e) = w(cpufreq(c, "energy_performance_preference"), v) {
+            err = Some(e);
+        }
+    }
+    err.map_or(Ok(()), Err)
+}
+
 // ---------------- uncore ----------------
 
 #[derive(Debug, Clone, PartialEq)]

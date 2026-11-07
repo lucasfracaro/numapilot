@@ -27,6 +27,33 @@ pub struct Board {
     pub cpu_oc_url: Option<String>,
     pub docs: Option<String>,
     pub notes: Vec<String>,
+    /// Núcleos de CPU de fábrica e com desbloqueio (BC-250: 6 e 8).
+    pub cores: Option<(usize, usize)>,
+    /// CUs da GPU de fábrica e com desbloqueio (BC-250: 24 e 40).
+    pub cus: Option<(u32, u32)>,
+    /// Programas da comunidade feitos para esta placa.
+    pub apps: Vec<CommunityApp>,
+}
+
+/// Programa da comunidade: o numapilot mostra, instala (AUR) e abre; não reimplementa.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CommunityApp {
+    pub name: String,
+    /// Executáveis que indicam que está instalado (o primeiro que existir é o que abre).
+    pub bins: Vec<String>,
+    pub aur: Option<String>,
+    pub url: Option<String>,
+    pub about: String,
+}
+
+impl CommunityApp {
+    pub fn installed_bin(&self) -> Option<&str> {
+        self.bins
+            .iter()
+            .find(|b| crate::containers::which(b))
+            .map(|s| s.as_str())
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
