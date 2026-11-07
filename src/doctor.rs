@@ -424,6 +424,33 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     for n in rec.cpu_notes(&crate::recipes::cpu_model()) {
         add("Processador", "dica", Level::Info, n, None);
     }
+    // ---- saúde do hardware ----
+    let rep = if crate::util::is_root() {
+        Some(crate::health::collect(&topo))
+    } else {
+        crate::health::load()
+    };
+    match rep {
+        Some(r) => {
+            if !r.smartctl {
+                add("Saúde", "discos (SMART)", Level::Info, "smartctl não instalado".into(), Some("sudo pacman -S smartmontools"));
+            }
+            let probs = crate::health::problems(&r);
+            if probs.is_empty() {
+                add(
+                    "Saúde",
+                    "geral",
+                    Level::Ok,
+                    format!("{} disco(s), {} controlador(es) de memória ECC, nenhum problema", r.disks.len(), r.mem.len()),
+                    None,
+                );
+            }
+            for (lvl, p) in probs {
+                add("Saúde", "alerta", if lvl >= 2 { Level::Fail } else { Level::Warn }, p, None);
+            }
+        }
+        None => add("Saúde", "geral", Level::Info, "ainda sem coleta (o serviço coleta 1 min depois de iniciar)".into(), Some("sudo numapilot doctor")),
+    }
     // ---- processador ----
     let unc = crate::cpuctl::uncores();
     if unc.is_empty() {

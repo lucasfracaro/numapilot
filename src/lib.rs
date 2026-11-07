@@ -17,6 +17,7 @@ pub mod doctor;
 pub mod driver;
 pub mod fans;
 pub mod gpuctl;
+pub mod health;
 pub mod history;
 pub mod labcfg;
 pub mod learned;

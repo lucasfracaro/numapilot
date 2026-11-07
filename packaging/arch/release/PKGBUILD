@@ -21,6 +21,10 @@ optdepends=(
   'libnotify: alerta de GPU quente na bandeja'
   '7zip: baixar o OptiScaler (upscaling por jogo)'
   'nvidia-container-toolkit: IA em container na NVIDIA'
+  'smartmontools: saúde dos discos (SMART)'
+  'ethtool: ligar pela rede (Wake-on-LAN)'
+  'vkmark: teste de carga do undervolt automático'
+  'ryzenadj: limites de potência do Ryzen de notebook'
 )
 conflicts=('numapilot-git')
 backup=('etc/numapilot.toml' 'etc/gfx906-rocm.conf')

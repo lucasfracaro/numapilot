@@ -37,6 +37,7 @@ pub struct MachineUi {
     dgpu_users: Vec<(u32, String)>,
     nics: Vec<numapilot::wol::Nic>,
     nics_at: Option<Instant>,
+    health: Option<numapilot::health::Report>,
 }
 
 impl MachineUi {
@@ -54,6 +55,7 @@ impl MachineUi {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
         self.fans = fans::list();
+        self.health = numapilot::health::load();
         if self.nics_at.is_none_or(|t| t.elapsed().as_secs() >= 10) {
             self.nics_at = Some(Instant::now());
             self.nics = numapilot::wol::nics();
@@ -432,6 +434,80 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ui.end_row();
                 }
             });
+        }
+
+        // ---------------- saúde ----------------
+        ui.add_space(8.0);
+        ui.heading("Saúde do hardware");
+        match &mu.health {
+            None => {
+                ui.label(RichText::new("O serviço coleta 1 min depois de iniciar e depois a cada 30 min.").weak());
+            }
+            Some(r) => {
+                let probs = numapilot::health::problems(r);
+                if probs.is_empty() {
+                    ui.label(RichText::new("Nenhum problema encontrado.").color(Color32::from_rgb(110, 190, 120)));
+                }
+                for (lvl, p) in &probs {
+                    ui.label(RichText::new(format!("• {p}")).color(if *lvl >= 2 {
+                        Color32::from_rgb(229, 83, 75)
+                    } else {
+                        Color32::from_rgb(230, 160, 40)
+                    }));
+                }
+                if !r.smartctl {
+                    ui.label(RichText::new("Para ver os discos: sudo pacman -S smartmontools").small().weak());
+                }
+                egui::Grid::new("health").striped(true).num_columns(5).spacing([14.0, 4.0]).show(ui, |ui| {
+                    for d in &r.disks {
+                        ui.label(format!("{} {}", d.dev, d.model));
+                        ui.label(match d.passed {
+                            Some(true) => "SMART ok",
+                            Some(false) => "SMART FALHOU",
+                            None => "?",
+                        });
+                        ui.label(d.temp_c.map(|t| format!("{t:.0} °C")).unwrap_or_default());
+                        ui.label(match (d.used_pct, d.hours) {
+                            (Some(u), Some(h)) => format!("{u}% usado · {h} h ligado"),
+                            (None, Some(h)) => format!("{h} h ligado"),
+                            _ => String::new(),
+                        });
+                        ui.label(d.written_tb.map(|w| format!("{w:.1} TB escritos")).unwrap_or_default());
+                        ui.end_row();
+                    }
+                    for m in &r.mem {
+                        ui.label(format!("memória {}", m.name));
+                        ui.label(if m.ue > 0 { "ERROS" } else { "ECC ok" });
+                        ui.label(format!("{} corrigidos", m.ce));
+                        ui.label(format!("{} não corrigidos", m.ue));
+                        ui.label("");
+                        ui.end_row();
+                    }
+                    for g in r.gpu.iter().filter(|g| g.block == "umc" || g.ce > 0 || g.ue > 0) {
+                        let alias = topo.gpus.iter().find(|x| x.pci == g.pci).map(|x| x.alias.clone()).unwrap_or(g.pci.clone());
+                        ui.label(format!("{alias} ({})", if g.block == "umc" { "memória" } else { g.block.as_str() }));
+                        ui.label(if g.ue > 0 { "ERROS" } else { "ECC ok" });
+                        ui.label(format!("{} corrigidos", g.ce));
+                        ui.label(format!("{} não corrigidos", g.ue));
+                        ui.label("");
+                        ui.end_row();
+                    }
+                    for b in &r.batteries {
+                        ui.label(format!("bateria {}", b.name));
+                        ui.label(b.health_pct.map(|h| format!("{h:.0}% da original")).unwrap_or_default());
+                        ui.label(b.cycles.map(|c| format!("{c} ciclos")).unwrap_or_default());
+                        ui.label("");
+                        ui.label("");
+                        ui.end_row();
+                    }
+                });
+                let age = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+                    .saturating_sub(r.time);
+                ui.label(RichText::new(format!("coletado há {} min", age / 60)).small().weak());
+            }
         }
 
         // ---------------- rede: ligar pela rede ----------------

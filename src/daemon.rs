@@ -43,6 +43,8 @@ struct Hw {
     ryzen_info: BTreeMap<String, f64>,
     /// Placas em teste de undervolt: o valor bom que fica no disco.
     gpu_trial: HashMap<String, gpuctl::GpuControl>,
+    health_at: Option<Instant>,
+    started: Instant,
 }
 
 fn base_governors() -> BTreeMap<usize, String> {
@@ -73,6 +75,8 @@ impl Hw {
             last_ac: crate::notebook::on_ac(),
             ryzen_info: BTreeMap::new(),
             gpu_trial: HashMap::new(),
+            health_at: None,
+            started: Instant::now(),
         }
     }
 
@@ -837,6 +841,28 @@ pub fn run(cfg: Config) -> Result<()> {
         }
         if tick.is_multiple_of(15) {
             hw.ryzen_tick();
+        }
+        // Saúde do hardware (SMART, ECC, bateria) a cada 30 min, em segundo plano.
+        // (a primeira 1 min depois de iniciar, para não atrasar o boot)
+        let due = match hw.health_at {
+            None => hw.started.elapsed() >= Duration::from_secs(60),
+            Some(t) => t.elapsed() >= Duration::from_secs(30 * 60),
+        };
+        if due {
+            hw.health_at = Some(Instant::now());
+            let t = topo.clone();
+            std::thread::spawn(move || {
+                let r = crate::health::collect(&t);
+                for (lvl, p) in crate::health::problems(&r) {
+                    if lvl >= 2 {
+                        eprintln!("[numapilot] saúde: {p}");
+                    }
+                }
+                let tmp = crate::health::path().with_extension("json.tmp");
+                if std::fs::write(&tmp, serde_json::to_string(&r).unwrap_or_default()).is_ok() {
+                    let _ = std::fs::rename(tmp, crate::health::path());
+                }
+            });
         }
         if tick.is_multiple_of(2) {
             let p = hw.power.sample();

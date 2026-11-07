@@ -121,6 +121,9 @@ pub fn state(topo: &Topology) -> Value {
         "daemon": ctl::send(&Request::Ping).is_ok_and(|r| r.ok),
         "gpus": gpus, "nodes": nodes, "programs": programs,
         "wol": crate::wol::nics(),
+        "alerts": crate::health::load()
+            .map(|r| crate::health::problems(&r).into_iter().filter(|p| p.0 >= 2).map(|p| p.1).collect::<Vec<_>>())
+            .unwrap_or_default(),
     })
 }
 
@@ -296,6 +299,7 @@ button:active{background:var(--acc)}.hot{color:var(--bad)}.warm{color:var(--warn
 </style></head><body>
 <h1><span>numapilot <span class="mut" id="host"></span></span><span class="mut" id="svc"></span></h1>
 <div id="err" class="card hot" style="display:none"></div>
+<div id="alerts" class="card warm" style="display:none"></div>
 <h2>Placas de vídeo</h2><div class="grid" id="gpus"></div>
 <h2>Processadores</h2><div class="grid" id="nodes"></div>
 <h2>Programas</h2><div id="progs"></div>
@@ -318,6 +322,7 @@ const PRE=[['jogo','Jogo'],['ia','IA'],['render','Render'],['silencioso','Silenc
 async function load(){
  let s;try{const r=await fetch('/api/state',{headers:{'X-Token':T}});if(r.status==401){document.getElementById('err').style.display='block';document.getElementById('err').textContent='Token inválido: abra o link com ?t= mostrado no numapilot (Configurações → Painel no celular).';return}s=await r.json()}catch(e){return}
  document.getElementById('err').style.display='none';
+ const al=document.getElementById('alerts');al.style.display=(s.alerts||[]).length?'block':'none';al.innerHTML=(s.alerts||[]).map(a=>'⚠ '+esc(a)).join('<br>');
  document.getElementById('host').textContent=s.host;
  document.getElementById('svc').innerHTML=`<span class="dot" style="background:${s.daemon?'var(--ok)':'var(--bad)'}"></span>${s.daemon?'serviço ok':'serviço parado'}`;
  document.getElementById('gpus').innerHTML=s.gpus.map(g=>`<div class="card"><div class="row"><b>${esc(g.alias)}</b><span class="mut">socket ${g.node??'?'}</span></div>

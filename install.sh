@@ -86,6 +86,9 @@ RECOMMENDED=(
     "libva-utils|aba Streaming (GPUs que codificam vídeo)"
     "scx-scheds|escalonadores sched_ext do CachyOS"
     "scx-tools|trocar o escalonador pela interface (scxctl)"
+    "smartmontools|saúde dos discos (SMART)"
+    "ethtool|ligar pela rede (Wake-on-LAN)"
+    "vkmark|teste de carga do undervolt automático"
 )
 HAS_NVIDIA=0
 for d in /sys/bus/pci/devices/*; do
@@ -93,6 +96,9 @@ for d in /sys/bus/pci/devices/*; do
 done
 if [[ $HAS_NVIDIA == 1 ]]; then
     RECOMMENDED+=("nvidia-container-toolkit|IA e laboratório em container na NVIDIA")
+fi
+if grep -q AuthenticAMD /proc/cpuinfo && compgen -G '/sys/class/power_supply/BAT*' >/dev/null; then
+    RECOMMENDED+=("ryzenadj|limites de potência do Ryzen de notebook (AUR)")
 fi
 if [[ -e /dev/ipmi0 ]] || lsmod 2>/dev/null | grep -q '^ipmi_si'; then
     RECOMMENDED+=("ipmitool|ventoinhas pelo IPMI da placa de servidor")
