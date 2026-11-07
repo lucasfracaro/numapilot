@@ -20,7 +20,7 @@ pub fn user_dir() -> PathBuf {
         .join("applications")
 }
 
-fn search_dirs() -> Vec<PathBuf> {
+pub fn search_dirs() -> Vec<PathBuf> {
     let mut v = vec![user_dir()];
     let sys =
         std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());

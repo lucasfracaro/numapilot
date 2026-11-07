@@ -59,6 +59,32 @@ pub const SKIP: &[&str] = &[
     "retroarch",
 ];
 
+/// Componentes do próprio desktop (Plasma, GNOME...): não usam a NVIDIA e uma cópia deles na pasta
+/// do usuário esconderia as atualizações do sistema.
+fn is_desktop_component(text: &str, file: &str) -> bool {
+    get(text, "OnlyShowIn").is_some()
+        || get(text, "X-KDE-autostart-phase").is_some()
+        || get(text, "X-GNOME-Autostart-Phase").is_some()
+        || get(text, "X-systemd-skip") == Some("true")
+        || [
+            "org.kde.",
+            "at-spi",
+            "xdg-user-dirs",
+            "polkit",
+            "pam_kwallet",
+            "baloo",
+            "gmenudbusmenuproxy",
+            "xembedsniproxy",
+            "geoclue",
+            "gnome-",
+            "kaccess",
+            "powerdevil",
+            "plasma",
+        ]
+        .iter()
+        .any(|p| file.to_lowercase().starts_with(p))
+}
+
 fn is_launcher(text: &str, file: &str) -> bool {
     let exec = get(text, "Exec").unwrap_or("").to_lowercase();
     let first = exec.split_whitespace().next().unwrap_or("");
@@ -232,6 +258,32 @@ pub fn apply(topo: &Topology) -> Result<Vec<String>, String> {
     let pre = prefix(&env);
     let mut changed = vec![];
     std::fs::create_dir_all(user_dir()).map_err(|e| e.to_string())?;
+    // Cópias de entradas do sistema: some se o sistema tirou, refaz se o sistema mudou, e tira as
+    // de componentes do desktop (a versão anterior do numapilot copiava).
+    for f in desktop_files(&user_dir()) {
+        let Ok(t) = std::fs::read_to_string(&f) else {
+            continue;
+        };
+        if !t.contains(COPIED) {
+            continue;
+        }
+        let name = f
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let sys = std::fs::read_to_string(system_dir().join(&name)).ok();
+        let stale = match &sys {
+            None => true,
+            Some(st) => {
+                is_desktop_component(st, &name)
+                    || get(st, "Exec") != get(&t, MARK.trim_end_matches('='))
+            }
+        };
+        if stale {
+            let _ = std::fs::remove_file(&f);
+        }
+    }
     for e in entries() {
         if e.hidden || e.wrapped || e.file.contains("numapilot") {
             continue;
@@ -245,9 +297,10 @@ pub fn apply(topo: &Topology) -> Result<Vec<String>, String> {
         let Ok(t) = std::fs::read_to_string(&src) else {
             continue;
         };
-        if is_launcher(&t, &e.file) {
+        if is_launcher(&t, &e.file) || (copied && is_desktop_component(&t, &e.file)) {
             continue;
         }
+        menu_override(&t, &pre);
         let Some(mut w) = wrap(&t, &pre) else {
             continue;
         };
@@ -284,8 +337,49 @@ pub fn apply(topo: &Topology) -> Result<Vec<String>, String> {
     Ok(changed)
 }
 
+/// O mesmo programa aberto pelo menu (ou pela restauração da sessão) também vai para a
+/// integrada: atalho do menu com as mesmas variáveis.
+fn menu_override(autostart_text: &str, pre: &str) {
+    let Some(prog) = crate::desktop::exec_program(get(autostart_text, "Exec").unwrap_or("")) else {
+        return;
+    };
+    let prog_name = prog.rsplit('/').next().unwrap_or(&prog).to_string();
+    let user_apps = crate::desktop::user_dir();
+    for d in crate::desktop::search_dirs() {
+        if d == user_apps {
+            continue;
+        }
+        for f in desktop_files(&d) {
+            let Ok(t) = std::fs::read_to_string(&f) else {
+                continue;
+            };
+            let Some(p) = crate::desktop::exec_program(get(&t, "Exec").unwrap_or("")) else {
+                continue;
+            };
+            if p.rsplit('/').next() != Some(prog_name.as_str()) {
+                continue;
+            }
+            let dst = user_apps.join(f.file_name().unwrap_or_default());
+            if dst.exists() {
+                return;
+            }
+            if let Some(mut w) = wrap(&t, pre) {
+                w.push_str(&format!("{COPIED}\n"));
+                let _ = std::fs::create_dir_all(&user_apps);
+                let _ = std::fs::write(&dst, w);
+            }
+            return;
+        }
+    }
+}
+
 /// Desfaz tudo.
 pub fn revert() -> Vec<String> {
+    for f in desktop_files(&crate::desktop::user_dir()) {
+        if std::fs::read_to_string(&f).is_ok_and(|t| t.contains(MARK) && t.contains(COPIED)) {
+            let _ = std::fs::remove_file(&f);
+        }
+    }
     let mut changed = vec![];
     for f in desktop_files(&user_dir()) {
         let Ok(t) = std::fs::read_to_string(&f) else {
