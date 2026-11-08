@@ -55,6 +55,16 @@ fn num(p: PathBuf) -> Option<f64> {
     read_trim(p)?.parse().ok()
 }
 
+/// Temperatura plausível de GPU (°C). Alguns firmwares (BC-250) mandam 0 ou lixo.
+fn plausible_temp(c: f64) -> Option<f64> {
+    (c > 1.0 && c < 150.0).then_some(c)
+}
+
+/// Potência plausível de uma GPU (W). Nenhuma placa passa de 1000 W; a BC-250 manda ~1470 W.
+fn plausible_power(w: f64) -> Option<f64> {
+    (w.is_finite() && (0.0..1000.0).contains(&w)).then_some(w)
+}
+
 pub fn read_sensors(pci: &str) -> Sensors {
     if crate::nvctl::is_nvidia(pci) {
         return crate::nvctl::sensors(pci);
@@ -68,7 +78,9 @@ pub fn read_sensors(pci: &str) -> Sensors {
         let Some(v) = num(h.join(format!("temp{i}_input"))) else {
             continue;
         };
-        let c = v / 1000.0;
+        let Some(c) = plausible_temp(v / 1000.0) else {
+            continue;
+        };
         match label.as_str() {
             "edge" => s.edge_c = Some(c),
             "junction" => s.junction_c = Some(c),
@@ -85,7 +97,9 @@ pub fn read_sensors(pci: &str) -> Sensors {
     s.fan_controllable =
         !s.fw_fan_curve && h.join("pwm1").exists() && h.join("pwm1_enable").exists();
     let w = |f: &str| num(h.join(f)).map(|v| v / 1_000_000.0);
-    s.power_w = w("power1_average").or_else(|| w("power1_input"));
+    s.power_w = w("power1_average")
+        .or_else(|| w("power1_input"))
+        .and_then(plausible_power);
     s.power_cap_w = w("power1_cap");
     s.power_cap_min_w = w("power1_cap_min");
     s.power_cap_max_w = w("power1_cap_max");

@@ -217,17 +217,22 @@ pub fn mesa_version() -> Option<String> {
         .args(["-Q", "mesa"])
         .output()
         .ok()?;
-    o.status.success().then(|| {
-        String::from_utf8_lossy(&o.stdout)
-            .split_whitespace()
-            .nth(1)
-            .unwrap_or("")
-            .split('-')
-            .next()
-            .unwrap_or("")
-            .trim_start_matches("1:")
-            .to_string()
-    })
+    o.status
+        .success()
+        .then(|| {
+            String::from_utf8_lossy(&o.stdout)
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or("")
+                .to_string()
+        })
+        .map(|v| pacman_version(&v))
+}
+
+/// Versão de pacote do pacman sem a época e o pkgrel: "3:26.2.6-1.395" → "26.2.6".
+pub fn pacman_version(v: &str) -> String {
+    let v = v.rsplit_once(':').map_or(v, |(_, r)| r);
+    v.split('-').next().unwrap_or("").to_string()
 }
 
 pub fn version_ge(a: &str, b: &str) -> bool {
@@ -277,6 +282,10 @@ mod tests {
         assert!(!kernel_in("6.18.1-1-cachyos", &r.board[0].bad_kernels));
         assert!(kernel_in("6.15.0-1-cachyos", &r.board[0].bad_kernels));
         assert!(version_ge("25.3.1", "25.1") && !version_ge("24.2.8", "25.1"));
+        assert_eq!(pacman_version("3:26.2.6-1.395"), "26.2.6");
+        assert_eq!(pacman_version("1:25.0.1-2"), "25.0.1");
+        assert_eq!(pacman_version("24.2.8-1"), "24.2.8");
+        assert!(version_ge(&pacman_version("3:26.2.6-1.395"), "25.1"));
         let mk = |gfx: Option<&str>, vendor: u16| Gpu {
             alias: "x".into(),
             pci: "0000:01:00.0".into(),

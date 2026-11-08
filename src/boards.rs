@@ -269,7 +269,7 @@ pub fn active_cu() -> Option<u32> {
 }
 
 fn read_active_cu() -> Option<u32> {
-    let out = Command::new("journalctl")
+    Command::new("journalctl")
         .args([
             "-k",
             "-b",
@@ -289,8 +289,31 @@ fn read_active_cu() -> Option<u32> {
                 .output()
                 .ok()
                 .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        })?;
-    parse_active_cu(&out)
+        })
+        .and_then(|out| parse_active_cu(&out))
+        .or_else(kfd_cu)
+}
+
+/// CUs pela topologia do KFD (simd_count / simd_per_cu), legível por qualquer usuário.
+/// Útil quando a mensagem do boot já saiu do buffer do kernel.
+fn kfd_cu() -> Option<u32> {
+    let base = crate::util::sys("class/kfd/kfd/topology/nodes");
+    std::fs::read_dir(base)
+        .ok()?
+        .flatten()
+        .filter_map(|e| parse_kfd_cu(&std::fs::read_to_string(e.path().join("properties")).ok()?))
+        .max()
+}
+
+pub fn parse_kfd_cu(props: &str) -> Option<u32> {
+    let get = |k: &str| {
+        props.lines().find_map(|l| {
+            let (n, v) = l.split_once(' ')?;
+            (n == k).then(|| v.trim().parse::<u32>().ok())?
+        })
+    };
+    let (simd, per) = (get("simd_count")?, get("simd_per_cu")?);
+    (simd > 0 && per > 0).then(|| simd / per)
 }
 
 pub fn parse_active_cu(log: &str) -> Option<u32> {
@@ -313,5 +336,8 @@ mod unlock_tests {
         let l = "amdgpu 0000:01:00.0: amdgpu: SE 1, SH per SE 2, CU per SH 12, active_cu_number 24\nfoo\n";
         assert_eq!(super::parse_active_cu(l), Some(24));
         assert_eq!(super::parse_active_cu("nada"), None);
+        let kfd = "cpu_cores_count 0\nsimd_count 48\nsimd_per_cu 2\n";
+        assert_eq!(super::parse_kfd_cu(kfd), Some(24));
+        assert_eq!(super::parse_kfd_cu("simd_count 0\nsimd_per_cu 0\n"), None);
     }
 }

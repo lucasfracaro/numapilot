@@ -44,7 +44,7 @@ Partes:
 |---|---|---|
 | Servidor | 2× Xeon E5-2696 v4 | 2× MI50 (gfx906) + RX 470 |
 | Notebook Acer Nitro 5 AN515-46 | Ryzen 7 6800H | Radeon 680M + RTX 3070 Ti Laptop |
-| **BC-250** | APU AMD (Cyan Skillfish), 6 núcleos | GPU integrada da própria placa |
+| **BC-250** | APU AMD (Cyan Skillfish), 6 núcleos de fábrica; a do Lucas tem 8 (biosmod) | GPU integrada da própria placa (24 CUs) |
 | PC CC150 | CC150 | RX 9060 XT |
 | PC | i7-5775C | BC-160 |
 
@@ -55,7 +55,13 @@ Partes:
 - Sem codificador de vídeo: Sunshine com codificação por software (`no_video_encoder`).
 - Memória da GPU (TTM `pages_limit` em modprobe.d) em Placas → memória da GPU integrada;
   llama.cpp com `GGML_VK_PREFER_HOST_MEMORY`.
-- `boards::active_cores`/`active_cu` (journal `active_cu_number`) para conferir o desbloqueio.
+- `boards::active_cores`/`active_cu` (journal `active_cu_number`) para conferir o desbloqueio ou, se a mensagem já saiu
+  do buffer do kernel, a topologia do KFD (`simd_count / simd_per_cu`).
+- Firmware manda sensores impossíveis no hwmon (0 °C, ~1470 W, 60 V, OD_SCLK 4941 MHz): o
+  numapilot ignora temperatura fora de 1–150 °C e potência acima de 1000 W.
+- Sem cpufreq (o firmware não expõe controle de frequência da CPU): o autoteste só avisa.
+- Ler `pp_od_clk_voltage` (e `pp_dpm_dcefclk`/`pp_dpm_pcie`) faz o amdgpu escrever
+  "Unsupported clock type" no log do kernel. É do driver e inofensivo; evite ler em loop.
 
 ## Código
 
@@ -106,4 +112,10 @@ Em aberto no notebook:
   (firmware; resolver com desligar, tirar o carregador e segurar o power 30–60 s).
 - Conferir que a NVIDIA desliga na bateria agora que a NVML não segura mais.
 
-Próximo: instalar e testar na **BC-250** (autoteste + aba Testes) e depois nos outros PCs.
+BC-250 (2026-11-08): instalada pelo `install.sh`, autoteste com 44 testes: 40 OK, 3 avisos,
+0 falhas (antes das correções: falha do Mesa por causa da época `3:` no `pacman -Q`, sensores
+com lixo, CUs não achadas). Avisos que sobram: sem cpufreq, sensores do firmware, e o doctor
+pedindo o governor de clock da GPU (cyan-skillfish-governor) que não está rodando.
+Falta: roteiro à mão da aba Testes na BC-250.
+
+Próximo: aba Testes na BC-250 e depois os outros PCs.

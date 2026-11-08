@@ -281,7 +281,7 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
     r.t("Frequência do processador", || {
         let b = "/sys/devices/system/cpu/cpu0/cpufreq";
         let Some(gov) = read(&format!("{b}/scaling_governor")) else {
-            return (St::Aviso, "sem cpufreq (VM ou driver ausente)".into());
+            return (St::Aviso, "sem cpufreq (VM, driver ausente ou firmware sem controle de frequência, como na BC-250)".into());
         };
         let drv = read(&format!("{b}/scaling_driver")).unwrap_or_default();
         let cur = read(&format!("{b}/scaling_cur_freq"))
@@ -526,7 +526,13 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                     "dormindo (economia de energia): sensores não lidos para não acordar".into(),
                 );
             }
-            if v.is_empty() {
+            if v.is_empty() && crate::gpuctl::hwmon_dir(&g.pci).is_some() {
+                (
+                    St::Aviso,
+                    "o firmware manda valores impossíveis (ex.: 0 °C, mais de 1000 W): ignorados"
+                        .into(),
+                )
+            } else if v.is_empty() {
                 (
                     St::Falhou,
                     "não consegui ler temperatura nem potência".into(),
@@ -804,14 +810,18 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         r.t("Núcleos ativos", || {
             (
                 St::Ok,
-                format!("{} núcleos lógicos online", crate::boards::active_cores()),
+                format!(
+                    "{} núcleos físicos online ({} threads)",
+                    crate::boards::active_cores(),
+                    std::thread::available_parallelism().map_or(0, |n| n.get())
+                ),
             )
         });
         r.t("CUs da GPU", || match crate::boards::active_cu() {
             Some(c) => (St::Ok, format!("{c} CUs ativas")),
             None => (
                 St::Aviso,
-                "não achei active_cu_number no log do kernel".into(),
+                "não achei active_cu_number no log do kernel nem no KFD".into(),
             ),
         });
         r.t("Memória da GPU (TTM)", || {
