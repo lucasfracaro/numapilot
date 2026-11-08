@@ -104,6 +104,9 @@ pub struct State {
     /// segurando), mas ela dorme sozinha.
     pub sleep_only: bool,
     pub last_error: Option<String>,
+    /// Ponte PCI acima da placa: a volta lê só ela de novo, sem mexer no resto do barramento
+    /// (Thunderbolt/USB4, NVMe...).
+    pub bridge: String,
 }
 
 pub fn state_path() -> PathBuf {
@@ -145,9 +148,36 @@ pub fn remove(functions: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Lê o barramento de novo: a placa volta e o driver carrega (root).
+/// Ponte PCI acima de um dispositivo (ex.: 0000:00:01.1), se houver.
+pub fn parent_bridge(pci: &str) -> Option<String> {
+    let real = std::fs::canonicalize(sys(&format!("bus/pci/devices/{pci}"))).ok()?;
+    let parent = real.parent()?.file_name()?.to_string_lossy().to_string();
+    // "0000:00:01.1" e não "pci0000:00"
+    (parent.len() == 12 && parent.as_bytes()[4] == b':' && parent.as_bytes()[7] == b':')
+        .then_some(parent)
+}
+
+/// Lê de novo só a ponte da placa (ou o barramento todo, se não souber qual): a placa volta
+/// e o driver carrega (root).
+pub fn rescan_at(bridge: &str) -> Result<(), String> {
+    let b = sys(&format!("bus/pci/devices/{bridge}/rescan"));
+    if !bridge.is_empty() && b.exists() {
+        return std::fs::write(&b, "1").map_err(|e| format!("rescan {bridge}: {e}"));
+    }
+    rescan()
+}
+
+/// Lê o barramento todo de novo (root).
 pub fn rescan() -> Result<(), String> {
     std::fs::write(sys("bus/pci/rescan"), "1").map_err(|e| format!("rescan: {e}"))
+}
+
+/// O sistema está desligando ou reiniciando?
+pub fn system_stopping() -> bool {
+    std::process::Command::new("systemctl")
+        .arg("is-system-running")
+        .output()
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "stopping")
 }
 
 // ---------------- Xwayland ----------------

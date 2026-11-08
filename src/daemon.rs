@@ -109,6 +109,7 @@ impl Hw {
                     alias: nv.alias.clone(),
                     name: nv.name.clone(),
                     functions: crate::vm::functions(&nv.pci),
+                    bridge: crate::hybrid::parent_bridge(&nv.pci).unwrap_or_default(),
                     ..Default::default()
                 })
                 .or_else(crate::hybrid::load_state),
@@ -231,7 +232,7 @@ impl Hw {
         st.mode = mode.clone().unwrap_or_default();
         st.want_present = want;
         if want && !here {
-            match crate::hybrid::rescan() {
+            match crate::hybrid::rescan_at(&st.bridge) {
                 Ok(()) => {
                     std::thread::sleep(Duration::from_millis(1500));
                     for svc in self.dgpu_stopped.drain(..) {
@@ -1276,9 +1277,12 @@ pub fn run(cfg: Config) -> Result<()> {
         let _ = std::fs::remove_file(&reserved_flag);
     }
     hw.restore(&topo);
-    // devolve a NVIDIA se fomos nós que tiramos
-    if hw.dgpu.as_ref().is_some_and(|d| d.removed) {
-        let _ = crate::hybrid::rescan();
+    // Devolve a NVIDIA se fomos nós que tiramos. Desligando/reiniciando, não: ela volta sozinha
+    // no próximo boot, e carregar o driver no meio do desligamento pode travar.
+    if let Some(d) = hw.dgpu.as_ref().filter(|d| d.removed)
+        && !crate::hybrid::system_stopping()
+    {
+        let _ = crate::hybrid::rescan_at(&d.bridge);
         std::thread::sleep(Duration::from_millis(1500));
         for svc in hw.dgpu_stopped.drain(..) {
             let _ = Command::new("systemctl").args(["start", &svc]).status();
