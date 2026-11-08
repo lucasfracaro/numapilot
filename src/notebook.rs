@@ -34,6 +34,16 @@ pub fn is_laptop() -> bool {
 
 /// Ligado na tomada? (None = não dá para saber)
 pub fn on_ac() -> Option<bool> {
+    // A bateria descarregando é a resposta mais confiável: um hub USB-C pode aparecer como
+    // fonte "ligada" (power delivery) sem dar conta de carregar o notebook.
+    let discharging = supplies().into_iter().any(|p| {
+        read_trim(p.join("type")).as_deref() == Some("Battery")
+            && read_trim(p.join("scope")).as_deref() != Some("Device")
+            && read_trim(p.join("status")).as_deref() == Some("Discharging")
+    });
+    if discharging {
+        return Some(false);
+    }
     let mains: Vec<PathBuf> = supplies()
         .into_iter()
         .filter(|p| {
@@ -388,6 +398,27 @@ pub fn ec_fans() -> Vec<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn usb_c_dock_on_battery() {
+        let root = std::env::temp_dir().join(format!("np-ac-{}", std::process::id()));
+        let w = |p: &str, v: &str| {
+            let f = root.join(p);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, v).unwrap();
+        };
+        w("class/power_supply/ACAD/type", "Mains");
+        w("class/power_supply/ACAD/online", "0");
+        w("class/power_supply/ucsi-source-psy-USBC000:001/type", "USB");
+        w("class/power_supply/ucsi-source-psy-USBC000:001/online", "1");
+        w("class/power_supply/BAT1/type", "Battery");
+        w("class/power_supply/BAT1/status", "Discharging");
+        let _g = crate::util::test_sysfs_lock(&root);
+        assert_eq!(on_ac(), Some(false));
+        std::fs::write(root.join("class/power_supply/BAT1/status"), "Charging").unwrap();
+        assert_eq!(on_ac(), Some(true));
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn fake_laptop() {

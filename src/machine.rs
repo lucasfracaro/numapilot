@@ -707,7 +707,11 @@ pub fn apply(
     {
         e(crate::notebook::set_charge_limit(c), "limite de carga");
     }
-    if let Some(p) = m.platform_profile.clone().or(orig.platform_profile.clone())
+    // Só quando o perfil pedido mudou (ou na primeira aplicação): trocar outra coisa da máquina
+    // (ex.: o modo da NVIDIA) não pode desfazer o perfil que o usuário escolheu no desktop.
+    let profile_changed = prev.is_none_or(|p| p.platform_profile != m.platform_profile);
+    if profile_changed
+        && let Some(p) = m.platform_profile.clone().or(orig.platform_profile.clone())
         && crate::notebook::platform_profile().as_deref() != Some(p.as_str())
     {
         e(

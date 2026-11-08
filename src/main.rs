@@ -633,6 +633,14 @@ fn real_main() -> Result<()> {
                     }
                     let m = numapilot::machine::Machine::load().dgpu_mode;
                     println!(
+                        "Energia: {}",
+                        match numapilot::notebook::on_ac() {
+                            Some(true) => "tomada",
+                            Some(false) => "bateria",
+                            None => "?",
+                        }
+                    );
+                    println!(
                         "Modo: {}",
                         m.as_deref()
                             .and_then(|m| hybrid::MODES.iter().find(|x| x.0 == m))
