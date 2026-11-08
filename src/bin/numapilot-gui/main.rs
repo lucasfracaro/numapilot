@@ -258,6 +258,10 @@ pub(crate) struct App {
     pub(crate) cpu_sparks: BTreeMap<usize, theme::Spark>,
     pub(crate) cpu_freq: BTreeMap<usize, u64>,
     pub(crate) temp_spark: BTreeMap<u32, (theme::Spark, f64)>,
+    /// Potência de cada processador (W), medida pelo serviço (RAPL precisa de root).
+    pub(crate) cpu_power: BTreeMap<u32, f64>,
+    /// Nome curto do processador ("Ryzen 7 6800H").
+    pub(crate) cpu_name: String,
     pub(crate) map_threads: bool,
     pub(crate) checklist: checklist::Checklist,
     pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
@@ -377,6 +381,8 @@ impl App {
             cpu_sparks: BTreeMap::new(),
             cpu_freq: BTreeMap::new(),
             temp_spark: BTreeMap::new(),
+            cpu_power: BTreeMap::new(),
+            cpu_name: numapilot::topo::short_cpu_name(&numapilot::recipes::cpu_model()),
             map_threads: true,
             checklist: checklist::Checklist::default(),
             numa_rates: BTreeMap::new(),
@@ -453,8 +459,19 @@ impl App {
         for (c, l) in &self.cpu_loads {
             self.cpu_sparks.entry(*c).or_default().push(*l);
         }
-        // frequência e temperatura só quando a aba Mapa está aberta (são muitos arquivos)
-        if self.tab == Tab::Map {
+        // potência dos processadores: o serviço mede e publica em hw.json
+        self.cpu_power = std::fs::read_to_string(numapilot::learned::run_dir().join("hw.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .and_then(|v| {
+                v.get("power")?.as_object().map(|o| {
+                    o.iter()
+                        .filter_map(|(k, w)| Some((k.parse::<u32>().ok()?, w.as_f64()?)))
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+        {
             for c in self.cpu_loads.keys() {
                 if let Some(k) = numapilot::util::read_trim(numapilot::util::sys(&format!(
                     "devices/system/cpu/cpu{c}/cpufreq/scaling_cur_freq"
@@ -635,6 +652,28 @@ impl App {
             .clone()
     }
 
+    /// Temperatura, potência e frequência média de um processador ("61 °C · 25 W · 4.2 GHz").
+    pub(crate) fn cpu_info(&self, n: &numapilot::topo::Node) -> String {
+        let mut v = vec![];
+        let pkg = n.id as u32;
+        if let Some((_, t)) = self.temp_spark.get(&pkg) {
+            v.push(format!("{t:.0} °C"));
+        }
+        if let Some(w) = self.cpu_power.get(&pkg) {
+            v.push(format!("{w:.0} W"));
+        }
+        let f: Vec<u64> = n
+            .cpus
+            .iter()
+            .filter_map(|c| self.cpu_freq.get(c).copied())
+            .collect();
+        if !f.is_empty() {
+            let avg = f.iter().sum::<u64>() as f64 / f.len() as f64;
+            v.push(format!("{:.1} GHz", avg / 1000.0));
+        }
+        v.join(" · ")
+    }
+
     /// Menu lateral.
     fn nav(&mut self, ui: &mut egui::Ui) {
         let p = theme::pal(ui);
@@ -752,11 +791,13 @@ impl App {
                 let multi = self.topo.nodes.len() > 1;
                 for n in self.topo.nodes.clone() {
                     let l = self.loads.get(&n.id).copied().unwrap_or(0.0) as f32;
+                    let cores = n.physical_cores.max(n.cores.len());
                     let name = if multi {
-                        format!("CPU · socket {}", n.id)
+                        format!("{} · socket {} · {cores} núcleos", self.cpu_name, n.id)
                     } else {
-                        "CPU".into()
+                        format!("{} · {cores} núcleos", self.cpu_name)
                     };
+                    let info = self.cpu_info(&n);
                     let key = format!("cpu{}", n.id);
                     theme::metric(
                         ui,
@@ -764,7 +805,7 @@ impl App {
                             key: &key,
                             name: &name,
                             big: &format!("{:.0}%", l * 100.0),
-                            small: &format!("{} núcleos", n.physical_cores.max(n.cores.len())),
+                            small: &info,
                             frac: l,
                             color: p.accent,
                             spark: self.sparks.get(&key),
@@ -780,10 +821,7 @@ impl App {
                             key: "mem",
                             name: "Memória",
                             big: &format!("{:.1} GB", mu as f64 / 1048576.0),
-                            small: &format!(
-                                "de {:.0} GB (sem contar o cache)",
-                                mt as f64 / 1048576.0
-                            ),
+                            small: &format!("de {:.0} GB", mt as f64 / 1048576.0),
                             frac: mu as f32 / mt as f32,
                             color: Color32::from_rgb(0x9b, 0x7b, 0xff),
                             spark: self.sparks.get("mem"),
@@ -816,7 +854,7 @@ impl App {
                         ui,
                         &theme::Metric {
                             key: &key,
-                            name: &g.alias,
+                            name: &format!("{} · {}", g.short_name(), g.alias),
                             big: &format!("{:.0}%", busy * 100.0),
                             small: &info.join(" · "),
                             frac: busy,

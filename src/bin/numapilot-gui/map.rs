@@ -135,13 +135,26 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
     let min_w = if n_all > 48 { 70.0 } else { 92.0 };
     let multi = app.topo.nodes.len() > 1;
     for n in &app.topo.nodes {
-        if multi {
-            ui.label(
-                RichText::new(format!("Socket {} — {} threads", n.id, n.cpus.len()))
-                    .size(12.5)
-                    .color(p.weak),
-            );
-        }
+        let info = app.cpu_info(n);
+        ui.label(
+            RichText::new(format!(
+                "{}{} — {} threads{}",
+                app.cpu_name,
+                if multi {
+                    format!(" (socket {})", n.id)
+                } else {
+                    String::new()
+                },
+                n.cpus.len(),
+                if info.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {info}")
+                }
+            ))
+            .size(12.5)
+            .color(p.weak),
+        );
         let mut cpus = n.cpus.clone();
         cpus.sort_unstable();
         // colunas iguais que enchem a largura; de preferência um divisor do nº de threads

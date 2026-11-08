@@ -374,7 +374,7 @@ pub struct Metric<'a> {
 pub fn metric(ui: &mut egui::Ui, m: &Metric) -> egui::Response {
     let p = pal(ui);
     let h = if m.extra.is_some() { 128.0 } else { 104.0 };
-    let (rect, resp) = ui.allocate_exact_size(vec2(232.0, h), Sense::hover());
+    let (rect, resp) = ui.allocate_exact_size(vec2(248.0, h), Sense::hover());
     let painter = ui.painter_at(rect.expand(2.0));
     painter.rect(
         rect,
@@ -385,10 +385,16 @@ pub fn metric(ui: &mut egui::Ui, m: &Metric) -> egui::Response {
     );
     let inner = rect.shrink(14.0);
     let x = inner.left();
+    // nome em toda a largura (cortado se não couber)
+    let name: String = if m.name.chars().count() > 36 {
+        m.name.chars().take(35).collect::<String>() + "…"
+    } else {
+        m.name.to_string()
+    };
     painter.text(
         pos2(x, inner.top()),
         egui::Align2::LEFT_TOP,
-        m.name,
+        name,
         FontId::proportional(12.0),
         p.weak,
     );
@@ -408,7 +414,7 @@ pub fn metric(ui: &mut egui::Ui, m: &Metric) -> egui::Response {
     );
     if let Some(sp) = m.spark {
         let r = Rect::from_min_size(
-            pos2(inner.right() - 84.0, inner.top() + 4.0),
+            pos2(inner.right() - 84.0, inner.top() + 18.0),
             vec2(84.0, 40.0),
         );
         spark_in(&painter, r, sp, m.color);

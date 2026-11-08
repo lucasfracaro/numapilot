@@ -780,10 +780,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
-                    ui.heading(&g.alias);
+                    ui.heading(g.short_name());
                     ui.label(
                         RichText::new(format!(
-                            "{} · socket {} · {}",
+                            "{} · {} · socket {} · {}",
+                            g.alias,
                             g.name,
                             g.numa_node.map(|n| n.to_string()).unwrap_or_else(|| "?".into()),
                             g.pci

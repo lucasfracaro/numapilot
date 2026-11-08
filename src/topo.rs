@@ -60,7 +60,71 @@ pub struct Gpu {
     pub role: GpuRole,
 }
 
+/// Nome curto da placa para a tela: "GA104 [GeForce RTX 3070 Ti Laptop GPU]" → "RTX 3070 Ti Laptop",
+/// "Rembrandt [Radeon 680M]" → "Radeon 680M", "Ellesmere [Radeon RX 470/480/…]" → "Radeon RX 470".
+pub fn short_gpu_name(name: &str) -> String {
+    let mut n = name.trim().to_string();
+    if let (Some(a), Some(b)) = (n.find('['), n.rfind(']'))
+        && b > a
+    {
+        n = n[a + 1..b].to_string();
+    }
+    if n.contains('/') {
+        let parts: Vec<&str> = n.split('/').map(str::trim).collect();
+        // "RX 470/480/570": os outros são só números → fica o primeiro
+        n = if parts[1..].iter().any(|p| !p.contains(' ')) {
+            parts[0].to_string()
+        } else {
+            parts.last().unwrap_or(&parts[0]).to_string()
+        };
+    }
+    for (a, b) in [
+        ("NVIDIA ", ""),
+        ("GeForce ", ""),
+        ("Advanced Micro Devices, Inc. ", ""),
+        ("AMD ", ""),
+        ("Radeon Instinct", "Instinct"),
+        (" GPU", ""),
+        ("Intel Corporation ", ""),
+    ] {
+        n = n.replace(a, b);
+    }
+    n.trim().to_string()
+}
+
+/// Nome curto do processador: "AMD Ryzen 7 6800H with Radeon Graphics" → "Ryzen 7 6800H",
+/// "Intel(R) Xeon(R) CPU E5-2696 v4 @ 2.20GHz" → "Xeon E5-2696 v4".
+pub fn short_cpu_name(model: &str) -> String {
+    let mut n = model.to_string();
+    if let Some(i) = n.find(" @ ") {
+        n.truncate(i);
+    }
+    for k in [
+        "(R)",
+        "(TM)",
+        "(tm)",
+        " with Radeon Graphics",
+        " with Radeon Vega Mobile Gfx",
+        " with Radeon Vega Graphics",
+        " Processor",
+        " CPU",
+    ] {
+        n = n.replace(k, "");
+    }
+    let n = n.trim();
+    let n = n
+        .strip_prefix("AMD ")
+        .or_else(|| n.strip_prefix("Intel "))
+        .unwrap_or(n);
+    n.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 impl Gpu {
+    /// Nome curto para a tela (ver `short_gpu_name`).
+    pub fn short_name(&self) -> String {
+        short_gpu_name(&self.name)
+    }
+
     /// Placa integrada ao processador (iGPU): Intel no barramento 0 ou APU AMD.
     pub fn is_integrated(&self) -> bool {
         match self.vendor {
@@ -1010,6 +1074,53 @@ pub mod tests {
         assert_eq!(
             Topology::load(&cfg2).display_gpu().unwrap().alias,
             "gfx906-1"
+        );
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    #[test]
+    fn gpu_names() {
+        assert_eq!(
+            short_gpu_name("GA104 [GeForce RTX 3070 Ti Laptop GPU]"),
+            "RTX 3070 Ti Laptop"
+        );
+        assert_eq!(
+            short_gpu_name("NVIDIA GeForce RTX 3070 Ti Laptop GPU"),
+            "RTX 3070 Ti Laptop"
+        );
+        assert_eq!(short_gpu_name("Rembrandt [Radeon 680M]"), "Radeon 680M");
+        assert_eq!(
+            short_gpu_name("Ellesmere [Radeon RX 470/480/570/570X/580/580X/590]"),
+            "Radeon RX 470"
+        );
+        assert_eq!(
+            short_gpu_name("Vega 20 [Radeon Pro VII/Radeon Instinct MI50 32GB]"),
+            "Instinct MI50 32GB"
+        );
+        assert_eq!(
+            short_gpu_name("Navi 44 [Radeon RX 9060 XT]"),
+            "Radeon RX 9060 XT"
+        );
+        assert_eq!(short_gpu_name("1002:7590"), "1002:7590");
+    }
+
+    #[test]
+    fn cpu_names() {
+        assert_eq!(
+            short_cpu_name("AMD Ryzen 7 6800H with Radeon Graphics"),
+            "Ryzen 7 6800H"
+        );
+        assert_eq!(
+            short_cpu_name("Intel(R) Xeon(R) CPU E5-2696 v4 @ 2.20GHz"),
+            "Xeon E5-2696 v4"
+        );
+        assert_eq!(
+            short_cpu_name("Intel(R) Core(TM) i7-5775C CPU @ 3.30GHz"),
+            "Core i7-5775C"
         );
     }
 }
