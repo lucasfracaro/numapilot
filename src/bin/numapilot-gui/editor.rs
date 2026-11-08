@@ -449,12 +449,28 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                 ui.label(RichText::new(*d).small().weak());
                             });
                         }
+                        if !multi {
+                            ui.label(
+                                RichText::new("Este PC tem um processador só: toda a memória já é a mais próxima dele (as opções de memória local aparecem nos PCs com 2 processadores).")
+                                    .small()
+                                    .weak(),
+                            );
+                        }
                         ui.horizontal(|ui| {
                             let mut lim = ed.p.mem_max_gb.is_some();
-                            if ui.checkbox(&mut lim, "limite de").changed() {
+                            if ui
+                                .checkbox(&mut lim, "Limitar a memória do programa a")
+                                .on_hover_text("Passou do limite, o sistema tira memória dele (vai para o swap) em vez de travar o PC todo.")
+                                .changed()
+                            {
                                 ed.p.mem_max_gb = if lim { Some(16.0) } else { None };
                             }
-                            let max_gb = (app.topo.nodes.iter().map(|n| n.mem_total_kb).sum::<u64>() as f64 / 1048576.0).max(1.0);
+                            let nodes_kb = app.topo.nodes.iter().map(|n| n.mem_total_kb).sum::<u64>();
+                            let total_kb = if nodes_kb > 0 { nodes_kb } else { crate::mem_system().1 };
+                            let max_gb = (total_kb as f64 / 1048576.0).max(1.0);
+                            if let Some(g) = ed.p.mem_max_gb.as_mut() {
+                                *g = g.min(max_gb);
+                            }
                             if let Some(g) = ed.p.mem_max_gb.as_mut() {
                                 ui.add(egui::Slider::new(g, 0.5..=max_gb).suffix(" GB").step_by(0.5));
                             }

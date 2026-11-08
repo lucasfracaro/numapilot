@@ -1620,6 +1620,7 @@ dependencies = [
  "anyhow",
  "clap",
  "eframe",
+ "egui",
  "ksni",
  "libc",
  "qrcode",

@@ -12,6 +12,7 @@ mod map;
 mod settings;
 mod single;
 mod stream;
+mod theme;
 mod tray;
 
 use eframe::egui::{self, Color32, RichText};
@@ -159,6 +160,87 @@ enum Tab {
     Settings,
 }
 
+#[derive(Clone, Default)]
+pub(crate) struct Live {
+    pub(crate) busy: Option<f32>,
+    pub(crate) temp: Option<f64>,
+    pub(crate) power: Option<f64>,
+    pub(crate) vram: Option<(u64, u64)>,
+}
+
+/// Memória do sistema (em uso, total) em kB, pelo MemAvailable: o cache de arquivos não conta
+/// como "em uso" (ele é liberado sozinho quando falta memória).
+pub(crate) fn mem_system() -> (u64, u64) {
+    let t = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let get = |k: &str| {
+        t.lines()
+            .find(|l| l.starts_with(k))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0)
+    };
+    let total = get("MemTotal:");
+    (total.saturating_sub(get("MemAvailable:")), total)
+}
+
+/// Abas: ícone, nome e o que cada uma faz.
+const TABS: &[(Tab, &str, &str, &str)] = &[
+    (
+        Tab::Programs,
+        "▶",
+        "Programas",
+        "O que está aberto agora e em qual processador e placa cada um roda",
+    ),
+    (
+        Tab::Map,
+        "🗺",
+        "Mapa e medições",
+        "Núcleos, memória por socket e medições de desempenho",
+    ),
+    (
+        Tab::Profiles,
+        "💾",
+        "Escolhas salvas",
+        "Escolhas por programa que valem toda vez que ele abrir",
+    ),
+    (
+        Tab::Gpus,
+        "🎮",
+        "Placas de vídeo",
+        "Ventoinha, potência, clock e undervolt de cada placa",
+    ),
+    (
+        Tab::Machine,
+        "🖥",
+        "Máquina",
+        "Modo de energia, processador, notebook e saúde do hardware",
+    ),
+    (
+        Tab::Lab,
+        "🔬",
+        "Laboratório",
+        "Containers com ROCm, Jupyter e IDEs",
+    ),
+    (
+        Tab::Llm,
+        "💬",
+        "Servidor de IA",
+        "Modelos locais com llama.cpp",
+    ),
+    (
+        Tab::Stream,
+        "📡",
+        "Streaming",
+        "Sunshine e Moonlight: jogar de outro aparelho",
+    ),
+    (
+        Tab::Settings,
+        "⚙",
+        "Configurações",
+        "Outros PCs, avisos, atualização e máquina virtual",
+    ),
+];
+
 pub(crate) struct App {
     pub(crate) topo: Topology,
     pub(crate) cfg: Config,
@@ -201,6 +283,12 @@ pub(crate) struct App {
     last: Instant,
     daemon_ok: bool,
     toast: Option<(String, bool, Instant)>,
+    /// Leituras ao vivo por placa (lidas 1x por segundo, não a cada quadro).
+    live: HashMap<String, Live>,
+    /// Último minuto de CPU, memória e GPUs para os mini gráficos.
+    sparks: HashMap<String, theme::Spark>,
+    /// Memória do sistema: (em uso, total) em kB, sem contar o cache que o sistema libera sozinho.
+    mem_sys: (u64, u64),
     tab: Tab,
     my_uid: u32,
     only_mine: bool,
@@ -212,6 +300,7 @@ pub(crate) struct App {
 
 impl App {
     fn new(ctx: egui::Context) -> App {
+        theme::install(&ctx);
         let cfg = Config::load().unwrap_or_default();
         let topo = Topology::load(&cfg);
         // Programas novos na inicialização também vão para a integrada (se ligado).
@@ -308,7 +397,16 @@ impl App {
             last: Instant::now() - Duration::from_secs(10),
             daemon_ok: false,
             toast: None,
-            tab: Tab::Programs,
+            live: HashMap::new(),
+            sparks: HashMap::new(),
+            mem_sys: (0, 0),
+            // NUMAPILOT_GUI_TAB=N abre direto na aba N (0 = Programas): para capturas de tela
+            tab: std::env::var("NUMAPILOT_GUI_TAB")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .and_then(|i| TABS.get(i))
+                .map(|t| t.0)
+                .unwrap_or(Tab::Programs),
             my_uid: unsafe { libc::getuid() },
             only_mine: true,
             desktop_cache: HashMap::new(),
@@ -356,6 +454,34 @@ impl App {
             self.bench_checked = Some(Instant::now());
         }
         self.prev_cpu = cur;
+        // Leituras ao vivo (uma vez por segundo) e o último minuto para os mini gráficos.
+        self.mem_sys = mem_system();
+        let (mu, mt) = self.mem_sys;
+        self.sparks
+            .entry("mem".into())
+            .or_default()
+            .push(mu as f32 / mt.max(1) as f32);
+        for n in &self.topo.nodes {
+            let l = self.loads.get(&n.id).copied().unwrap_or(0.0) as f32;
+            self.sparks
+                .entry(format!("cpu{}", n.id))
+                .or_default()
+                .push(l);
+        }
+        for g in &self.topo.gpus {
+            let s = numapilot::gpuctl::read_sensors(&g.pci);
+            let l = Live {
+                busy: g.busy_percent().map(|b| b as f32 / 100.0),
+                temp: s.control_temp(),
+                power: s.power_w,
+                vram: g.vram_used_total(),
+            };
+            self.sparks
+                .entry(format!("gpu{}", g.pci))
+                .or_default()
+                .push(l.busy.unwrap_or(0.0));
+            self.live.insert(g.pci.clone(), l);
+        }
         self.daemon_ok = std::fs::metadata(daemon::state_path())
             .and_then(|m| m.modified())
             .ok()
@@ -453,63 +579,199 @@ impl App {
             .clone()
     }
 
-    fn header(&mut self, ui: &mut egui::Ui) {
+    /// Menu lateral.
+    fn nav(&mut self, ui: &mut egui::Ui) {
+        let p = theme::pal(ui);
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
-            ui.heading("numapilot");
-            ui.separator();
-            ui.selectable_value(&mut self.tab, Tab::Programs, "Programas");
-            ui.selectable_value(&mut self.tab, Tab::Map, "Mapa e medições");
-            ui.selectable_value(&mut self.tab, Tab::Profiles, "Escolhas salvas");
-            ui.selectable_value(&mut self.tab, Tab::Gpus, "Placas de vídeo");
-            ui.selectable_value(&mut self.tab, Tab::Machine, "Máquina");
-            ui.selectable_value(&mut self.tab, Tab::Lab, "Laboratório e containers");
-            ui.selectable_value(&mut self.tab, Tab::Llm, "Servidor de IA");
-            ui.selectable_value(&mut self.tab, Tab::Stream, "Streaming");
-            ui.selectable_value(&mut self.tab, Tab::Settings, "Configurações");
-            if self.job.is_some() && !self.show_job && ui.small_button("último comando").clicked()
-            {
-                self.show_job = true;
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new("numapilot")
+                    .size(19.0)
+                    .family(egui::FontFamily::Name(theme::BOLD.into()))
+                    .color(p.text),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                    .size(11.5)
+                    .color(p.weak),
+            );
+        });
+        ui.add_space(14.0);
+        for (t, icon, label, _) in TABS {
+            if theme::nav_item(ui, icon, label, self.tab == *t).clicked() {
+                self.tab = *t;
             }
+            ui.add_space(2.0);
+        }
+        ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+            ui.add_space(6.0);
+            let mut pref = ui.ctx().options(|o| o.theme_preference);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                for (v, l) in [
+                    (egui::ThemePreference::System, "Sistema"),
+                    (egui::ThemePreference::Light, "Claro"),
+                    (egui::ThemePreference::Dark, "Escuro"),
+                ] {
+                    if ui
+                        .selectable_label(pref == v, RichText::new(l).size(12.0))
+                        .clicked()
+                    {
+                        pref = v;
+                        ui.ctx().set_theme(v);
+                        theme::save_theme(v);
+                    }
+                }
+            });
+            ui.label(RichText::new("Tema").size(11.5).color(p.weak));
+        });
+    }
+
+    /// Topo: título da página, estado do serviço e os medidores ao vivo.
+    fn header(&mut self, ui: &mut egui::Ui) {
+        let p = theme::pal(ui);
+        let (title, sub) = TABS
+            .iter()
+            .find(|t| t.0 == self.tab)
+            .map(|t| (t.2, t.3))
+            .unwrap_or(("", ""));
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(
+                    RichText::new(title)
+                        .size(22.0)
+                        .family(egui::FontFamily::Name(theme::BOLD.into())),
+                );
+                ui.label(RichText::new(sub).color(p.weak).size(13.0));
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if self.daemon_ok {
+                    theme::chip(ui, "Serviço ativo", p.ok);
+                } else {
+                    theme::chip(ui, "Serviço parado", p.err);
+                }
+                if self.job.is_some() && !self.show_job && ui.button("Último comando").clicked() {
+                    self.show_job = true;
+                }
+            });
         });
         if !self.daemon_ok {
-            ui.label(
-                RichText::new(
-                    "O serviço numapilot não está rodando:  sudo systemctl enable --now numapilot",
-                )
-                .color(Color32::from_rgb(220, 80, 60)),
-            );
+            ui.add_space(6.0);
+            egui::Frame::new()
+                .fill(p.err.gamma_multiply(0.12))
+                .stroke(egui::Stroke::new(1.0, p.err.gamma_multiply(0.5)))
+                .corner_radius(10)
+                .inner_margin(egui::Margin::symmetric(14, 10))
+                .show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new("O serviço do numapilot não está rodando: as escolhas não são aplicadas.")
+                                .color(p.err),
+                        );
+                        if ui.button("Ativar o serviço").clicked() {
+                            self.start_job(
+                                "Ativar o serviço",
+                                vec![
+                                    "pkexec".into(),
+                                    "systemctl".into(),
+                                    "enable".into(),
+                                    "--now".into(),
+                                    "numapilot".into(),
+                                ],
+                            );
+                        }
+                    });
+                });
         }
-        ui.horizontal_wrapped(|ui| {
-            for n in &self.topo.nodes {
-                let l = self.loads.get(&n.id).copied().unwrap_or(0.0) as f32;
-                ui.label(format!("Socket {}", n.id));
-                ui.add(
-                    egui::ProgressBar::new(l)
-                        .desired_width(110.0)
-                        .text(format!("{:.0}%", l * 100.0)),
-                );
-            }
-            ui.separator();
-            for g in &self.topo.gpus {
-                let busy = g.busy_percent().unwrap_or(0) as f32 / 100.0;
-                let vram = g
-                    .vram_used_total()
-                    .map(|(u, t)| {
-                        format!(
-                            " · {:.1}/{:.0} GB",
-                            u as f64 / 1073741824.0,
-                            t as f64 / 1073741824.0
+        ui.add_space(10.0);
+        ui.with_layout(
+            egui::Layout::left_to_right(egui::Align::TOP).with_main_wrap(true),
+            |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
+                let multi = self.topo.nodes.len() > 1;
+                for n in self.topo.nodes.clone() {
+                    let l = self.loads.get(&n.id).copied().unwrap_or(0.0) as f32;
+                    let name = if multi {
+                        format!("CPU · socket {}", n.id)
+                    } else {
+                        "CPU".into()
+                    };
+                    let key = format!("cpu{}", n.id);
+                    theme::metric(
+                        ui,
+                        &theme::Metric {
+                            key: &key,
+                            name: &name,
+                            big: &format!("{:.0}%", l * 100.0),
+                            small: &format!("{} núcleos", n.physical_cores.max(n.cores.len())),
+                            frac: l,
+                            color: p.accent,
+                            spark: self.sparks.get(&key),
+                            extra: None,
+                        },
+                    );
+                }
+                let (mu, mt) = self.mem_sys;
+                if mt > 0 {
+                    theme::metric(
+                        ui,
+                        &theme::Metric {
+                            key: "mem",
+                            name: "Memória",
+                            big: &format!("{:.1} GB", mu as f64 / 1048576.0),
+                            small: &format!(
+                                "de {:.0} GB (sem contar o cache)",
+                                mt as f64 / 1048576.0
+                            ),
+                            frac: mu as f32 / mt as f32,
+                            color: Color32::from_rgb(0x9b, 0x7b, 0xff),
+                            spark: self.sparks.get("mem"),
+                            extra: None,
+                        },
+                    );
+                }
+                for g in self.topo.gpus.clone() {
+                    let l = self.live.get(&g.pci).cloned().unwrap_or_default();
+                    let mut info: Vec<String> = vec![];
+                    if let Some(t) = l.temp {
+                        info.push(format!("{t:.0} °C"));
+                    }
+                    if let Some(w) = l.power {
+                        info.push(format!("{w:.0} W"));
+                    }
+                    let busy = l.busy.unwrap_or(0.0);
+                    let key = format!("gpu{}", g.pci);
+                    let vram = l.vram.map(|(u, t)| {
+                        (
+                            format!(
+                                "VRAM  {:.1} / {:.0} GB",
+                                u as f64 / 1073741824.0,
+                                t as f64 / 1073741824.0
+                            ),
+                            u as f32 / t.max(1) as f32,
                         )
-                    })
-                    .unwrap_or_default();
-                ui.label(&g.alias);
-                ui.add(
-                    egui::ProgressBar::new(busy)
-                        .desired_width(110.0)
-                        .text(format!("{:.0}%{vram}", busy * 100.0)),
-                );
-            }
-        });
+                    });
+                    theme::metric(
+                        ui,
+                        &theme::Metric {
+                            key: &key,
+                            name: &g.alias,
+                            big: &format!("{:.0}%", busy * 100.0),
+                            small: &info.join(" · "),
+                            frac: busy,
+                            color: Color32::from_rgb(0x2d, 0xc4, 0xa8),
+                            spark: self.sparks.get(&key),
+                            extra: vram.as_ref().map(|(t, f)| (t.as_str(), *f)),
+                        },
+                    );
+                }
+            },
+        );
     }
 
     fn programs(&mut self, ui: &mut egui::Ui) {
@@ -883,37 +1145,70 @@ impl eframe::App for App {
             self.refresh();
         }
         ui.ctx().request_repaint_after(Duration::from_millis(1000));
-        egui::Panel::top("top").show(ui, |ui| {
-            ui.add_space(4.0);
-            self.header(ui);
-            ui.add_space(4.0);
-        });
-        egui::Panel::bottom("bottom").show(ui, |ui| match &self.toast {
-            Some((m, ok, t)) if t.elapsed() < Duration::from_secs(8) => {
-                let c = if *ok {
-                    Color32::from_rgb(90, 180, 110)
-                } else {
-                    Color32::from_rgb(220, 80, 60)
-                };
-                ui.label(RichText::new(m).color(c));
-            }
-            _ => {
-                ui.label(
-                    RichText::new("Tudo que não tiver escolha própria fica no automático.").weak(),
-                );
-            }
-        });
-        egui::CentralPanel::default_margins().show(ui, |ui| match self.tab {
-            Tab::Programs => self.programs(ui),
-            Tab::Map => map::ui(self, ui),
-            Tab::Profiles => self.profiles_tab(ui),
-            Tab::Gpus => gpus::ui(self, ui),
-            Tab::Machine => machine::ui(self, ui),
-            Tab::Lab => lab::ui(self, ui),
-            Tab::Llm => llm::ui(self, ui),
-            Tab::Stream => stream::ui(self, ui),
-            Tab::Settings => settings::ui(self, ui),
-        });
+        let p = theme::pal(ui);
+        egui::Panel::left("nav")
+            .exact_size(214.0)
+            .resizable(false)
+            .show_separator_line(false)
+            .frame(
+                egui::Frame::new()
+                    .fill(p.nav)
+                    .inner_margin(egui::Margin::symmetric(12, 14)),
+            )
+            .show(ui, |ui| self.nav(ui));
+        egui::Panel::top("top")
+            .show_separator_line(false)
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(egui::Margin {
+                left: 22,
+                right: 22,
+                top: 16,
+                bottom: 10,
+            }))
+            .show(ui, |ui| self.header(ui));
+        // Aviso flutuante (some sozinho)
+        if let Some((m, ok, t)) = &self.toast
+            && t.elapsed() < Duration::from_secs(8)
+        {
+            let c = if *ok { p.ok } else { p.err };
+            egui::Area::new(ui.make_persistent_id("toast"))
+                .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -20.0))
+                .order(egui::Order::Foreground)
+                .interactable(false)
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style())
+                        .inner_margin(egui::Margin::symmetric(14, 10))
+                        .show(ui, |ui| {
+                            ui.set_max_width(460.0);
+                            ui.horizontal(|ui| {
+                                let (r, _) = ui.allocate_exact_size(
+                                    egui::vec2(8.0, 8.0),
+                                    egui::Sense::hover(),
+                                );
+                                ui.painter().circle_filled(r.center(), 4.0, c);
+                                ui.label(RichText::new(m).color(p.text));
+                            });
+                        });
+                });
+            ui.ctx().request_repaint_after(Duration::from_millis(500));
+        }
+        egui::CentralPanel::no_frame()
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(egui::Margin {
+                left: 22,
+                right: 22,
+                top: 6,
+                bottom: 16,
+            }))
+            .show(ui, |ui| match self.tab {
+                Tab::Programs => self.programs(ui),
+                Tab::Map => map::ui(self, ui),
+                Tab::Profiles => self.profiles_tab(ui),
+                Tab::Gpus => gpus::ui(self, ui),
+                Tab::Machine => machine::ui(self, ui),
+                Tab::Lab => lab::ui(self, ui),
+                Tab::Llm => llm::ui(self, ui),
+                Tab::Stream => stream::ui(self, ui),
+                Tab::Settings => settings::ui(self, ui),
+            });
         let ctx = ui.ctx().clone();
         self.job_window(&ctx);
         editor::window(self, &ctx);

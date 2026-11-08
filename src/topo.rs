@@ -21,6 +21,15 @@ impl Node {
     pub fn mem_free_kb(&self) -> u64 {
         node_meminfo(self.id, "MemFree").unwrap_or(0)
     }
+    /// Memória de fato em uso no socket: o cache de arquivos (que o sistema libera sozinho)
+    /// não conta. Com MemFree a barra subia e descia conforme o cache enchia e esvaziava.
+    pub fn mem_used_kb(&self) -> u64 {
+        let g = |k| node_meminfo(self.id, k).unwrap_or(0);
+        let reclaimable = (g("FilePages").saturating_sub(g("Shmem"))) + g("SReclaimable");
+        self.mem_total_kb
+            .saturating_sub(g("MemFree"))
+            .saturating_sub(reclaimable)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

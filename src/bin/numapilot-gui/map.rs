@@ -177,14 +177,15 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.end_row();
             for n in &nodes {
                 ui.label(format!("{}", n.id));
-                let free = n.mem_free_kb() as f32;
+                let used_kb = n.mem_used_kb() as f32;
                 let tot = n.mem_total_kb.max(1) as f32;
-                let used = 1.0 - free / tot;
-                ui.add(
-                    egui::ProgressBar::new(used)
-                        .desired_width(200.0)
-                        .text(format!("{:.0} / {:.0} GB", (tot - free) / 1048576.0, tot / 1048576.0)),
-                );
+                let used = used_kb / tot;
+                let p = crate::theme::pal(ui);
+                ui.horizontal(|ui| {
+                    let f = crate::theme::smooth(ui, &format!("node-mem-{}", n.id), used);
+                    crate::theme::meter(ui, f, 160.0, crate::theme::level_color(&p, used, p.accent));
+                    ui.label(format!("{:.1} / {:.0} GB", used_kb / 1048576.0, tot / 1048576.0));
+                });
                 let rate = app.numa_rates.get(&n.id).copied().unwrap_or((0.0, 0.0));
                 let txt = format!("{:.0}/s ({:.1}% das alocações)", rate.0, rate.1 * 100.0);
                 ui.label(if rate.1 > 0.05 { RichText::new(txt).color(Color32::from_rgb(230, 160, 40)) } else { RichText::new(txt) });
