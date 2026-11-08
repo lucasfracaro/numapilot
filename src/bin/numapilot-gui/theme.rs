@@ -443,7 +443,7 @@ pub fn metric(ui: &mut egui::Ui, m: &Metric) -> egui::Response {
     resp
 }
 
-fn spark_in(painter: &egui::Painter, rect: Rect, s: &Spark, color: Color32) {
+pub fn spark_in(painter: &egui::Painter, rect: Rect, s: &Spark, color: Color32) {
     if s.0.len() < 2 {
         return;
     }

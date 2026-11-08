@@ -126,6 +126,158 @@ pub fn core_map(
     }
 }
 
+/// Um mini gráfico do último minuto por thread (agrupados por socket) e a temperatura do
+/// processador.
+fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>>) {
+    let p = crate::theme::pal(ui);
+    let n_all = app.cpu_loads.len().max(1);
+    let h = if n_all > 48 { 34.0 } else { 42.0 };
+    let min_w = if n_all > 48 { 70.0 } else { 92.0 };
+    let multi = app.topo.nodes.len() > 1;
+    for n in &app.topo.nodes {
+        if multi {
+            ui.label(
+                RichText::new(format!("Socket {} — {} threads", n.id, n.cpus.len()))
+                    .size(12.5)
+                    .color(p.weak),
+            );
+        }
+        let mut cpus = n.cpus.clone();
+        cpus.sort_unstable();
+        // colunas iguais que enchem a largura; de preferência um divisor do nº de threads
+        // (16 threads → 2 linhas de 8)
+        let gap = 6.0;
+        // desconta a barra de rolagem
+        let avail = ui.available_width() - 12.0;
+        let max_cols = (((avail + gap) / (min_w + gap)) as usize).clamp(1, cpus.len().max(1));
+        let cols = (max_cols.div_ceil(2)..=max_cols)
+            .rev()
+            .find(|c| cpus.len() % c == 0)
+            .unwrap_or(max_cols);
+        let w = ((avail - gap * (cols as f32 - 1.0)) / cols as f32).floor();
+        ui.with_layout(
+            egui::Layout::left_to_right(egui::Align::TOP).with_main_wrap(true),
+            |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(gap, gap);
+                for c in cpus {
+                    let l = app.cpu_loads.get(&c).copied().unwrap_or(0.0);
+                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), Sense::hover());
+                    let painter = ui.painter_at(rect.expand(1.0));
+                    painter.rect(
+                        rect,
+                        6.0,
+                        p.card,
+                        Stroke::new(1.0, p.stroke),
+                        StrokeKind::Inside,
+                    );
+                    let color = crate::theme::level_color(&p, l, p.accent);
+                    if let Some(sp) = app.cpu_sparks.get(&c) {
+                        let g = egui::Rect::from_min_max(
+                            rect.left_top() + egui::vec2(2.0, 16.0),
+                            rect.right_bottom() - egui::vec2(2.0, 2.0),
+                        );
+                        crate::theme::spark_in(&painter, g, sp, color);
+                    }
+                    let f = egui::FontId::proportional(10.5);
+                    painter.text(
+                        rect.left_top() + egui::vec2(5.0, 3.0),
+                        egui::Align2::LEFT_TOP,
+                        c.to_string(),
+                        f.clone(),
+                        p.weak,
+                    );
+                    painter.text(
+                        rect.right_top() + egui::vec2(-5.0, 3.0),
+                        egui::Align2::RIGHT_TOP,
+                        format!("{:.0}%", l * 100.0),
+                        f,
+                        p.text,
+                    );
+                    if who.contains_key(&c) {
+                        painter.circle_filled(
+                            rect.left_bottom() + egui::vec2(6.0, -6.0),
+                            2.5,
+                            p.warn,
+                        );
+                    }
+                    let core = n.cores.iter().position(|k| k.contains(&c));
+                    let mut tip = format!("CPU {c}: {:.0}%", l * 100.0);
+                    if let Some(k) = core {
+                        tip.push_str(&format!(" · núcleo {k}"));
+                    }
+                    if let Some(mhz) = app.cpu_freq.get(&c) {
+                        tip.push_str(&format!(" · {:.2} GHz", *mhz as f64 / 1000.0));
+                    }
+                    if let Some(ps) = who.get(&c) {
+                        tip.push_str(&format!("\npreso aqui: {}", ps.join(", ")));
+                    }
+                    resp.on_hover_text(tip);
+                }
+            },
+        );
+        ui.add_space(4.0);
+    }
+    // temperatura do processador (um gráfico por socket)
+    if !app.temp_spark.is_empty() {
+        ui.add_space(2.0);
+        ui.horizontal_wrapped(|ui| {
+            for (pkg, (sp, t)) in &app.temp_spark {
+                let room = ui.available_width() - 12.0;
+                let wfull = if app.temp_spark.len() > 1 {
+                    (room / 2.0 - 8.0).max(200.0)
+                } else {
+                    room
+                };
+                let (rect, _) = ui.allocate_exact_size(egui::vec2(wfull, 46.0), Sense::hover());
+                let painter = ui.painter_at(rect.expand(1.0));
+                painter.rect(
+                    rect,
+                    6.0,
+                    p.card,
+                    Stroke::new(1.0, p.stroke),
+                    StrokeKind::Inside,
+                );
+                let c = if *t >= 90.0 {
+                    p.err
+                } else if *t >= 80.0 {
+                    p.warn
+                } else {
+                    Color32::from_rgb(0xf0, 0x7a, 0x4a)
+                };
+                let g = egui::Rect::from_min_max(
+                    rect.left_top() + egui::vec2(2.0, 18.0),
+                    rect.right_bottom() - egui::vec2(2.0, 2.0),
+                );
+                crate::theme::spark_in(&painter, g, sp, c);
+                let label = if multi {
+                    format!("Temperatura socket {pkg} (último minuto, 30–100 °C)")
+                } else {
+                    "Temperatura do processador (último minuto, 30–100 °C)".into()
+                };
+                painter.text(
+                    rect.left_top() + egui::vec2(6.0, 4.0),
+                    egui::Align2::LEFT_TOP,
+                    label,
+                    egui::FontId::proportional(10.5),
+                    p.weak,
+                );
+                painter.text(
+                    rect.right_top() + egui::vec2(-6.0, 4.0),
+                    egui::Align2::RIGHT_TOP,
+                    format!("{t:.0} °C"),
+                    egui::FontId::proportional(11.5),
+                    p.text,
+                );
+            }
+        });
+    }
+    ui.label(
+        RichText::new("Passe o mouse num gráfico para ver o núcleo e a frequência; ponto amarelo = algum programa está preso a ele.")
+            .size(11.5)
+            .color(p.weak),
+    );
+}
+
 fn governors(cpu: usize) -> (String, Vec<String>) {
     let base = numapilot::util::sys(&format!("devices/system/cpu/cpu{cpu}/cpufreq"));
     let cur = numapilot::util::read_trim(base.join("scaling_governor")).unwrap_or_default();
@@ -154,15 +306,24 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
     }
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.label(
-            RichText::new(
-                "Cada quadrado é um núcleo físico (dividido nos 2 threads). Cor = uso; ponto branco = algum programa \
-                 está preso a ele (passe o mouse para ver).",
-            )
-            .weak(),
-        );
         ui.add_space(4.0);
-        core_map(ui, &app.topo, &app.cpu_loads, None, &who);
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut app.map_threads, true, "Gráfico por thread");
+            ui.selectable_value(&mut app.map_threads, false, "Mapa de núcleos");
+        });
+        ui.add_space(4.0);
+        if app.map_threads {
+            thread_graphs(app, ui, &who);
+        } else {
+            ui.label(
+                RichText::new(
+                    "Cada quadrado é um núcleo físico (dividido nos 2 threads). Cor = uso; ponto branco = algum programa \
+                     está preso a ele (passe o mouse para ver).",
+                )
+                .weak(),
+            );
+            core_map(ui, &app.topo, &app.cpu_loads, None, &who);
+        }
         ui.separator();
 
         ui.heading("Memória e frequência por socket");

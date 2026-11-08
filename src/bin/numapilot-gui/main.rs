@@ -246,6 +246,11 @@ pub(crate) struct App {
     pub(crate) cfg: Config,
     pub(crate) editor: Option<editor::Editor>,
     pub(crate) cpu_loads: BTreeMap<usize, f32>,
+    /// Último minuto de cada thread e da temperatura do processador (aba Mapa).
+    pub(crate) cpu_sparks: BTreeMap<usize, theme::Spark>,
+    pub(crate) cpu_freq: BTreeMap<usize, u64>,
+    pub(crate) temp_spark: BTreeMap<u32, (theme::Spark, f64)>,
+    pub(crate) map_threads: bool,
     pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
     prev_numa: BTreeMap<usize, (u64, u64)>,
     prev_numa_t: Instant,
@@ -360,6 +365,10 @@ impl App {
             cfg: cfg.clone(),
             editor: None,
             cpu_loads: BTreeMap::new(),
+            cpu_sparks: BTreeMap::new(),
+            cpu_freq: BTreeMap::new(),
+            temp_spark: BTreeMap::new(),
+            map_threads: true,
             numa_rates: BTreeMap::new(),
             prev_numa: BTreeMap::new(),
             prev_numa_t: Instant::now(),
@@ -431,6 +440,27 @@ impl App {
                 Some((c, b.saturating_sub(*pb) as f32 / dt as f32))
             })
             .collect();
+        for (c, l) in &self.cpu_loads {
+            self.cpu_sparks.entry(*c).or_default().push(*l);
+        }
+        // frequência e temperatura só quando a aba Mapa está aberta (são muitos arquivos)
+        if self.tab == Tab::Map {
+            for c in self.cpu_loads.keys() {
+                if let Some(k) = numapilot::util::read_trim(numapilot::util::sys(&format!(
+                    "devices/system/cpu/cpu{c}/cpufreq/scaling_cur_freq"
+                )))
+                .and_then(|v| v.parse::<u64>().ok())
+                {
+                    self.cpu_freq.insert(*c, k / 1000);
+                }
+            }
+        }
+        for (pkg, t) in numapilot::cpuctl::package_temps() {
+            let e = self.temp_spark.entry(pkg).or_default();
+            // escala 30–100 °C
+            e.0.push(((t - 30.0) / 70.0) as f32);
+            e.1 = t;
+        }
         // Alocações de memória no outro socket (numastat), por segundo.
         let dt = self.prev_numa_t.elapsed().as_secs_f64().max(0.1);
         self.prev_numa_t = Instant::now();
