@@ -183,19 +183,29 @@ pub fn quick(argv: &[&str]) -> String {
 pub fn in_terminal(cmd: &[String]) -> Result<(), String> {
     let has = |b: &str| numapilot::containers::which(b);
     let term: Vec<String> = if has("konsole") {
-        vec!["konsole".into(), "--hold".into(), "-e".into()]
+        vec!["konsole".into(), "-e".into()]
     } else if has("gnome-terminal") {
         vec!["gnome-terminal".into(), "--".into()]
     } else if has("kitty") {
-        vec!["kitty".into(), "--hold".into()]
+        vec!["kitty".into()]
     } else if has("alacritty") {
-        vec!["alacritty".into(), "--hold".into(), "-e".into()]
+        vec!["alacritty".into(), "-e".into()]
     } else if has("xterm") {
-        vec!["xterm".into(), "-hold".into(), "-e".into()]
+        vec!["xterm".into(), "-e".into()]
     } else {
         return Err(
             "nenhum terminal encontrado (konsole, gnome-terminal, kitty, alacritty, xterm)".into(),
         );
     };
-    spawn_detached(&[term, cmd.to_vec()].concat()).map_err(|e| e.to_string())
+    // Roda o comando e, no fim, deixa claro que acabou: fecha com Enter.
+    let quoted: Vec<String> = cmd
+        .iter()
+        .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
+        .collect();
+    let script = format!(
+        "{}; s=$?; echo; if [ $s -eq 0 ]; then echo 'Terminou.'; else echo \"Terminou com erro ($s).\"; fi; printf 'Enter para fechar esta janela. '; read -r _",
+        quoted.join(" ")
+    );
+    let wrapped = vec!["sh".to_string(), "-c".to_string(), script];
+    spawn_detached(&[term, wrapped].concat()).map_err(|e| e.to_string())
 }

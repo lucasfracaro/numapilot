@@ -238,27 +238,76 @@ fn kernel_log_since(t: std::time::SystemTime) -> String {
         .unwrap_or_default()
 }
 
-/// Programa de carga: vkmark sem janela (funciona até em placa sem monitor) ou glmark2.
-pub fn stress_cmd() -> Option<Vec<String>> {
+/// Programas de carga, na ordem de preferência: vkmark sem janela (funciona até em placa sem
+/// monitor), vkmark com janela, glmark2. Alguns caem com certos drivers; o primeiro que roda vale.
+pub fn stress_cmds() -> Vec<Vec<String>> {
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<String>>();
+    let mut v = vec![];
     if crate::containers::which("vkmark") {
-        return Some(vec![
-            "vkmark".into(),
-            "--winsys".into(),
-            "headless".into(),
-            "-s".into(),
-            "1920x1080".into(),
-        ]);
+        v.push(s(&["vkmark", "--winsys", "headless", "-s", "1920x1080"]));
+        v.push(s(&["vkmark", "-s", "1280x720"]));
+    }
+    if crate::containers::which("glmark2-wayland") {
+        v.push(s(&["glmark2-wayland", "--run-forever", "-s", "1280x720"]));
     }
     if crate::containers::which("glmark2") {
-        return Some(vec![
-            "glmark2".into(),
-            "--off-screen".into(),
-            "--run-forever".into(),
-            "-s".into(),
-            "1920x1080".into(),
-        ]);
+        v.push(s(&["glmark2", "--run-forever", "-s", "1280x720"]));
+        v.push(s(&[
+            "glmark2",
+            "--off-screen",
+            "--run-forever",
+            "-s",
+            "1920x1080",
+        ]));
     }
-    None
+    v
+}
+
+/// Algum programa de carga instalado?
+pub fn stress_cmd() -> Option<Vec<String>> {
+    stress_cmds().into_iter().next()
+}
+
+/// Acha um programa de carga que rode nesta placa (5 s sem cair).
+fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Vec<String>, String> {
+    let env = stress_env(g, topo);
+    let cands = stress_cmds();
+    if cands.is_empty() {
+        return Err("instale o vkmark ou o glmark2 (sudo pacman -S vkmark glmark2)".into());
+    }
+    for c in cands {
+        let Ok(mut ch) = Command::new(&c[0])
+            .args(&c[1..])
+            .envs(env.clone())
+            .env_remove("VK_DRIVER_FILES")
+            .env_remove("VK_ICD_FILENAMES")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            continue;
+        };
+        let t0 = Instant::now();
+        let mut ok = true;
+        while t0.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(250));
+            if let Ok(Some(st)) = ch.try_wait() {
+                ok = st.success();
+                break;
+            }
+        }
+        let _ = ch.kill();
+        let _ = ch.wait();
+        if ok {
+            out(&format!("  teste de carga: {}", c.join(" ")));
+            return Ok(c);
+        }
+        out(&format!(
+            "  ({} não roda nesta placa, tentando outro)",
+            c.join(" ")
+        ));
+    }
+    Err("nenhum programa de carga roda nesta placa (vkmark e glmark2 caíram ao abrir): nada foi mudado".into())
 }
 
 fn stress_env(g: &Gpu, topo: &Topology) -> Vec<(String, String)> {
@@ -266,15 +315,21 @@ fn stress_env(g: &Gpu, topo: &Topology) -> Vec<(String, String)> {
 }
 
 /// Roda a carga por `secs`. Ok se aguentou; Err com o motivo se caiu ou o kernel reclamou.
-fn stress(g: &Gpu, topo: &Topology, secs: u64, out: &mut dyn FnMut(&str)) -> Result<(), String> {
-    let cmd =
-        stress_cmd().ok_or("instale o vkmark ou o glmark2 (sudo pacman -S vkmark glmark2)")?;
+fn stress(
+    g: &Gpu,
+    topo: &Topology,
+    cmd: &[String],
+    secs: u64,
+    out: &mut dyn FnMut(&str),
+) -> Result<(), String> {
     let since = std::time::SystemTime::now();
     let env = stress_env(g, topo);
     let spawn = || {
         Command::new(&cmd[0])
             .args(&cmd[1..])
             .envs(env.clone())
+            .env_remove("VK_DRIVER_FILES")
+            .env_remove("VK_ICD_FILENAMES")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -283,6 +338,7 @@ fn stress(g: &Gpu, topo: &Topology, secs: u64, out: &mut dyn FnMut(&str)) -> Res
     let mut ch = spawn()?;
     let t0 = Instant::now();
     let mut last = 0;
+    let mut crashes = 0;
     let res = loop {
         std::thread::sleep(Duration::from_millis(500));
         if STOP.load(Ordering::SeqCst) {
@@ -291,6 +347,18 @@ fn stress(g: &Gpu, topo: &Topology, secs: u64, out: &mut dyn FnMut(&str)) -> Res
         if let Ok(Some(st)) = ch.try_wait() {
             // terminou a rodada normalmente: começa outra
             if st.success() {
+                ch = match spawn() {
+                    Ok(c) => c,
+                    Err(e) => break Err(e),
+                };
+            } else if crashes == 0
+                && gpu_errors(&kernel_log_since(since), &g.pci, g.is_nvidia()).is_empty()
+            {
+                // caiu sem a placa reclamar no kernel: pode ser o programa; dá mais uma chance
+                crashes += 1;
+                out(&format!(
+                    "    o programa de teste caiu ({st}) sem erro da placa; tentando de novo"
+                ));
                 ch = match spawn() {
                     Ok(c) => c,
                     Err(e) => break Err(e),
@@ -360,7 +428,7 @@ pub fn run(
         Method::NvOffset { .. } => 15,
         _ => 10,
     });
-    stress_cmd().ok_or("instale o vkmark ou o glmark2 (sudo pacman -S vkmark glmark2)")?;
+    let cmd = pick_stress(g, topo, out)?;
     out(&format!(
         "{}: undervolt automático, {} s por passo",
         g.alias, opts.secs
@@ -384,7 +452,7 @@ pub fn run(
             out(&format!("  a placa recusou: {e}"));
             break;
         }
-        match stress(g, topo, opts.secs, out) {
+        match stress(g, topo, &cmd, opts.secs, out) {
             Ok(()) => {
                 out("    passou");
                 good = c;
@@ -399,7 +467,15 @@ pub fn run(
                 out(&format!("    falhou: {e}"));
                 if n == 0 {
                     let _ = set(&g.pci, &base, false);
-                    return Err("nem o ponto de partida aguentou: nada foi mudado".into());
+                    return Err(if e.starts_with("kernel:") {
+                        "nem o ponto de partida aguentou (a placa deu erro no kernel): nada foi mudado".into()
+                    } else {
+                        format!(
+                            "o programa de teste ({}) caiu já no ponto de partida, sem erro da placa no kernel: \
+                             o problema parece ser o programa, não a placa. Nada foi mudado.",
+                            cmd[0]
+                        )
+                    });
                 }
                 break;
             }
@@ -418,7 +494,7 @@ pub fn run(
     ));
     set(&g.pci, &final_c, true)?;
     out(&format!("  confirmação: {} s", opts.secs * 2));
-    if let Err(e) = stress(g, topo, opts.secs * 2, out) {
+    if let Err(e) = stress(g, topo, &cmd, opts.secs * 2, out) {
         let _ = set(&g.pci, &base, false);
         if STOP.load(Ordering::SeqCst) {
             return Err("interrompido: voltei ao que era antes".into());
