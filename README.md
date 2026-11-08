@@ -838,7 +838,15 @@ núcleos e a memória do socket dela, e o Linux continua na outra placa.
 No servidor, a candidata é a RX470 (as MI50 não têm saída de vídeo). Alguns anti-cheats (Vanguard e
 jogos que configuram o EasyAntiCheat/BattlEye para isso) recusam máquina virtual: confira o jogo antes.
 
-## 26. Limitações
+## 26. Autoteste, aba Testes e registros
+
+- `numapilot autoteste`: confere tudo nesta máquina sem mudar nada e grava um relatório.
+- Aba **Testes**: roteiro para testar à mão, com respostas salvas e um relatório único para enviar.
+- `numapilot log`: o que o serviço, o programa e os comandos fizeram (com data e hora).
+
+Detalhes em [docs/TESTES.md](docs/TESTES.md).
+
+## 27. Limitações
 
 - O daemon troca CPU e memória de programas em execução, mas não a GPU (isso exige `numapilot run`).
 - Programas Vulkan de computação (ex.: llama.cpp com backend Vulkan) escolhem a GPU pelo índice

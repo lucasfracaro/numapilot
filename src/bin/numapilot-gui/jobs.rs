@@ -89,6 +89,7 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
             ctx.request_repaint();
         };
         push(&format!("$ {}", argv.join(" ")));
+        numapilot::log::info(&format!("comando: {} — {}", j.title, argv.join(" ")));
         let child = Command::new(&argv[0])
             .args(&argv[1..])
             .stdin(Stdio::null())
@@ -99,6 +100,7 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
             Ok(c) => c,
             Err(e) => {
                 push(&format!("não consegui executar: {e}"));
+                numapilot::log::error(&format!("não consegui executar {}: {e}", argv[0]));
                 if let Ok(mut s) = j.status.lock() {
                     *s = Some(false);
                 }
@@ -126,6 +128,21 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
         }
         let _ = t.join();
         let ok = child.wait().map(|s| s.success()).unwrap_or(false);
+        // no registro: o comando e, se deu erro, o fim da saída
+        let title = j.title.clone();
+        if ok {
+            numapilot::log::info(&format!("comando concluído: {title}"));
+        } else {
+            let tail = j
+                .out
+                .lock()
+                .map(|o| {
+                    let v: Vec<&str> = o.lines().rev().take(15).collect();
+                    v.into_iter().rev().collect::<Vec<_>>().join("\n")
+                })
+                .unwrap_or_default();
+            numapilot::log::error(&format!("comando com erro: {title}\n{tail}"));
+        }
         push(if ok {
             "[concluído]"
         } else {

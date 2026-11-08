@@ -188,7 +188,7 @@ pub fn run() {
         // backup de cada PC uma vez por dia (o primeiro 10 min depois de ligar)
         if tick % (24 * 60) == 10 {
             for m in crate::peers::backup_all() {
-                eprintln!("[numapilot] backup: {m}");
+                crate::nlog!("backup: {m}");
             }
         }
     }

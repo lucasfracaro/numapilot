@@ -212,6 +212,26 @@ enum Cmd {
     /// Imprime os IDs ROCR_VISIBLE_DEVICES das GPUs de computação (para scripts).
     #[command(name = "rocr-ids")]
     RocrIds,
+    /// Mostra o final dos registros (serviço, programa gráfico, linha de comando) e do journal.
+    Log {
+        /// Linhas de cada registro.
+        #[arg(short = 'n', default_value_t = 40)]
+        lines: usize,
+        /// Só este: servico | gui | cli | tray | web
+        which: Option<String>,
+    },
+    /// Testa todas as partes do numapilot nesta máquina (só lê, não muda nada) e grava um relatório.
+    Autoteste {
+        /// Arquivo do relatório (padrão: ~/numapilot-autoteste-MAQUINA-DATA.txt).
+        #[arg(long)]
+        saida: Option<std::path::PathBuf>,
+        /// Pula os testes que rodam os comandos do numapilot um por um.
+        #[arg(long)]
+        rapido: bool,
+        /// Saída em JSON (na tela).
+        #[arg(long)]
+        json: bool,
+    },
     /// Mostra ou apaga o que o modo automático aprendeu.
     Learned {
         /// Apaga o aprendizado de programas cujo caminho contém este texto.
@@ -240,6 +260,7 @@ enum ProfileCmd {
 
 fn main() {
     if let Err(e) = real_main() {
+        numapilot::log::error(&format!("{e:#}"));
         eprintln!("numapilot: erro: {e:#}");
         std::process::exit(1);
     }
@@ -247,9 +268,45 @@ fn main() {
 
 fn real_main() -> Result<()> {
     let cli = Cli::parse();
+    match &cli.cmd {
+        Cmd::Daemon => numapilot::log::init("daemon"),
+        Cmd::Web { .. } => numapilot::log::init("web"),
+        // só leitura do próprio registro: não precisa registrar
+        Cmd::Log { .. } => {}
+        _ => {
+            numapilot::log::init("cli");
+            let args: Vec<String> = std::env::args().skip(1).collect();
+            numapilot::log::info(&format!("numapilot {}", args.join(" ")));
+        }
+    }
     let cfg = Config::load()?;
     match cli.cmd {
         Cmd::Topo => cmd_topo(&cfg),
+        Cmd::Log { lines, which } => cmd_log(lines, which.as_deref()),
+        Cmd::Autoteste {
+            saida,
+            rapido,
+            json,
+        } => {
+            let r = numapilot::selftest::run(&cfg, !rapido, &mut |l| {
+                if !json {
+                    println!("{l}")
+                }
+            });
+            if json {
+                println!("{}", serde_json::to_string_pretty(&r)?);
+                return Ok(());
+            }
+            let path = saida.unwrap_or_else(numapilot::selftest::default_path);
+            std::fs::write(&path, numapilot::selftest::render(&r))?;
+            println!();
+            println!("{}", r.summary());
+            println!("Relatório: {}", path.display());
+            if r.failed() > 0 {
+                std::process::exit(2);
+            }
+            Ok(())
+        }
         Cmd::Run {
             cpu,
             gpu,
@@ -1702,6 +1759,56 @@ fn cmd_learned(forget: Option<String>) -> Result<()> {
                 .unwrap_or_else(|| "-".into()),
             e.runs
         );
+    }
+    Ok(())
+}
+
+fn cmd_log(lines: usize, which: Option<&str>) -> Result<()> {
+    let want = which.map(|w| match w {
+        "servico" | "serviço" | "daemon" => "serviço",
+        o => o,
+    });
+    let mut shown = 0;
+    for (name, path) in numapilot::log::files() {
+        if want.is_some_and(|w| !name.starts_with(w)) {
+            continue;
+        }
+        let t = numapilot::log::tail(&path, lines);
+        if t.is_empty() {
+            continue;
+        }
+        shown += 1;
+        println!("== {name} ({}) ==", path.display());
+        for l in t {
+            println!("{l}");
+        }
+        println!();
+    }
+    if want.is_none_or(|w| w == "serviço") {
+        // o journal tem o que veio antes do registro em arquivo
+        let o = std::process::Command::new("journalctl")
+            .args([
+                "-u",
+                "numapilot",
+                "-b",
+                "--no-pager",
+                "-o",
+                "short-iso",
+                "-n",
+            ])
+            .arg(lines.to_string())
+            .output();
+        if let Ok(o) = o {
+            let t = String::from_utf8_lossy(&o.stdout);
+            if !t.trim().is_empty() && !t.contains("No entries") {
+                shown += 1;
+                println!("== journal do serviço (este boot) ==");
+                print!("{t}");
+            }
+        }
+    }
+    if shown == 0 {
+        println!("Nenhum registro ainda.");
     }
     Ok(())
 }

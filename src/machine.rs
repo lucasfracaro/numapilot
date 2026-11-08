@@ -875,13 +875,13 @@ impl LowLatency {
             }
         }
         if !want.is_empty() {
-            eprintln!(
-                "[numapilot] baixa latência nos núcleos {} ({} estados de economia desligados)",
+            crate::nlog!(
+                "baixa latência nos núcleos {} ({} estados de economia desligados)",
                 crate::util::format_cpulist(&want),
                 self.cstates.len()
             );
         } else if !self.cpus.is_empty() {
-            eprintln!("[numapilot] baixa latência desligada");
+            crate::nlog!("baixa latência desligada");
         }
         self.cpus = want;
     }

@@ -161,7 +161,7 @@ pub fn event(kind: &str, key: &str, title: &str, body: &str, prio: u8, cooldown:
     };
     std::thread::spawn(move || {
         if let Err(e) = n.send_now(&title, &body, prio, tags) {
-            eprintln!("[numapilot] aviso não enviado: {e}");
+            crate::nlog!("aviso não enviado: {e}");
         }
     });
 }

@@ -2,6 +2,7 @@
 //! O daemon mapeia os programas abertos; aqui você troca o hardware de cada um.
 
 mod bg;
+mod checklist;
 mod editor;
 mod gpus;
 mod jobs;
@@ -158,6 +159,7 @@ enum Tab {
     Llm,
     Stream,
     Settings,
+    Tests,
 }
 
 #[derive(Clone, Default)]
@@ -239,6 +241,12 @@ const TABS: &[(Tab, &str, &str, &str)] = &[
         "Configurações",
         "Outros PCs, avisos, atualização e máquina virtual",
     ),
+    (
+        Tab::Tests,
+        "📋",
+        "Testes",
+        "Roteiro para testar o programa, autoteste e relatório para enviar",
+    ),
 ];
 
 pub(crate) struct App {
@@ -251,6 +259,7 @@ pub(crate) struct App {
     pub(crate) cpu_freq: BTreeMap<usize, u64>,
     pub(crate) temp_spark: BTreeMap<u32, (theme::Spark, f64)>,
     pub(crate) map_threads: bool,
+    pub(crate) checklist: checklist::Checklist,
     pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
     prev_numa: BTreeMap<usize, (u64, u64)>,
     prev_numa_t: Instant,
@@ -369,6 +378,7 @@ impl App {
             cpu_freq: BTreeMap::new(),
             temp_spark: BTreeMap::new(),
             map_threads: true,
+            checklist: checklist::Checklist::default(),
             numa_rates: BTreeMap::new(),
             prev_numa: BTreeMap::new(),
             prev_numa_t: Instant::now(),
@@ -536,7 +546,13 @@ impl App {
     }
 
     pub(crate) fn toast(&mut self, msg: impl Into<String>, ok: bool) {
-        self.toast = Some((msg.into(), ok, Instant::now()));
+        let m = msg.into();
+        if ok {
+            numapilot::log::info(&format!("aviso na tela: {m}"));
+        } else {
+            numapilot::log::warn(&format!("aviso na tela: {m}"));
+        }
+        self.toast = Some((m, ok, Instant::now()));
     }
 
     /// Roda um comando em segundo plano e mostra a saída numa janelinha.
@@ -588,6 +604,16 @@ impl App {
     }
 
     pub(crate) fn send(&mut self, req: Request) {
+        // o pedido, resumido (sem os dados grandes)
+        let what = match &req {
+            // pode ter o tópico/senha dos avisos
+            Request::SetNotify { .. } => "SetNotify { … }".to_string(),
+            r => format!("{r:?}"),
+        };
+        numapilot::log::info(&format!(
+            "pedido ao serviço: {}",
+            what.chars().take(300).collect::<String>()
+        ));
         match ctl::send(&req) {
             Ok(r) => self.toast(r.message, r.ok),
             Err(e) => self.toast(format!("{e:#}"), false),
@@ -1238,6 +1264,7 @@ impl eframe::App for App {
                 Tab::Llm => llm::ui(self, ui),
                 Tab::Stream => stream::ui(self, ui),
                 Tab::Settings => settings::ui(self, ui),
+                Tab::Tests => checklist::ui(self, ui),
             });
         let ctx = ui.ctx().clone();
         self.job_window(&ctx);
@@ -1333,7 +1360,9 @@ fn relaunch(g: &Group, msgs: Arc<Mutex<Vec<(String, bool)>>>) {
 
 fn main() -> eframe::Result {
     if std::env::args().any(|a| a == "--tray") {
+        numapilot::log::init("tray");
         if let Err(e) = tray::main_loop() {
+            numapilot::log::error(&e);
             eprintln!("numapilot: {e}");
             std::process::exit(1);
         }
@@ -1343,6 +1372,8 @@ fn main() -> eframe::Result {
     if single::show_existing() {
         return Ok(());
     }
+    numapilot::log::init("gui");
+    numapilot::log::info(&format!("aberto (versão {})", env!("CARGO_PKG_VERSION")));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("numapilot — processador e placa de vídeo por programa")

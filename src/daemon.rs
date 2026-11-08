@@ -143,8 +143,8 @@ impl Hw {
         let prev = std::mem::replace(&mut self.machine, m);
         let _ = self.machine.save();
         self.apply_machine(topo, Some(&prev));
-        eprintln!(
-            "[numapilot] {}: modo {name}",
+        crate::nlog!(
+            "{}: modo {name}",
             if ac == Some(true) {
                 "na tomada"
             } else {
@@ -166,8 +166,8 @@ impl Hw {
             && w.differs(&crate::ryzen::limits_from(&info))
         {
             match crate::ryzen::apply(w) {
-                Ok(()) => eprintln!("[numapilot] limites do Ryzen reaplicados"),
-                Err(e) => eprintln!("[numapilot] limites do Ryzen: {e}"),
+                Ok(()) => crate::nlog!("limites do Ryzen reaplicados"),
+                Err(e) => crate::nlog!("limites do Ryzen: {e}"),
             }
         }
         self.ryzen_info = info;
@@ -207,8 +207,8 @@ impl Hw {
         let prev = std::mem::replace(&mut self.machine, m);
         let _ = self.machine.save();
         self.apply_machine(topo, Some(&prev));
-        eprintln!(
-            "[numapilot] modo {target} ({})",
+        crate::nlog!(
+            "modo {target} ({})",
             if self.auto_mode.is_some() {
                 "regra automática"
             } else {
@@ -240,7 +240,7 @@ impl Hw {
                     }
                     st.removed = false;
                     st.last_error = None;
-                    eprintln!("[numapilot] NVIDIA de volta ({})", st.alias);
+                    crate::nlog!("NVIDIA de volta ({})", st.alias);
                 }
                 Err(e) => st.last_error = Some(e),
             }
@@ -293,19 +293,13 @@ impl Hw {
                         st.removed = true;
                         st.blocked_by.clear();
                         st.last_error = None;
-                        eprintln!(
-                            "[numapilot] NVIDIA desligada ({}): só a integrada",
-                            st.alias
-                        );
+                        crate::nlog!("NVIDIA desligada ({}): só a integrada", st.alias);
                     }
                     Err(e) => st.last_error = Some(e),
                 }
             } else {
                 if st.blocked_by != users {
-                    eprintln!(
-                        "[numapilot] NVIDIA em uso, não desliguei: {}",
-                        users.join(", ")
-                    );
+                    crate::nlog!("NVIDIA em uso, não desliguei: {}", users.join(", "));
                 }
                 st.blocked_by = users;
             }
@@ -324,7 +318,7 @@ impl Hw {
         self.lowlat = LowLatency::default();
         self.lowlat.set(cpus, &self.machine, topo);
         for e in &errs {
-            eprintln!("[numapilot] máquina: {e}");
+            crate::nlog!("máquina: {e}");
         }
         errs
     }
@@ -347,7 +341,7 @@ impl Hw {
                             Ok(()) => {
                                 self.board_manual.insert(f.id.clone(), pct);
                             }
-                            Err(e) => eprintln!("[numapilot] ventoinha {}: {e}", f.id),
+                            Err(e) => crate::nlog!("ventoinha {}: {e}", f.id),
                         }
                     }
                 }
@@ -386,8 +380,8 @@ impl Hw {
             });
             if active.as_deref() != Some(name) {
                 match gpuctl::set_power_profile(pci, prof) {
-                    Ok(()) => eprintln!("[numapilot] GPU {pci}: perfil de energia {name}"),
-                    Err(e) => eprintln!("[numapilot] GPU {pci}: perfil de energia: {e}"),
+                    Ok(()) => crate::nlog!("GPU {pci}: perfil de energia {name}"),
+                    Err(e) => crate::nlog!("GPU {pci}: perfil de energia: {e}"),
                 }
             }
         }
@@ -640,8 +634,8 @@ impl Ctx<'_> {
                 let _ = procfs::migrate_pages(pid, &from, &to);
             });
         }
-        eprintln!(
-            "[numapilot] {} (pid {pid}) → nó(s) {:?} [{}]: {why}",
+        crate::nlog!(
+            "{} (pid {pid}) → nó(s) {:?} [{}]: {why}",
             t.comm,
             nodes,
             format_cpulist(&cpus)
@@ -702,14 +696,11 @@ impl Ctx<'_> {
             };
             match cgroup::apply(&t.pkey, &t.label, pids, &limits) {
                 Ok(name) => {
-                    eprintln!("[numapilot] {} → {name} {:?}", t.comm, limits);
+                    crate::nlog!("{} → {name} {:?}", t.comm, limits);
                     status_update(|s| s.cgroup_ok_count += 1);
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[numapilot] {}: não consegui aplicar o grupo de controle: {e}",
-                        t.comm
-                    );
+                    crate::nlog!("{}: não consegui aplicar o grupo de controle: {e}", t.comm);
                     status_update(|s| s.cgroup_last_error = Some(e.clone()));
                 }
             }
@@ -735,8 +726,8 @@ impl Ctx<'_> {
                 t.active = 0;
                 t.nodes.clear();
                 t.cpus.clear();
-                eprintln!(
-                    "[numapilot] {} (pid {pid}) → automático (escolha feita na interface)",
+                crate::nlog!(
+                    "{} (pid {pid}) → automático (escolha feita na interface)",
                     t.comm
                 );
             }
@@ -759,10 +750,7 @@ fn bind_ctl() -> Option<UnixListener> {
             Some(l)
         }
         Err(e) => {
-            eprintln!(
-                "[numapilot] aviso: sem socket de controle ({}): {e}",
-                p.display()
-            );
+            crate::nlog!("aviso: sem socket de controle ({}): {e}", p.display());
             None
         }
     }
@@ -770,7 +758,7 @@ fn bind_ctl() -> Option<UnixListener> {
 
 pub fn run(cfg: Config) -> Result<()> {
     if !is_root() {
-        eprintln!("[numapilot] aviso: sem root só é possível mexer nos seus próprios processos.");
+        crate::nlog!("aviso: sem root só é possível mexer nos seus próprios processos.");
     }
     unsafe {
         libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
@@ -778,10 +766,10 @@ pub fn run(cfg: Config) -> Result<()> {
     }
     let topo = Topology::load(&cfg);
     for w in topo.warnings() {
-        eprintln!("[numapilot] aviso: {w}");
+        crate::nlog!("aviso: {w}");
     }
     if topo.nodes.len() < 2 {
-        eprintln!("[numapilot] só há 1 nó NUMA: o daemon apenas vai observar.");
+        crate::nlog!("só há 1 nó NUMA: o daemon apenas vai observar.");
     }
     let ctx = Ctx {
         cfg: &cfg,
@@ -800,8 +788,8 @@ pub fn run(cfg: Config) -> Result<()> {
     for (pci, c) in &gpuc.map {
         if let Some(w) = c.power_cap_w {
             match gpuctl::set_power_cap(pci, Some(w)) {
-                Ok(v) => eprintln!("[numapilot] GPU {pci}: limite de potência {v:.0} W"),
-                Err(e) => eprintln!("[numapilot] GPU {pci}: não consegui limitar a potência: {e}"),
+                Ok(v) => crate::nlog!("GPU {pci}: limite de potência {v:.0} W"),
+                Err(e) => crate::nlog!("GPU {pci}: não consegui limitar a potência: {e}"),
             }
         }
     }
@@ -814,8 +802,8 @@ pub fn run(cfg: Config) -> Result<()> {
     }
     if hw.machine != Machine::default() {
         let errs = hw.apply_machine(&topo, None);
-        eprintln!(
-            "[numapilot] modo da máquina: {} ({} erro(s))",
+        crate::nlog!(
+            "modo da máquina: {} ({} erro(s))",
             hw.machine.mode,
             errs.len()
         );
@@ -833,12 +821,12 @@ pub fn run(cfg: Config) -> Result<()> {
     if cfg.daemon.device_irq {
         let n = crate::irqs::apply(&topo);
         if n > 0 {
-            eprintln!("[numapilot] {n} interrupções de disco/rede no socket da placa");
+            crate::nlog!("{n} interrupções de disco/rede no socket da placa");
         }
     }
     for (pci, c) in &gpuc.map {
         if let Err(e) = nv_offsets(pci, c) {
-            eprintln!("[numapilot] GPU {pci}: deslocamento de clock não aplicado: {e}");
+            crate::nlog!("GPU {pci}: deslocamento de clock não aplicado: {e}");
         }
         if let Some(m) = c.clock_max_mhz
             && let Err(e) = if crate::nvctl::is_nvidia(pci) {
@@ -847,18 +835,18 @@ pub fn run(cfg: Config) -> Result<()> {
                 gpuctl::set_intel_max_freq(pci, Some(m))
             }
         {
-            eprintln!("[numapilot] GPU {pci}: clock máximo não aplicado: {e}");
+            crate::nlog!("GPU {pci}: clock máximo não aplicado: {e}");
         }
         if c.fan != FanMode::Auto
             && gpuctl::read_sensors(pci).fw_fan_curve
             && let Err(e) = gpuctl::apply_fw_fan(pci, c)
         {
-            eprintln!("[numapilot] GPU {pci}: curva da ventoinha não aplicada: {e}");
+            crate::nlog!("GPU {pci}: curva da ventoinha não aplicada: {e}");
         }
         if let Some(od) = &c.od
             && let Err(e) = gpuctl::apply_od(pci, Some(od))
         {
-            eprintln!("[numapilot] GPU {pci}: clock/voltagem não aplicados: {e}");
+            crate::nlog!("GPU {pci}: clock/voltagem não aplicados: {e}");
             status_update(|s| s.od_errors.push(format!("{pci}: {e}")));
         }
     }
@@ -873,8 +861,8 @@ pub fn run(cfg: Config) -> Result<()> {
         s.proc_connector = execs.is_some();
         s.started = history::now();
     });
-    eprintln!(
-        "[numapilot] detecção de programas: {}",
+    crate::nlog!(
+        "detecção de programas: {}",
         if execs.is_some() {
             "instantânea (proc connector)"
         } else {
@@ -889,8 +877,8 @@ pub fn run(cfg: Config) -> Result<()> {
     let mut last_save = Instant::now();
     let mut tick: u64 = 0;
     let tick_dur = Duration::from_millis(cfg.daemon.tick_ms);
-    eprintln!(
-        "[numapilot] daemon iniciado: {} nós, {} GPUs, amostra a cada {} ms",
+    crate::nlog!(
+        "daemon iniciado: {} nós, {} GPUs, amostra a cada {} ms",
         topo.nodes.len(),
         topo.gpus.len(),
         cfg.daemon.tick_ms
@@ -1058,9 +1046,9 @@ pub fn run(cfg: Config) -> Result<()> {
                 {
                     match nv_offsets(pci, c) {
                         Ok(()) => {
-                            eprintln!("[numapilot] GPU {pci}: deslocamento de clock reaplicado")
+                            crate::nlog!("GPU {pci}: deslocamento de clock reaplicado")
                         }
-                        Err(e) => eprintln!("[numapilot] GPU {pci}: deslocamento de clock: {e}"),
+                        Err(e) => crate::nlog!("GPU {pci}: deslocamento de clock: {e}"),
                     }
                 }
             }
@@ -1138,7 +1126,7 @@ pub fn run(cfg: Config) -> Result<()> {
                 let r = crate::health::collect(&t);
                 for (lvl, p) in crate::health::problems(&r) {
                     if lvl >= 2 {
-                        eprintln!("[numapilot] saúde: {p}");
+                        crate::nlog!("saúde: {p}");
                         crate::notify::event(
                             "health",
                             &p,
@@ -1194,18 +1182,18 @@ pub fn run(cfg: Config) -> Result<()> {
                 Ok(()) => {
                     if want.is_empty() {
                         let _ = std::fs::remove_file(&reserved_flag);
-                        eprintln!("[numapilot] núcleos exclusivos liberados");
+                        crate::nlog!("núcleos exclusivos liberados");
                     } else {
                         let _ = std::fs::write(&reserved_flag, format_cpulist(&want));
-                        eprintln!(
-                            "[numapilot] núcleos {} reservados (o resto do sistema não usa)",
+                        crate::nlog!(
+                            "núcleos {} reservados (o resto do sistema não usa)",
                             format_cpulist(&want)
                         );
                     }
                     reserved_now = want;
                 }
                 Err(e) => {
-                    eprintln!("[numapilot] não consegui reservar núcleos: {e}");
+                    crate::nlog!("não consegui reservar núcleos: {e}");
                     reserved_now = want;
                 }
             }
@@ -1260,7 +1248,7 @@ pub fn run(cfg: Config) -> Result<()> {
         write_state(&ctx, &procs, &ppids, &profiles);
         if last_save.elapsed() > Duration::from_secs(30) {
             if let Err(e) = learned.save() {
-                eprintln!("[numapilot] não consegui salvar o aprendizado: {e}");
+                crate::nlog!("não consegui salvar o aprendizado: {e}");
             }
             last_save = Instant::now();
         }
@@ -1319,7 +1307,7 @@ pub fn run(cfg: Config) -> Result<()> {
     let _ = learned.save();
     let _ = std::fs::remove_file(state_path());
     let _ = std::fs::remove_file(ctl::sock_path());
-    eprintln!("[numapilot] daemon encerrado.");
+    crate::nlog!("daemon encerrado.");
     Ok(())
 }
 
@@ -1516,7 +1504,7 @@ fn gpu_tick(pci: &str, c: &gpuctl::GpuControl, last: &mut HashMap<String, f64>) 
             // Sobe na hora; desce só com 3% de diferença (evita a ventoinha "caçando").
             if prev.is_none_or(|p| pct > p || p - pct >= 3.0 || s.fan_mode_raw != Some(1)) {
                 if let Err(e) = gpuctl::set_fan_pct(pci, pct) {
-                    eprintln!("[numapilot] ventoinha {pci}: {e}");
+                    crate::nlog!("ventoinha {pci}: {e}");
                 } else {
                     last.insert(pci.to_string(), pct);
                 }
@@ -1795,7 +1783,7 @@ fn handle_gpu(
     if let Err(e) = disk.save() {
         return Response::err(format!("não consegui salvar: {e}"));
     }
-    eprintln!("[numapilot] GPU {pci}: {}", msg.join(", "));
+    crate::nlog!("GPU {pci}: {}", msg.join(", "));
     Response::ok(if msg.is_empty() {
         "nada mudou".to_string()
     } else {
@@ -1820,7 +1808,7 @@ fn handle_machine(uid: u32, ctx: &Ctx, hw: &mut Hw, m: Machine) -> Response {
         hw.manual_mode = None;
     }
     let errs = hw.apply_machine(ctx.topo, Some(&prev));
-    eprintln!("[numapilot] modo da máquina: {}", hw.machine.mode);
+    crate::nlog!("modo da máquina: {}", hw.machine.mode);
     if errs.is_empty() {
         Response::ok(format!("modo {} aplicado", hw.machine.mode))
     } else {
@@ -1863,7 +1851,7 @@ fn handle_board_fan(
     if let Err(e) = hw.board.save() {
         return Response::err(format!("não consegui salvar: {e}"));
     }
-    eprintln!("[numapilot] ventoinha {id}: {msg}");
+    crate::nlog!("ventoinha {id}: {msg}");
     Response::ok(format!("ventoinha {msg}"))
 }
 

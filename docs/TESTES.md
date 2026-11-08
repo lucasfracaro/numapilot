@@ -1,3 +1,21 @@
+# Roteiro de testes
+
+## Antes de tudo: autoteste, aba Testes e registros (qualquer PC)
+
+1. `numapilot autoteste`: passa por todas as partes nesta máquina **só lendo** (sistema,
+   serviço, configuração, cada placa, notebook, placa especial, doctor e cada comando de
+   leitura) e grava `~/numapilot-autoteste-MAQUINA-DATA.txt`. Sai com código 2 se algo falhou.
+   `--rapido` pula os comandos; `--json` para scripts.
+2. Aba **Testes** no programa: roteiro à mão com só os itens que valem para esta máquina
+   (notebook, NVIDIA, BC-250, 2 processadores...). Marque OK / Falhou / Pulei e escreva o que
+   aconteceu. "Rodar o autoteste" e "Gerar relatório" juntam tudo (respostas, autoteste e o
+   final dos registros) em `~/numapilot-testes-MAQUINA-DATA.txt`, para enviar.
+3. Registros: `numapilot log` (ou `numapilot log servico|gui|cli|tray|web -n 100`).
+   Ficam em `/var/log/numapilot/daemon.log` (serviço) e `~/.local/state/numapilot/*.log`
+   (programa, bandeja, linha de comando); cada um vai até 2 MB e guarda o anterior em `.log.1`.
+
+---
+
 # Roteiro de testes no servidor
 
 Tudo no numapilot foi testado com um hardware simulado. Este roteiro confere, no servidor de
