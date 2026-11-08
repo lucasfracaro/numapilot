@@ -154,7 +154,15 @@ if lsmod 2>/dev/null | grep -q '^amdgpu'; then ok "driver amdgpu"; else warn "dr
 if [[ -e /dev/kfd ]]; then ok "/dev/kfd (ROCm)"; else warn "/dev/kfd ausente: o ROCm não vai enxergar as MI50"; fi
 missing_groups=()
 for g in render video; do
-    if id -nG | tr ' ' '\n' | grep -qx "$g"; then ok "você está no grupo $g"; else bad "grupo $g (acesso às GPUs pelo ROCm)"; missing_groups+=("$g"); fi
+    # id -nG sem usuário só vê os grupos desta sessão; com "$USER" lê o /etc/group atual
+    if id -nG | tr ' ' '\n' | grep -qx "$g"; then
+        ok "você está no grupo $g"
+    elif id -nG "$USER" | tr ' ' '\n' | grep -qx "$g"; then
+        warn "você já está no grupo $g, mas só vale depois de sair e entrar de novo na sessão"
+    else
+        bad "grupo $g (acesso às GPUs pelo ROCm)"
+        missing_groups+=("$g")
+    fi
 done
 UNCORE=0
 if grep -q GenuineIntel /proc/cpuinfo && modinfo intel_uncore_frequency >/dev/null 2>&1; then
