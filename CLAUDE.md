@@ -57,9 +57,16 @@ Partes:
   llama.cpp com `GGML_VK_PREFER_HOST_MEMORY`.
 - `boards::active_cores`/`active_cu` (journal `active_cu_number`) para conferir o desbloqueio ou, se a mensagem já saiu
   do buffer do kernel, a topologia do KFD (`simd_count / simd_per_cu`).
-- Firmware manda sensores impossíveis no hwmon (0 °C, ~1470 W, 60 V, OD_SCLK 4941 MHz): o
-  numapilot ignora temperatura fora de 1–150 °C e potência acima de 1000 W.
-- Sem cpufreq (o firmware não expõe controle de frequência da CPU): o autoteste só avisa.
+- Telemetria com 8 núcleos: o kernel linux-cachyos-bc250 escolhe a tabela de métricas da SMU
+  pelo número de núcleos (`cs_eight_core_map`). O biosmod do Lucas libera 8 núcleos **sem** o
+  "SMU Reporting Patch" (MeiMeiDXE v3), então temperatura e potência do hwmon/gpu_metrics vêm
+  embaralhadas (0 °C, ~1470 W) e `pp_dpm_sclk` também. Certos: clock da GPU no hwmon
+  `freq1_input`, MHz da CPU no `/proc/cpuinfo`, temperatura da CPU no `k10temp`.
+  `boards::smu_table_mismatch` explica isso no autoteste e no doctor. O
+  cyan-skillfish-governor-smu com `fix-metrics = true` monta um gpu_metrics corrigido por cima
+  (é dele que o MangoHud lê durante os testes); hoje o serviço está desligado.
+  Diagnóstico do kernel: `amdgpu.cs_full_telemetry=1` faz o `pp_dpm_socclk` mostrar a tabela.
+- Sem cpufreq: frequência da CPU só para leitura (`cpuctl::cur_mhz_all`); controle pelo bc250_smu_oc.
 - Ler `pp_od_clk_voltage` (e `pp_dpm_dcefclk`/`pp_dpm_pcie`) faz o amdgpu escrever
   "Unsupported clock type" no log do kernel. É do driver e inofensivo; evite ler em loop.
 

@@ -805,6 +805,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     if let Some(w) = s.power_w {
                         ui.label(format!("{w:.0} W"));
                     }
+                    if let Some(c) = s.clock_mhz {
+                        ui.label(format!("{c:.0} MHz"));
+                    }
                     if let Some(c) = s.power_cap_w {
                         ui.label(RichText::new(format!("limite {c:.0} W")).weak());
                     }

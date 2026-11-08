@@ -261,6 +261,35 @@ pub fn active_cores() -> usize {
     set.len()
 }
 
+/// BC-250 com 8 núcleos: o kernel linux-cachyos-bc250 lê a tabela de métricas de 8 núcleos
+/// (parâmetro `cs_eight_core_map` existe), mas sem o "SMU Reporting Patch" no BIOS a SMU
+/// grava a tabela de 6 e temperatura/potência saem embaralhadas. Os clocks continuam certos.
+/// Devolve a explicação quando é esse o caso.
+pub fn smu_table_mismatch(pci: &str) -> Option<String> {
+    if active_cores() != 8 {
+        return None;
+    }
+    let s = crate::gpuctl::read_sensors(pci);
+    if s.edge_c.is_some() || s.power_w.is_some() {
+        return None;
+    }
+    let p = |n: &str| crate::util::sys(&format!("module/amdgpu/parameters/{n}")).exists();
+    let kernel = if p("cs_legacy_8core_metrics") {
+        "ou ligue amdgpu.cs_legacy_8core_metrics=1 (dados parciais)"
+    } else if p("cs_eight_core_map") {
+        "ou volte para 6 núcleos"
+    } else {
+        "ou use o kernel linux-cachyos-bc250"
+    };
+    Some(format!(
+        "8 núcleos sem o \"SMU Reporting Patch\" no BIOS: a tabela de métricas da SMU não bate \
+         com a que o kernel lê, então temperatura e potência da GPU vêm embaralhadas (os clocks \
+         estão certos). Para corrigir: biosmod com o SMU Reporting Patch (MeiMeiDXE v3) {kernel}. \
+         Com o cyan-skillfish-governor rodando (fix-metrics), o MangoHud lê o gpu_metrics corrigido \
+         por ele."
+    ))
+}
+
 /// CUs ativos da GPU no boot, pela mensagem do amdgpu ("active_cu_number N"). Lido uma vez por
 /// execução; um desbloqueio feito depois do boot (ao vivo, pelo umr) não aparece aqui.
 pub fn active_cu() -> Option<u32> {

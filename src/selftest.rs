@@ -281,7 +281,17 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
     r.t("Frequência do processador", || {
         let b = "/sys/devices/system/cpu/cpu0/cpufreq";
         let Some(gov) = read(&format!("{b}/scaling_governor")) else {
-            return (St::Aviso, "sem cpufreq (VM, driver ausente ou firmware sem controle de frequência, como na BC-250)".into());
+            let mhz = crate::cpuctl::cur_mhz_all();
+            if let Some(max) = mhz.values().max() {
+                return (
+                    St::Ok,
+                    format!(
+                        "{:.2} GHz agora (máx. entre os núcleos, pelo /proc/cpuinfo) · sem cpufreq: só leitura, o firmware não expõe controle (BC-250: use o bc250_smu_oc)",
+                        *max as f64 / 1000.0
+                    ),
+                );
+            }
+            return (St::Aviso, "sem cpufreq (VM ou driver ausente)".into());
         };
         let drv = read(&format!("{b}/scaling_driver")).unwrap_or_default();
         let cur = read(&format!("{b}/scaling_cur_freq"))
@@ -519,6 +529,20 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             }
             if let Some(f) = s.fan_rpm {
                 v.push(format!("ventoinha {f} RPM"));
+            }
+            if s.edge_c.is_none()
+                && s.junction_c.is_none()
+                && s.power_w.is_none()
+                && let Some(why) = crate::boards::smu_table_mismatch(&g.pci)
+            {
+                let clk = s
+                    .clock_mhz
+                    .map(|c| format!("clock {c:.0} MHz · "))
+                    .unwrap_or_default();
+                return (St::Aviso, format!("{clk}{why}"));
+            }
+            if let Some(c) = s.clock_mhz {
+                v.push(format!("{c:.0} MHz"));
             }
             if g.is_nvidia() && crate::nvctl::asleep(&g.pci) {
                 return (

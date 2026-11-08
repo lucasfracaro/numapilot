@@ -42,6 +42,9 @@ pub struct Sensors {
     /// A ventoinha é controlada por uma curva no firmware (RDNA3/RDNA4), não pelo pwm1.
     #[serde(default)]
     pub fw_fan_curve: bool,
+    /// Clock atual do núcleo da GPU (MHz), pelo hwmon (freq1_input / sclk).
+    #[serde(default)]
+    pub clock_mhz: Option<f64>,
 }
 
 impl Sensors {
@@ -58,6 +61,11 @@ fn num(p: PathBuf) -> Option<f64> {
 /// Temperatura plausível de GPU (°C). Alguns firmwares (BC-250) mandam 0 ou lixo.
 fn plausible_temp(c: f64) -> Option<f64> {
     (c > 1.0 && c < 150.0).then_some(c)
+}
+
+/// Clock plausível de GPU (MHz). Na BC-250 o pp_dpm_sclk vem com lixo, o freq1_input não.
+pub fn plausible_clock(mhz: f64) -> Option<f64> {
+    (mhz.is_finite() && (50.0..4000.0).contains(&mhz)).then_some(mhz)
 }
 
 /// Potência plausível de uma GPU (W). Nenhuma placa passa de 1000 W; a BC-250 manda ~1470 W.
@@ -100,6 +108,10 @@ pub fn read_sensors(pci: &str) -> Sensors {
     s.power_w = w("power1_average")
         .or_else(|| w("power1_input"))
         .and_then(plausible_power);
+    s.clock_mhz = (1..=2)
+        .find(|i| read_trim(h.join(format!("freq{i}_label"))).is_none_or(|l| l == "sclk"))
+        .and_then(|i| num(h.join(format!("freq{i}_input"))))
+        .and_then(|hz| plausible_clock(hz / 1_000_000.0));
     s.power_cap_w = w("power1_cap");
     s.power_cap_min_w = w("power1_cap_min");
     s.power_cap_max_w = w("power1_cap_max");

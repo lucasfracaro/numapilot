@@ -533,6 +533,11 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 None => {}
             }
         }
+        if b.id == "bc250"
+            && let Some(why) = crate::boards::smu_table_mismatch(&g.pci)
+        {
+            add(&area, "sensores da GPU", Level::Warn, why, None);
+        }
         if !b.governor_services.is_empty() {
             let sv = crate::boards::services(b);
             match sv.iter().find(|s| s.active) {

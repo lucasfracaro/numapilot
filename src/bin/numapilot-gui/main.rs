@@ -495,13 +495,11 @@ impl App {
             })
             .unwrap_or_default();
         {
+            // cpufreq ou, sem ele (BC-250), o /proc/cpuinfo
+            let mhz = numapilot::cpuctl::cur_mhz_all();
             for c in self.cpu_loads.keys() {
-                if let Some(k) = numapilot::util::read_trim(numapilot::util::sys(&format!(
-                    "devices/system/cpu/cpu{c}/cpufreq/scaling_cur_freq"
-                )))
-                .and_then(|v| v.parse::<u64>().ok())
-                {
-                    self.cpu_freq.insert(*c, k / 1000);
+                if let Some(m) = mhz.get(c) {
+                    self.cpu_freq.insert(*c, *m);
                 }
             }
         }

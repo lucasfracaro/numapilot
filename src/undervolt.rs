@@ -268,6 +268,9 @@ fn clock_now(g: &Gpu) -> Option<f64> {
     if g.is_nvidia() {
         return crate::nvctl::get(&g.pci).and_then(|n| n.clock_mhz);
     }
+    if let Some(c) = crate::gpuctl::read_sensors(&g.pci).clock_mhz {
+        return Some(c);
+    }
     let t = std::fs::read_to_string(crate::util::sys(&format!(
         "bus/pci/devices/{}/pp_dpm_sclk",
         g.pci
@@ -282,6 +285,7 @@ fn clock_now(g: &Gpu) -> Option<f64> {
                 .parse()
                 .ok()
         })
+        .and_then(crate::gpuctl::plausible_clock)
 }
 
 /// Acha o programa de carga que mais puxa esta placa (cada um roda 8 s).

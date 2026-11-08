@@ -119,6 +119,40 @@ pub fn freq(cpu: usize) -> Option<Freq> {
     })
 }
 
+/// MHz atual de cada CPU lógica: cpufreq (scaling_cur_freq) ou, sem ele (BC-250), o
+/// "cpu MHz" do /proc/cpuinfo, que o kernel mede pelo APERF/MPERF.
+pub fn cur_mhz_all() -> std::collections::BTreeMap<usize, u64> {
+    let mut m = std::collections::BTreeMap::new();
+    let txt = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
+    m.extend(parse_cpuinfo_mhz(&txt));
+    for (c, v) in m.iter_mut() {
+        if let Some(k) = read_u64(cpufreq(*c, "scaling_cur_freq")) {
+            *v = k / 1000;
+        }
+    }
+    m
+}
+
+pub fn parse_cpuinfo_mhz(txt: &str) -> Vec<(usize, u64)> {
+    let mut v = vec![];
+    let mut cpu = None;
+    for l in txt.lines() {
+        let Some((k, val)) = l.split_once(':') else {
+            continue;
+        };
+        match k.trim() {
+            "processor" => cpu = val.trim().parse::<usize>().ok(),
+            "cpu MHz" => {
+                if let (Some(c), Ok(f)) = (cpu, val.trim().parse::<f64>()) {
+                    v.push((c, f.round() as u64));
+                }
+            }
+            _ => {}
+        }
+    }
+    v
+}
+
 /// Define mínimo e máximo (kHz). A ordem importa para não ficar mínimo > máximo no meio.
 pub fn set_freq(cpus: &[usize], min_khz: u64, max_khz: u64) -> Result<(), String> {
     let mut err = None;
@@ -468,6 +502,12 @@ pub fn package_temps() -> BTreeMap<u32, f64> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cpuinfo_mhz() {
+        let t = "processor\t: 0\ncpu MHz\t\t: 3493.236\n\nprocessor\t: 1\ncpu MHz\t\t: 1200.0\n";
+        assert_eq!(super::parse_cpuinfo_mhz(t), vec![(0, 3493), (1, 1200)]);
+    }
+
     use super::*;
 
     #[test]
