@@ -53,6 +53,9 @@ pub struct NvGpu {
     pub pstate: String,
     pub driver: String,
     pub persistence: bool,
+    /// O limite de potência pode ser mudado? Em notebooks o `power.limit` vem [N/A] e o
+    /// nvidia-smi -pl só avisa "not supported" (e sai com sucesso).
+    pub power_limit_settable: bool,
 }
 
 const FIELDS: &str = "index,pci.bus_id,name,temperature.gpu,power.draw,power.limit,power.min_limit,power.max_limit,\
@@ -97,6 +100,7 @@ pub fn parse(out: &str) -> Vec<NvGpu> {
                 pstate: c[15].to_string(),
                 driver: c[16].to_string(),
                 persistence: c[17].eq_ignore_ascii_case("enabled"),
+                power_limit_settable: f(5).is_some(),
             })
         })
         .collect()
@@ -147,8 +151,9 @@ pub fn sensors(pci: &str) -> crate::gpuctl::Sensors {
         fan_pct: g.fan_pct,
         power_w: g.power_w,
         power_cap_w: g.power_limit_w,
-        power_cap_min_w: g.power_min_w,
-        power_cap_max_w: g.power_max_w,
+        // sem limite ajustável, a interface não mostra o controle
+        power_cap_min_w: g.power_min_w.filter(|_| g.power_limit_settable),
+        power_cap_max_w: g.power_max_w.filter(|_| g.power_limit_settable),
         ..Default::default()
     }
 }
@@ -170,6 +175,17 @@ fn run(args: &[String]) -> Result<(), String> {
         .map_err(|e| format!("nvidia-smi: {e}"))?;
     if let Ok(mut c) = CACHE.lock() {
         *c = None;
+    }
+    let text = String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr);
+    // o nvidia-smi sai com sucesso mesmo quando não muda nada ("... is not supported ...")
+    if o.status.success() && text.to_lowercase().contains("not supported") {
+        return Err(format!(
+            "esta placa não deixa mudar isso (o fabricante trava): {}",
+            text.lines()
+                .find(|l| l.to_lowercase().contains("not supported"))
+                .unwrap_or("")
+                .trim()
+        ));
     }
     if o.status.success() {
         Ok(())

@@ -114,20 +114,64 @@ pub fn unit_active(unit: &str) -> bool {
 /// Garante que os PIDs estão no scope do programa e aplica os limites.
 pub fn apply(key: &str, label: &str, pids: &[i32], limits: &Limits) -> Result<String, String> {
     let name = scope_name(key);
-    if unit_active(&name) {
-        run(&attach_argv(&name, pids))?;
-    } else {
+    if !unit_active(&name) {
         run(&start_scope_argv(&name, pids, label))?;
+        run(&set_props_argv(&name, limits))?;
+        return Ok(name);
     }
-    run(&set_props_argv(&name, limits))?;
-    Ok(name)
+    // PIDs que ainda não estão em nenhum scope deste programa
+    let todo: Vec<i32> = pids
+        .iter()
+        .copied()
+        .filter(|p| !in_scope_of(*p, &name))
+        .collect();
+    let mut out = name.clone();
+    if !todo.is_empty() && run(&attach_argv(&name, &todo)).is_err() {
+        // O systemd só deixa juntar processos a um scope "delegado". Em vez disso, o programa
+        // reaberto ganha um scope próprio (mesmo nome + PID) com os mesmos limites.
+        let extra = format!("{}-{}.scope", name.trim_end_matches(".scope"), todo[0]);
+        run(&start_scope_argv(&extra, &todo, label))?;
+        run(&set_props_argv(&extra, limits))?;
+        out = extra;
+    }
+    for u in scopes_of(&name) {
+        run(&set_props_argv(&u, limits))?;
+    }
+    Ok(out)
 }
 
-/// Tira os limites de um programa (o scope some sozinho quando os processos terminam).
+/// O processo já está num scope deste programa (o principal ou um extra)?
+fn in_scope_of(pid: i32, name: &str) -> bool {
+    let base = name.trim_end_matches(".scope");
+    std::fs::read_to_string(format!("/proc/{pid}/cgroup"))
+        .is_ok_and(|c| c.lines().any(|l| l.contains(&format!("/{base}"))))
+}
+
+/// Scopes ativos deste programa: o principal e os extras (nome-PID.scope).
+fn scopes_of(name: &str) -> Vec<String> {
+    let base = name.trim_end_matches(".scope");
+    let o = Command::new("systemctl")
+        .args(["list-units", "--plain", "--no-legend", "--state=active"])
+        .arg(format!("{base}*.scope"))
+        .output();
+    let mut v: Vec<String> = o
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter_map(|l| l.split_whitespace().next().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    if v.is_empty() && unit_active(name) {
+        v.push(name.to_string());
+    }
+    v
+}
+
+/// Tira os limites de um programa (os scopes somem sozinhos quando os processos terminam).
 pub fn clear(key: &str) {
-    let name = scope_name(key);
-    if unit_active(&name) {
-        let _ = run(&set_props_argv(&name, &Limits::default()));
+    for u in scopes_of(&scope_name(key)) {
+        let _ = run(&set_props_argv(&u, &Limits::default()));
     }
 }
 

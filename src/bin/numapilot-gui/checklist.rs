@@ -15,11 +15,15 @@ enum When {
     Laptop,
     Nvidia,
     NvidiaLaptop,
-    Amd,
     Board,
     MultiSocket,
     RyzenLaptop,
     Acer,
+    /// alguma placa com ventoinha controlável
+    FanControl,
+    /// placa AMD com o OverDrive desligado / ligado
+    AmdOdOff,
+    AmdOdOn,
 }
 
 struct Item {
@@ -190,13 +194,13 @@ const ITEMS: &[Item] = &[
         "Curva da ventoinha",
         "Em Placas de vídeo, escolha \"curva\", aplique e depois Desfazer.",
         "A ventoinha segue a curva; Desfazer volta para o automático da placa.",
-        Amd,
+        FanControl,
     ),
     it(
         "potencia",
         "Placas",
         "Limite de potência",
-        "Baixe o limite de potência de uma placa e rode um jogo.",
+        "Baixe o limite de potência de uma placa e rode um jogo. Se a placa não mostra esse controle, o fabricante trava: marque Pulei.",
         "Os watts no topo não passam do limite; Desfazer volta ao padrão.",
         Always,
     ),
@@ -222,7 +226,15 @@ const ITEMS: &[Item] = &[
         "OverDrive (AMD)",
         "Use \"Ativar OverDrive\" e reinicie o PC.",
         "Depois de reiniciar, os controles de clock e voltagem da placa ficam disponíveis.",
-        Amd,
+        AmdOdOff,
+    ),
+    it(
+        "clock-amd",
+        "Placas",
+        "Clock e voltagem (AMD)",
+        "Na placa AMD, em \"Clock e voltagem\", marque personalizar, baixe \"GPU máx.\" e aplique; depois Desfazer.",
+        "Com carga, o clock da placa não passa do valor escolhido; Desfazer volta ao de fábrica.",
+        AmdOdOn,
     ),
     // Máquina
     it(
@@ -310,7 +322,7 @@ const ITEMS: &[Item] = &[
         "acer",
         "Notebook",
         "Controles da Acer",
-        "Mude o perfil/ventoinha da Acer em Máquina.",
+        "Mude o perfil/ventoinha da Acer em Máquina. Se não aparece nada, rode numapilot autoteste: o item Acer mostra o motivo.",
         "O notebook responde (ventoinha/perfil mudam) e o valor fica salvo.",
         Acer,
     ),
@@ -424,6 +436,8 @@ struct Flags {
     multi: bool,
     ryzen: bool,
     acer: bool,
+    fan: bool,
+    od_on: bool,
 }
 
 fn state_dir() -> PathBuf {
@@ -467,6 +481,16 @@ fn flags(app: &App) -> Flags {
         multi: app.topo.nodes.len() > 1,
         ryzen: laptop && model.contains("Ryzen"),
         acer: numapilot::acer::is_acer(),
+        fan: app
+            .topo
+            .gpus
+            .iter()
+            .any(|g| numapilot::gpuctl::read_sensors(&g.pci).fan_controllable),
+        od_on: app
+            .topo
+            .gpus
+            .iter()
+            .any(|g| g.vendor == 0x1002 && numapilot::gpuctl::read_od(&g.pci).is_some()),
     }
 }
 
@@ -476,11 +500,13 @@ fn applies(w: When, f: &Flags) -> bool {
         Laptop => f.laptop,
         Nvidia => f.nvidia,
         NvidiaLaptop => f.nvidia && f.laptop,
-        Amd => f.amd,
         Board => f.board,
         MultiSocket => f.multi,
         RyzenLaptop => f.ryzen,
         Acer => f.acer,
+        FanControl => f.fan,
+        AmdOdOff => f.amd && !f.od_on,
+        AmdOdOn => f.od_on,
     }
 }
 

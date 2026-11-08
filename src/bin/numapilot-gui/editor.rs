@@ -471,8 +471,12 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             if let Some(g) = ed.p.mem_max_gb.as_mut() {
                                 *g = g.min(max_gb);
                             }
+                            let now = app.prog_mem.get(&ed.key).copied().unwrap_or(0);
                             if let Some(g) = ed.p.mem_max_gb.as_mut() {
                                 ui.add(egui::Slider::new(g, 0.5..=max_gb).suffix(" GB").step_by(0.5));
+                            }
+                            if now > 0 {
+                                ui.label(RichText::new(format!("agora usa {}", crate::fmt_bytes(now))).small().weak());
                             }
                         });
                     });

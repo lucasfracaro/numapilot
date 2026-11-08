@@ -66,6 +66,9 @@ pub struct Report {
     pub mem: Vec<MemCtl>,
     pub gpu: Vec<GpuRas>,
     pub batteries: Vec<Bat>,
+    /// Discos que não deu para ler, com o motivo (para o autoteste e a interface).
+    #[serde(default)]
+    pub disk_errors: Vec<String>,
 }
 
 /// Discos físicos (sem loop, zram, partições e device-mapper).
@@ -128,16 +131,29 @@ pub fn parse_smart(dev: &str, j: &Value) -> Disk {
     }
 }
 
-fn smart(dev: &str) -> Option<Disk> {
+fn smart(dev: &str) -> Result<Disk, String> {
     let o = Command::new("smartctl")
         .args(["-j", "-a", &format!("/dev/{dev}")])
         .output()
-        .ok()?;
-    let j: Value = serde_json::from_slice(&o.stdout).ok()?;
+        .map_err(|e| format!("{dev}: smartctl: {e}"))?;
+    let j: Value = serde_json::from_slice(&o.stdout).map_err(|e| {
+        format!(
+            "{dev}: resposta do smartctl não é JSON ({e}): {}",
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+        )
+    })?;
     if j["smart_status"].is_null() && j["model_name"].is_null() {
-        return None;
+        let msg = j["smartctl"]["messages"]
+            .as_array()
+            .and_then(|m| m.first())
+            .and_then(|m| m["string"].as_str())
+            .unwrap_or("sem dados SMART");
+        return Err(format!("{dev}: {msg}"));
     }
-    Some(parse_smart(dev, &j))
+    Ok(parse_smart(dev, &j))
 }
 
 pub fn edac() -> Vec<MemCtl> {
@@ -206,11 +222,21 @@ pub fn gpu_ras(pci: &str) -> Vec<GpuRas> {
 
 pub fn collect(topo: &crate::topo::Topology) -> Report {
     let smartctl = crate::containers::which("smartctl");
-    let disks = if smartctl {
-        disks().iter().filter_map(|d| smart(d)).collect()
-    } else {
-        vec![]
-    };
+    let mut disk_errors = vec![];
+    let mut found = vec![];
+    if smartctl {
+        let devs = disks();
+        if devs.is_empty() {
+            disk_errors.push("nenhum disco encontrado em /sys/block".into());
+        }
+        for d in devs {
+            match smart(&d) {
+                Ok(x) => found.push(x),
+                Err(e) => disk_errors.push(e),
+            }
+        }
+    }
+    let disks = found;
     let batteries = crate::notebook::battery_info()
         .into_iter()
         .map(|b| Bat {
@@ -229,6 +255,7 @@ pub fn collect(topo: &crate::topo::Topology) -> Report {
         mem: edac(),
         gpu: topo.gpus.iter().flat_map(|g| gpu_ras(&g.pci)).collect(),
         batteries,
+        disk_errors,
     }
 }
 

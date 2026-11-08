@@ -170,6 +170,26 @@ pub(crate) struct Live {
     pub(crate) vram: Option<(u64, u64)>,
 }
 
+/// Memória "proporcional" do processo (PSS) em bytes; None se não der para ler (outro usuário).
+pub(crate) fn pss_bytes(pid: i32) -> Option<u64> {
+    let t = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")).ok()?;
+    t.lines()
+        .find(|l| l.starts_with("Pss:"))
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(|kb| kb * 1024)
+}
+
+/// "1.4 GB" / "350 MB"
+pub(crate) fn fmt_bytes(b: u64) -> String {
+    let gb = b as f64 / 1073741824.0;
+    if gb >= 1.0 {
+        format!("{gb:.1} GB")
+    } else {
+        format!("{:.0} MB", b as f64 / 1048576.0)
+    }
+}
+
 /// Memória do sistema (em uso, total) em kB, pelo MemAvailable: o cache de arquivos não conta
 /// como "em uso" (ele é liberado sozinho quando falta memória).
 pub(crate) fn mem_system() -> (u64, u64) {
@@ -262,6 +282,8 @@ pub(crate) struct App {
     pub(crate) cpu_power: BTreeMap<u32, f64>,
     /// Nome curto do processador ("Ryzen 7 6800H").
     pub(crate) cpu_name: String,
+    /// Memória em uso por programa (bytes), pela chave do programa.
+    pub(crate) prog_mem: HashMap<String, u64>,
     pub(crate) map_threads: bool,
     pub(crate) checklist: checklist::Checklist,
     pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
@@ -382,6 +404,7 @@ impl App {
             cpu_freq: BTreeMap::new(),
             temp_spark: BTreeMap::new(),
             cpu_power: BTreeMap::new(),
+            prog_mem: HashMap::new(),
             cpu_name: numapilot::topo::short_cpu_name(&numapilot::recipes::cpu_model()),
             map_threads: true,
             checklist: checklist::Checklist::default(),
@@ -550,6 +573,16 @@ impl App {
             .filter(|r| !self.only_mine || r.uid == self.my_uid)
             .collect();
         self.groups = group_rows(&rows);
+        // memória de cada programa (soma do PSS dos processos: a memória dividida entre
+        // processos conta uma vez só)
+        self.prog_mem = self
+            .groups
+            .iter()
+            .map(|g| {
+                let b: u64 = g.pids.iter().filter_map(|p| pss_bytes(*p)).sum();
+                (g.key.clone(), b)
+            })
+            .collect();
         self.profiles = Profiles::load();
         self.last = Instant::now();
         let msgs: Vec<(String, bool)> = self
@@ -939,8 +972,44 @@ impl App {
             };
             ui.label(RichText::new(truncate(&sub, 42)).small().weak());
         });
-        // Uso
-        ui.label(format!("{:.1} núcleos", g.cores));
+        // Uso: processador e memória (com o limite, se tiver)
+        ui.vertical(|ui| {
+            ui.set_min_width(110.0);
+            ui.label(format!("{:.1} núcleos", g.cores));
+            if let Some(b) = self.prog_mem.get(&g.key).copied().filter(|b| *b > 0) {
+                match prof.mem_max_gb {
+                    Some(lim) => {
+                        let f = b as f64 / (lim * 1073741824.0);
+                        let p = theme::pal(ui);
+                        let c = if f >= 0.95 {
+                            p.err
+                        } else if f >= 0.8 {
+                            p.warn
+                        } else {
+                            p.weak
+                        };
+                        ui.label(
+                            RichText::new(format!("{} de {lim:.1} GB", fmt_bytes(b)))
+                                .small()
+                                .color(c),
+                        )
+                        .on_hover_text("Memória em uso / limite escolhido em Ajustar…");
+                        theme::meter(
+                            ui,
+                            f as f32,
+                            100.0,
+                            theme::level_color(&p, f as f32, p.accent),
+                        );
+                    }
+                    None => {
+                        ui.label(RichText::new(fmt_bytes(b)).small().weak())
+                            .on_hover_text(
+                                "Memória em uso pelo programa (somando os processos dele)",
+                            );
+                    }
+                }
+            }
+        });
         // Onde está agora
         ui.vertical(|ui| {
             ui.set_min_width(170.0);

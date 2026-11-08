@@ -166,7 +166,9 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         let how = match crate::selfupdate::how() {
             crate::selfupdate::How::Package(p) => format!("pacote {p}"),
             crate::selfupdate::How::Source(d) => format!("código em {}", d.display()),
-            crate::selfupdate::How::Unknown => "instalação desconhecida".to_string(),
+            crate::selfupdate::How::Unknown => {
+                "instalado pelo install.sh (sem repositório git)".to_string()
+            }
         };
         (
             St::Ok,
@@ -631,6 +633,63 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         });
     }
 
+    r.group("Saúde do hardware");
+    r.t("Coleta do serviço", || {
+        let Some(h) = crate::health::load() else {
+            return (
+                St::Aviso,
+                "ainda não coletado (o serviço coleta 1 min depois de iniciar)".into(),
+            );
+        };
+        let age = crate::history::now().saturating_sub(h.time) / 60;
+        let mut lines = vec![];
+        for d in &h.disks {
+            lines.push(format!(
+                "disco {} {}: SMART {}{}",
+                d.dev,
+                d.model,
+                match d.passed {
+                    Some(true) => "ok",
+                    Some(false) => "FALHOU",
+                    None => "?",
+                },
+                d.temp_c
+                    .map(|t| format!(" · {t:.0} °C"))
+                    .unwrap_or_default()
+            ));
+        }
+        for e in &h.disk_errors {
+            lines.push(format!("disco não lido: {e}"));
+        }
+        for b in &h.batteries {
+            lines.push(format!(
+                "bateria {}: {}",
+                b.name,
+                b.health_pct
+                    .map(|p| format!("{p:.0}% da original"))
+                    .unwrap_or_default()
+            ));
+        }
+        let st = if !h.smartctl || h.disks.is_empty() {
+            St::Aviso
+        } else {
+            St::Ok
+        };
+        (
+            st,
+            format!(
+                "coletado há {age} min · {} disco(s){}\n{}",
+                h.disks.len(),
+                if h.smartctl {
+                    ""
+                } else {
+                    " (smartctl não encontrado pelo serviço)"
+                },
+                lines.join("\n")
+            ),
+        )
+    });
+
     // ---------------------------------------------------------------- notebook
     if crate::notebook::is_laptop() {
         r.group("Notebook");
@@ -653,7 +712,13 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                         crate::notebook::platform_profiles().join(", ")
                     ),
                 ),
-                None => (St::Aviso, "sem platform_profile".into()),
+                None => (
+                    St::Aviso,
+                    format!(
+                        "nenhum perfil de energia disponível\n{}",
+                        crate::notebook::acer_diagnose().join("\n")
+                    ),
+                ),
             },
         );
         r.t("NVIDIA híbrida", || {
@@ -701,7 +766,10 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             if have.is_empty() {
                 (
                     St::Aviso,
-                    "nenhum controle Acer (predator_v4/Linuwu-Sense) disponível".into(),
+                    format!(
+                        "nenhum controle Acer (predator_v4/Linuwu-Sense) disponível\n{}",
+                        crate::notebook::acer_diagnose().join("\n")
+                    ),
                 )
             } else {
                 (St::Ok, have.join(" · "))

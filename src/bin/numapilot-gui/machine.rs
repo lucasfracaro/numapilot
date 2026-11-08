@@ -693,6 +693,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 if !r.smartctl {
                     ui.label(RichText::new("Para ver os discos: sudo pacman -S smartmontools").small().weak());
                 }
+                for e in &r.disk_errors {
+                    ui.label(RichText::new(format!("disco não lido: {e}")).small().color(Color32::from_rgb(230, 160, 40)));
+                }
                 egui::Grid::new("health").striped(true).num_columns(5).spacing([14.0, 4.0]).show(ui, |ui| {
                     for d in &r.disks {
                         ui.label(format!("{} {}", d.dev, d.model));

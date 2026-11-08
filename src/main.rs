@@ -259,6 +259,10 @@ enum ProfileCmd {
 }
 
 fn main() {
+    // `numapilot hybrid | head`: ao fechar o pipe, sai quieto em vez de "cair" com Broken pipe
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     if let Err(e) = real_main() {
         numapilot::log::error(&format!("{e:#}"));
         eprintln!("numapilot: erro: {e:#}");

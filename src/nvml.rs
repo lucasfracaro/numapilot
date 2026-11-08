@@ -13,6 +13,7 @@ type Dev = *mut c_void;
 
 struct Lib {
     init: unsafe extern "C" fn() -> Ret,
+    shutdown: unsafe extern "C" fn() -> Ret,
     by_pci: unsafe extern "C" fn(*const c_char, *mut Dev) -> Ret,
     err: unsafe extern "C" fn(Ret) -> *const c_char,
     get_gpc: Option<unsafe extern "C" fn(Dev, *mut c_int) -> Ret>,
@@ -45,6 +46,7 @@ fn lib() -> Result<&'static Lib, String> {
         }
         let l = Lib {
             init: sym(h, "nvmlInit_v2").ok_or("nvmlInit_v2 ausente")?,
+            shutdown: sym(h, "nvmlShutdown").ok_or("nvmlShutdown ausente")?,
             by_pci: sym(h, "nvmlDeviceGetHandleByPciBusId_v2")
                 .ok_or("nvmlDeviceGetHandleByPciBusId_v2 ausente")?,
             err: sym(h, "nvmlErrorString").ok_or("nvmlErrorString ausente")?,
@@ -55,10 +57,6 @@ fn lib() -> Result<&'static Lib, String> {
             gpc_range: sym(h, "nvmlDeviceGetGpcClkMinMaxVfOffset"),
             mem_range: sym(h, "nvmlDeviceGetMemClkMinMaxVfOffset"),
         };
-        let r = unsafe { (l.init)() };
-        if r != 0 {
-            return Err(format!("nvmlInit: {}", errstr(&l, r)));
-        }
         Ok(l)
     })
     .as_ref()
@@ -97,8 +95,28 @@ pub struct Offsets {
     pub mem_range: Option<(i32, i32)>,
 }
 
-pub fn offsets(pci: &str) -> Result<Offsets, String> {
+/// NVML aberta só durante a chamada. Aberta o tempo todo, ela segura /dev/nvidia* e a placa
+/// do notebook não pode ser desligada ("NVIDIA em uso: numapilot").
+struct Session(&'static Lib);
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        unsafe { (self.0.shutdown)() };
+    }
+}
+
+fn session() -> Result<Session, String> {
     let l = lib()?;
+    let r = unsafe { (l.init)() };
+    if r != 0 {
+        return Err(format!("nvmlInit: {}", errstr(l, r)));
+    }
+    Ok(Session(l))
+}
+
+pub fn offsets(pci: &str) -> Result<Offsets, String> {
+    let s = session()?;
+    let l = s.0;
     let d = dev(l, pci)?;
     let one = |f: Option<unsafe extern "C" fn(Dev, *mut c_int) -> Ret>| {
         let f = f?;
@@ -120,7 +138,8 @@ pub fn offsets(pci: &str) -> Result<Offsets, String> {
 
 /// Deslocamento do clock da GPU (MHz). 0 = de fábrica.
 pub fn set_gpc_offset(pci: &str, mhz: i32) -> Result<(), String> {
-    let l = lib()?;
+    let s = session()?;
+    let l = s.0;
     let f = l
         .set_gpc
         .ok_or("este driver não tem nvmlDeviceSetGpcClkVfOffset")?;
@@ -129,7 +148,8 @@ pub fn set_gpc_offset(pci: &str, mhz: i32) -> Result<(), String> {
 
 /// Deslocamento do clock da memória (MHz). 0 = de fábrica.
 pub fn set_mem_offset(pci: &str, mhz: i32) -> Result<(), String> {
-    let l = lib()?;
+    let s = session()?;
+    let l = s.0;
     let f = l
         .set_mem
         .ok_or("este driver não tem nvmlDeviceSetMemClkVfOffset")?;

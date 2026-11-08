@@ -127,12 +127,37 @@ pub fn set_charge_limit(pct: u8) -> Result<(), String> {
 
 // ---------------- perfil da plataforma (ACPI) ----------------
 
+/// Quem fornece o perfil de energia (kernel 6.14+): /sys/class/platform-profile/*/
+pub fn profile_handlers() -> Vec<(String, std::path::PathBuf)> {
+    let mut v: Vec<(String, std::path::PathBuf)> = fs::read_dir(sys("class/platform-profile"))
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| {
+                    let d = e.path();
+                    (read_trim(d.join("name")).unwrap_or_default(), d)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
 pub fn platform_profile() -> Option<String> {
-    read_trim(sys("firmware/acpi/platform_profile"))
+    read_trim(sys("firmware/acpi/platform_profile")).or_else(|| {
+        profile_handlers()
+            .first()
+            .and_then(|(_, d)| read_trim(d.join("profile")))
+    })
 }
 
 pub fn platform_profiles() -> Vec<String> {
     read_trim(sys("firmware/acpi/platform_profile_choices"))
+        .or_else(|| {
+            profile_handlers()
+                .first()
+                .and_then(|(_, d)| read_trim(d.join("choices")))
+        })
         .map(|s| s.split_whitespace().map(String::from).collect())
         .unwrap_or_default()
 }
@@ -170,7 +195,99 @@ pub fn set_platform_profile(p: &str) -> Result<(), String> {
     if platform_profile().as_deref() == Some(p) {
         return Ok(());
     }
-    fs::write(sys("firmware/acpi/platform_profile"), p).map_err(|e| e.to_string())
+    let legacy = sys("firmware/acpi/platform_profile");
+    if std::path::Path::new(&legacy).exists() {
+        return fs::write(legacy, p).map_err(|e| e.to_string());
+    }
+    // só a interface nova: escreve em cada fornecedor que aceita esse perfil
+    let mut last = Err("nenhum fornecedor de perfil de energia".to_string());
+    for (_, d) in profile_handlers() {
+        if read_trim(d.join("choices")).is_some_and(|c| c.split_whitespace().any(|x| x == p)) {
+            last = fs::write(d.join("profile"), p).map_err(|e| e.to_string());
+        }
+    }
+    last
+}
+
+/// Por que não há controles da Acer / perfil de energia: módulos, bloqueios e DKMS.
+pub fn acer_diagnose() -> Vec<String> {
+    let mut v = vec![];
+    let loaded = |m: &str| std::path::Path::new(&format!("/sys/module/{m}")).exists();
+    let acer = loaded("acer_wmi");
+    let linuwu = loaded("linuwu_sense");
+    v.push(format!(
+        "módulos: acer_wmi {} · linuwu_sense {} · amd_pmf {}",
+        if acer { "carregado" } else { "não carregado" },
+        if linuwu {
+            "carregado"
+        } else {
+            "não carregado"
+        },
+        if loaded("amd_pmf") {
+            "carregado"
+        } else {
+            "não carregado"
+        }
+    ));
+    if let Some(p) = read_trim("/sys/module/acer_wmi/parameters/predator_v4") {
+        v.push(format!("acer_wmi predator_v4 = {p}"));
+    }
+    let h = profile_handlers();
+    v.push(if h.is_empty() {
+        "nenhum fornecedor de perfil de energia (/sys/class/platform-profile vazio)".into()
+    } else {
+        format!(
+            "perfil de energia por: {}",
+            h.iter()
+                .map(|(n, _)| n.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    });
+    // bloqueios em /etc/modprobe.d
+    if let Ok(rd) = fs::read_dir("/etc/modprobe.d") {
+        for e in rd.flatten() {
+            let t = fs::read_to_string(e.path()).unwrap_or_default();
+            for l in t.lines().map(str::trim) {
+                if !l.starts_with('#') && l.contains("acer_wmi") {
+                    v.push(format!("{}: {l}", e.path().display()));
+                }
+            }
+        }
+    }
+    // Linuwu-Sense instalado pelo DKMS para este kernel?
+    let kernel = crate::recipes::running_kernel();
+    if let Ok(o) = std::process::Command::new("dkms").arg("status").output() {
+        let t = String::from_utf8_lossy(&o.stdout);
+        let lines: Vec<&str> = t
+            .lines()
+            .filter(|l| l.to_lowercase().contains("linuwu"))
+            .collect();
+        if lines.is_empty() {
+            v.push("Linuwu-Sense não aparece no dkms status".into());
+        } else {
+            for l in &lines {
+                v.push(format!("dkms: {l}"));
+            }
+            if !lines
+                .iter()
+                .any(|l| l.contains(&kernel) && l.contains("installed"))
+            {
+                v.push(format!(
+                    "o Linuwu-Sense não está compilado para o kernel em uso ({kernel}): \
+                     sudo dkms autoinstall e reinicie (ou veja se o projeto já suporta este kernel)"
+                ));
+            }
+        }
+    }
+    if !acer && !linuwu {
+        v.push(
+            "sem acer_wmi nem linuwu_sense carregados: o notebook fica sem perfil de energia e sem \
+             controles da Acer"
+                .into(),
+        );
+    }
+    v
 }
 
 /// Perfil da plataforma que combina com um modo da máquina (o mais próximo disponível).

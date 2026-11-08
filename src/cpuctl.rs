@@ -181,13 +181,29 @@ pub fn epb(cpu: usize) -> Option<u8> {
     .ok()
 }
 
+static EPB_UNSUPPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// O processador aceita mudar o EPB? (nos AMD o arquivo existe mas a escrita é negada)
+pub fn epb_supported() -> bool {
+    !EPB_UNSUPPORTED.load(std::sync::atomic::Ordering::Relaxed)
+        && std::path::Path::new(&sys("devices/system/cpu/cpu0/power/energy_perf_bias")).exists()
+}
+
 pub fn set_epb(cpus: &[usize], v: u8) -> Result<(), String> {
+    if !epb_supported() {
+        return Ok(());
+    }
     let mut err = None;
     for &c in cpus {
         if let Err(e) = w(
             sys(&format!("devices/system/cpu/cpu{c}/power/energy_perf_bias")),
             &v.to_string(),
         ) {
+            // negado até para o root: este processador não deixa mudar; não é erro
+            if e.contains("Permission denied") || e.contains("os error 13") {
+                EPB_UNSUPPORTED.store(true, std::sync::atomic::Ordering::Relaxed);
+                return Ok(());
+            }
             err = Some(e);
         }
     }
