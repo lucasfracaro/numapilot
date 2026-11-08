@@ -22,10 +22,29 @@ impl Job {
     }
 }
 
-/// Binário irmão do numapilot-gui (ex.: gfx906-rocm), ou o do PATH.
-pub fn sibling(bin: &str) -> String {
+/// Caminho do próprio numapilot-gui. Depois de reinstalar, o processo antigo vê
+/// "/usr/bin/numapilot-gui (deleted)": usa o arquivo novo no mesmo lugar ou o do PATH.
+pub fn self_exe() -> String {
     std::env::current_exe()
         .ok()
+        .map(|p| {
+            let s = p.to_string_lossy().to_string();
+            s.strip_suffix(" (deleted)")
+                .map(str::to_string)
+                .unwrap_or(s)
+        })
+        .filter(|s| std::path::Path::new(s).is_file())
+        .unwrap_or_else(|| "numapilot-gui".into())
+}
+
+/// O binário em execução foi trocado (reinstalado) desde que o processo abriu?
+pub fn self_replaced() -> bool {
+    std::fs::read_link("/proc/self/exe").is_ok_and(|p| p.to_string_lossy().ends_with(" (deleted)"))
+}
+
+/// Binário irmão do numapilot-gui (ex.: gfx906-rocm), ou o do PATH.
+pub fn sibling(bin: &str) -> String {
+    Some(PathBuf::from(self_exe()))
         .and_then(|p| p.parent().map(|d| d.join(bin)))
         .filter(|p| p.is_file())
         .map(|p| p.to_string_lossy().to_string())

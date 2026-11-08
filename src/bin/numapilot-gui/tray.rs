@@ -17,9 +17,30 @@ struct NumaTray {
     hot: bool,
 }
 
+/// Abre a janela (ou traz para frente a que já está aberta: ver `single`).
 fn open_window() {
-    if let Ok(exe) = std::env::current_exe() {
-        let _ = spawn_detached(&[exe.to_string_lossy().to_string()]);
+    let exe = crate::jobs::self_exe();
+    match std::process::Command::new(&exe)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        // espera numa thread para não deixar processo zumbi
+        Ok(mut ch) => {
+            std::thread::spawn(move || ch.wait());
+        }
+        Err(e) => {
+            let _ = spawn_detached(&[
+                "notify-send".into(),
+                "-a".into(),
+                "numapilot".into(),
+                "-i".into(),
+                "dialog-error".into(),
+                "Não consegui abrir o numapilot".into(),
+                format!("{exe}: {e}"),
+            ]);
+        }
     }
 }
 
@@ -201,6 +222,11 @@ fn summary(topo: &Topology) -> (String, bool) {
 }
 
 pub fn main_loop() -> Result<(), String> {
+    // Um ícone só: se outro já está na bandeja, sai quieto.
+    let _lock = match crate::single::lock("numapilot-tray.lock") {
+        Some(l) => l,
+        None => return Ok(()),
+    };
     let topo = Topology::load(&Config::load().unwrap_or_default());
     let (tip, hot) = summary(&topo);
     let handle = NumaTray { tip, hot }
@@ -210,6 +236,16 @@ pub fn main_loop() -> Result<(), String> {
     let mut alerts = Alerts::default();
     loop {
         std::thread::sleep(Duration::from_secs(5));
+        // Reinstalaram o numapilot: troca este ícone pela versão nova.
+        if crate::jobs::self_replaced() {
+            use std::os::unix::process::CommandExt;
+            drop(handle);
+            drop(_lock);
+            let e = std::process::Command::new(crate::jobs::self_exe())
+                .arg("--tray")
+                .exec();
+            return Err(format!("não consegui reabrir o ícone atualizado: {e}"));
+        }
         alerts.check(&topo);
         let (tip, hot) = summary(&topo);
         if handle

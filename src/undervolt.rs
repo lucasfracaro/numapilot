@@ -238,27 +238,22 @@ fn kernel_log_since(t: std::time::SystemTime) -> String {
         .unwrap_or_default()
 }
 
-/// Programas de carga, na ordem de preferência: vkmark sem janela (funciona até em placa sem
-/// monitor), vkmark com janela, glmark2. Alguns caem com certos drivers; o primeiro que roda vale.
+/// Programas de carga possíveis: vkmark (sem janela e com janela) e a cena mais pesada do
+/// glmark2 (terrain). Alguns caem ou puxam pouco com certos drivers: `pick_stress` mede e escolhe.
 pub fn stress_cmds() -> Vec<Vec<String>> {
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<String>>();
     let mut v = vec![];
     if crate::containers::which("vkmark") {
         v.push(s(&["vkmark", "--winsys", "headless", "-s", "1920x1080"]));
-        v.push(s(&["vkmark", "-s", "1280x720"]));
+        v.push(s(&["vkmark", "-s", "1920x1080"]));
     }
+    let terrain = ["--run-forever", "-s", "1920x1080", "-b", "terrain"];
     if crate::containers::which("glmark2-wayland") {
-        v.push(s(&["glmark2-wayland", "--run-forever", "-s", "1280x720"]));
+        v.push(s(&[&["glmark2-wayland"][..], &terrain].concat()));
     }
     if crate::containers::which("glmark2") {
-        v.push(s(&["glmark2", "--run-forever", "-s", "1280x720"]));
-        v.push(s(&[
-            "glmark2",
-            "--off-screen",
-            "--run-forever",
-            "-s",
-            "1920x1080",
-        ]));
+        v.push(s(&[&["glmark2"][..], &terrain].concat()));
+        v.push(s(&[&["glmark2", "--off-screen"][..], &terrain].concat()));
     }
     v
 }
@@ -268,14 +263,40 @@ pub fn stress_cmd() -> Option<Vec<String>> {
     stress_cmds().into_iter().next()
 }
 
-/// Acha um programa de carga que rode nesta placa (5 s sem cair).
+/// Clock atual do núcleo (MHz).
+fn clock_now(g: &Gpu) -> Option<f64> {
+    if g.is_nvidia() {
+        return crate::nvctl::get(&g.pci).and_then(|n| n.clock_mhz);
+    }
+    let t = std::fs::read_to_string(crate::util::sys(&format!(
+        "bus/pci/devices/{}/pp_dpm_sclk",
+        g.pci
+    )))
+    .ok()?;
+    t.lines()
+        .find(|l| l.trim_end().ends_with('*'))
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|v| {
+            v.trim_end_matches("Mhz")
+                .trim_end_matches("MHz")
+                .parse()
+                .ok()
+        })
+}
+
+/// Acha o programa de carga que mais puxa esta placa (cada um roda 8 s).
 fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Vec<String>, String> {
     let env = stress_env(g, topo);
     let cands = stress_cmds();
     if cands.is_empty() {
         return Err("instale o vkmark ou o glmark2 (sudo pacman -S vkmark glmark2)".into());
     }
+    out("  escolhendo o programa de carga que mais puxa a placa (8 s cada):");
+    let mut best: Option<(u64, Vec<String>)> = None;
     for c in cands {
+        if STOP.load(Ordering::SeqCst) {
+            return Err("interrompido: nada foi mudado".into());
+        }
         let Ok(mut ch) = Command::new(&c[0])
             .args(&c[1..])
             .envs(env.clone())
@@ -289,39 +310,93 @@ fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Ve
         };
         let t0 = Instant::now();
         let mut ok = true;
-        while t0.elapsed() < Duration::from_secs(5) {
-            std::thread::sleep(Duration::from_millis(250));
+        let mut util = 0u64;
+        let mut clock = None;
+        while t0.elapsed() < Duration::from_secs(8) {
+            std::thread::sleep(Duration::from_millis(500));
             if let Ok(Some(st)) = ch.try_wait() {
                 ok = st.success();
                 break;
             }
+            // mede depois de esquentar
+            if t0.elapsed() >= Duration::from_secs(4) {
+                util = util.max(g.busy_percent().unwrap_or(0));
+                clock = clock_now(g).or(clock);
+            }
         }
         let _ = ch.kill();
         let _ = ch.wait();
-        if ok {
-            out(&format!("  teste de carga: {}", c.join(" ")));
-            return Ok(c);
+        if !ok {
+            out(&format!("    {}: caiu ao abrir", c.join(" ")));
+            continue;
         }
         out(&format!(
-            "  ({} não roda nesta placa, tentando outro)",
-            c.join(" ")
+            "    {}: {util}% de uso{}",
+            c.join(" "),
+            clock.map(|c| format!(", {c:.0} MHz")).unwrap_or_default()
+        ));
+        if best.as_ref().is_none_or(|(u, _)| util > *u) {
+            best = Some((util, c));
+        }
+        // já puxa a placa toda: não precisa testar os outros
+        if util >= 97 {
+            break;
+        }
+    }
+    let Some((util, c)) = best else {
+        return Err(
+            "nenhum programa de carga roda nesta placa (vkmark e glmark2 caíram ao abrir): nada foi mudado"
+                .into(),
+        );
+    };
+    if util < 80 {
+        return Err(format!(
+            "o programa de carga mais pesado só usou {util}% da placa: assim o teste não prova nada \
+             (a placa fica em clock baixo, onde o ajuste não faz diferença). Nada foi mudado."
         ));
     }
-    Err("nenhum programa de carga roda nesta placa (vkmark e glmark2 caíram ao abrir): nada foi mudado".into())
+    out(&format!("  teste de carga: {}", c.join(" ")));
+    Ok(c)
+}
+
+/// Médias de um passo que aguentou.
+#[derive(Debug, Clone, Default)]
+pub struct StepStats {
+    pub clock_mhz: Option<f64>,
+    pub power_w: Option<f64>,
+    pub util_pct: Option<f64>,
+}
+
+impl StepStats {
+    pub fn line(&self) -> String {
+        [
+            self.clock_mhz.map(|v| format!("{v:.0} MHz")),
+            self.power_w.map(|v| format!("{v:.0} W")),
+            self.util_pct.map(|v| format!("{v:.0}% de uso")),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(", ")
+    }
+}
+
+fn avg(v: &[f64]) -> Option<f64> {
+    (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
 }
 
 fn stress_env(g: &Gpu, topo: &Topology) -> Vec<(String, String)> {
     crate::decide::env_for_gpu(g, topo)
 }
 
-/// Roda a carga por `secs`. Ok se aguentou; Err com o motivo se caiu ou o kernel reclamou.
+/// Roda a carga por `secs`. Ok (com as médias) se aguentou; Err com o motivo se caiu ou o kernel reclamou.
 fn stress(
     g: &Gpu,
     topo: &Topology,
     cmd: &[String],
     secs: u64,
     out: &mut dyn FnMut(&str),
-) -> Result<(), String> {
+) -> Result<StepStats, String> {
     let since = std::time::SystemTime::now();
     let env = stress_env(g, topo);
     let spawn = || {
@@ -339,6 +414,7 @@ fn stress(
     let t0 = Instant::now();
     let mut last = 0;
     let mut crashes = 0;
+    let (mut clocks, mut watts, mut utils) = (vec![], vec![], vec![]);
     let res = loop {
         std::thread::sleep(Duration::from_millis(500));
         if STOP.load(Ordering::SeqCst) {
@@ -371,13 +447,20 @@ fn stress(
         if el / 10 != last {
             last = el / 10;
             let s = gpuctl::read_sensors(&g.pci);
+            let ck = clock_now(g);
+            let u = g.busy_percent();
+            clocks.extend(ck);
+            watts.extend(s.power_w);
+            utils.extend(u.map(|v| v as f64));
             out(&format!(
-                "    {el:>3}s  {}  {}",
+                "    {el:>3}s  {}  {}  {}  {}",
                 s.junction_c
                     .or(s.edge_c)
                     .map(|t| format!("{t:.0} °C"))
                     .unwrap_or_default(),
-                s.power_w.map(|p| format!("{p:.0} W")).unwrap_or_default()
+                s.power_w.map(|p| format!("{p:.0} W")).unwrap_or_default(),
+                ck.map(|c| format!("{c:.0} MHz")).unwrap_or_default(),
+                u.map(|u| format!("{u}% uso")).unwrap_or_default()
             ));
         }
         let errs = gpu_errors(&kernel_log_since(since), &g.pci, g.is_nvidia());
@@ -385,7 +468,11 @@ fn stress(
             break Err(format!("kernel: {e}"));
         }
         if el >= secs {
-            break Ok(());
+            break Ok(StepStats {
+                clock_mhz: avg(&clocks),
+                power_w: avg(&watts),
+                util_pct: avg(&utils),
+            });
         }
     };
     let _ = ch.kill();
@@ -433,6 +520,16 @@ pub fn run(
         "{}: undervolt automático, {} s por passo",
         g.alias, opts.secs
     ));
+    if let Method::NvOffset { clock_max, .. } = m {
+        out(&format!(
+            "  Na NVIDIA o Linux não deixa escolher a voltagem: o clock fica travado em até {clock_max} MHz \
+             e a curva sobe a cada passo, então o mesmo clock roda com voltagem menor. Compare os passos: \
+             menos watts no mesmo clock ou, se a placa está no limite de potência, mais clock nos mesmos watts. \
+             A temperatura sobe com o tempo de carga (a placa vai esquentando); compare depois de alguns passos."
+        ));
+    }
+    let mut first: Option<StepStats> = None;
+    let mut last_ok: Option<StepStats> = None;
     let mut good = base.clone();
     let mut ok_steps = 0u32;
     let mut n = 0;
@@ -453,8 +550,12 @@ pub fn run(
             break;
         }
         match stress(g, topo, &cmd, opts.secs, out) {
-            Ok(()) => {
-                out("    passou");
+            Ok(st) => {
+                out(&format!("    passou ({})", st.line()));
+                if first.is_none() {
+                    first = Some(st.clone());
+                }
+                last_ok = Some(st);
                 good = c;
                 ok_steps = n as u32;
                 n += 1;
@@ -505,6 +606,10 @@ pub fn run(
     }
     let msg = set(&g.pci, &final_c, false)?;
     out(&format!("  gravado: {msg}"));
+    if let (Some(a), Some(b)) = (&first, &last_ok) {
+        out(&format!("  sem ajuste:      {}", a.line()));
+        out(&format!("  último que passou: {}", b.line()));
+    }
     crate::notify::event(
         "jobs",
         &format!("uv-{}", g.pci),

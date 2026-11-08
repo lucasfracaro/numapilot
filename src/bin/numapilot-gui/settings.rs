@@ -23,9 +23,7 @@ pub fn set_autostart(on: bool) -> std::io::Result<()> {
             format!(
                 "[Desktop Entry]\nType=Application\nName=numapilot (bandeja)\nExec={} --tray\n\
                  Icon=preferences-system-performance\nX-GNOME-Autostart-enabled=true\nNoDisplay=true\n",
-                std::env::current_exe()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| "numapilot-gui".into())
+                crate::jobs::self_exe()
             ),
         )
     } else if p.exists() {
@@ -56,7 +54,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 Ok(()) => {
                     if tray {
                         let _ = crate::jobs::spawn_detached(&[
-                            std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                            crate::jobs::self_exe(),
                             "--tray".into(),
                         ]);
                     }

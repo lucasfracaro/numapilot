@@ -10,6 +10,7 @@ mod llm;
 mod machine;
 mod map;
 mod settings;
+mod single;
 mod stream;
 mod tray;
 
@@ -877,6 +878,7 @@ impl App {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        single::handle(ui.ctx());
         if self.last.elapsed() > Duration::from_secs(1) {
             self.refresh();
         }
@@ -1012,6 +1014,10 @@ fn main() -> eframe::Result {
         }
         return Ok(());
     }
+    // Já tem uma janela aberta: ela vem para frente e esta não abre outra.
+    if single::show_existing() {
+        return Ok(());
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("numapilot — processador e placa de vídeo por programa")
@@ -1020,11 +1026,16 @@ fn main() -> eframe::Result {
             .with_min_inner_size([800.0, 400.0]),
         ..Default::default()
     };
-    eframe::run_native(
+    let r = eframe::run_native(
         "numapilot",
         options,
-        Box::new(|cc| Ok(Box::new(App::new(cc.egui_ctx.clone())))),
-    )
+        Box::new(|cc| {
+            single::listen(cc.egui_ctx.clone());
+            Ok(Box::new(App::new(cc.egui_ctx.clone())))
+        }),
+    );
+    single::cleanup();
+    r
 }
 
 pub(crate) fn in_path(bin: &str) -> bool {
