@@ -103,16 +103,18 @@ sempre iguais a ela.
 **PC novo:**
 
 ```bash
-sudo pacman -S --needed github-cli rust git     # num terminal normal (Konsole)
-gh auth login                                   # o repositório é privado
+sudo pacman -S --needed rust git                # num terminal normal (Konsole)
 mkdir -p ~/Projetos && cd ~/Projetos
-gh repo clone lucasfracaro/numapilot && cd numapilot
+git clone https://github.com/lucasfracaro/numapilot && cd numapilot
 ./install.sh                                    # pede a senha
 numapilot autoteste                             # confere tudo nesta máquina
 ```
 
 Rode o `install.sh` e o `self-update run` num **terminal normal**. Terminais dentro de outros
 programas (como o do Claude Code) podem bloquear o `sudo` com a mensagem "sem novos privilégios".
+
+Para só usar, o clone acima basta. Para enviar mudanças (push) desse PC: `sudo pacman -S github-cli` e
+`gh auth login`.
 
 **Antes de mexer no código, em qualquer PC:** `git pull --ff-only`.
 
@@ -953,3 +955,9 @@ src/learned.rs  /var/lib/numapilot/learned.json
 
 `cargo test` roda os testes, incluindo uma simulação desta máquina (2×22c/44t, RX470 + 2×MI50)
 com um sysfs falso.
+
+## Licença
+
+[MIT](LICENSE) © 2026 Lucas Fracaro. A fonte [Inter](https://github.com/rsms/inter), que vai
+dentro da interface, é da The Inter Project Authors, sob a
+[SIL Open Font License 1.1](assets/fonts/OFL.txt).

@@ -5,7 +5,7 @@ pkgrel=1
 pkgdesc="Processador (NUMA), memória e GPU por programa; ventoinhas das MI50, laboratório de IA e servidor llama.cpp"
 arch=('x86_64')
 url="https://github.com/lucasfracaro/numapilot"
-license=('MIT') # ajuste se escolher outra licença para o projeto
+license=('MIT' 'OFL-1.1')
 depends=('gcc-libs' 'glibc' 'bash' 'python' 'curl' 'hwdata' 'libxkbcommon' 'wayland' 'libglvnd')
 makedepends=('cargo' 'git')
 optdepends=(
@@ -72,4 +72,6 @@ package() {
   install -m644 container/Containerfile container/*.txt container/*.py "$pkgdir/usr/share/numapilot/container/"
   install -m755 container/lab-start "$pkgdir/usr/share/numapilot/container/"
   install -Dm644 README.md "$pkgdir/usr/share/doc/numapilot/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/numapilot/LICENSE"
+  install -Dm644 assets/fonts/OFL.txt "$pkgdir/usr/share/licenses/numapilot/OFL-Inter.txt"
 }
