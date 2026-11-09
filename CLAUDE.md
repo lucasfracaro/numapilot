@@ -26,7 +26,7 @@ Leia antes de mexer. Resume o que já foi feito e combinado com o Lucas em sess�
     falhou antes de reiniciar e funcionou depois). Se acontecer, o Lucas roda o `install.sh` e o
     `self-update run` no Konsole. O Bash do próprio Claude nunca tem sudo.
   - Versões: subir em `Cargo.toml` e `packaging/arch/release/PKGBUILD`, anotar no `CHANGELOG.md`,
-    e a tag `vX.Y.Z` gera a release no GitHub (binários prontos). Última: **v0.4.0** (2026-11-09).
+    e a tag `vX.Y.Z` gera a release no GitHub (binários prontos). Última: **v0.5.0** (2026-11-09).
 
 ## O que é
 

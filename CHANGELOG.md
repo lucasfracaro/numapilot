@@ -1,6 +1,6 @@
 # Mudanças
 
-## Não lançado
+## 0.5.0 — 2026-11-09
 
 - Aba **Inicialização** (e `numapilot inicio`): tudo que abre quando o sistema liga, como no
   Windows: programas do login (autostart do usuário e do sistema, restauração de sessão do KDE),
@@ -15,6 +15,8 @@
 - **Disco e rede**: coluna Disco (leitura + escrita por programa) na aba Programas, com o total no
   cabeçalho; seção "Discos e rede" no Mapa com leitura, escrita e % ativo de cada disco e
   download/upload de cada placa de rede, com o último minuto.
+- README reescrito: o que faz, PCs testados, instalar e atualizar, cada aba da interface com
+  capturas novas, linha de comando, guias por hardware (servidor, IA, notebook, BC-250), jogos.
 - BC-250: o botão do BC250 Control Center diz o que faz ("Gerenciar núcleos, CUs, frequências e
   voltagens" / "Instalar o BC250 Control Center").
 

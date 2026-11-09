@@ -1,7 +1,7 @@
 # Versão estável (tags vX.Y.Z). A versão -git fica em ../PKGBUILD.
 # Maintainer: Lucas Fracaro <lucasgfracaro@gmail.com>
 pkgname=numapilot
-pkgver=0.4.0
+pkgver=0.5.0
 pkgrel=1
 pkgdesc="Processador (NUMA), memória e GPU por programa; ventoinhas das MI50, laboratório de IA e servidor llama.cpp"
 arch=('x86_64')
