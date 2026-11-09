@@ -25,7 +25,8 @@ Leia antes de mexer. Resume o que já foi feito e combinado com o Lucas em sess�
   - O `sudo` às vezes é bloqueado nos terminais do Claude Code ("sem novos privilégios"; no CC150
     falhou antes de reiniciar e funcionou depois). Se acontecer, o Lucas roda o `install.sh` e o
     `self-update run` no Konsole. O Bash do próprio Claude nunca tem sudo.
-  - A tag **v0.2.0** ainda precisa ser enviada por ele: `git tag v0.2.0 && git push origin v0.2.0`.
+  - Versões: subir em `Cargo.toml` e `packaging/arch/release/PKGBUILD`, anotar no `CHANGELOG.md`,
+    e a tag `vX.Y.Z` gera a release no GitHub (binários prontos). Última: **v0.3.0** (2026-11-09).
 
 ## O que é
 
