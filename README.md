@@ -762,12 +762,21 @@ Processadores com limite de curto prazo ganham o **pico de potência (PL2)** na 
   de clock e `amd_iommu=off`. Na aba Placas de vídeo: dicas, instalar/ligar o governor e **editar
   a configuração dele** (frequências, voltagens, pontos), salvando com backup e reiniciando o
   serviço (volta a anterior se ele não subir); link para o overclock da CPU pela SMU.
-  Mostra quantos **núcleos (6 ou 8) e CUs (24 ou 40)** estão ligados e os **programas da
-  comunidade** para desbloquear sem trocar o kernel, com instalar (AUR) e abrir: o
-  [BC250 Control Center](https://github.com/movacx/bc250-control-center) (governor e laboratório de
-  voltagem, overclock da CPU, ventoinha, 40 CUs ao vivo, 8 núcleos), o `umr` e os scripts
-  [bc250-core-cu-unlock](https://github.com/GabriWar/bc250-core-cu-unlock). Depois de desbloquear,
-  refaça os testes de overclock: CPU e GPU dividem a mesma energia.
+  Um resumo **agora** mostra os **núcleos (6 ou 8) com o clock da CPU** e os **CUs (24 ou 40)
+  com o clock da GPU**. Os CUs vêm da melhor fonte disponível: a leitura ao vivo do BC250
+  Control Center (ele lê os registradores com root e deixa o resultado em arquivo), o kernel
+  que já libera os 40 CUs, ou o que o driver contou no boot. Também diz se os 8 núcleos ficam
+  ao desligar da tomada.
+  **Programas da comunidade**, sempre na versão mais nova de quem mantém: o
+  [BC250 Control Center](https://github.com/movacx/bc250-control-center) aparece em destaque
+  (faz tudo: governor e laboratório de voltagem, overclock da CPU, ventoinha, 40 CUs ao vivo,
+  8 núcleos, TTM) e é instalado pelo pacote `-git` do autor. Os outros (umr, bc250-cu-live-manager,
+  bc250-core-unlock, bc250-core-cu-unlock, bc250_smu_oc, BC250-Telemetry) ficam em "Outros
+  programas": os que não estão no AUR são baixados com git em `~/.local/share/numapilot/comunidade`,
+  com os comandos em `~/.local/bin`. **Atualizar** recompila o `-git` ou faz `git pull`, num
+  terminal. O EFI de desbloqueio e a temperatura da memória só têm link: a instalação deles mexe
+  no boot ou na SMU. Depois de desbloquear, refaça os testes de overclock: CPU e GPU dividem a
+  mesma energia.
   **Memória para a GPU (IA)**: o kernel deixa a GPU usar só metade dos 16 GB; o controle grava
   `ttm.pages_limit` em `/etc/modprobe.d` (e aplica na hora), o que deixa modelos de até ~14B
   carregarem. O servidor de IA (Vulkan) já liga o `GGML_VK_PREFER_HOST_MEMORY` (+5 a 12%).

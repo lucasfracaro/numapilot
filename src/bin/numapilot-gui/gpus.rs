@@ -674,75 +674,96 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                 }
             }
             let ok = Color32::from_rgb(110, 190, 120);
-            if let Some((stock, full)) = b.cores {
-                let n = numapilot::boards::active_cores();
-                if let Some(p) = numapilot::boards::core_unlock_persistence(n, full, numapilot::boards::efi_core_unlock()) {
-                    ui.label(RichText::new(format!("CPU: {n} de {full} núcleos ativos (desbloqueados): {p}")).color(ok));
-                } else {
-                    ui.label(RichText::new(format!("CPU: {n} de {full} núcleos ativos (de fábrica: {stock}); dá para desbloquear pelos programas abaixo")));
-                }
-            }
-            if let Some((stock, full)) = b.cus
-                && let Some(n) = numapilot::boards::active_cu()
-            {
-                ui.label(if n >= full && numapilot::boards::cu_unlock_by_kernel() {
-                    RichText::new(format!("GPU: {n} de {full} CUs, liberados pelo kernel no boot (bc250_cc_write_mode=3); não use o desbloqueio ao vivo junto")).color(ok)
-                } else if n >= full {
-                    RichText::new(format!("GPU: {n} de {full} CUs ativos no boot (desbloqueados)")).color(ok)
-                } else {
-                    RichText::new(format!("GPU: {n} de {full} CUs ativos no boot (de fábrica: {stock}); o desbloqueio ao vivo não aparece aqui"))
-                });
-            }
-            if !b.apps.is_empty() {
+            // ----- agora: núcleos e clock da CPU, CUs e clock da GPU -----
+            if b.cores.is_some() || b.cus.is_some() {
                 ui.add_space(4.0);
-                ui.label(RichText::new("Programas da comunidade").strong());
-                for a in &b.apps {
-                    ui.horizontal(|ui| {
-                        match a.installed_bin() {
-                            Some(bin) => {
-                                if ui.button(format!("Abrir {}", a.name)).clicked() {
-                                    let bin = bin.to_string();
-                                    if let Err(e) = std::process::Command::new(&bin).spawn() {
-                                        app.toast(format!("{bin}: {e}"), false);
-                                    }
+                egui::Grid::new(format!("agora-{}", g.pci)).num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
+                    if let Some((stock, full)) = b.cores {
+                        let n = numapilot::boards::active_cores();
+                        let mhz = numapilot::boards::cpu_mhz_now()
+                            .map(|m| format!(" · {:.2} GHz", m as f64 / 1000.0))
+                            .unwrap_or_default();
+                        ui.label(RichText::new("CPU").strong());
+                        ui.label(RichText::new(format!("{n} de {full} núcleos{mhz}")).color(if n >= full { ok } else { ui.visuals().text_color() }));
+                        ui.end_row();
+                        ui.label("");
+                        let txt = match numapilot::boards::core_unlock_persistence(n, full, numapilot::boards::efi_core_unlock()) {
+                            Some(p) => format!("desbloqueados: {p}"),
+                            None => format!("de fábrica: {stock}; dá para desbloquear pelo BC250 Control Center"),
+                        };
+                        ui.label(RichText::new(txt).small().weak());
+                        ui.end_row();
+                    }
+                    if let Some((stock, full)) = b.cus {
+                        let clock = gpuctl::read_sensors(&g.pci)
+                            .clock_mhz
+                            .map(|c| format!(" · {c:.0} MHz"))
+                            .unwrap_or_default();
+                        ui.label(RichText::new("GPU").strong());
+                        match numapilot::boards::cu_now() {
+                            Some((n, src)) => {
+                                ui.label(RichText::new(format!("{n} de {full} CUs{clock}")).color(if n >= full { ok } else { ui.visuals().text_color() }));
+                                ui.end_row();
+                                ui.label("");
+                                let mut txt = src.text().to_string();
+                                if src == numapilot::boards::CuSource::Kernel {
+                                    txt.push_str(" (bc250_cc_write_mode=3): não use o desbloqueio ao vivo junto");
+                                } else if src == numapilot::boards::CuSource::Boot && n < full {
+                                    txt.push_str(&format!(" (de fábrica: {stock}); desbloqueio ao vivo aparece aqui depois de uma leitura no BC250 Control Center"));
                                 }
+                                ui.label(RichText::new(txt).small().weak());
                             }
                             None => {
-                                ui.label(RichText::new(&a.name).strong());
-                                if let Some(pkg) = &a.aur
-                                    && ui.small_button("instalar (AUR)").on_hover_text("Abre um terminal com o paru/yay").clicked()
-                                {
-                                    let helper = if numapilot::containers::which("paru") { "paru" } else { "yay" };
-                                    if let Err(e) = crate::jobs::in_terminal(&[helper.into(), "-S".into(), pkg.clone()]) {
-                                        app.toast(e, false);
-                                    }
-                                }
+                                ui.label(format!("CUs desconhecidos{clock}"));
                             }
                         }
-                        if let Some(u) = &a.url
-                            && ui.small_button("página").clicked()
-                        {
-                            let _ = crate::jobs::open_url(u);
-                        }
-                    });
-                    ui.label(RichText::new(&a.about).small().weak());
-                }
-                ui.add_space(4.0);
-            }
-            if !b.cpu_oc_tools.is_empty() {
-                let have = b.cpu_oc_tools.iter().all(|t| numapilot::containers::which(t));
-                ui.horizontal(|ui| {
-                    ui.label(if have {
-                        "Overclock/undervolt da CPU pela SMU: ferramentas instaladas (bc250-detect / bc250-apply)."
-                    } else {
-                        "Overclock/undervolt da CPU pela SMU: instale o bc250_smu_oc."
-                    });
-                    if let Some(u) = &b.cpu_oc_url
-                        && ui.small_button("abrir").clicked()
-                    {
-                        let _ = crate::jobs::open_url(u);
+                        ui.end_row();
                     }
                 });
+            }
+            // ----- programas da comunidade: o recomendado primeiro -----
+            if !b.apps.is_empty() {
+                ui.add_space(6.0);
+                let helper = if numapilot::containers::which("paru") { "paru" } else { "yay" };
+                let mut run: Option<(String, Vec<String>)> = None;
+                let mut apps = b.apps.clone();
+                apps.sort_by_key(|a| !a.recommended);
+                let (rec, rest): (Vec<_>, Vec<_>) = apps.into_iter().partition(|a| a.recommended);
+                for a in &rec {
+                    egui::Frame::new()
+                        .fill(ui.visuals().faint_bg_color)
+                        .stroke(egui::Stroke::new(1.0, ok))
+                        .corner_radius(6.0)
+                        .inner_margin(10.0)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(format!("★ {}", a.name)).strong().size(15.0));
+                                ui.label(RichText::new("recomendado").small().color(ok));
+                            });
+                            ui.label(RichText::new(&a.about).small());
+                            app_buttons(app, ui, a, helper, &mut run, true);
+                        });
+                }
+                if !rest.is_empty() {
+                    egui::CollapsingHeader::new(format!("Outros programas da comunidade ({})", rest.len()))
+                        .id_salt(format!("outros-{}", g.pci))
+                        .show(ui, |ui| {
+                            ui.label(RichText::new("Instalados do código mais novo de quem mantém (AUR -git ou git); \"Atualizar\" baixa de novo.").small().weak());
+                            for a in &rest {
+                                ui.add_space(4.0);
+                                ui.label(RichText::new(&a.name).strong());
+                                ui.label(RichText::new(&a.about).small().weak());
+                                app_buttons(app, ui, a, helper, &mut run, false);
+                            }
+                        });
+                }
+                if let Some((name, cmd)) = run {
+                    numapilot::log::info(&format!("programa da comunidade {name}: {}", cmd.join(" ")));
+                    if let Err(e) = crate::jobs::in_terminal(&cmd) {
+                        app.toast(e, false);
+                    }
+                }
+                ui.add_space(4.0);
             }
             if let Some(d) = &b.docs
                 && ui.small_button("Guia da comunidade").clicked()
@@ -750,6 +771,52 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                 let _ = crate::jobs::open_url(d);
             }
         });
+}
+
+/// Botões de um programa da comunidade: Abrir, Instalar ou Atualizar (no terminal) e a página.
+fn app_buttons(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    a: &numapilot::recipes::CommunityApp,
+    helper: &str,
+    run: &mut Option<(String, Vec<String>)>,
+    big: bool,
+) {
+    ui.horizontal_wrapped(|ui| {
+        let bin = a.installed_bin();
+        let installed = bin.is_some() || a.installed();
+        if let Some(bin) = &bin {
+            let b = egui::Button::new(format!("Abrir {}", a.name));
+            if ui.add(if big { b.min_size(egui::vec2(0.0, 28.0)) } else { b }).clicked()
+                && let Err(e) = std::process::Command::new(bin).spawn()
+            {
+                app.toast(format!("{bin}: {e}"), false);
+            }
+        }
+        if a.installable() {
+            let (label, hover) = if installed {
+                ("Atualizar", "Baixa e instala a versão mais nova de quem mantém (num terminal; pode pedir a senha)")
+            } else if a.aur.is_some() {
+                ("Instalar", "Instala pelo AUR (paru/yay) num terminal; pode pedir a senha")
+            } else {
+                ("Instalar", "Baixa o código (git) em ~/.local/share/numapilot/comunidade e cria os comandos em ~/.local/bin, num terminal")
+            };
+            let b = egui::Button::new(label);
+            if ui.add(if big && !installed { b.min_size(egui::vec2(0.0, 28.0)) } else { b }).on_hover_text(hover).clicked()
+                && let Some(cmd) = a.install_command(helper)
+            {
+                *run = Some((a.name.clone(), cmd));
+            }
+        }
+        if let Some(u) = &a.url
+            && ui.small_button("página").clicked()
+        {
+            let _ = crate::jobs::open_url(u);
+        }
+        if !installed && !a.installable() {
+            ui.label(RichText::new("instalação manual (veja a página)").small().weak());
+        }
+    });
 }
 
 pub fn ui(app: &mut App, ui: &mut egui::Ui) {

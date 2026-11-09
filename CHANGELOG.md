@@ -14,6 +14,14 @@
 - Mais programas da comunidade na aba Placas: bc250-core-unlock, bc250-efi-core-unlock,
   bc250-cu-live-manager, BC250-Telemetry e bc250-memory-temperature.
 
+- Aba Placas da BC-250: resumo **agora** com núcleos e clock da CPU, CUs e clock da GPU. Os CUs
+  vêm da leitura ao vivo do BC250 Control Center quando existe (antes era só o que o driver
+  contou no boot, que não muda com o desbloqueio ao vivo).
+- Programas da comunidade com **Instalar/Atualizar** na versão mais nova: BC250 Control Center
+  em destaque (pacote `bc250-control-center-git`; o nome antigo na receita não existia no AUR),
+  `umr-git`, e por git (com `git pull` para atualizar) o bc250-cu-live-manager, bc250-core-unlock,
+  bc250-core-cu-unlock, bc250_smu_oc (pipx) e BC250-Telemetry.
+
 ### Correções
 - O serviço gravava "modo da máquina: ... (0 erro(s))" como ERRO.
 

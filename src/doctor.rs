@@ -616,41 +616,48 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             );
         }
         if let Some((stock, full)) = b.cus {
-            match crate::boards::active_cu() {
-                Some(n) if n >= full => add(
+            match crate::boards::cu_now() {
+                Some((n, src)) if n >= full => add(
                     &area,
                     "CUs da GPU",
                     Level::Ok,
-                    format!("{n} de {full} (desbloqueados)"),
+                    format!("{n} de {full} (desbloqueados; {})", src.text()),
                     None,
                 ),
-                Some(n) => add(
+                Some((n, src)) => add(
                     &area,
                     "CUs da GPU",
                     Level::Info,
-                    format!("{n} de {full} ativos no boot (de fábrica: {stock})"),
+                    format!("{n} de {full} ({}; de fábrica: {stock})", src.text()),
                     Some(
-                        "Desbloqueio sem trocar o kernel pelos programas da comunidade (Placas de vídeo → ajustes da comunidade)",
+                        "Desbloqueio ao vivo pelo BC250 Control Center (Placas de vídeo → ajustes da comunidade); a leitura ao vivo aparece aqui depois de abrir a página de CUs nele",
                     ),
                 ),
                 None => {}
             }
         }
         for a in &b.apps {
+            let ok = a.installed();
+            let what = if ok {
+                "instalado".to_string()
+            } else if a.recommended {
+                format!("não instalado (recomendado): {}", a.about)
+            } else {
+                format!("não instalado: {}", a.about)
+            };
+            let hint = if ok {
+                None
+            } else if a.installable() {
+                Some("Placas de vídeo → ajustes da comunidade → Instalar".to_string())
+            } else {
+                a.url.as_ref().map(|u| format!("instalação manual: {u}"))
+            };
             add(
                 &area,
                 &a.name,
-                if a.installed_bin().is_some() {
-                    Level::Ok
-                } else {
-                    Level::Info
-                },
-                if a.installed_bin().is_some() {
-                    "instalado".into()
-                } else {
-                    format!("não instalado: {}", a.about)
-                },
-                a.aur.as_ref().map(|p| format!("paru -S {p}")).as_deref(),
+                if ok { Level::Ok } else { Level::Info },
+                what,
+                hint.as_deref(),
             );
         }
         for n in &b.notes {

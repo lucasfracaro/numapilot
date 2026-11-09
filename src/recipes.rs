@@ -37,7 +37,9 @@ pub struct Board {
     pub no_video_encoder: bool,
 }
 
-/// Programa da comunidade: o numapilot mostra, instala (AUR) e abre; não reimplementa.
+/// Programa da comunidade: o numapilot mostra, instala e atualiza (AUR ou git) e abre; não
+/// reimplementa. Sempre a versão mais nova de quem mantém: pacotes `-git` do AUR são
+/// recompilados do código atual e os repositórios git são atualizados com `git pull`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CommunityApp {
@@ -47,14 +49,132 @@ pub struct CommunityApp {
     pub aur: Option<String>,
     pub url: Option<String>,
     pub about: String,
+    /// O recomendado da placa: aparece primeiro, em destaque.
+    pub recommended: bool,
+    /// Repositório para instalar sem pacote: clonado em
+    /// ~/.local/share/numapilot/comunidade/<nome> e atualizado com `git pull`.
+    pub git: Option<String>,
+    /// Arquivos do repositório que viram comandos em ~/.local/bin.
+    pub scripts: Vec<String>,
+    /// Pacotes do AUR de que ele precisa (instalados antes).
+    pub aur_deps: Vec<String>,
+    /// Comando rodado na pasta do repositório depois de baixar ou atualizar (compilar, instalar).
+    pub setup: Option<String>,
+}
+
+fn home() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/root"))
+}
+
+/// 'texto' para o shell.
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 impl CommunityApp {
-    pub fn installed_bin(&self) -> Option<&str> {
-        self.bins
-            .iter()
-            .find(|b| crate::containers::which(b))
-            .map(|s| s.as_str())
+    /// Caminho do executável instalado: no PATH ou em ~/.local/bin (a interface aberta pelo
+    /// menu nem sempre tem o ~/.local/bin no PATH).
+    pub fn installed_bin(&self) -> Option<String> {
+        self.bins.iter().find_map(|b| {
+            if crate::containers::which(b) {
+                Some(b.clone())
+            } else {
+                let p = home().join(".local/bin").join(b);
+                p.is_file().then(|| p.to_string_lossy().into_owned())
+            }
+        })
+    }
+
+    /// Pasta do clone git (`~/.local/share/numapilot/comunidade/<nome>`).
+    pub fn git_dir(&self) -> PathBuf {
+        let slug: String = self
+            .name
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
+        home().join(".local/share/numapilot/comunidade").join(slug)
+    }
+
+    /// Instalado pelo numapilot por git, ou pelo pacote do AUR. Guardado por 10 s (a interface
+    /// pergunta a cada quadro e o pacman -Q é lento).
+    pub fn installed(&self) -> bool {
+        use std::collections::HashMap;
+        use std::sync::Mutex;
+        use std::time::{Duration, Instant};
+        static CACHE: Mutex<Option<HashMap<String, (Instant, bool)>>> = Mutex::new(None);
+        let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        let m = c.get_or_insert_with(HashMap::new);
+        if let Some((t, v)) = m.get(&self.name)
+            && t.elapsed() < Duration::from_secs(10)
+        {
+            return *v;
+        }
+        let v = self.check_installed();
+        m.insert(self.name.clone(), (Instant::now(), v));
+        v
+    }
+
+    fn check_installed(&self) -> bool {
+        self.installed_bin().is_some()
+            || self.git.is_some() && self.git_dir().join(".git").is_dir()
+            || self.aur.as_ref().is_some_and(|p| {
+                std::process::Command::new("pacman")
+                    .args(["-Q", p])
+                    .output()
+                    .is_ok_and(|o| o.status.success())
+            })
+    }
+
+    /// Dá para instalar/atualizar pelo numapilot?
+    pub fn installable(&self) -> bool {
+        self.aur.is_some() || self.git.is_some()
+    }
+
+    /// Comando que instala ou atualiza para a versão mais nova (rodar num terminal: pede senha
+    /// e mostra o progresso). `helper` = paru ou yay.
+    pub fn install_command(&self, helper: &str) -> Option<Vec<String>> {
+        if let Some(pkg) = &self.aur {
+            // -git: o paru/yay compila de novo a partir do código atual
+            let mut v = vec![helper.to_string(), "-S".into()];
+            v.extend(self.aur_deps.iter().cloned());
+            v.push(pkg.clone());
+            return Some(v);
+        }
+        let url = self.git.as_ref()?;
+        let d = self.git_dir();
+        let d = sh_quote(&d.to_string_lossy());
+        let mut sc = vec!["set -e".to_string()];
+        if !self.aur_deps.is_empty() {
+            let deps: Vec<String> = self.aur_deps.iter().map(|p| sh_quote(p)).collect();
+            sc.push(format!("{helper} -S --needed {}", deps.join(" ")));
+        }
+        sc.push(format!(
+            "if [ -d {d}/.git ]; then echo \"Atualizando {}\"; git -C {d} pull --ff-only; \
+             else mkdir -p \"$(dirname {d})\"; git clone --depth 1 {} {d}; fi",
+            self.name.replace('"', ""),
+            sh_quote(url)
+        ));
+        if !self.scripts.is_empty() {
+            sc.push("mkdir -p \"$HOME/.local/bin\"".into());
+            for s in &self.scripts {
+                let f = format!("{d}/{}", sh_quote(s));
+                sc.push(format!(
+                    "chmod +x {f} && ln -sf {f} \"$HOME/.local/bin/\"{}",
+                    sh_quote(s)
+                ));
+            }
+        }
+        if let Some(setup) = &self.setup {
+            sc.push(format!("cd {d} && {setup}"));
+        }
+        sc.push(format!(
+            "echo; echo \"Pronto: {}\"",
+            self.name.replace('"', "")
+        ));
+        Some(vec!["sh".into(), "-c".into(), sc.join("\n")])
     }
 }
 
@@ -267,6 +387,39 @@ pub const DEFAULT_URL: &str =
     "https://raw.githubusercontent.com/lucasfracaro/numapilot/main/recipes/default.toml";
 
 #[cfg(test)]
+mod app_tests {
+    use super::CommunityApp;
+
+    #[test]
+    fn instalar_pelo_git_ou_aur() {
+        let a = CommunityApp {
+            name: "bc250 cu live-manager".into(),
+            git: Some("https://github.com/x/y".into()),
+            scripts: vec!["y.sh".into()],
+            aur_deps: vec!["umr".into()],
+            ..Default::default()
+        };
+        let c = a.install_command("paru").unwrap();
+        assert_eq!(c[0], "sh");
+        let sc = &c[2];
+        assert!(sc.contains("paru -S --needed 'umr'"));
+        assert!(sc.contains("git -C") && sc.contains("pull --ff-only"));
+        assert!(sc.contains("git clone --depth 1 'https://github.com/x/y'"));
+        assert!(sc.contains("comunidade/bc250-cu-live-manager"));
+        assert!(sc.contains("ln -sf"));
+        let b = CommunityApp {
+            aur: Some("bc250-control-center-git".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            b.install_command("yay").unwrap(),
+            vec!["yay", "-S", "bc250-control-center-git"]
+        );
+        assert!(CommunityApp::default().install_command("paru").is_none());
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -322,5 +475,43 @@ mod tests {
                 .len()
                 == 2
         );
+    }
+}
+
+#[cfg(test)]
+mod install_real {
+    /// Roda de verdade a instalação e a atualização por git num HOME temporário (precisa de
+    /// rede): `cargo test --release instalacao_git_de_verdade -- --ignored`.
+    #[test]
+    #[ignore]
+    fn instalacao_git_de_verdade() {
+        let home = std::env::temp_dir().join(format!("np-home-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        unsafe { std::env::set_var("HOME", &home) };
+        let rc = super::load();
+        let a = rc
+            .board
+            .iter()
+            .flat_map(|b| &b.apps)
+            .find(|a| a.name == "bc250-core-unlock")
+            .unwrap()
+            .clone();
+        for _ in 0..2 {
+            let c = a.install_command("paru").unwrap();
+            let st = std::process::Command::new(&c[0])
+                .args(&c[1..])
+                .status()
+                .unwrap();
+            assert!(st.success());
+        }
+        assert!(a.git_dir().join(".git").is_dir());
+        assert!(home.join(".local/bin/bc250-unlock-cores.py").is_file());
+        assert!(
+            a.installed_bin()
+                .unwrap()
+                .ends_with("bc250-unlock-cores.py")
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

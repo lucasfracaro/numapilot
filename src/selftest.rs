@@ -860,12 +860,12 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                 ),
             )
         });
-        r.t("CUs da GPU", || match crate::boards::active_cu() {
-            Some(c) if crate::boards::cu_unlock_by_kernel() => (
+        r.t("CUs da GPU", || match crate::boards::cu_now() {
+            Some((c, crate::boards::CuSource::Kernel)) => (
                 St::Ok,
                 format!("{c} CUs ativas (liberadas pelo kernel: bc250_cc_write_mode=3)"),
             ),
-            Some(c) => (St::Ok, format!("{c} CUs ativas")),
+            Some((c, src)) => (St::Ok, format!("{c} CUs ativas ({})", src.text())),
             None => (
                 St::Aviso,
                 "não achei active_cu_number no log do kernel nem no KFD".into(),

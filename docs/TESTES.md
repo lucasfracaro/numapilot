@@ -144,6 +144,11 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
       hwmon `freq1_input`; com 8 núcleos o `pp_dpm_sclk` não é confiável)
 - [ ] BC-250: instalar o BC250 Control Center pelo botão; desbloquear 8 núcleos e 40 CUs por ele;
       o numapilot mostra 8/8 núcleos e (depois de reiniciar) 40/40 CUs
+- [ ] BC-250: Placas de vídeo → ajustes da comunidade: "★ BC250 Control Center" → Instalar (terminal
+      com o paru); depois o botão vira Abrir/Atualizar. Em "Outros programas", instalar o
+      bc250-core-unlock (git) e conferir `~/.local/bin/bc250-unlock-cores.py`; Atualizar faz `git pull`
+- [ ] BC-250: o resumo "agora" mostra núcleos + GHz e CUs + MHz; depois de abrir a página de CUs no
+      Control Center (40 CUs ao vivo), o numapilot passa a mostrar 40 "última leitura do BC250 Control Center"
 - [ ] BC-250 com 8 núcleos: o doctor diz se o desbloqueio fica ao desligar da tomada (biosmod/EFI)
       ou não (bc250-core-unlock); se temperatura/potência da GPU vierem 0 °C ou ~1470 W, a dica do
       doctor bate com o kernel em uso (patch da SMU no BIOS, tirar `cs_legacy_8core_metrics` ou

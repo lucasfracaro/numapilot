@@ -378,6 +378,144 @@ pub fn core_unlock_persistence(cores: usize, full: usize, efi: bool) -> Option<&
     })
 }
 
+/// De onde veio o número de CUs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CuSource {
+    /// Leitura ao vivo do BC250 Control Center (helper do Decky, neste boot).
+    ControlCenterLive,
+    /// Última leitura autorizada no app do BC250 Control Center, feita neste boot.
+    ControlCenter,
+    /// O kernel liberou no boot (bc250_cc_write_mode=3).
+    Kernel,
+    /// O que o driver contou no boot (log do kernel ou KFD).
+    Boot,
+}
+
+impl CuSource {
+    pub fn text(self) -> &'static str {
+        match self {
+            CuSource::ControlCenterLive => "ao vivo, pelo BC250 Control Center",
+            CuSource::ControlCenter => "última leitura do BC250 Control Center",
+            CuSource::Kernel => "liberados pelo kernel no boot",
+            CuSource::Boot => "no boot",
+        }
+    }
+}
+
+/// CUs ativos agora, da melhor fonte que existir. O desbloqueio ao vivo (umr) não muda o que o
+/// driver contou no boot; quem lê os registradores é o BC250 Control Center (com root), e ele
+/// deixa a leitura em arquivos que qualquer usuário lê. Guardado por 5 s.
+pub fn cu_now() -> Option<(u32, CuSource)> {
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+    static CACHE: Mutex<Option<(Instant, Option<(u32, CuSource)>)>> = Mutex::new(None);
+    let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((t, v)) = *c
+        && t.elapsed() < Duration::from_secs(5)
+    {
+        return v;
+    }
+    let v = read_cu_now();
+    *c = Some((Instant::now(), v));
+    v
+}
+
+fn read_cu_now() -> Option<(u32, CuSource)> {
+    let boot_id = crate::util::read_trim("/proc/sys/kernel/random/boot_id").unwrap_or_default();
+    if let Some(n) = std::fs::read_to_string("/run/bc250-control-center/cu-live-state.json")
+        .ok()
+        .and_then(|t| parse_cc_runtime(&t, &boot_id))
+    {
+        return Some((n, CuSource::ControlCenterLive));
+    }
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| home.map(|h| h.join(".local/share")));
+    if let Some(f) = data.map(|d| d.join("bc250-control-center/Data/cu_dashboard_live.txt"))
+        && let Ok(m) = std::fs::metadata(&f)
+        && m.modified()
+            .ok()
+            .zip(boot_time())
+            .is_some_and(|(t, b)| t >= b)
+        && let Some(n) = std::fs::read_to_string(&f)
+            .ok()
+            .and_then(|t| parse_cc_dashboard(&t))
+    {
+        return Some((n, CuSource::ControlCenter));
+    }
+    let n = active_cu()?;
+    Some((
+        n,
+        if cu_unlock_by_kernel() {
+            CuSource::Kernel
+        } else {
+            CuSource::Boot
+        },
+    ))
+}
+
+/// Hora do boot (btime do /proc/stat).
+fn boot_time() -> Option<std::time::SystemTime> {
+    let t = std::fs::read_to_string("/proc/stat").ok()?;
+    let secs: u64 = t
+        .lines()
+        .find_map(|l| l.strip_prefix("btime "))?
+        .trim()
+        .parse()
+        .ok()?;
+    Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+}
+
+/// /run/bc250-control-center/cu-live-state.json (helper do Decky do BC250 Control Center):
+/// vale só se for deste boot e se os números baterem (2 CUs por WGP, 24 a 40).
+pub fn parse_cc_runtime(text: &str, boot_id: &str) -> Option<u32> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    if boot_id.is_empty()
+        || v.get("boot_id")?.as_str()? != boot_id
+        || v.get("producer")?.as_str()? != "bc250-quick-access-helper"
+        || v.get("cu_total_cus")?.as_u64()? != 40
+    {
+        return None;
+    }
+    let n = v.get("cu_active_cus")?.as_u64()?;
+    let masks = v.get("cu_masks")?.as_array()?;
+    let from_masks: u64 = masks
+        .iter()
+        .map(|m| m.as_u64().map(|m| u64::from(m.count_ones()) * 2))
+        .sum::<Option<u64>>()?;
+    (n == from_masks && (24..=40).contains(&n) && n % 2 == 0).then_some(n as u32)
+}
+
+/// "CUs active & routed : 40 / 40" no painel do bc250-cu-live-manager guardado pelo
+/// BC250 Control Center. Só vale se aparecer uma vez.
+pub fn parse_cc_dashboard(text: &str) -> Option<u32> {
+    let found: Vec<u32> = text
+        .lines()
+        .filter_map(|l| {
+            let low = l.to_lowercase();
+            let i = low.find("cus active")?;
+            let rest = &low[i + "cus active".len()..];
+            let rest = rest.trim_start().trim_start_matches('&').trim_start();
+            let rest = rest
+                .strip_prefix("routed")?
+                .trim_start()
+                .strip_prefix(':')?;
+            let (n, total) = rest.split_once('/')?;
+            (total.trim().starts_with("40")).then(|| n.trim().parse().ok())?
+        })
+        .collect();
+    match found[..] {
+        [n] if n <= 40 && n % 2 == 0 => Some(n),
+        _ => None,
+    }
+}
+
+/// Frequência atual da CPU (MHz): a maior entre os núcleos (/proc/cpuinfo).
+pub fn cpu_mhz_now() -> Option<u64> {
+    crate::cpuctl::cur_mhz_all().values().copied().max()
+}
+
 /// CUs ativos da GPU no boot, pela mensagem do amdgpu ("active_cu_number N"). Lido uma vez por
 /// execução; um desbloqueio feito depois do boot (ao vivo, pelo umr) não aparece aqui.
 pub fn active_cu() -> Option<u32> {
@@ -456,6 +594,26 @@ mod unlock_tests {
         let kfd = "cpu_cores_count 0\nsimd_count 48\nsimd_per_cu 2\n";
         assert_eq!(super::parse_kfd_cu(kfd), Some(24));
         assert_eq!(super::parse_kfd_cu("simd_count 0\nsimd_per_cu 0\n"), None);
+    }
+
+    #[test]
+    fn cus_do_control_center() {
+        let j = r#"{"schema":13,"producer":"bc250-quick-access-helper","boot_id":"abc","cu_active_cus":40,"cu_total_cus":40,"cu_masks":[31,31,31,31]}"#;
+        assert_eq!(super::parse_cc_runtime(j, "abc"), Some(40));
+        assert_eq!(super::parse_cc_runtime(j, "outro-boot"), None);
+        let bad = j.replace("\"cu_active_cus\":40", "\"cu_active_cus\":38");
+        assert_eq!(super::parse_cc_runtime(&bad, "abc"), None);
+        let d = "Mode : live\n  CUs active & routed : 40 / 40\n  Service : enabled\n";
+        assert_eq!(super::parse_cc_dashboard(d), Some(40));
+        assert_eq!(
+            super::parse_cc_dashboard("CUs active & routed: 24/40"),
+            Some(24)
+        );
+        assert_eq!(super::parse_cc_dashboard("nada"), None);
+        assert_eq!(
+            super::parse_cc_dashboard("CUs active & routed: 24/40\nCUs active & routed: 40/40"),
+            None
+        );
     }
 
     #[test]

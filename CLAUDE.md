@@ -81,6 +81,14 @@ Partes:
   40 CUs do boot, não usar umr junto), `efi_core_unlock`/`core_unlock_persistence`
   (biosmod/EFI ficam; bc250-core-unlock some ao desligar da tomada), clock > 3000 MHz é lixo
   (só na 1002:13fe), `pp_dpm_fclk` da Cyan Skillfish repete o clock da memória.
+- CUs ao vivo: `boards::cu_now()` lê o que o BC250 Control Center deixa
+  (`/run/bc250-control-center/cu-live-state.json` do helper do Decky, conferindo boot_id e
+  máscaras; `~/.local/share/bc250-control-center/Data/cu_dashboard_live.txt` se for deste boot,
+  "CUs active & routed : N / 40"), senão kernel (`bc250_cc_write_mode=3`), senão o boot.
+- Programas da comunidade (`CommunityApp` na receita): `aur` (preferir `-git`), ou `git` +
+  `scripts` (links em ~/.local/bin) + `aur_deps` + `setup`; clones em
+  ~/.local/share/numapilot/comunidade/<nome>; Instalar/Atualizar roda no terminal. O AUR do
+  Control Center é `bc250-control-center-git` (não existe sem -git).
 - Sem cpufreq: frequência da CPU só para leitura (`cpuctl::cur_mhz_all`); controle pelo bc250_smu_oc.
 - Ler `pp_od_clk_voltage` (e `pp_dpm_dcefclk`/`pp_dpm_pcie`) faz o amdgpu escrever
   "Unsupported clock type" no log do kernel. É do driver e inofensivo; evite ler em loop.
