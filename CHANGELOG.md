@@ -1,6 +1,6 @@
 # Mudanças
 
-## Não lançado
+## 0.5.1 — 2026-11-09
 
 - Inicialização: **Detalhes** mostra de onde cada item vem (arquivo de inicialização e pacote dono,
   programa de verdade mesmo atrás de `node`/`python`/`sh -c`, origem: repositório, AUR, Flatpak,
