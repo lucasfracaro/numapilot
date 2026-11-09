@@ -137,6 +137,9 @@ O aviso era a ventoinha: no RDNA3/RDNA4 o `pwm1` é só leitura e o controle é 
 (`gpu_od/fan_ctrl`), que só existe com o OverDrive ligado. O doctor agora explica isso e conta a
 curva do firmware como controlável. `self-update` agora compara o commit gravado no binário
 (`build.rs` → `NUMAPILOT_COMMIT`) com a pasta, além da pasta com o GitHub.
-Falta: ligar o OverDrive, reiniciar e testar ventoinha/clock/undervolt; aba Testes.
+OverDrive ligado (`ppfeaturemask` 0xfff7ffff, kernel 7.3.3): doctor com 0 avisos, ventoinha pela
+curva do firmware, clock/voltagem até -200 mV. Autoteste logo depois do boot agora dá "pulou" (não
+aviso) na coleta de saúde se o serviço iniciou há menos de 3 min.
+Falta: testar à mão ventoinha (curva), clock/voltagem e undervolt automático; aba Testes.
 
 Próximo: aba Testes na BC-250 e no CC150, depois os outros PCs.

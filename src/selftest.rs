@@ -666,6 +666,15 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
     r.group("Saúde do hardware");
     r.t("Coleta do serviço", || {
         let Some(h) = crate::health::load() else {
+            // logo depois do boot (ou de reiniciar o serviço) ainda não deu tempo: não é defeito
+            if let Some(s) = service_uptime_secs().filter(|&s| s < 180) {
+                return (
+                    St::Pulou,
+                    format!(
+                        "o serviço iniciou há {s} s e coleta 1 min depois: rode o autoteste de novo daqui a pouco"
+                    ),
+                );
+            }
             return (
                 St::Aviso,
                 "ainda não coletado (o serviço coleta 1 min depois de iniciar)".into(),
@@ -1055,4 +1064,25 @@ pub fn render(r: &Report) -> String {
         }
     }
     s
+}
+
+/// Há quantos segundos o numapilot.service está ativo (None = parado ou sem systemctl).
+fn service_uptime_secs() -> Option<u64> {
+    let o = std::process::Command::new("systemctl")
+        .args([
+            "show",
+            "numapilot.service",
+            "-p",
+            "ActiveEnterTimestampMonotonic",
+            "--value",
+        ])
+        .output()
+        .ok()?;
+    let since_us: u64 = String::from_utf8_lossy(&o.stdout).trim().parse().ok()?;
+    if since_us == 0 {
+        return None;
+    }
+    let up = std::fs::read_to_string("/proc/uptime").ok()?;
+    let up_s: f64 = up.split_whitespace().next()?.parse().ok()?;
+    Some((up_s as u64).saturating_sub(since_us / 1_000_000))
 }
