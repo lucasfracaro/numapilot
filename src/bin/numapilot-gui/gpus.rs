@@ -676,16 +676,18 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
             let ok = Color32::from_rgb(110, 190, 120);
             if let Some((stock, full)) = b.cores {
                 let n = numapilot::boards::active_cores();
-                ui.label(if n >= full {
-                    RichText::new(format!("CPU: {n} de {full} núcleos ativos (desbloqueados)")).color(ok)
+                if let Some(p) = numapilot::boards::core_unlock_persistence(n, full, numapilot::boards::efi_core_unlock()) {
+                    ui.label(RichText::new(format!("CPU: {n} de {full} núcleos ativos (desbloqueados): {p}")).color(ok));
                 } else {
-                    RichText::new(format!("CPU: {n} de {full} núcleos ativos (de fábrica: {stock}); dá para desbloquear pelos programas abaixo"))
-                });
+                    ui.label(RichText::new(format!("CPU: {n} de {full} núcleos ativos (de fábrica: {stock}); dá para desbloquear pelos programas abaixo")));
+                }
             }
             if let Some((stock, full)) = b.cus
                 && let Some(n) = numapilot::boards::active_cu()
             {
-                ui.label(if n >= full {
+                ui.label(if n >= full && numapilot::boards::cu_unlock_by_kernel() {
+                    RichText::new(format!("GPU: {n} de {full} CUs, liberados pelo kernel no boot (bc250_cc_write_mode=3); não use o desbloqueio ao vivo junto")).color(ok)
+                } else if n >= full {
                     RichText::new(format!("GPU: {n} de {full} CUs ativos no boot (desbloqueados)")).color(ok)
                 } else {
                     RichText::new(format!("GPU: {n} de {full} CUs ativos no boot (de fábrica: {stock}); o desbloqueio ao vivo não aparece aqui"))

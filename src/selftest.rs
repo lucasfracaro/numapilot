@@ -840,17 +840,31 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         .collect();
     if !boards.is_empty() {
         r.group("Placa especial");
+        let full_cores = rc
+            .boards(&topo)
+            .iter()
+            .find_map(|(b, _)| b.cores)
+            .map(|c| c.1);
         r.t("Núcleos ativos", || {
+            let n = crate::boards::active_cores();
+            let efi = crate::boards::efi_core_unlock();
+            let keep = full_cores
+                .and_then(|f| crate::boards::core_unlock_persistence(n, f, efi))
+                .map(|p| format!(" · {p}"))
+                .unwrap_or_default();
             (
                 St::Ok,
                 format!(
-                    "{} núcleos físicos online ({} threads)",
-                    crate::boards::active_cores(),
+                    "{n} núcleos físicos online ({} threads){keep}",
                     std::thread::available_parallelism().map_or(0, |n| n.get())
                 ),
             )
         });
         r.t("CUs da GPU", || match crate::boards::active_cu() {
+            Some(c) if crate::boards::cu_unlock_by_kernel() => (
+                St::Ok,
+                format!("{c} CUs ativas (liberadas pelo kernel: bc250_cc_write_mode=3)"),
+            ),
             Some(c) => (St::Ok, format!("{c} CUs ativas")),
             None => (
                 St::Aviso,

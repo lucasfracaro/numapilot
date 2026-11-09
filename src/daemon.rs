@@ -802,11 +802,16 @@ pub fn run(cfg: Config) -> Result<()> {
     }
     if hw.machine != Machine::default() {
         let errs = hw.apply_machine(&topo, None);
-        crate::nlog!(
-            "modo da máquina: {} ({} erro(s))",
-            hw.machine.mode,
-            errs.len()
-        );
+        if errs.is_empty() {
+            crate::nlog!("modo da máquina: {} aplicado", hw.machine.mode);
+        } else {
+            crate::nlog!(
+                "modo da máquina: {} com {} erro(s): {}",
+                hw.machine.mode,
+                errs.len(),
+                errs.join("; ")
+            );
+        }
     }
     let reserved_flag = run_dir().join("reserved");
     if reserved_flag.exists() {

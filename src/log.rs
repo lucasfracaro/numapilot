@@ -122,7 +122,14 @@ pub fn error(msg: &str) {
 
 /// Nível pelo texto da mensagem: as do serviço não dizem o nível, mas dizem "não consegui"…
 pub fn level_of(msg: &str) -> &'static str {
-    let m = msg.to_lowercase();
+    // "(0 erro(s))" não é erro; "10 erro(s)" é
+    let mut m = msg.to_lowercase();
+    while let Some(i) = m.find("0 erro") {
+        if m[..i].ends_with(|c: char| c.is_ascii_digit()) {
+            break;
+        }
+        m.replace_range(i..i + "0 erro".len(), "");
+    }
     if [
         "erro",
         "falhou",
@@ -197,6 +204,12 @@ mod tests {
         assert_eq!(level_of("GPU x: não consegui limitar"), "ERRO");
         assert_eq!(level_of("curva da ventoinha não aplicada: x"), "AVISO");
         assert_eq!(level_of("modo da máquina: jogo"), "INFO");
+        assert_eq!(
+            level_of("modo da máquina: personalizado (0 erro(s))"),
+            "INFO"
+        );
+        assert_eq!(level_of("modo da máquina: jogo com 2 erro(s): x"), "ERRO");
+        assert_eq!(level_of("aplicado (10 erro(s))"), "ERRO");
     }
 
     #[test]

@@ -261,9 +261,51 @@ pub fn active_cores() -> usize {
     set.len()
 }
 
-/// BC-250 com 8 núcleos: o kernel linux-cachyos-bc250 lê a tabela de métricas de 8 núcleos
-/// (parâmetro `cs_eight_core_map` existe), mas sem o "SMU Reporting Patch" no BIOS a SMU
-/// grava a tabela de 6 e temperatura/potência saem embaralhadas. Os clocks continuam certos.
+/// Como o amdgpu em uso lê a tabela de métricas da SMU numa BC-250 com 8 núcleos.
+/// O linux-cachyos-bc250 escolhe a tabela pelo número de núcleos desde 2026-08-28
+/// (`cs_eight_core_map` marca esse código) e tirou o `cs_legacy_8core_metrics` em 2026-09-17;
+/// um kernel sem nenhum dos dois lê a tabela de 6 núcleos. (Lógica do BC250 Control Center,
+/// MIT, https://github.com/movacx/bc250-control-center.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetricsDecode {
+    /// Kernel lê a tabela de 8 núcleos: a SMU precisa do "SMU Reporting Patch" no BIOS.
+    EightCore,
+    /// `cs_legacy_8core_metrics=1` ligado: opção antiga, removida do kernel.
+    Legacy,
+    /// Kernel comum: lê a tabela de 6 núcleos.
+    Stock,
+}
+
+pub fn metrics_decode(legacy: Option<&str>, eight_core_map: bool) -> MetricsDecode {
+    if matches!(legacy, Some("Y" | "1")) {
+        MetricsDecode::Legacy
+    } else if eight_core_map {
+        MetricsDecode::EightCore
+    } else {
+        MetricsDecode::Stock
+    }
+}
+
+/// O que fazer quando a telemetria vem embaralhada, para cada jeito de ler a tabela.
+pub fn mismatch_fix(d: MetricsDecode) -> &'static str {
+    match d {
+        MetricsDecode::EightCore => {
+            "o kernel lê a tabela de 8 núcleos, mas a SMU grava a de 6: ligue o \"SMU Reporting \
+             Patch\" no biosmod (MeiMeiDXE v3) ou volte para 6 núcleos"
+        }
+        MetricsDecode::Legacy => {
+            "tire amdgpu.cs_legacy_8core_metrics=1 da linha do kernel (Máquina → Parâmetros do \
+             kernel): o kernel atual escolhe a tabela sozinho"
+        }
+        MetricsDecode::Stock => {
+            "este kernel lê a tabela de 6 núcleos: desligue o \"SMU Reporting Patch\" no BIOS ou \
+             use o kernel linux-cachyos-bc250"
+        }
+    }
+}
+
+/// BC-250 com 8 núcleos e temperatura/potência da GPU embaralhadas (0 °C, ~1470 W): a tabela
+/// de métricas que a SMU grava não bate com a que o kernel lê. Os clocks continuam certos.
 /// Devolve a explicação quando é esse o caso.
 pub fn smu_table_mismatch(pci: &str) -> Option<String> {
     if active_cores() != 8 {
@@ -273,21 +315,67 @@ pub fn smu_table_mismatch(pci: &str) -> Option<String> {
     if s.edge_c.is_some() || s.power_w.is_some() {
         return None;
     }
-    let p = |n: &str| crate::util::sys(&format!("module/amdgpu/parameters/{n}")).exists();
-    let kernel = if p("cs_legacy_8core_metrics") {
-        "ou ligue amdgpu.cs_legacy_8core_metrics=1 (dados parciais)"
-    } else if p("cs_eight_core_map") {
-        "ou volte para 6 núcleos"
-    } else {
-        "ou use o kernel linux-cachyos-bc250"
-    };
+    let param = |n: &str| crate::util::sys(&format!("module/amdgpu/parameters/{n}"));
+    let legacy = crate::util::read_trim(param("cs_legacy_8core_metrics"));
+    let d = metrics_decode(legacy.as_deref(), param("cs_eight_core_map").exists());
     Some(format!(
-        "8 núcleos sem o \"SMU Reporting Patch\" no BIOS: a tabela de métricas da SMU não bate \
-         com a que o kernel lê, então temperatura e potência da GPU vêm embaralhadas (os clocks \
-         estão certos). Para corrigir: biosmod com o SMU Reporting Patch (MeiMeiDXE v3) {kernel}. \
-         Com o cyan-skillfish-governor rodando (fix-metrics), o MangoHud lê o gpu_metrics corrigido \
-         por ele."
+        "8 núcleos com a tabela de métricas da SMU diferente da que o kernel lê: temperatura e \
+         potência da GPU vêm embaralhadas (os clocks estão certos). Para corrigir, {}. Com o \
+         cyan-skillfish-governor rodando (fix-metrics), o MangoHud lê o gpu_metrics corrigido \
+         por ele.",
+        mismatch_fix(d)
     ))
+}
+
+/// BC-250: o amdgpu do linux-cachyos-bc250 com `bc250_cc_write_mode=3` limpa, ao carregar, os
+/// bits que desligam os shader arrays: os 40 CUs já vêm do boot e o driver conta todos. Aí o
+/// desbloqueio ao vivo (umr, bc250-cu-live-manager) não tem o que fazer e mexer nele por baixo
+/// do driver é arriscado.
+pub fn cu_unlock_by_kernel() -> bool {
+    crate::util::read_trim(crate::util::sys(
+        "module/amdgpu/parameters/bc250_cc_write_mode",
+    ))
+    .is_some_and(|v| v == "3")
+}
+
+/// Onde o EFI que desbloqueia os núcleos antes do boot (Hexxeh/bc250-efi-core-unlock) costuma
+/// ficar.
+const EFI_SHIM_PATHS: &[&str] = &[
+    "/boot/EFI/BOOT/COREUNLOCK.EFI",
+    "/boot/efi/EFI/BOOT/COREUNLOCK.EFI",
+    "/efi/EFI/BOOT/COREUNLOCK.EFI",
+    "/boot/EFI/BOOT/bc250-unlock.efi",
+    "/boot/efi/EFI/BOOT/bc250-unlock.efi",
+    "/efi/EFI/BOOT/bc250-unlock.efi",
+];
+
+/// Há o EFI de desbloqueio dos núcleos (arquivo ou entrada "CoreUnlock" no efibootmgr)?
+pub fn efi_core_unlock() -> bool {
+    EFI_SHIM_PATHS
+        .iter()
+        .any(|p| std::path::Path::new(p).is_file())
+        || Command::new("efibootmgr")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .is_some_and(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .to_lowercase()
+                    .contains("coreunlock")
+            })
+}
+
+/// Se os núcleos desbloqueados ficam depois de desligar da tomada. Só lê, não muda nada.
+pub fn core_unlock_persistence(cores: usize, full: usize, efi: bool) -> Option<&'static str> {
+    if cores < full {
+        return None;
+    }
+    Some(if efi {
+        "ficam: o EFI de desbloqueio (bc250-efi-core-unlock) liga antes de cada boot"
+    } else {
+        "se vieram do BIOS (biosmod), ficam; se vieram do bc250-core-unlock, somem ao desligar \
+         da tomada (reinício não perde) e é preciso rodar de novo"
+    })
 }
 
 /// CUs ativos da GPU no boot, pela mensagem do amdgpu ("active_cu_number N"). Lido uma vez por
@@ -368,5 +456,31 @@ mod unlock_tests {
         let kfd = "cpu_cores_count 0\nsimd_count 48\nsimd_per_cu 2\n";
         assert_eq!(super::parse_kfd_cu(kfd), Some(24));
         assert_eq!(super::parse_kfd_cu("simd_count 0\nsimd_per_cu 0\n"), None);
+    }
+
+    #[test]
+    fn tabela_da_smu() {
+        use super::{MetricsDecode::*, metrics_decode};
+        assert_eq!(metrics_decode(Some("Y"), true), Legacy);
+        assert_eq!(metrics_decode(Some("N"), true), EightCore);
+        assert_eq!(metrics_decode(None, true), EightCore);
+        assert_eq!(metrics_decode(None, false), Stock);
+        assert!(super::mismatch_fix(Stock).contains("desligue"));
+        assert!(super::mismatch_fix(EightCore).contains("ligue"));
+    }
+
+    #[test]
+    fn persistencia_dos_nucleos() {
+        assert_eq!(super::core_unlock_persistence(6, 8, false), None);
+        assert!(
+            super::core_unlock_persistence(8, 8, true)
+                .unwrap()
+                .contains("EFI")
+        );
+        assert!(
+            super::core_unlock_persistence(8, 8, false)
+                .unwrap()
+                .contains("biosmod")
+        );
     }
 }

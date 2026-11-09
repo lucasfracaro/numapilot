@@ -68,6 +68,11 @@ pub fn plausible_clock(mhz: f64) -> Option<f64> {
     (mhz.is_finite() && (50.0..4000.0).contains(&mhz)).then_some(mhz)
 }
 
+/// GPU da BC-250 (Cyan Skillfish, 1002:13fe)?
+fn is_bc250(pci: &str) -> bool {
+    read_trim(sys(&format!("bus/pci/devices/{pci}/device"))).as_deref() == Some("0x13fe")
+}
+
 /// Potência plausível de uma GPU (W). Nenhuma placa passa de 1000 W; a BC-250 manda ~1470 W.
 fn plausible_power(w: f64) -> Option<f64> {
     (w.is_finite() && (0.0..1000.0).contains(&w)).then_some(w)
@@ -111,7 +116,10 @@ pub fn read_sensors(pci: &str) -> Sensors {
     s.clock_mhz = (1..=2)
         .find(|i| read_trim(h.join(format!("freq{i}_label"))).is_none_or(|l| l == "sclk"))
         .and_then(|i| num(h.join(format!("freq{i}_input"))))
-        .and_then(|hz| plausible_clock(hz / 1_000_000.0));
+        .and_then(|hz| plausible_clock(hz / 1_000_000.0))
+        // BC-250 (1002:13fe): o máximo que algum kernel oferece é 2230 MHz; com a tabela da
+        // SMU lida errada já vieram 3882 e 4764 MHz
+        .filter(|&mhz| mhz <= 3000.0 || !is_bc250(pci));
     s.power_cap_w = w("power1_cap");
     s.power_cap_min_w = w("power1_cap_min");
     s.power_cap_max_w = w("power1_cap_max");
@@ -974,6 +982,30 @@ mod profile_tests {
         assert!(b.above_4g);
         assert_eq!(b.max_bytes, Some(8 << 30), "bit 13 = 8 GB");
         assert!(!b.full());
+    }
+
+    #[test]
+    fn clock_lixo_so_na_bc250() {
+        let root = std::env::temp_dir().join("numapilot-bc250-clock-test");
+        let _ = std::fs::remove_dir_all(&root);
+        for (pci, dev) in [("0000:01:00.0", "0x13fe"), ("0000:03:00.0", "0x7590")] {
+            let d = root.join(format!("bus/pci/devices/{pci}"));
+            std::fs::create_dir_all(d.join("hwmon/hwmon0")).unwrap();
+            std::fs::write(d.join("device"), dev).unwrap();
+            std::fs::write(d.join("hwmon/hwmon0/freq1_label"), "sclk").unwrap();
+            std::fs::write(d.join("hwmon/hwmon0/freq1_input"), "3882000000").unwrap();
+        }
+        let _g = crate::util::test_sysfs_lock(&root);
+        // BC-250: tabela da SMU lida errada, 3882 MHz é lixo
+        assert_eq!(read_sensors("0000:01:00.0").clock_mhz, None);
+        // outra placa com o mesmo valor não é afetada
+        assert_eq!(read_sensors("0000:03:00.0").clock_mhz, Some(3882.0));
+        std::fs::write(
+            root.join("bus/pci/devices/0000:01:00.0/hwmon/hwmon0/freq1_input"),
+            "1500000000",
+        )
+        .unwrap();
+        assert_eq!(read_sensors("0000:01:00.0").clock_mhz, Some(1500.0));
     }
 
     #[test]

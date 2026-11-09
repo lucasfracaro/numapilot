@@ -1,5 +1,22 @@
 # Mudanças
 
+## Não lançado
+
+### BC-250 (com ideias do [BC250 Control Center](https://github.com/movacx/bc250-control-center), MIT)
+- Telemetria embaralhada com 8 núcleos: a dica de correção agora depende do kernel em uso
+  (tabela de 8 núcleos → ligar o "SMU Reporting Patch"; `cs_legacy_8core_metrics=1` → tirar,
+  porque saiu do kernel; kernel comum → desligar o patch ou usar o linux-cachyos-bc250).
+- CUs liberados pelo próprio kernel (`amdgpu.bc250_cc_write_mode=3`) aparecem no doctor,
+  no autoteste e na aba Placas, com o aviso para não usar o desbloqueio ao vivo junto.
+- 8 núcleos: diz se o desbloqueio fica ao desligar da tomada (biosmod ou EFI shim) ou não
+  (bc250-core-unlock); detecta o bc250-efi-core-unlock.
+- Clock da GPU acima de 3000 MHz é descartado na BC-250 (leitura da tabela errada).
+- Mais programas da comunidade na aba Placas: bc250-core-unlock, bc250-efi-core-unlock,
+  bc250-cu-live-manager, BC250-Telemetry e bc250-memory-temperature.
+
+### Correções
+- O serviço gravava "modo da máquina: ... (0 erro(s))" como ERRO.
+
 ## 0.3.0 — 2026-11-09
 
 Primeira versão com release no GitHub (a 0.2.0 ficou sem tag). Junta tudo desde a 0.2.0:

@@ -74,6 +74,13 @@ Partes:
   cyan-skillfish-governor-smu com `fix-metrics = true` monta um gpu_metrics corrigido por cima
   (é dele que o MangoHud lê durante os testes); hoje o serviço está desligado.
   Diagnóstico do kernel: `amdgpu.cs_full_telemetry=1` faz o `pp_dpm_socclk` mostrar a tabela.
+- Ideias do BC250 Control Center (movacx, MIT; clone de referência é só para ler):
+  `boards::metrics_decode`/`mismatch_fix` (dica de correção por kernel: `cs_eight_core_map` →
+  ligar o SMU Reporting Patch; `cs_legacy_8core_metrics=Y` → tirar, saiu do kernel em
+  2026-09-17; kernel comum → desligar o patch), `cu_unlock_by_kernel` (`bc250_cc_write_mode=3`:
+  40 CUs do boot, não usar umr junto), `efi_core_unlock`/`core_unlock_persistence`
+  (biosmod/EFI ficam; bc250-core-unlock some ao desligar da tomada), clock > 3000 MHz é lixo
+  (só na 1002:13fe), `pp_dpm_fclk` da Cyan Skillfish repete o clock da memória.
 - Sem cpufreq: frequência da CPU só para leitura (`cpuctl::cur_mhz_all`); controle pelo bc250_smu_oc.
 - Ler `pp_od_clk_voltage` (e `pp_dpm_dcefclk`/`pp_dpm_pcie`) faz o amdgpu escrever
   "Unsupported clock type" no log do kernel. É do driver e inofensivo; evite ler em loop.

@@ -573,6 +573,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         if let Some((stock, full)) = b.cores {
             let n = crate::boards::active_cores();
             if n >= full {
+                let efi = crate::boards::efi_core_unlock();
                 add(
                     &area,
                     "núcleos da CPU",
@@ -580,6 +581,15 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     format!("{n} de {full} (desbloqueados)"),
                     None,
                 );
+                if let Some(p) = crate::boards::core_unlock_persistence(n, full, efi) {
+                    add(
+                        &area,
+                        "desbloqueio dos núcleos",
+                        Level::Info,
+                        p.into(),
+                        None,
+                    );
+                }
             } else if n > 0 {
                 add(
                     &area,
@@ -591,6 +601,19 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     ),
                 );
             }
+        }
+        if let Some((_, full)) = b.cus
+            && crate::boards::cu_unlock_by_kernel()
+        {
+            add(
+                &area,
+                "CUs pelo kernel",
+                Level::Info,
+                format!("o kernel libera os {full} CUs no boot (amdgpu.bc250_cc_write_mode=3)"),
+                Some(
+                    "Não use o desbloqueio ao vivo (umr, bc250-cu-live-manager) junto: o driver já conta todos",
+                ),
+            );
         }
         if let Some((stock, full)) = b.cus {
             match crate::boards::active_cu() {

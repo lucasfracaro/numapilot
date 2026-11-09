@@ -140,9 +140,16 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 
 - [ ] PC i7-5775C + BC-160 e PC CC150 + RX 9060 XT: `./install.sh`, `numapilot doctor`, aba Máquina
 - [ ] BC-250: `numapilot doctor` (kernel, Mesa, governor, IOMMU); instalar/ligar o governor; editar a
-      configuração pela aba Placas de vídeo e conferir o clock subindo (`cat .../pp_dpm_sclk`)
+      configuração pela aba Placas de vídeo e conferir o clock subindo no cartão da GPU (vem do
+      hwmon `freq1_input`; com 8 núcleos o `pp_dpm_sclk` não é confiável)
 - [ ] BC-250: instalar o BC250 Control Center pelo botão; desbloquear 8 núcleos e 40 CUs por ele;
       o numapilot mostra 8/8 núcleos e (depois de reiniciar) 40/40 CUs
+- [ ] BC-250 com 8 núcleos: o doctor diz se o desbloqueio fica ao desligar da tomada (biosmod/EFI)
+      ou não (bc250-core-unlock); se temperatura/potência da GPU vierem 0 °C ou ~1470 W, a dica do
+      doctor bate com o kernel em uso (patch da SMU no BIOS, tirar `cs_legacy_8core_metrics` ou
+      kernel linux-cachyos-bc250)
+- [ ] BC-250 com o kernel linux-cachyos-bc250: se `amdgpu.bc250_cc_write_mode=3`, o doctor mostra
+      "CUs pelo kernel" e o autoteste "liberadas pelo kernel"
 - [ ] BC-250: Memória para a GPU 14 GiB; `numapilot boot status`; carregar um modelo de 14B no servidor de IA
 - [ ] BC-250: Streaming com codificador por software (superfast) no Moonlight
 - [ ] RX 9060 XT: deslocamento de voltagem (-50 mV), curva da ventoinha no firmware, link PCIe

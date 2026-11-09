@@ -961,3 +961,7 @@ com um sysfs falso.
 [MIT](LICENSE) © 2026 Lucas Fracaro. A fonte [Inter](https://github.com/rsms/inter), que vai
 dentro da interface, é da The Inter Project Authors, sob a
 [SIL Open Font License 1.1](assets/fonts/OFL.txt).
+
+O suporte à BC-250 usa conhecimento da comunidade, em especial do
+[BC250 Control Center](https://github.com/movacx/bc250-control-center) (MIT, Herlin Chavarria):
+leitura da tabela de métricas da SMU, CUs liberados pelo kernel e persistência dos 8 núcleos.
