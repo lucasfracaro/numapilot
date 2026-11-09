@@ -1,6 +1,6 @@
 # Mudanças
 
-## Não lançado
+## 0.4.0 — 2026-11-09
 
 ### BC-250 (com ideias do [BC250 Control Center](https://github.com/movacx/bc250-control-center), MIT)
 - Telemetria embaralhada com 8 núcleos: a dica de correção agora depende do kernel em uso
