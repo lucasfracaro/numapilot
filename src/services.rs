@@ -247,14 +247,19 @@ pub fn run_user(s: &Service, v: Verb) -> Result<(), String> {
 
 /// Últimas linhas do log (journal) do serviço.
 pub fn logs(s: &Service, lines: u32) -> String {
+    unit_logs(&s.unit, s.user, lines)
+}
+
+/// Últimas linhas do log (journal) de uma unidade.
+pub fn unit_logs(unit: &str, user: bool, lines: u32) -> String {
     let mut c = Command::new("journalctl");
-    if s.user {
+    if user {
         c.arg("--user");
     }
     match c
         .args([
             "-u",
-            &s.unit,
+            unit,
             "-n",
             &lines.to_string(),
             "--no-pager",

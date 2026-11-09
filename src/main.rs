@@ -141,11 +141,17 @@ enum Cmd {
         linhas: u32,
     },
     /// O que abre quando o sistema liga: lista | ligar ID | desligar ID | remover ID |
-    /// comando NOME "COMANDO" | arquivo CAMINHO | app BUSCA
+    /// comando NOME "COMANDO" | arquivo CAMINHO | app BUSCA | origem ID | desinstalar ID
     #[command(alias = "startup")]
     Inicio {
         action: Option<String>,
         args: Vec<String>,
+        /// desinstalar: apagar também as configurações e dados do programa
+        #[arg(long)]
+        config: bool,
+        /// desinstalar: não perguntar
+        #[arg(long)]
+        sim: bool,
         /// Segundos de espera antes de abrir (comando, arquivo, app)
         #[arg(long, default_value_t = 0)]
         atraso: u32,
@@ -846,6 +852,8 @@ fn real_main() -> Result<()> {
             action,
             args,
             atraso,
+            config,
+            sim,
         } => {
             use numapilot::startup::{self, Action};
             let items = startup::list();
@@ -905,6 +913,78 @@ fn real_main() -> Result<()> {
                                 bail!("{} terminou com erro", c.join(" "));
                             }
                         }
+                    }
+                    Ok(())
+                }
+                v @ ("origem" | "desinstalar") => {
+                    use numapilot::origin;
+                    let it = find(&arg(0)?)?;
+                    let t = origin::trace(&it.exec, it.file.as_deref());
+                    println!("{}", it.name);
+                    if let Some(f) = &t.file {
+                        println!(
+                            "  abre por:   {}{}",
+                            f.display(),
+                            t.file_pkg
+                                .as_ref()
+                                .map(|p| format!(" (do pacote {p})"))
+                                .unwrap_or_default()
+                        );
+                    }
+                    println!("  comando:    {}", it.exec);
+                    if let Some(e) = &t.exe {
+                        println!("  programa:   {}", e.display());
+                    }
+                    println!("  origem:     {}", t.source.text());
+                    if let Some(d) = &t.description {
+                        println!("  descrição:  {d}");
+                    }
+                    if let Some(sz) = t.size.filter(|s| *s > 0) {
+                        println!("  tamanho:    {:.1} MB", sz as f64 / 1048576.0);
+                    }
+                    if let Some(d) = &t.app_dir {
+                        println!("  pasta:      {}", d.display());
+                    }
+                    for c in &t.configs {
+                        println!("  config:     {}", c.display());
+                    }
+                    if v == "origem" {
+                        return Ok(());
+                    }
+                    let unit = it
+                        .id
+                        .strip_prefix("user:")
+                        .map(|u| (u, true))
+                        .or_else(|| it.id.strip_prefix("sys:").map(|u| (u, false)));
+                    let plan = origin::uninstall_plan(&t, unit, config);
+                    if let Some(why) = it.protected.map(String::from).or(plan.blocked.clone()) {
+                        bail!("não dá para desinstalar: {why}");
+                    }
+                    println!("\nVai fazer:");
+                    for s in &plan.steps {
+                        println!("  - {s}");
+                    }
+                    if !sim {
+                        print!("Continuar? [s/N] ");
+                        use std::io::Write;
+                        std::io::stdout().flush()?;
+                        let mut a = String::new();
+                        std::io::stdin().read_line(&mut a)?;
+                        if !a.trim().eq_ignore_ascii_case("s") {
+                            println!("Nada feito.");
+                            return Ok(());
+                        }
+                    }
+                    let (_, refused) =
+                        numapilot::procctl::terminate(&it.pids, unsafe { libc::getuid() }, false);
+                    if let Some(r) = refused {
+                        eprintln!("(não encerrei: {r})");
+                    }
+                    let st = std::process::Command::new("sh")
+                        .args(["-c", &plan.script])
+                        .status()?;
+                    if !st.success() {
+                        bail!("a desinstalação terminou com erro");
                     }
                     Ok(())
                 }

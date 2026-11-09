@@ -66,6 +66,10 @@ pub struct Item {
     pub mem: Option<u64>,
     /// PIDs encontrados (para abrir na aba Programas).
     pub pids: Vec<i32>,
+    /// Arquivo que faz abrir (.desktop do autostart ou unidade do systemd).
+    pub file: Option<PathBuf>,
+    /// Linha de comando que é aberta.
+    pub exec: String,
 }
 
 // ---------- autostart XDG ----------
@@ -200,6 +204,8 @@ fn xdg_items(desktops: &[String], procs: &Procs) -> Vec<Item> {
         let pids = procs.find(&exec);
         let mem = (!pids.is_empty()).then(|| pids.iter().filter_map(|p| pss(*p)).sum());
         v.push(Item {
+            file: Some(path.clone()),
+            exec: exec.clone(),
             id: format!("xdg:{file}"),
             group: if session || essential {
                 Group::Session
@@ -317,6 +323,8 @@ fn kde_item() -> Option<Item> {
         running: false,
         mem: None,
         pids: vec![],
+        file: Some(ksmserverrc()),
+        exec: String::new(),
     })
 }
 
@@ -515,6 +523,8 @@ fn unit_items(user: bool) -> Vec<Item> {
             let timer = id.ends_with(".timer");
             let main_pid: i32 = m.get("MainPID").and_then(|p| p.parse().ok()).unwrap_or(0);
             Some(Item {
+                file: (!frag.is_empty() && frag != "/dev/null").then(|| PathBuf::from(&frag)),
+                exec: exec.clone(),
                 id: format!("{prefix}{id}"),
                 group: if user {
                     Group::UserService
@@ -901,7 +911,7 @@ pub fn find_for_exe(exe: &str) -> Option<Item> {
         me: 0,
     };
     xdg_items(&desktops, &procs).into_iter().find(|i| {
-        crate::desktop::exec_program(&i.detail).is_some_and(|p| crate::util::basename(&p) == base)
+        crate::desktop::exec_program(&i.exec).is_some_and(|p| crate::util::basename(&p) == base)
     })
 }
 

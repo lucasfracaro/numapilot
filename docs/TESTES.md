@@ -50,6 +50,10 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
       rede) não deixam desligar
 - [ ] Inicialização → + Adicionar: programa instalado (ex.: ZapZap), arquivo AppImage/.sh e comando
       com espera de 10 s; todos abrem no próximo login; Remover apaga o atalho
+- [ ] Inicialização → Detalhes: a origem bate (ex.: Steam = pacote, OpenClaw = npm, DeckScreen =
+      arquivo em ~/.local/bin); Abrir pasta abre o lugar certo
+- [ ] Inicialização → Desinstalar… num programa de teste: mostra os passos, roda no terminal e o item
+      some da lista; no numapilot e em serviços do sistema essenciais, não deixa
 - [ ] Programas: "Abrir ao iniciar" num programa aberto; aparece na aba Inicialização
 - [ ] Serviços: filtros Rodando/Parados/Com falha; Reiniciar um serviço do usuário; Parar/Iniciar
       um do sistema (pede a senha); Log mostra o journal; NetworkManager não deixa parar

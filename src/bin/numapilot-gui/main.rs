@@ -158,7 +158,7 @@ fn group_rows(rows: &[Row]) -> Vec<Group> {
 }
 
 #[derive(PartialEq, Clone, Copy)]
-enum Tab {
+pub(crate) enum Tab {
     Programs,
     Map,
     Profiles,

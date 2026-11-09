@@ -3,6 +3,7 @@
 
 use crate::{App, fmt_bytes, theme};
 use egui::RichText;
+use numapilot::origin;
 use numapilot::startup::{self, Action, Group, Item};
 use std::time::{Duration, Instant};
 
@@ -28,6 +29,10 @@ pub(crate) struct StartupTab {
     name: String,
     command: String,
     delay: u32,
+    /// Janela Detalhes: o item, de onde ele veio e o log (serviços).
+    details: Option<(Item, origin::Trace, Option<String>)>,
+    /// Janela Desinstalar: item, origem e "apagar também configurações e a pasta".
+    uninstall: Option<(Item, origin::Trace, bool)>,
 }
 
 impl Default for StartupTab {
@@ -46,6 +51,8 @@ impl Default for StartupTab {
             name: String::new(),
             command: String::new(),
             delay: 0,
+            details: None,
+            uninstall: None,
         }
     }
 }
@@ -144,6 +151,8 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
     let f = app.startup.filter.to_lowercase();
     let mut change: Option<(Item, bool)> = None;
     let mut remove: Option<Item> = None;
+    let mut details: Option<Item> = None;
+    let mut uninstall: Option<Item> = None;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for g in [Group::Login, Group::UserService, Group::SystemService, Group::Session] {
             let list: Vec<&Item> = items
@@ -211,10 +220,24 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                             if !now.is_empty() {
                                 ui.label(RichText::new(now).small().color(p.ok));
                             }
+                            if it.id != "kde:session"
+                                && ui.small_button("Detalhes").on_hover_text("De onde vem: arquivo, programa, pacote, pastas").clicked()
+                            {
+                                details = Some(it.clone());
+                            }
                             if it.removable
                                 && ui.small_button("Remover").on_hover_text("Apaga este atalho de inicialização (não desinstala o programa)").clicked()
                             {
                                 remove = Some(it.clone());
+                            }
+                            if it.protected.is_none()
+                                && it.id != "kde:session"
+                                && ui
+                                    .small_button("Desinstalar…")
+                                    .on_hover_text("Remove o programa do jeito certo para a origem dele (pacote, Flatpak, npm, pipx, arquivo...)")
+                                    .clicked()
+                            {
+                                uninstall = Some(it.clone());
                             }
                         });
                         ui.end_row();
@@ -258,7 +281,229 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
         app.startup.invalidate();
     }
+    if let Some(it) = details {
+        let t = origin::trace(&it.exec, it.file.as_deref());
+        let log = unit_of(&it).map(|(u, user)| numapilot::services::unit_logs(u, user, 40));
+        app.startup.details = Some((it, t, log));
+    }
+    if let Some(it) = uninstall {
+        let t = origin::trace(&it.exec, it.file.as_deref());
+        app.startup.uninstall = Some((it, t, false));
+    }
     add_window(app, ui.ctx());
+    details_window(app, ui.ctx());
+    uninstall_window(app, ui.ctx());
+}
+
+fn unit_of(it: &Item) -> Option<(&str, bool)> {
+    it.id
+        .strip_prefix("user:")
+        .map(|u| (u, true))
+        .or_else(|| it.id.strip_prefix("sys:").map(|u| (u, false)))
+}
+
+/// Uma linha "rótulo: caminho [Abrir pasta]".
+fn path_row(ui: &mut egui::Ui, label: &str, p: &std::path::Path) {
+    ui.label(RichText::new(label).strong());
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(p.display().to_string()).monospace().small());
+        let dir = if p.is_dir() {
+            p.to_path_buf()
+        } else {
+            p.parent().map(|d| d.to_path_buf()).unwrap_or_default()
+        };
+        if ui.small_button("Abrir pasta").clicked() {
+            let _ = crate::jobs::open_url(&dir.to_string_lossy());
+        }
+    });
+    ui.end_row();
+}
+
+fn details_window(app: &mut App, ctx: &egui::Context) {
+    let Some((it, t, log)) = app.startup.details.clone() else {
+        return;
+    };
+    let mut open = true;
+    let mut goto: Option<i32> = None;
+    let mut uninstall = false;
+    egui::Window::new(format!("De onde vem: {}", it.name))
+        .open(&mut open)
+        .collapsible(false)
+        .default_width(640.0)
+        .show(ctx, |ui| {
+            egui::Grid::new("trace")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    if let Some(f) = &t.file {
+                        path_row(ui, "Abre por", f);
+                        if let Some(p) = &t.file_pkg {
+                            ui.label("");
+                            ui.label(
+                                RichText::new(format!("arquivo do pacote {p}"))
+                                    .small()
+                                    .weak(),
+                            );
+                            ui.end_row();
+                        }
+                    }
+                    ui.label(RichText::new("Comando").strong());
+                    ui.label(RichText::new(&it.exec).monospace().small());
+                    ui.end_row();
+                    if let Some(e) = &t.exe {
+                        path_row(ui, "Programa", e);
+                    }
+                    ui.label(RichText::new("Origem").strong());
+                    ui.label(t.source.text());
+                    ui.end_row();
+                    if let Some(d) = &t.description {
+                        ui.label(RichText::new("Descrição").strong());
+                        ui.label(d);
+                        ui.end_row();
+                    }
+                    if let Some(sz) = t.size.filter(|s| *s > 0) {
+                        ui.label(RichText::new("Tamanho").strong());
+                        ui.label(fmt_bytes(sz));
+                        ui.end_row();
+                    }
+                    if let Some(d) = &t.app_dir {
+                        path_row(ui, "Pasta do programa", d);
+                    }
+                    for c in &t.configs {
+                        path_row(ui, "Configurações", c);
+                    }
+                    ui.label(RichText::new("Agora").strong());
+                    ui.label(match (it.running, it.pids.first()) {
+                        (true, Some(p)) => format!("rodando (PID {p})"),
+                        (true, None) => "rodando".into(),
+                        _ => "não está rodando".into(),
+                    });
+                    ui.end_row();
+                });
+            ui.horizontal(|ui| {
+                if let Some(p) = it.pids.first()
+                    && ui.button("Ver na aba Programas").clicked()
+                {
+                    goto = Some(*p);
+                }
+                if it.protected.is_none() && ui.button("Desinstalar…").clicked() {
+                    uninstall = true;
+                }
+            });
+            if let Some(l) = &log {
+                ui.separator();
+                ui.label(RichText::new("Últimas linhas do log").strong());
+                egui::ScrollArea::both()
+                    .max_height(200.0)
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::Label::new(RichText::new(l).monospace().small())
+                                .wrap_mode(egui::TextWrapMode::Extend),
+                        );
+                    });
+            }
+        });
+    if let Some(pid) = goto {
+        app.progs.filter = pid.to_string();
+        app.tab = crate::Tab::Programs;
+        open = false;
+    }
+    if uninstall {
+        app.startup.uninstall = Some((it.clone(), t.clone(), false));
+        open = false;
+    }
+    if !open {
+        app.startup.details = None;
+    }
+}
+
+fn uninstall_window(app: &mut App, ctx: &egui::Context) {
+    let Some((it, t, mut configs)) = app.startup.uninstall.clone() else {
+        return;
+    };
+    let p = theme::pal_ctx(ctx);
+    let mut open = true;
+    let mut go = false;
+    let plan = origin::uninstall_plan(&t, unit_of(&it), configs);
+    egui::Window::new(format!("Desinstalar {}", it.name))
+        .open(&mut open)
+        .collapsible(false)
+        .default_width(600.0)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ctx, |ui| {
+            ui.label(format!("Origem: {}", t.source.text()));
+            ui.add_space(4.0);
+            if let Some(why) = &plan.blocked {
+                ui.label(
+                    RichText::new(format!("Não dá para desinstalar por aqui: {why}")).color(p.err),
+                );
+                return;
+            }
+            ui.label(RichText::new("Vai fazer, num terminal (o que pede senha pede lá):").strong());
+            for s in &plan.steps {
+                ui.label(format!("• {s}"));
+            }
+            if !t.configs.is_empty() || t.app_dir.is_some() {
+                ui.add_space(4.0);
+                let what: Vec<String> = t
+                    .app_dir
+                    .iter()
+                    .chain(t.configs.iter())
+                    .map(|c| c.display().to_string())
+                    .collect();
+                ui.checkbox(
+                    &mut configs,
+                    "Apagar também as configurações e a pasta do programa",
+                )
+                .on_hover_text(what.join("\n"));
+            }
+            if it.running {
+                ui.label(
+                    RichText::new("O programa está aberto: ele vai ser encerrado antes.")
+                        .small()
+                        .color(p.warn),
+                );
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(RichText::new("Desinstalar").color(p.err))
+                    .clicked()
+                {
+                    go = true;
+                }
+                if ui.button("Cancelar").clicked() {
+                    go = false;
+                    configs = false;
+                    app.startup.uninstall = None;
+                }
+            });
+        });
+    if go {
+        let (_, refused) = numapilot::procctl::terminate(&it.pids, app.my_uid, false);
+        if let Some(r) = refused {
+            numapilot::log::info(&format!("desinstalar {}: não encerrei {r}", it.name));
+        }
+        let plan = origin::uninstall_plan(&t, unit_of(&it), configs);
+        numapilot::log::info(&format!(
+            "desinstalar {} ({}): {}",
+            it.name,
+            t.source.text(),
+            plan.steps.join(" | ")
+        ));
+        match crate::jobs::in_terminal(&["sh".into(), "-c".into(), plan.script]) {
+            Ok(()) => app.toast(format!("Desinstalando {} no terminal", it.name), true),
+            Err(e) => app.toast(e, false),
+        }
+        app.startup.invalidate();
+        open = false;
+    }
+    if !open {
+        app.startup.uninstall = None;
+    } else if let Some(u) = app.startup.uninstall.as_mut() {
+        u.2 = configs;
+    }
 }
 
 fn add_window(app: &mut App, ctx: &egui::Context) {

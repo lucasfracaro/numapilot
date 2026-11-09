@@ -169,12 +169,24 @@ Tudo que abre quando o sistema liga, como no Windows, com o que está rodando e 
   a senha. O essencial (Plasma, polkit, rede, login, numapilot) não desliga.
 - **+ Adicionar**: programa instalado (busca no menu), programa aberto agora, arquivo (AppImage,
   `.sh`, binário) ou comando, com espera opcional antes de abrir. **Remover** apaga o que você criou.
+- **Detalhes**: de onde o item vem — o arquivo que faz abrir (e o pacote dono dele), o programa de
+  verdade (o script, quando é `node script.js` ou `python x.py`), a **origem** (pacote do repositório
+  ou do AUR, Flatpak, npm, pipx, cargo, programa da comunidade, AppImage ou arquivo instalado à mão),
+  descrição, tamanho, pasta do programa e pastas de configuração, com **Abrir pasta**, **Ver na aba
+  Programas** e o log (serviços).
+- **Desinstalar…**: do jeito certo para cada origem (`pacman -Rns`, `flatpak uninstall`,
+  `npm uninstall -g`, `pipx uninstall`, `cargo uninstall` ou apagar os arquivos), parando o serviço e
+  apagando o arquivo de inicialização que ficaria para trás; opcionalmente também as configurações e
+  a pasta do programa. Mostra antes o que vai fazer e roda num terminal (o pacman ainda pede
+  confirmação). Não deixa para pacotes do sistema nem para o próprio numapilot.
 
 ```bash
 numapilot inicio                                        # lista
 numapilot inicio desligar xdg:steam.desktop             # ligar / desligar / remover
 numapilot inicio app zapzap                             # programa instalado
 numapilot inicio arquivo ~/Apps/Programa.AppImage --atraso 10
+numapilot inicio origem user:openclaw-gateway.service     # de onde vem
+numapilot inicio desinstalar user:openclaw-gateway.service --config
 numapilot inicio comando "IA local" "numapilot run --gpu compute -- llama-server -m modelo.gguf"
 ```
 

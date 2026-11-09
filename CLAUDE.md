@@ -120,6 +120,11 @@ unidades desligadas lembradas em ~/.config/numapilot/startup-off.txt. Atalhos cr
 O "control center" que o Lucas usa de referência para Programas/Inicialização é o **Mission
 Center** (gerenciador de tarefas), não o BC250 Control Center.
 
+`src/origin.rs`: `trace` (de onde vem: `program_of` acha o programa de verdade atrás de
+env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade; senão
+`pacman -Qqo` e `-Qqm` para AUR; senão cargo ou arquivo solto; `app_dir_of` = pasta própria em
+~) e `uninstall_plan` (script para o terminal; bloqueia pacotes essenciais e o próprio numapilot).
+
 ## Serviços, disco e rede
 
 `src/services.rs` (aba Serviços, `numapilot servicos`): list-units + list-unit-files + show

@@ -1,5 +1,14 @@
 # Mudanças
 
+## Não lançado
+
+- Inicialização: **Detalhes** mostra de onde cada item vem (arquivo de inicialização e pacote dono,
+  programa de verdade mesmo atrás de `node`/`python`/`sh -c`, origem: repositório, AUR, Flatpak,
+  npm, pipx, cargo, comunidade, AppImage ou instalado à mão; tamanho, pasta e configurações; abrir
+  pasta, ver na aba Programas, log) e **Desinstalar…** remove do jeito certo para a origem, parando
+  o serviço e apagando a inicialização que ficaria para trás (opcionalmente as configurações e a
+  pasta). Também `numapilot inicio origem|desinstalar ID`.
+
 ## 0.5.0 — 2026-11-09
 
 - Aba **Inicialização** (e `numapilot inicio`): tudo que abre quando o sistema liga, como no

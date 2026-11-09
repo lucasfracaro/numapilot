@@ -39,7 +39,7 @@ pub(crate) struct ProgTable {
     desc: bool,
     expanded: HashSet<String>,
     pub(crate) selected: Option<String>,
-    filter: String,
+    pub(crate) filter: String,
     confirm_force: Option<String>,
     gpu_prev: HashMap<i32, (u64, Instant)>,
     /// Uso de GPU de cada processo (% de um motor), medido entre duas atualizações.

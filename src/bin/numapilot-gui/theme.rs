@@ -58,6 +58,14 @@ pub fn pal(ui: &egui::Ui) -> Pal {
     if ui.visuals().dark_mode { DARK } else { LIGHT }
 }
 
+pub fn pal_ctx(ctx: &egui::Context) -> Pal {
+    if ctx.global_style().visuals.dark_mode {
+        DARK
+    } else {
+        LIGHT
+    }
+}
+
 fn theme_file() -> std::path::PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
