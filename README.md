@@ -94,6 +94,53 @@ GitHub, então o repositório precisa estar público para isso.
 
 Depois de instalar, rode **`numapilot doctor`** (ou Configurações → Verificar tudo).
 
+### Vários PCs no mesmo código
+
+O numapilot roda em vários PCs (servidor, notebook, BC-250, CC150...). A regra é **uma versão só**:
+a `main` do GitHub é a referência, e a pasta local de cada PC e o programa instalado ficam
+sempre iguais a ela.
+
+**PC novo:**
+
+```bash
+sudo pacman -S --needed github-cli rust git     # num terminal normal (Konsole)
+gh auth login                                   # o repositório é privado
+mkdir -p ~/Projetos && cd ~/Projetos
+gh repo clone lucasfracaro/numapilot && cd numapilot
+./install.sh                                    # pede a senha
+numapilot autoteste                             # confere tudo nesta máquina
+```
+
+Rode o `install.sh` e o `self-update run` num **terminal normal**. Terminais dentro de outros
+programas (como o do Claude Code) podem bloquear o `sudo` com a mensagem "sem novos privilégios".
+
+**Antes de mexer no código, em qualquer PC:** `git pull --ff-only`.
+
+**Depois de mexer:** rode o mesmo que a CI, depois commit e push na hora. Não deixe commit só local,
+porque os outros PCs não o recebem.
+
+```bash
+cargo fmt --check && cargo test --release \
+  && cargo clippy --release --all-targets -- -D clippy::correctness -D clippy::suspicious \
+  && cargo build --release --no-default-features
+shellcheck -S warning install.sh uninstall.sh packaging/gfx906-rocm container/lab-start packaging/arch/numapilot.install
+git pull --rebase && git push
+```
+
+**Atualizar cada PC:**
+
+```bash
+numapilot self-update        # mostra o commit instalado, o que falta da pasta e do GitHub
+numapilot self-update run    # git pull + ./install.sh --yes (pede a senha)
+numapilot autoteste          # confirma que nada quebrou nesta máquina
+```
+
+**Para não quebrar os outros PCs:** cada recurso depende do hardware detectado (processador,
+GPU, notebook, placa especial) e, quando o hardware não existe, só aparece como "pulou" ou "info".
+Os testes usam um sysfs falso (`NUMAPILOT_SYSFS`) com várias máquinas simuladas. Uma correção
+feita num PC entra para todos no próximo `self-update run`, então vale rodar o `autoteste` nos
+outros PCs depois de atualizar.
+
 ## 3. Modo automático (o daemon)
 
 Ele já fica rodando depois do `install.sh`. Para cada programa de usuário:

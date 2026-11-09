@@ -18,6 +18,12 @@ Leia antes de mexer. Resume o que já foi feito e combinado com o Lucas em sess�
     Claude-Session: https://claude.ai/code/session_01JaLAC3YoxBRZYaaPzqYegM
     ```
     (numa sessão nova, use o link da sessão atual no lugar do Claude-Session).
+  - **GitHub e pastas locais sempre na mesma versão** (vários PCs testando ao mesmo tempo):
+    `git pull --ff-only` antes de mexer; depois de mexer, CI completa, commit e push na hora
+    (nunca deixar commit só local). Nada pode quebrar os outros PCs: todo recurso depende do
+    hardware detectado. Se mudar o fluxo, atualize "Vários PCs no mesmo código" no README.
+  - `sudo` não funciona nos terminais do Claude Code ("sem novos privilégios"): o
+    `install.sh` e o `self-update run` ele roda no Konsole.
   - A tag **v0.2.0** ainda precisa ser enviada por ele: `git tag v0.2.0 && git push origin v0.2.0`.
 
 ## O que é
@@ -125,4 +131,12 @@ com lixo, CUs não achadas). Avisos que sobram: sem cpufreq, sensores do firmwar
 pedindo o governor de clock da GPU (cyan-skillfish-governor) que não está rodando.
 Falta: roteiro à mão da aba Testes na BC-250.
 
-Próximo: aba Testes na BC-250 e depois os outros PCs.
+PC CC150 (2026-11-09): Intel CC150 (1 socket, 16 threads) + RX 9060 XT (gfx1200, RDNA4), repo em
+`~/Projetos/numapilot`. Autoteste: 40 testes, 38 OK, 1 aviso, 0 falhas (3 discos com SMART ok).
+O aviso era a ventoinha: no RDNA3/RDNA4 o `pwm1` é só leitura e o controle é a curva do firmware
+(`gpu_od/fan_ctrl`), que só existe com o OverDrive ligado. O doctor agora explica isso e conta a
+curva do firmware como controlável. `self-update` agora compara o commit gravado no binário
+(`build.rs` → `NUMAPILOT_COMMIT`) com a pasta, além da pasta com o GitHub.
+Falta: ligar o OverDrive, reiniciar e testar ventoinha/clock/undervolt; aba Testes.
+
+Próximo: aba Testes na BC-250 e no CC150, depois os outros PCs.

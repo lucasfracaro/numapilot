@@ -60,6 +60,25 @@ pub fn source_behind(dir: &std::path::Path) -> Option<u32> {
     String::from_utf8_lossy(&o.stdout).trim().parse().ok()
 }
 
+/// Commit de onde este binário foi compilado (vazio se não foi de um repositório git).
+pub const BUILT_COMMIT: &str = env!("NUMAPILOT_COMMIT");
+
+/// Quantos commits o código da pasta tem que este binário não tem (ex.: commitado aqui e ainda
+/// não reinstalado). None = não deu para saber (binário sem commit gravado, ou commit sumiu).
+pub fn source_ahead_of_installed(dir: &std::path::Path) -> Option<u32> {
+    if BUILT_COMMIT.is_empty() {
+        return None;
+    }
+    let o = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-list", "--count", &format!("{BUILT_COMMIT}..HEAD")])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    String::from_utf8_lossy(&o.stdout).trim().parse().ok()
+}
+
 /// Comando que atualiza (para rodar num terminal: pede senha e mostra o progresso).
 pub fn command() -> Result<Vec<String>, String> {
     match how() {
