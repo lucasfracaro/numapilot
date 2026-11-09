@@ -123,6 +123,22 @@ const ITEMS: &[Item] = &[
         Always,
     ),
     it(
+        "tabela",
+        "Programas",
+        "Ordenar e buscar",
+        "Clique nos títulos Nome, CPU, Memória e GPU (de novo inverte); busque por nome e por PID.",
+        "A ordem muda; CPU, memória e GPU de um jogo batem com o Mission Center ou o MangoHud.",
+        Always,
+    ),
+    it(
+        "encerrar",
+        "Programas",
+        "Encerrar e Forçar parada",
+        "Abra um programa seu (ex.: Dolphin), selecione e use Encerrar; abra de novo e use Forçar parada.",
+        "Encerrar fecha; Forçar parada pede confirmação e fecha. kwin, plasmashell e Xwayland ficam em \"Sessão e sistema\" e os botões não deixam.",
+        Always,
+    ),
+    it(
         "nucleos",
         "Programas",
         "Escolher núcleos",

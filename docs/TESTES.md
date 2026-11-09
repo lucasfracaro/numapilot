@@ -45,6 +45,10 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 
 ## 2. Jogos
 
+- [ ] Programas: ordenar por Nome, CPU, Memória e GPU (clicar de novo inverte); a GPU de um jogo
+      bate com o Mission Center/MangoHud; buscar por nome e por PID
+- [ ] Programas: abrir um programa seu (ex.: Dolphin) → selecionar → Encerrar fecha; Forçar parada
+      pede confirmação; kwin/plasmashell/Xwayland ficam em "Sessão e sistema" e os botões não deixam
 - [ ] Steam fechada → Programas → "Aplicar em todos os jogos"; abrir a Steam e conferir as opções
 - [ ] Elden Ring com o perfil Jogo: FPS antes/depois (era ~20 com os 2 sockets)
 - [ ] Jogo com Easy Anti-Cheat abre com o perfil Jogo (enxerga só os núcleos liberados)

@@ -10,6 +10,7 @@ mod lab;
 mod llm;
 mod machine;
 mod map;
+mod programs;
 mod settings;
 mod single;
 mod stream;
@@ -50,6 +51,8 @@ pub(crate) struct Group {
     gpus: Vec<String>,
     origin: String,
     steam: bool,
+    /// Processos do programa: (pid, nome, núcleos em uso).
+    pub(crate) procs: Vec<(i32, String, f64)>,
 }
 
 fn group_rows(rows: &[Row]) -> Vec<Group> {
@@ -132,6 +135,10 @@ fn group_rows(rows: &[Row]) -> Vec<Group> {
                 uid: rs[0].uid,
                 cores: rs.iter().map(|r| r.cores).sum(),
                 origin: rs[0].origin.clone(),
+                procs: rs
+                    .iter()
+                    .map(|r| (r.pid, r.comm.clone(), r.cores))
+                    .collect(),
                 pids,
                 nodes,
                 gpus,
@@ -284,6 +291,8 @@ pub(crate) struct App {
     pub(crate) cpu_name: String,
     /// Memória em uso por programa (bytes), pela chave do programa.
     pub(crate) prog_mem: HashMap<String, u64>,
+    /// Tabela da aba Programas (ordem, seleção, GPU por processo).
+    pub(crate) progs: programs::ProgTable,
     pub(crate) map_threads: bool,
     pub(crate) checklist: checklist::Checklist,
     pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
@@ -405,6 +414,7 @@ impl App {
             temp_spark: BTreeMap::new(),
             cpu_power: BTreeMap::new(),
             prog_mem: HashMap::new(),
+            progs: programs::ProgTable::default(),
             cpu_name: numapilot::topo::short_cpu_name(&numapilot::recipes::cpu_model()),
             map_threads: true,
             checklist: checklist::Checklist::default(),
@@ -571,13 +581,18 @@ impl App {
             .filter(|r| !self.only_mine || r.uid == self.my_uid)
             .collect();
         self.groups = group_rows(&rows);
-        // memória de cada programa (soma do PSS dos processos: a memória dividida entre
-        // processos conta uma vez só)
+        // memória (PSS: a memória dividida entre processos conta uma vez só) e GPU de cada
+        // processo; a de cada programa é a soma
+        self.progs.sample(&self.groups);
         self.prog_mem = self
             .groups
             .iter()
             .map(|g| {
-                let b: u64 = g.pids.iter().filter_map(|p| pss_bytes(*p)).sum();
+                let b: u64 = g
+                    .pids
+                    .iter()
+                    .filter_map(|p| self.progs.pid_mem.get(p))
+                    .sum();
                 (g.key.clone(), b)
             })
             .collect();
@@ -900,80 +915,30 @@ impl App {
     }
 
     fn programs(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            if ui.checkbox(&mut self.only_mine, "Só os meus programas").changed() {
-                self.last = Instant::now() - Duration::from_secs(10);
-            }
-            ui.label(
-                RichText::new("CPU muda na hora. GPU vale quando o programa abre (Reabrir, atalho do menu ou opção da Steam).")
-                    .weak(),
-            );
-        });
-        ui.horizontal(|ui| {
-            ui.label("Steam:");
-            if ui
-                .button("Aplicar em todos os jogos")
-                .on_hover_text("Coloca \"numapilot run -- %command%\" nas opções de inicialização de todos os jogos instalados (mantém o que já existia). Feche a Steam antes.")
-                .clicked()
-            {
-                self.start_job("Steam: aplicar em todos os jogos", vec![jobs::sibling("numapilot"), "steam".into(), "enable".into()]);
-            }
-            if ui.button("Remover de todos").clicked() {
-                self.start_job("Steam: remover de todos os jogos", vec![jobs::sibling("numapilot"), "steam".into(), "disable".into()]);
-            }
-            if ui.button("Ver lista").clicked() {
-                self.start_job("Steam: jogos", vec![jobs::sibling("numapilot"), "steam".into(), "list".into()]);
-            }
-        });
-        ui.separator();
-        if self.groups.is_empty() {
-            ui.label("Nenhum programa sendo usado agora. Abra algo (um jogo, o Blender, o llama-server...) e ele aparece aqui.");
-            return;
-        }
-        let groups = self.groups.clone();
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            egui::Grid::new("progs")
-                .striped(true)
-                .num_columns(6)
-                .spacing([14.0, 8.0])
-                .show(ui, |ui| {
-                    for h in [
-                        "Programa",
-                        "Uso",
-                        "Onde está agora",
-                        "Processador",
-                        "Placa de vídeo",
-                        "",
-                    ] {
-                        ui.label(RichText::new(h).strong());
-                    }
-                    ui.end_row();
-                    for g in &groups {
-                        self.program_row(ui, g);
-                        ui.end_row();
-                    }
-                });
-        });
+        programs::ui(self, ui);
     }
 
+    /// Atualiza na próxima tela (depois de mudar o filtro ou encerrar um programa).
+    pub(crate) fn force_refresh(&mut self) {
+        self.last = Instant::now() - Duration::from_secs(10);
+    }
+
+    /// Controles do numapilot para um programa (dentro da linha aberta da tabela).
     fn program_row(&mut self, ui: &mut egui::Ui, g: &Group) {
         let prof = self.profile_of(&g.key);
-        // Programa
-        ui.vertical(|ui| {
-            ui.set_min_width(230.0);
-            ui.label(RichText::new(&g.label).strong())
-                .on_hover_text(format!("{}\nPIDs: {:?}\nchave: {}", g.exe, g.pids, g.key));
-            let sub = if g.steam {
-                format!("Steam · {}", g.key)
-            } else {
-                g.exe.clone()
-            };
-            ui.label(RichText::new(truncate(&sub, 42)).small().weak());
-        });
-        // Uso: processador e memória (com o limite, se tiver)
+        // Uso: núcleos e memória (com o limite, se tiver)
         ui.vertical(|ui| {
             ui.set_min_width(110.0);
             ui.label(format!("{:.1} núcleos", g.cores));
+            ui.label(
+                RichText::new(if g.steam {
+                    format!("Steam · {}", g.key)
+                } else {
+                    truncate(&g.exe, 42)
+                })
+                .small()
+                .weak(),
+            );
             if let Some(b) = self.prog_mem.get(&g.key).copied().filter(|b| *b > 0) {
                 match prof.mem_max_gb {
                     Some(lim) => {

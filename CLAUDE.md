@@ -143,4 +143,11 @@ curva do firmware, clock/voltagem até -200 mV. Autoteste logo depois do boot ag
 aviso) na coleta de saúde se o serviço iniciou há menos de 3 min.
 Falta: testar à mão ventoinha (curva), clock/voltagem e undervolt automático; aba Testes.
 
+Aba Programas (2026-11-09) virou tabela no estilo do Mission Center (`programs.rs` na interface):
+colunas ordenáveis com totais, seções Aplicativos / Sessão e sistema, linha que abre com os
+processos e os controles, Encerrar/Forçar parada. Proteção e GPU por processo (fdinfo do DRM;
+o amdgpu repete a VRAM em `drm-memory-vram` e `drm-resident-vram`, usar só uma) em
+`src/procctl.rs`. Só encerra processos do próprio usuário fora de `session.slice`/`system.slice`
+e fora da lista de protegidos (KDE, GNOME, áudio, portais, numapilot).
+
 Próximo: aba Testes na BC-250 e no CC150, depois os outros PCs.

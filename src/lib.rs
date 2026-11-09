@@ -32,6 +32,7 @@ pub mod notify;
 pub mod nvctl;
 pub mod nvml;
 pub mod peers;
+pub mod procctl;
 pub mod procevents;
 pub mod procfs;
 pub mod profiles;

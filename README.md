@@ -171,6 +171,20 @@ journalctl -u numapilot -f        # decisões em tempo real
 Abra **numapilot** no menu (ou `numapilot-gui`). O daemon em segundo plano mapeia cada programa
 aberto, e ele aparece na lista agrupado por programa. Os jogos da Steam são agrupados pelo AppId.
 
+A aba **Programas** é uma tabela no estilo de um monitor do sistema:
+
+- colunas **Nome, PID, CPU, Memória, GPU, Memória da GPU e Placa**, com o total de cada uma no
+  cabeçalho. Clique no título para ordenar (de novo inverte a ordem). A CPU é a % da máquina
+  toda. A memória é o PSS (a memória dividida entre processos conta uma vez só). GPU e memória
+  da GPU vêm do `fdinfo` do DRM de cada processo (amdgpu, Intel e NVIDIA com driver novo);
+- duas seções: **Aplicativos** e **Sessão e sistema** (KDE/GNOME, Xwayland, áudio, portais...);
+- a seta (ou dois cliques) abre a linha: processos do programa e os controles abaixo;
+- **Encerrar** (SIGTERM, como fechar a janela) e **Forçar parada** (SIGKILL, pede confirmação)
+  no programa selecionado. Só valem para programas seus abertos na sessão (`app.slice`). Nunca
+  valem para o kernel, o sistema, outros usuários, a sessão gráfica (`session.slice`, kwin,
+  plasmashell...) nem o próprio numapilot. Lista em `src/procctl.rs`;
+- **Buscar** por nome, executável ou PID, e **Só os meus**.
+
 - **Processador:** Automático, Socket da GPU escolhida, Só o socket 0/1 ou Os dois sockets.
   A troca vale **na hora**: o processo e a memória dele mudam de socket.
 - **Placa de vídeo:** Automático, a placa de vídeo, cada MI50 como **jogo/gráfico** ou
