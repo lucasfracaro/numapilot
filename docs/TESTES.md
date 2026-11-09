@@ -51,6 +51,10 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 - [ ] Inicialização → + Adicionar: programa instalado (ex.: ZapZap), arquivo AppImage/.sh e comando
       com espera de 10 s; todos abrem no próximo login; Remover apaga o atalho
 - [ ] Programas: "Abrir ao iniciar" num programa aberto; aparece na aba Inicialização
+- [ ] Serviços: filtros Rodando/Parados/Com falha; Reiniciar um serviço do usuário; Parar/Iniciar
+      um do sistema (pede a senha); Log mostra o journal; NetworkManager não deixa parar
+- [ ] Disco e rede: copiar um arquivo grande; a coluna Disco do programa e o gráfico do disco no
+      Mapa sobem; baixar algo e ver o ↓ da placa de rede
 - [ ] Programas: ordenar por Nome, CPU, Memória e GPU (clicar de novo inverte); a GPU de um jogo
       bate com o Mission Center/MangoHud; buscar por nome e por PID
 - [ ] Programas: abrir um programa seu (ex.: Dolphin) → selecionar → Encerrar fecha; Forçar parada

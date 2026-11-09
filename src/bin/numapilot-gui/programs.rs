@@ -13,6 +13,7 @@ pub(crate) enum Col {
     Pid,
     Cpu,
     Mem,
+    Disk,
     Gpu,
     Vram,
     Card,
@@ -23,6 +24,7 @@ const COLS: &[(Col, &str, f32)] = &[
     (Col::Pid, "PID", 72.0),
     (Col::Cpu, "CPU", 70.0),
     (Col::Mem, "Memória", 92.0),
+    (Col::Disk, "Disco", 84.0),
     (Col::Gpu, "GPU", 62.0),
     (Col::Vram, "Memória da GPU", 118.0),
     (Col::Card, "Placa", 120.0),
@@ -44,6 +46,9 @@ pub(crate) struct ProgTable {
     gpu_pct: HashMap<i32, f32>,
     vram: HashMap<i32, u64>,
     pub(crate) pid_mem: HashMap<i32, u64>,
+    io_prev: HashMap<i32, (u64, Instant)>,
+    /// Leitura + escrita no disco de cada processo (bytes/s).
+    disk_bps: HashMap<i32, f64>,
     /// Por que o programa (processo principal) não pode ser encerrado; ausente = pode.
     blocked: HashMap<i32, &'static str>,
     /// Seções fechadas: 0 = Aplicativos, 1 = Sessão e sistema.
@@ -63,6 +68,8 @@ impl Default for ProgTable {
             gpu_pct: HashMap::new(),
             vram: HashMap::new(),
             pid_mem: HashMap::new(),
+            io_prev: HashMap::new(),
+            disk_bps: HashMap::new(),
             blocked: HashMap::new(),
             closed: [false, false],
         }
@@ -77,6 +84,8 @@ impl ProgTable {
         self.gpu_pct.clear();
         self.vram.clear();
         self.pid_mem.clear();
+        self.disk_bps.clear();
+        let mut io_prev = HashMap::new();
         self.blocked.clear();
         let me = unsafe { libc::getuid() };
         for g in groups {
@@ -86,6 +95,17 @@ impl ProgTable {
             for &pid in &g.pids {
                 if let Some(b) = crate::pss_bytes(pid) {
                     self.pid_mem.insert(pid, b);
+                }
+                if let Some((r, w)) = numapilot::iostat::proc_io(pid) {
+                    let tot = r + w;
+                    if let Some((p, t)) = self.io_prev.get(&pid) {
+                        let dt = now.duration_since(*t).as_secs_f64();
+                        if dt > 0.05 {
+                            self.disk_bps
+                                .insert(pid, tot.saturating_sub(*p) as f64 / dt);
+                        }
+                    }
+                    io_prev.insert(pid, (tot, now));
                 }
                 let Some(u) = procctl::gpu_use(pid) else {
                     continue;
@@ -102,10 +122,18 @@ impl ProgTable {
             }
         }
         self.gpu_prev = prev;
+        self.io_prev = io_prev;
     }
 
     fn mem(&self, pids: &[i32]) -> u64 {
         pids.iter().filter_map(|p| self.pid_mem.get(p)).sum()
+    }
+    fn disk(&self, pids: &[i32]) -> Option<f64> {
+        let v: Vec<f64> = pids
+            .iter()
+            .filter_map(|p| self.disk_bps.get(p).copied())
+            .collect();
+        (!v.is_empty()).then(|| v.iter().sum())
     }
     fn gpu(&self, pids: &[i32]) -> Option<f32> {
         let v: Vec<f32> = pids
@@ -128,6 +156,7 @@ struct Cells {
     pid: String,
     cpu: String,
     mem: String,
+    disk: String,
     gpu: String,
     vram: String,
     card: String,
@@ -140,6 +169,7 @@ impl Cells {
             Col::Pid => &self.pid,
             Col::Cpu => &self.cpu,
             Col::Mem => &self.mem,
+            Col::Disk => &self.disk,
             Col::Gpu => &self.gpu,
             Col::Vram => &self.vram,
             Col::Card => &self.card,
@@ -163,8 +193,9 @@ fn layout(width: f32) -> Vec<(Col, &'static str, f32)> {
         .iter()
         .copied()
         .filter(|(c, _, _)| {
-            !(width < 820.0 && *c == Col::Card
-                || width < 680.0 && *c == Col::Vram
+            !(width < 900.0 && *c == Col::Card
+                || width < 760.0 && *c == Col::Vram
+                || width < 640.0 && *c == Col::Disk
                 || width < 560.0 && *c == Col::Pid)
         })
         .collect();
@@ -284,6 +315,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
             Col::Pid => g.main_pid as f64,
             Col::Cpu => g.cores,
             Col::Mem => t.mem(&g.pids) as f64,
+            Col::Disk => t.disk(&g.pids).unwrap_or(-1.0),
             Col::Gpu => t.gpu(&g.pids).unwrap_or(-1.0) as f64,
             Col::Vram => t.vram_of(&g.pids).map(|v| v as f64).unwrap_or(-1.0),
             _ => 0.0,
@@ -338,6 +370,12 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         let total = match c {
             Col::Cpu => pct(tot_cpu),
             Col::Mem => format!("{tot_mem:.0}%"),
+            Col::Disk => numapilot::iostat::fmt_rate(
+                app.disk_rates
+                    .iter()
+                    .map(|d| d.read_bps + d.write_bps)
+                    .sum(),
+            ),
             Col::Gpu => pct(tot_gpu as f64),
             Col::Vram if tot_vram > 0 => fmt_bytes(tot_vram),
             _ => String::new(),
@@ -451,6 +489,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                         pid: g.main_pid.to_string(),
                         cpu: pct(g.cores / threads * 100.0),
                         mem: fmt_mem(t.mem(&g.pids)),
+                        disk: fmt_disk(t.disk(&g.pids)),
                         gpu: t
                             .gpu(&g.pids)
                             .map(|v| pct(v as f64))
@@ -509,6 +548,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 pid: pid.to_string(),
                                 cpu: pct(cores / threads * 100.0),
                                 mem: fmt_mem(t.mem(&pids)),
+                                disk: fmt_disk(t.disk(&pids)),
                                 gpu: t
                                     .gpu(&pids)
                                     .map(|v| pct(v as f64))
@@ -583,6 +623,14 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         if close {
             app.progs.confirm_force = None;
         }
+    }
+}
+
+fn fmt_disk(v: Option<f64>) -> String {
+    match v {
+        None => "—".into(),
+        Some(b) if b < 1024.0 => "0".into(),
+        Some(b) => numapilot::iostat::fmt_rate(b),
     }
 }
 

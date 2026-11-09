@@ -121,6 +121,25 @@ enum Cmd {
         #[arg(long, default_value_t = 120)]
         disk: u32,
     },
+    /// Serviços do systemd: lista [--usuario] [--rodando|--falhas] | iniciar U | parar U |
+    /// reiniciar U | log U
+    #[command(alias = "services")]
+    Servicos {
+        action: Option<String>,
+        unit: Option<String>,
+        /// Serviços do usuário (systemctl --user) em vez dos do sistema
+        #[arg(long)]
+        usuario: bool,
+        /// Só os que estão rodando
+        #[arg(long)]
+        rodando: bool,
+        /// Só os que falharam
+        #[arg(long)]
+        falhas: bool,
+        /// Linhas do log
+        #[arg(short = 'n', long, default_value_t = 60)]
+        linhas: u32,
+    },
     /// O que abre quando o sistema liga: lista | ligar ID | desligar ID | remover ID |
     /// comando NOME "COMANDO" | arquivo CAMINHO | app BUSCA
     #[command(alias = "startup")]
@@ -748,6 +767,80 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
             }
+        }
+        Cmd::Servicos {
+            action,
+            unit,
+            usuario,
+            rodando,
+            falhas,
+            linhas,
+        } => {
+            use numapilot::services::{self, Verb};
+            let all = services::list(usuario);
+            let find = |u: &Option<String>| -> anyhow::Result<services::Service> {
+                let u = u
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("falta o nome do serviço"))?;
+                let full = if u.contains('.') {
+                    u.to_string()
+                } else {
+                    format!("{u}.service")
+                };
+                all.iter().find(|s| s.unit == full).cloned().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "serviço {full} não encontrado{}",
+                        if usuario {
+                            ""
+                        } else {
+                            " (do usuário? use --usuario)"
+                        }
+                    )
+                })
+            };
+            let verb = match action.as_deref().unwrap_or("lista") {
+                "lista" | "list" => {
+                    for s in all
+                        .iter()
+                        .filter(|s| (!rodando || s.running()) && (!falhas || s.failed()))
+                    {
+                        let boot = match s.at_boot() {
+                            Some(true) => "boot",
+                            Some(false) => "-",
+                            None => "",
+                        };
+                        let mem = s
+                            .mem
+                            .map(|m| format!("{} MB", m / 1048576))
+                            .unwrap_or_default();
+                        println!(
+                            "{:<44} {:<14} {:<5} {:>8}  {}",
+                            s.unit,
+                            s.state_text(),
+                            boot,
+                            mem,
+                            s.description
+                        );
+                    }
+                    return Ok(());
+                }
+                "log" | "logs" => {
+                    print!("{}", services::logs(&find(&unit)?, linhas));
+                    return Ok(());
+                }
+                "iniciar" | "start" => Verb::Start,
+                "parar" | "stop" => Verb::Stop,
+                "reiniciar" | "restart" => Verb::Restart,
+                o => bail!("ação desconhecida: {o}"),
+            };
+            let s = find(&unit)?;
+            let c = services::action_command(&s, verb).map_err(|e| anyhow::anyhow!(e))?;
+            let st = std::process::Command::new(&c[0]).args(&c[1..]).status()?;
+            if !st.success() {
+                bail!("{} terminou com erro", c.join(" "));
+            }
+            println!("{}: {}", s.unit, verb.text().to_lowercase());
+            Ok(())
         }
         Cmd::Inicio {
             action,

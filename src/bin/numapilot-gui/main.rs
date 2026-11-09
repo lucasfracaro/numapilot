@@ -11,6 +11,7 @@ mod llm;
 mod machine;
 mod map;
 mod programs;
+mod services;
 mod settings;
 mod single;
 mod startup;
@@ -168,6 +169,7 @@ enum Tab {
     Stream,
     Settings,
     Startup,
+    Services,
     Tests,
 }
 
@@ -224,9 +226,15 @@ const TABS: &[(Tab, &str, &str, &str)] = &[
     ),
     (
         Tab::Startup,
-        "⏻",
+        "🚀",
         "Inicialização",
         "Tudo que abre quando o sistema liga: programas do login e serviços",
+    ),
+    (
+        Tab::Services,
+        "⚙",
+        "Serviços",
+        "Serviços do sistema e do usuário: iniciar, parar, reiniciar e ver o log",
     ),
     (
         Tab::Map,
@@ -303,6 +311,20 @@ pub(crate) struct App {
     pub(crate) progs: programs::ProgTable,
     /// Aba Inicialização.
     pub(crate) startup: startup::StartupTab,
+    /// Aba Serviços.
+    pub(crate) services: services::ServicesTab,
+    /// Disco e rede: velocidades agora e o último minuto de cada um.
+    io: numapilot::iostat::IoMonitor,
+    pub(crate) disk_rates: Vec<numapilot::iostat::DiskRate>,
+    pub(crate) net_rates: Vec<numapilot::iostat::NetRate>,
+    /// (leitura, escrita) ou (download, upload) em bytes/s, último minuto.
+    pub(crate) io_hist: BTreeMap<
+        String,
+        (
+            std::collections::VecDeque<f32>,
+            std::collections::VecDeque<f32>,
+        ),
+    >,
     pub(crate) map_threads: bool,
     pub(crate) checklist: checklist::Checklist,
     pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
@@ -426,6 +448,11 @@ impl App {
             prog_mem: HashMap::new(),
             progs: programs::ProgTable::default(),
             startup: startup::StartupTab::default(),
+            services: services::ServicesTab::default(),
+            io: Default::default(),
+            disk_rates: vec![],
+            net_rates: vec![],
+            io_hist: BTreeMap::new(),
             cpu_name: numapilot::topo::short_cpu_name(&numapilot::recipes::cpu_model()),
             map_threads: true,
             checklist: checklist::Checklist::default(),
@@ -592,6 +619,24 @@ impl App {
             .filter(|r| !self.only_mine || r.uid == self.my_uid)
             .collect();
         self.groups = group_rows(&rows);
+        let (d, n) = self.io.sample();
+        let mut push = |k: String, a: f64, b: f64| {
+            let h = self.io_hist.entry(k).or_default();
+            for (q, v) in [(&mut h.0, a), (&mut h.1, b)] {
+                if q.len() >= theme::Spark::LEN {
+                    q.pop_front();
+                }
+                q.push_back(v as f32);
+            }
+        };
+        for x in &d {
+            push(format!("disk:{}", x.name), x.read_bps, x.write_bps);
+        }
+        for x in &n {
+            push(format!("net:{}", x.name), x.rx_bps, x.tx_bps);
+        }
+        self.disk_rates = d;
+        self.net_rates = n;
         // memória (PSS: a memória dividida entre processos conta uma vez só) e GPU de cada
         // processo; a de cada programa é a soma
         self.progs.sample(&self.groups);
@@ -1380,6 +1425,7 @@ impl eframe::App for App {
                 Tab::Stream => stream::ui(self, ui),
                 Tab::Settings => settings::ui(self, ui),
                 Tab::Startup => startup::ui(self, ui),
+                Tab::Services => services::ui(self, ui),
                 Tab::Tests => checklist::ui(self, ui),
             });
         let ctx = ui.ctx().clone();

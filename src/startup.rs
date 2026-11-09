@@ -391,6 +391,11 @@ fn remembered_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("startup-off.txt"))
 }
 
+/// Unidade essencial (rede, login, sessão, numapilot): não deixar desligar nem parar.
+pub fn essential_unit(unit: &str) -> bool {
+    ESSENTIAL_UNITS.iter().any(|e| unit.starts_with(e))
+}
+
 /// Unidades desligadas pelo numapilot: continuam na lista para poder ligar de novo.
 fn remembered() -> BTreeSet<String> {
     std::fs::read_to_string(remembered_path())
@@ -496,7 +501,7 @@ fn unit_items(user: bool) -> Vec<Item> {
             if !matches!(state, "enabled" | "disabled" | "enabled-runtime") && !ours_masked {
                 return None;
             }
-            let essential = ESSENTIAL_UNITS.iter().any(|e| id.starts_with(e));
+            let essential = essential_unit(&id);
             let frag = m.get("FragmentPath").cloned().unwrap_or_default();
             // mascarado: o arquivo vira /dev/null (o original é do pacote)
             let mine = frag != "/dev/null"

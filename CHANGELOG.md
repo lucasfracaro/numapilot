@@ -9,6 +9,12 @@
   adicionar programa instalado, aberto agora, arquivo (AppImage, .sh, binário) ou comando, com
   espera opcional. Essenciais protegidos.
 - Aba Programas: **Abrir ao iniciar** em cada programa.
+- Aba **Serviços** (e `numapilot servicos`): todos os serviços do sistema e do usuário com estado,
+  se abrem no boot e memória; filtros (rodando, parados, com falha); Iniciar, Parar, Reiniciar e
+  Log (journal). Serviços do sistema pedem a senha; os essenciais não podem ser parados.
+- **Disco e rede**: coluna Disco (leitura + escrita por programa) na aba Programas, com o total no
+  cabeçalho; seção "Discos e rede" no Mapa com leitura, escrita e % ativo de cada disco e
+  download/upload de cada placa de rede, com o último minuto.
 - BC-250: o botão do BC250 Control Center diz o que faz ("Gerenciar núcleos, CUs, frequências e
   voltagens" / "Instalar o BC250 Control Center").
 

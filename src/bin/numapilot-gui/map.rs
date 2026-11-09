@@ -338,6 +338,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             core_map(ui, &app.topo, &app.cpu_loads, None, &who);
         }
         ui.separator();
+        disks_and_net(app, ui);
+        ui.separator();
 
         ui.heading("Memória e frequência por socket");
         let nodes = app.topo.nodes.clone();
@@ -442,4 +444,120 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         });
     });
+}
+
+/// Gráfico de duas séries (último minuto) na mesma escala: a = cheia, b = linha.
+fn dual_graph(
+    ui: &mut egui::Ui,
+    a: &std::collections::VecDeque<f32>,
+    b: &std::collections::VecDeque<f32>,
+    ca: Color32,
+    cb: Color32,
+) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(260.0, 46.0), Sense::hover());
+    let pal = crate::theme::pal(ui);
+    ui.painter().rect_filled(rect, 4.0, pal.track);
+    let max = a.iter().chain(b.iter()).cloned().fold(1024.0f32, f32::max);
+    let n = (crate::theme::Spark::LEN - 1) as f32;
+    let pts = |q: &std::collections::VecDeque<f32>| -> Vec<egui::Pos2> {
+        let len = q.len();
+        q.iter()
+            .enumerate()
+            .map(|(i, v)| {
+                egui::pos2(
+                    rect.right() - (len - 1 - i) as f32 * rect.width() / n,
+                    rect.bottom() - (v / max) * (rect.height() - 2.0) - 1.0,
+                )
+            })
+            .collect()
+    };
+    for (q, c, w) in [(a, ca, 2.0), (b, cb, 1.5)] {
+        let p = pts(q);
+        if p.len() >= 2 {
+            ui.painter().add(egui::Shape::line(p, Stroke::new(w, c)));
+        }
+    }
+}
+
+/// Discos (leitura, escrita, % ativo) e rede (download, upload), com o último minuto.
+fn disks_and_net(app: &App, ui: &mut egui::Ui) {
+    use numapilot::iostat::fmt_rate;
+    let read = Color32::from_rgb(0x5b, 0x8c, 0xff);
+    let write = Color32::from_rgb(0xf0, 0xa6, 0x3a);
+    let down = Color32::from_rgb(0x3e, 0xcf, 0x8e);
+    let up = Color32::from_rgb(0xc0, 0x7c, 0xf0);
+    ui.heading("Discos e rede");
+    if app.disk_rates.is_empty() && app.net_rates.is_empty() {
+        ui.label(RichText::new("Medindo...").weak());
+        return;
+    }
+    egui::Grid::new("io")
+        .num_columns(3)
+        .spacing([18.0, 8.0])
+        .min_col_width(170.0)
+        .striped(true)
+        .show(ui, |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            let empty = std::collections::VecDeque::new();
+            for d in &app.disk_rates {
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(format!("Disco {}", d.name)).strong());
+                    if !d.model.is_empty() {
+                        ui.label(RichText::new(&d.model).small().weak());
+                    }
+                });
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(format!("leitura {}", fmt_rate(d.read_bps))).color(read),
+                    );
+                    ui.label(
+                        RichText::new(format!("escrita {}", fmt_rate(d.write_bps))).color(write),
+                    );
+                    ui.label(
+                        RichText::new(format!("ativo {:.0}% do tempo", d.busy_pct))
+                            .small()
+                            .weak(),
+                    );
+                });
+                let h = app.io_hist.get(&format!("disk:{}", d.name));
+                dual_graph(
+                    ui,
+                    h.map_or(&empty, |h| &h.0),
+                    h.map_or(&empty, |h| &h.1),
+                    read,
+                    write,
+                );
+                ui.end_row();
+            }
+            for n in &app.net_rates {
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "{} {}",
+                            if n.wifi { "Wi-Fi" } else { "Rede" },
+                            n.name
+                        ))
+                        .strong(),
+                    );
+                });
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(format!("↓ {}", fmt_rate(n.rx_bps))).color(down));
+                    ui.label(RichText::new(format!("↑ {}", fmt_rate(n.tx_bps))).color(up));
+                });
+                let h = app.io_hist.get(&format!("net:{}", n.name));
+                dual_graph(
+                    ui,
+                    h.map_or(&empty, |h| &h.0),
+                    h.map_or(&empty, |h| &h.1),
+                    down,
+                    up,
+                );
+                ui.end_row();
+            }
+        });
+    ui.label(
+        RichText::new("Gráficos: último minuto, na mesma escala (linha cheia = leitura/download).")
+            .small()
+            .weak(),
+    );
 }

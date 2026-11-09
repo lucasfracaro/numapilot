@@ -120,6 +120,14 @@ unidades desligadas lembradas em ~/.config/numapilot/startup-off.txt. Atalhos cr
 O "control center" que o Lucas usa de referência para Programas/Inicialização é o **Mission
 Center** (gerenciador de tarefas), não o BC250 Control Center.
 
+## Serviços, disco e rede
+
+`src/services.rs` (aba Serviços, `numapilot servicos`): list-units + list-unit-files + show
+(MainPID, MemoryCurrent); sistema por `pkexec`, usuário direto; essenciais via
+`startup::essential_unit`; unidades `app-…@hash.service` são programas (ficam fora). `src/iostat.rs`:
+/proc/diskstats (só discos inteiros), /sys/class/net (física ou VPN), /proc/PID/io por processo;
+`IoMonitor` mede as velocidades entre duas leituras.
+
 ## Testar e registros
 
 - `numapilot autoteste` — confere tudo nesta máquina sem mudar nada e grava
