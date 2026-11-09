@@ -1027,18 +1027,36 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         } else {
             Level::Warn
         };
+        // RDNA3/RDNA4: o pwm1 é só leitura; o controle é a curva do firmware em
+        // gpu_od/fan_ctrl, que só existe com o OverDrive ligado
+        let fan_ok = s.fan_controllable || s.fw_fan_curve;
+        let od_off_fan = !fan_ok
+            && g.vendor == 0x1002
+            && s.fan_rpm.is_some()
+            && !crate::bootcfg::overdrive_state().active;
         add(
             &a,
             "ventoinha",
-            if s.fan_controllable { Level::Ok } else { soft },
-            if s.fan_controllable {
+            if fan_ok { Level::Ok } else { soft },
+            if s.fw_fan_curve {
+                format!(
+                    "controlável pela curva do firmware ({} RPM)",
+                    s.fan_rpm.unwrap_or(0)
+                )
+            } else if s.fan_controllable {
                 format!("controlável ({} RPM)", s.fan_rpm.unwrap_or(0))
             } else if laptop || g.is_integrated() {
                 "controlada pelo notebook (perfil de energia)".into()
+            } else if od_off_fan {
+                "sem controle: OverDrive desligado".into()
             } else {
                 "sem controle pelo driver".into()
             },
-            None,
+            od_off_fan.then_some(
+                "Nas placas AMD novas (RX 7000/9000) a ventoinha é controlada pela curva do \
+                 firmware, que só aparece com o OverDrive ligado: Placas de vídeo → OverDrive \
+                 (precisa reiniciar)",
+            ),
         );
         add(
             &a,

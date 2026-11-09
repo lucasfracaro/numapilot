@@ -481,11 +481,10 @@ fn flags(app: &App) -> Flags {
         multi: app.topo.nodes.len() > 1,
         ryzen: laptop && model.contains("Ryzen"),
         acer: numapilot::acer::is_acer(),
-        fan: app
-            .topo
-            .gpus
-            .iter()
-            .any(|g| numapilot::gpuctl::read_sensors(&g.pci).fan_controllable),
+        fan: app.topo.gpus.iter().any(|g| {
+            let s = numapilot::gpuctl::read_sensors(&g.pci);
+            s.fan_controllable || s.fw_fan_curve
+        }),
         od_on: app
             .topo
             .gpus
