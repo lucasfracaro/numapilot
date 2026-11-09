@@ -22,8 +22,9 @@ Leia antes de mexer. Resume o que já foi feito e combinado com o Lucas em sess�
     `git pull --ff-only` antes de mexer; depois de mexer, CI completa, commit e push na hora
     (nunca deixar commit só local). Nada pode quebrar os outros PCs: todo recurso depende do
     hardware detectado. Se mudar o fluxo, atualize "Vários PCs no mesmo código" no README.
-  - `sudo` não funciona nos terminais do Claude Code ("sem novos privilégios"): o
-    `install.sh` e o `self-update run` ele roda no Konsole.
+  - O `sudo` às vezes é bloqueado nos terminais do Claude Code ("sem novos privilégios"; no CC150
+    falhou antes de reiniciar e funcionou depois). Se acontecer, o Lucas roda o `install.sh` e o
+    `self-update run` no Konsole. O Bash do próprio Claude nunca tem sudo.
   - A tag **v0.2.0** ainda precisa ser enviada por ele: `git tag v0.2.0 && git push origin v0.2.0`.
 
 ## O que é
