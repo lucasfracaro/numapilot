@@ -13,6 +13,7 @@ mod map;
 mod programs;
 mod settings;
 mod single;
+mod startup;
 mod stream;
 mod theme;
 mod tray;
@@ -166,6 +167,7 @@ enum Tab {
     Llm,
     Stream,
     Settings,
+    Startup,
     Tests,
 }
 
@@ -219,6 +221,12 @@ const TABS: &[(Tab, &str, &str, &str)] = &[
         "▶",
         "Programas",
         "O que está aberto agora e em qual processador e placa cada um roda",
+    ),
+    (
+        Tab::Startup,
+        "⏻",
+        "Inicialização",
+        "Tudo que abre quando o sistema liga: programas do login e serviços",
     ),
     (
         Tab::Map,
@@ -293,6 +301,8 @@ pub(crate) struct App {
     pub(crate) prog_mem: HashMap<String, u64>,
     /// Tabela da aba Programas (ordem, seleção, GPU por processo).
     pub(crate) progs: programs::ProgTable,
+    /// Aba Inicialização.
+    pub(crate) startup: startup::StartupTab,
     pub(crate) map_threads: bool,
     pub(crate) checklist: checklist::Checklist,
     pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
@@ -415,6 +425,7 @@ impl App {
             cpu_power: BTreeMap::new(),
             prog_mem: HashMap::new(),
             progs: programs::ProgTable::default(),
+            startup: startup::StartupTab::default(),
             cpu_name: numapilot::topo::short_cpu_name(&numapilot::recipes::cpu_model()),
             map_threads: true,
             checklist: checklist::Checklist::default(),
@@ -1098,6 +1109,21 @@ impl App {
                 {
                     action = Some("relaunch");
                 }
+                if mine {
+                    let at_login = numapilot::startup::find_for_exe(&g.exe).filter(|i| i.enabled);
+                    let txt = if at_login.is_some() { "Abre ao iniciar: sim" } else { "Abrir ao iniciar" };
+                    if ui
+                        .button(txt)
+                        .on_hover_text(if at_login.is_some() {
+                            "Já abre quando você entra na sessão. Clique para não abrir mais (aba Inicialização tem tudo)."
+                        } else {
+                            "Faz este programa abrir quando você entra na sessão (aba Inicialização tem tudo)"
+                        })
+                        .clicked()
+                    {
+                        action = Some(if at_login.is_some() { "login-off" } else { "login-on" });
+                    }
+                }
                 if let Some(d) = self.desktop_for(&g.exe) {
                     let on = desktop::is_overridden(&d);
                     let txt = if on { "No menu: sim" } else { "Usar no menu" };
@@ -1158,6 +1184,25 @@ impl App {
                         Err(e) => self.toast(format!("Não consegui ajustar o atalho: {e}"), false),
                     }
                 }
+            }
+            Some("login-on") => {
+                match numapilot::startup::add_running(g.main_pid, &g.label) {
+                    Ok(_) => self.toast(
+                        format!("{} vai abrir quando você entrar na sessão", g.label),
+                        true,
+                    ),
+                    Err(e) => self.toast(e, false),
+                }
+                self.startup.invalidate();
+            }
+            Some("login-off") => {
+                if let Some(it) = numapilot::startup::find_for_exe(&g.exe) {
+                    match numapilot::startup::set_enabled(&it, false) {
+                        Ok(_) => self.toast(format!("{} não abre mais ao iniciar", g.label), true),
+                        Err(e) => self.toast(e, false),
+                    }
+                }
+                self.startup.invalidate();
             }
             Some("menu-off") => {
                 if let Some(d) = self.desktop_for(&g.exe) {
@@ -1334,6 +1379,7 @@ impl eframe::App for App {
                 Tab::Llm => llm::ui(self, ui),
                 Tab::Stream => stream::ui(self, ui),
                 Tab::Settings => settings::ui(self, ui),
+                Tab::Startup => startup::ui(self, ui),
                 Tab::Tests => checklist::ui(self, ui),
             });
         let ctx = ui.ctx().clone();

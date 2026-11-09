@@ -109,6 +109,17 @@ Partes:
   Rode tudo antes de commitar. Depois de `cargo fmt`, scripts de patch que procuram texto exato
   costumam falhar: releia o arquivo formatado.
 
+## Inicialização (aba e `numapilot inicio`)
+
+`src/startup.rs`: autostart XDG (sistema + usuário; desligar o do sistema = cópia com
+`Hidden=true` em ~/.config/autostart, ligar apaga a cópia se só diferir no Hidden), restauração de
+sessão do KDE (`ksmserverrc` loginMode), `systemctl [--user] enable|disable` (usuário: `mask`
+quando o pacote liga para todos em /etc/systemd/user; sistema: `pkexec`, rodado pela interface),
+unidades desligadas lembradas em ~/.config/numapilot/startup-off.txt. Atalhos criados levam
+`X-Numapilot-Startup=true`. Lista de essenciais protegidos em `ESSENTIAL_XDG`/`ESSENTIAL_UNITS`.
+O "control center" que o Lucas usa de referência para Programas/Inicialização é o **Mission
+Center** (gerenciador de tarefas), não o BC250 Control Center.
+
 ## Testar e registros
 
 - `numapilot autoteste` — confere tudo nesta máquina sem mudar nada e grava

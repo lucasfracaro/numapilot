@@ -121,6 +121,16 @@ enum Cmd {
         #[arg(long, default_value_t = 120)]
         disk: u32,
     },
+    /// O que abre quando o sistema liga: lista | ligar ID | desligar ID | remover ID |
+    /// comando NOME "COMANDO" | arquivo CAMINHO | app BUSCA
+    #[command(alias = "startup")]
+    Inicio {
+        action: Option<String>,
+        args: Vec<String>,
+        /// Segundos de espera antes de abrir (comando, arquivo, app)
+        #[arg(long, default_value_t = 0)]
+        atraso: u32,
+    },
     /// Notebook com NVIDIA: o que abre com o sistema na integrada: status | igpu | normal
     Autostart {
         action: Option<String>,
@@ -737,6 +747,112 @@ fn real_main() -> Result<()> {
                     );
                     Ok(())
                 }
+            }
+        }
+        Cmd::Inicio {
+            action,
+            args,
+            atraso,
+        } => {
+            use numapilot::startup::{self, Action};
+            let items = startup::list();
+            let find = |id: &str| {
+                items
+                    .iter()
+                    .find(|i| i.id == id || i.name.eq_ignore_ascii_case(id))
+                    .cloned()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("não achei \"{id}\" (veja numapilot inicio lista)")
+                    })
+            };
+            let arg = |i: usize| {
+                args.get(i).cloned().ok_or_else(|| {
+                    anyhow::anyhow!("falta um argumento (veja numapilot inicio --help)")
+                })
+            };
+            match action.as_deref().unwrap_or("lista") {
+                "lista" | "list" => {
+                    let mut last = None;
+                    for i in &items {
+                        if last != Some(i.group) {
+                            println!("\n== {} ({})", i.group.title(), i.group.about());
+                            last = Some(i.group);
+                        }
+                        let now = match (i.running, i.mem) {
+                            (true, Some(m)) => format!("rodando, {} MB", m / 1048576),
+                            (true, None) => "rodando".into(),
+                            _ => String::new(),
+                        };
+                        println!(
+                            "  [{}] {:<40} {:<10} {:<16} {}{}",
+                            if i.enabled { "x" } else { " " },
+                            i.name,
+                            i.origin,
+                            now,
+                            i.id,
+                            if i.protected.is_some() {
+                                " (protegido)"
+                            } else {
+                                ""
+                            }
+                        );
+                    }
+                    Ok(())
+                }
+                v @ ("ligar" | "desligar" | "on" | "off") => {
+                    let it = find(&arg(0)?)?;
+                    let on = matches!(v, "ligar" | "on");
+                    match startup::set_enabled(&it, on).map_err(|e| anyhow::anyhow!(e))? {
+                        Action::Done => {
+                            println!("{}: {}", it.name, if on { "ligado" } else { "desligado" })
+                        }
+                        Action::NeedsRoot(c) => {
+                            let st = std::process::Command::new(&c[0]).args(&c[1..]).status()?;
+                            if !st.success() {
+                                bail!("{} terminou com erro", c.join(" "));
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                "remover" | "rm" => {
+                    let it = find(&arg(0)?)?;
+                    startup::remove(&it).map_err(|e| anyhow::anyhow!(e))?;
+                    println!("{} removido", it.name);
+                    Ok(())
+                }
+                "comando" => {
+                    let p = startup::add_command(&arg(0)?, &args[1..].join(" "), atraso)
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    println!("adicionado: {}", p.display());
+                    Ok(())
+                }
+                "arquivo" => {
+                    let p = startup::add_file(std::path::Path::new(&arg(0)?), atraso)
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    println!("adicionado: {}", p.display());
+                    Ok(())
+                }
+                "app" => {
+                    let q = args.join(" ");
+                    let found = startup::search_apps(&q);
+                    match found.as_slice() {
+                        [(n, p)] => {
+                            let d =
+                                startup::add_desktop(p, atraso).map_err(|e| anyhow::anyhow!(e))?;
+                            println!("{n} vai abrir no login ({})", d.display());
+                        }
+                        [] => bail!("nenhum programa instalado com \"{q}\""),
+                        many => {
+                            println!("Mais de um programa; seja mais específico:");
+                            for (n, p) in many.iter().take(20) {
+                                println!("  {n}  ({})", p.display());
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+                o => bail!("ação desconhecida: {o}"),
             }
         }
         Cmd::Autostart { action, if_hybrid } => {

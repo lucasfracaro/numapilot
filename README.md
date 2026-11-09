@@ -202,10 +202,27 @@ A aba **Programas** é uma tabela no estilo de um monitor do sistema:
 As escolhas ficam em `/var/lib/numapilot/profiles.json`. Na linha de comando, use
 `numapilot profile list|set|rm`.
 
+**Inicialização** (aba e `numapilot inicio`): mostra o que abre no login e no boot, agrupado,
+com o que está rodando agora e quanto de memória usa. Desligar vale para o próximo login ou boot e
+é reversível: no autostart do sistema o numapilot cria uma cópia em `~/.config/autostart` que só
+esconde (ligar de novo apaga a cópia); serviços do usuário usam `systemctl --user disable` (ou
+`mask`, quando o pacote liga para todos os usuários); serviços do sistema pedem a senha. O que é
+essencial (Plasma, polkit, rede, login, numapilot) não pode ser desligado. Na aba Programas,
+**Abrir ao iniciar** coloca um programa aberto no login com um clique.
+
+```bash
+numapilot inicio                                   # lista
+numapilot inicio desligar xdg:steam.desktop        # ou ligar / remover
+numapilot inicio app zapzap                        # programa instalado
+numapilot inicio arquivo ~/Apps/Programa.AppImage --atraso 10
+numapilot inicio comando "IA local" "numapilot run --gpu compute -- llama-server -m modelo.gguf"
+```
+
 **Outras abas:**
 
 | Aba | O que faz |
 |---|---|
+| Inicialização | tudo que abre quando o sistema liga, como no Windows: programas do login (autostart do usuário e do sistema, restauração de sessão do KDE), serviços do usuário e do sistema, e partes da sessão; ligar/desligar, remover e **+ Adicionar** (programa instalado, aberto agora, arquivo AppImage/.sh/binário ou comando, com espera opcional) |
 | Mapa e medições | núcleos de cada socket (uso, programas presos a cada um), memória por socket, alocações no outro socket, governador de frequência por socket, latência e banda medidas |
 | Placas de vídeo | temperaturas (borda/hotspot/memória), ventoinha automática, por curva ou fixa, e limite de potência |
 | Laboratório e containers | liga/atualiza o laboratório; abre JupyterLab, VS Code (navegador ou app do PC), PyCharm e terminal; lista os containers e os apps de cada um |

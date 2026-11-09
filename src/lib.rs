@@ -40,6 +40,7 @@ pub mod recipes;
 pub mod ryzen;
 pub mod selftest;
 pub mod selfupdate;
+pub mod startup;
 pub mod steam;
 pub mod topo;
 pub mod tuner;

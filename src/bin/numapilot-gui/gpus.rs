@@ -786,7 +786,11 @@ fn app_buttons(
         let bin = a.installed_bin();
         let installed = bin.is_some() || a.installed();
         if let Some(bin) = &bin {
-            let b = egui::Button::new(format!("Abrir {}", a.name));
+            let b = egui::Button::new(if big {
+                "⚙ Gerenciar núcleos, CUs, frequências e voltagens".to_string()
+            } else {
+                format!("Abrir {}", a.name)
+            });
             if ui.add(if big { b.min_size(egui::vec2(0.0, 28.0)) } else { b }).clicked()
                 && let Err(e) = std::process::Command::new(bin).spawn()
             {
@@ -796,6 +800,8 @@ fn app_buttons(
         if a.installable() {
             let (label, hover) = if installed {
                 ("Atualizar", "Baixa e instala a versão mais nova de quem mantém (num terminal; pode pedir a senha)")
+            } else if big {
+                ("Instalar o BC250 Control Center", "Instala pelo AUR (pacote -git do autor) num terminal; pode pedir a senha. Depois este botão vira \"Gerenciar núcleos, CUs, frequências\"")
             } else if a.aur.is_some() {
                 ("Instalar", "Instala pelo AUR (paru/yay) num terminal; pode pedir a senha")
             } else {

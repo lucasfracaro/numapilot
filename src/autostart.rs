@@ -61,7 +61,7 @@ pub const SKIP: &[&str] = &[
 
 /// Componentes do próprio desktop (Plasma, GNOME...): não usam a NVIDIA e uma cópia deles na pasta
 /// do usuário esconderia as atualizações do sistema.
-fn is_desktop_component(text: &str, file: &str) -> bool {
+pub(crate) fn is_desktop_component(text: &str, file: &str) -> bool {
     get(text, "OnlyShowIn").is_some()
         || get(text, "X-KDE-autostart-phase").is_some()
         || get(text, "X-GNOME-Autostart-Phase").is_some()
@@ -93,7 +93,7 @@ fn is_launcher(text: &str, file: &str) -> bool {
     SKIP.iter().any(|s| bin.starts_with(s) || f.contains(s))
 }
 
-fn get<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+pub(crate) fn get<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     let mut in_entry = false;
     for l in text.lines() {
         let t = l.trim();

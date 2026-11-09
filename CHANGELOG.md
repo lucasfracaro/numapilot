@@ -1,5 +1,17 @@
 # Mudanças
 
+## Não lançado
+
+- Aba **Inicialização** (e `numapilot inicio`): tudo que abre quando o sistema liga, como no
+  Windows: programas do login (autostart do usuário e do sistema, restauração de sessão do KDE),
+  serviços do usuário e do sistema, componentes da sessão; com o que está rodando e a memória.
+  Ligar/desligar (reversível, só vale para o próximo login/boot), remover o que você criou e
+  adicionar programa instalado, aberto agora, arquivo (AppImage, .sh, binário) ou comando, com
+  espera opcional. Essenciais protegidos.
+- Aba Programas: **Abrir ao iniciar** em cada programa.
+- BC-250: o botão do BC250 Control Center diz o que faz ("Gerenciar núcleos, CUs, frequências e
+  voltagens" / "Instalar o BC250 Control Center").
+
 ## 0.4.0 — 2026-11-09
 
 ### BC-250 (com ideias do [BC250 Control Center](https://github.com/movacx/bc250-control-center), MIT)

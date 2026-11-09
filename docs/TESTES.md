@@ -45,6 +45,12 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 
 ## 2. Jogos
 
+- [ ] Inicialização: a lista bate com o que abre no login (Steam, bandeja, serviços); desligar um
+      item, sair e entrar de novo: ele não abre; ligar de novo: abre. Itens essenciais (Plasma,
+      rede) não deixam desligar
+- [ ] Inicialização → + Adicionar: programa instalado (ex.: ZapZap), arquivo AppImage/.sh e comando
+      com espera de 10 s; todos abrem no próximo login; Remover apaga o atalho
+- [ ] Programas: "Abrir ao iniciar" num programa aberto; aparece na aba Inicialização
 - [ ] Programas: ordenar por Nome, CPU, Memória e GPU (clicar de novo inverte); a GPU de um jogo
       bate com o Mission Center/MangoHud; buscar por nome e por PID
 - [ ] Programas: abrir um programa seu (ex.: Dolphin) → selecionar → Encerrar fecha; Forçar parada
