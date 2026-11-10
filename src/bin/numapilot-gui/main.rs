@@ -191,6 +191,17 @@ pub(crate) fn pss_bytes(pid: i32) -> Option<u64> {
         .map(|kb| kb * 1024)
 }
 
+/// Tamanho inicial da janela; NUMAPILOT_GUI_SIZE=LxA muda (capturas de tela).
+fn window_size() -> [f32; 2] {
+    std::env::var("NUMAPILOT_GUI_SIZE")
+        .ok()
+        .and_then(|v| {
+            let (w, h) = v.split_once('x')?;
+            Some([w.trim().parse().ok()?, h.trim().parse().ok()?])
+        })
+        .unwrap_or([1340.0, 780.0])
+}
+
 /// "1.4 GB" / "350 MB"
 pub(crate) fn fmt_bytes(b: u64) -> String {
     let gb = b as f64 / 1073741824.0;
@@ -204,7 +215,9 @@ pub(crate) fn fmt_bytes(b: u64) -> String {
 /// Memória do sistema (em uso, total) em kB, pelo MemAvailable: o cache de arquivos não conta
 /// como "em uso" (ele é liberado sozinho quando falta memória).
 pub(crate) fn mem_system() -> (u64, u64) {
-    let t = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    // NUMAPILOT_MEMINFO: outro arquivo no lugar do /proc/meminfo (capturas de tela)
+    let path = std::env::var("NUMAPILOT_MEMINFO").unwrap_or_else(|_| "/proc/meminfo".into());
+    let t = std::fs::read_to_string(path).unwrap_or_default();
     let get = |k: &str| {
         t.lines()
             .find(|l| l.starts_with(k))
@@ -945,9 +958,14 @@ impl App {
                     let vram = l.vram.map(|(u, t)| {
                         (
                             format!(
-                                "VRAM  {:.1} / {:.0} GB",
+                                "VRAM  {:.1} / {} GB",
                                 u as f64 / 1073741824.0,
-                                t as f64 / 1073741824.0
+                                // integradas têm 0,5 GB: "/ 0 GB" confundia
+                                if t < 10 * 1073741824 {
+                                    format!("{:.1}", t as f64 / 1073741824.0)
+                                } else {
+                                    format!("{:.0}", t as f64 / 1073741824.0)
+                                }
                             ),
                             u as f32 / t.max(1) as f32,
                         )
@@ -1540,7 +1558,7 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title("numapilot — processador e placa de vídeo por programa")
             .with_app_id("numapilot")
-            .with_inner_size([1340.0, 780.0])
+            .with_inner_size(window_size())
             .with_min_inner_size([800.0, 400.0]),
         ..Default::default()
     };

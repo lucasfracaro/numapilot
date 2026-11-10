@@ -213,7 +213,9 @@ pub fn threads(pid: i32) -> Vec<i32> {
 
 /// Ticks de CPU por CPU lógico a partir de /proc/stat: (ocupado, total)
 pub fn cpu_times() -> Vec<(usize, u64, u64)> {
-    let Ok(s) = fs::read_to_string("/proc/stat") else {
+    // NUMAPILOT_PROC_STAT: outro arquivo no lugar do /proc/stat (testes e capturas de tela)
+    let path = std::env::var("NUMAPILOT_PROC_STAT").unwrap_or_else(|_| "/proc/stat".into());
+    let Ok(s) = fs::read_to_string(path) else {
         return vec![];
     };
     s.lines()

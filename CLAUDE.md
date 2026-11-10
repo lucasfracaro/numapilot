@@ -133,6 +133,13 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
 /proc/diskstats (só discos inteiros), /sys/class/net (física ou VPN), /proc/PID/io por processo;
 `IoMonitor` mede as velocidades entre duas leituras.
 
+## Capturas do README
+
+`tools/capturas` (veja o README de lá): sysfs de mentira do servidor, notebook e BC-250, carga por
+thread falsa (`NUMAPILOT_PROC_STAT`), memória (`NUMAPILOT_MEMINFO`), janela no tamanho certo
+(`NUMAPILOT_GUI_SIZE`) e na aba certa (`NUMAPILOT_GUI_TAB`), cliques pelo `entrada.py` (python-xlib)
+numa tela Xvfb. Programas, Inicialização, Serviços e Mapa são capturas reais do CC150.
+
 ## Testar e registros
 
 - `numapilot autoteste` — confere tudo nesta máquina sem mudar nada e grava

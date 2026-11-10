@@ -1,5 +1,15 @@
 # numapilot
 
+[![CI](https://github.com/lucasfracaro/numapilot/actions/workflows/ci.yml/badge.svg)](https://github.com/lucasfracaro/numapilot/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/lucasfracaro/numapilot?label=vers%C3%A3o)](https://github.com/lucasfracaro/numapilot/releases/latest)
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
+![Linux](https://img.shields.io/badge/Linux-CachyOS%20%2F%20Arch-1793d1?logo=archlinux&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-2024-dea584?logo=rust&logoColor=white)
+
+[Instalar](#instalar) · [Capturas](#capturas) · [Interface](#a-interface-aba-por-aba) ·
+[Linha de comando](#linha-de-comando) · [Notebook](#notebook) · [BC-250](#bc-250-e-bc-160) ·
+[Novidades](CHANGELOG.md)
+
 Gerenciador de hardware e programas para Linux (feito no CachyOS): **um app só para controlar
 processador, memória, placas de vídeo, programas, serviços e o que abre com o sistema**, em
 qualquer PC: de um servidor com 2 processadores e placas de IA a um notebook gamer ou uma BC-250.
@@ -11,6 +21,15 @@ energia, saúde do hardware, inicialização e serviços (como o gerenciador de 
 o Mission Center), IA local, jogos e vários PCs num painel só.
 
 ![Aba Programas](docs/interface.png)
+
+## Capturas
+
+| | |
+|---|---|
+| [![Placas de vídeo](docs/gpus.png)](#placas-de-vídeo) **Placas de vídeo**: histórico, curva da ventoinha, clock e voltagem | [![Mapa e medições](docs/mapa.png)](#mapa-e-medições) **Mapa e medições**: cada thread, temperatura, disco e rede |
+| [![Máquina](docs/maquina.png)](#máquina) **Máquina**: modos, energia em kWh, saúde, processadores | [![Notebook](docs/nvidia.png)](#notebook) **Notebook**: bateria, NVIDIA só quando precisar, telas |
+| [![Inicialização](docs/inicializacao.png)](#inicialização) **Inicialização**: o que abre com o sistema | [![Serviços](docs/servicos.png)](#serviços) **Serviços**: systemd com estado, memória e log |
+| [![Ajustar programa](docs/editor.png)](#programas) **Ajustar…**: processador, memória e placa por programa | [![BC-250](docs/bc250.png)](#bc-250-e-bc-160) **BC-250**: programas da comunidade, CUs, memória da GPU |
 
 ## O que ele faz
 
@@ -121,6 +140,10 @@ O serviço `numapilot` (root) aplica tudo; a interface (`numapilot-gui`) e a lin
 com ele. Se o serviço parar, o que ele mudou volta ao que era. Comandos demorados rodam numa janela
 com a saída ao vivo, sem travar a interface. Temas claro e escuro; ícone na bandeja com
 temperaturas e atalhos (`numapilot-gui --tray`, ou Configurações).
+
+As capturas de Programas, Inicialização, Serviços e Mapa são do PC CC150. As de Placas de vídeo,
+Máquina, Ajustar…, notebook e BC-250 usam hardware simulado com valores de exemplo
+(`tools/capturas`), para mostrar cada tipo de máquina.
 
 ### Programas
 
@@ -557,7 +580,8 @@ container/         imagem do laboratório
 ```
 
 `cargo test` roda os testes, com várias máquinas simuladas por um sysfs falso
-(`NUMAPILOT_SYSFS`). A CI (GitHub Actions) roda formatação, testes, clippy, compilação sem
+(`NUMAPILOT_SYSFS`). As capturas de tela do README saem de `tools/capturas` (servidor, notebook e
+BC-250 de mentira, numa tela virtual); veja o README de lá. A CI (GitHub Actions) roda formatação, testes, clippy, compilação sem
 interface e shellcheck a cada push. Mudanças estão no [CHANGELOG](CHANGELOG.md).
 
 ## Licença e créditos

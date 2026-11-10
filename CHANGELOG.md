@@ -1,5 +1,15 @@
 # Mudanças
 
+## Ainda não lançado
+
+- **Desinstalar…** nunca apaga pastas de ferramentas ou de trabalho como "pasta do programa"
+  (`~/go`, `~/.cargo`, `~/.conda`, `~/.dotnet`, `~/flutter`, `~/Projetos/...`, `~/Downloads`...).
+- Inicialização e Serviços: acesso remoto (`sshd`, Tailscale, ZeroTier), bluetooth, contas e rtkit
+  entram nos protegidos (desligar o ssh num PC sem tela tranca você fora).
+- Cartão de VRAM das integradas mostra "0.4 / 0.5 GB" em vez de "/ 0 GB".
+- README com capturas novas (tema atual), selos, galeria e `tools/capturas` para refazê-las
+  (`NUMAPILOT_GUI_TAB`, `NUMAPILOT_GUI_SIZE`, `NUMAPILOT_PROC_STAT`, `NUMAPILOT_MEMINFO`).
+
 ## 0.5.1 — 2026-11-09
 
 - Inicialização: **Detalhes** mostra de onde cada item vem (arquivo de inicialização e pacote dono,
