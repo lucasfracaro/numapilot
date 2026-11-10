@@ -568,6 +568,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
         .id_salt(format!("board-{}", g.pci))
         .default_open(!b.governor_services.is_empty())
         .show(ui, |ui| {
+            first_setup_ui(app, ui, &b, g);
             for n in &b.notes {
                 ui.label(RichText::new(format!("• {n}")).small());
             }
@@ -774,6 +775,112 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
 }
 
 /// Botões de um programa da comunidade: Abrir, Instalar ou Atualizar (no terminal) e a página.
+/// Primeira configuração da placa: o que já está certo e o que falta, com o botão de cada passo.
+fn first_setup_ui(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    b: &numapilot::recipes::Board,
+    g: &numapilot::topo::Gpu,
+) {
+    use numapilot::boards::{StepAction, StepState};
+    // as leituras chamam systemctl e leem o log do kernel: guarda por 5 s
+    let id = egui::Id::unique(("first-setup", &g.pci));
+    let now = std::time::Instant::now();
+    let cached: Option<(std::time::Instant, Vec<numapilot::boards::SetupStep>)> =
+        ui.data(|d| d.get_temp(id));
+    let steps = match cached {
+        Some((t, s)) if now.duration_since(t).as_secs() < 5 => s,
+        _ => {
+            let s = numapilot::boards::first_setup(b, &g.pci);
+            ui.data_mut(|d| d.insert_temp(id, (now, s.clone())));
+            s
+        }
+    };
+    if steps.is_empty() {
+        return;
+    }
+    let p = crate::theme::pal(ui);
+    let todo = steps.iter().any(|s| s.state == StepState::Todo);
+    egui::CollapsingHeader::new(
+        RichText::new(format!(
+            "Primeira configuração: {}",
+            numapilot::boards::setup_summary(&steps)
+        ))
+        .color(if todo { p.warn } else { p.ok }),
+    )
+    .id_salt(("first-setup-h", &g.pci))
+    .default_open(todo)
+    .show(ui, |ui| {
+        let helper = if numapilot::containers::which("paru") {
+            "paru"
+        } else {
+            "yay"
+        };
+        for s in &steps {
+            ui.horizontal_wrapped(|ui| {
+                let (tag, c) = match s.state {
+                    StepState::Ok => ("pronto", p.ok),
+                    StepState::Todo => ("falta", p.warn),
+                    StepState::Opcional => ("opcional", p.weak),
+                };
+                crate::theme::chip(ui, tag, c);
+                ui.label(RichText::new(&s.title).strong());
+                ui.label(RichText::new(&s.detail).small().weak());
+                match &s.action {
+                    Some(StepAction::EnableService(name)) => {
+                        if ui.small_button("Ligar (pede a senha)").clicked() {
+                            app.start_job(
+                                "Governor",
+                                vec![
+                                    "pkexec".into(),
+                                    "systemctl".into(),
+                                    "enable".into(),
+                                    "--now".into(),
+                                    format!("{name}.service"),
+                                ],
+                            );
+                        }
+                    }
+                    Some(StepAction::InstallAur(pkg)) => {
+                        if ui.small_button("Instalar (AUR)").clicked()
+                            && let Err(e) =
+                                crate::jobs::in_terminal(&[helper.into(), "-S".into(), pkg.clone()])
+                        {
+                            app.toast(e, false);
+                        }
+                    }
+                    Some(StepAction::InstallApp(name)) => {
+                        if ui.small_button("Instalar").clicked()
+                            && let Some(cmd) = b
+                                .apps
+                                .iter()
+                                .find(|a| &a.name == name)
+                                .and_then(|a| a.install_command(helper))
+                            && let Err(e) = crate::jobs::in_terminal(&cmd)
+                        {
+                            app.toast(e, false);
+                        }
+                    }
+                    Some(StepAction::GpuMemory) => {
+                        ui.label(
+                            RichText::new("(seção mais abaixo nesta aba)")
+                                .small()
+                                .weak(),
+                        );
+                    }
+                    None => {}
+                }
+            });
+        }
+        ui.label(
+            RichText::new("Na linha de comando: numapilot board setup")
+                .small()
+                .weak(),
+        );
+    });
+    ui.add_space(4.0);
+}
+
 fn app_buttons(
     app: &mut App,
     ui: &mut egui::Ui,
@@ -849,6 +956,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     let hist = app.hist.clone();
     let mut boot_job: Option<bool> = None;
     egui::ScrollArea::vertical().show(ui, |ui| {
+        let topo_n = gpus.len();
+        let mut test_gpu: Option<String> = None;
         for g in &gpus {
             let s = gpuctl::read_sensors(&g.pci);
             let saved = app.gpu_saved.get(&g.pci);
@@ -866,6 +975,14 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ))
                         .weak(),
                     );
+                    if topo_n > 1
+                        && ui
+                            .small_button("Testar a escolha desta placa")
+                            .on_hover_text("Roda o vulkaninfo e o glxinfo como um jogo rodaria nesta placa e mostra qual placa respondeu (Vulkan/DirectX e OpenGL).")
+                            .clicked()
+                    {
+                        test_gpu = Some(g.alias.clone());
+                    }
                 });
                 ui.horizontal_wrapped(|ui| {
                     temps(ui, &s);
@@ -1032,6 +1149,16 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 });
             });
             ui.add_space(6.0);
+        }
+        if let Some(alias) = test_gpu {
+            app.start_job(
+                "Testar a escolha da placa",
+                vec![
+                    crate::jobs::sibling_abs("numapilot"),
+                    "gpu-test".into(),
+                    alias,
+                ],
+            );
         }
     });
     if let Some(on) = boot_job {

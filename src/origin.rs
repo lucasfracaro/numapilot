@@ -545,6 +545,24 @@ pub struct Plan {
     pub blocked: Option<String>,
 }
 
+/// Pacotes que o `pacman -Rns` tiraria junto (o pacote e as dependências que só ele usa).
+/// Só consulta (`--print`), não precisa de senha. Vazio se não deu para saber.
+pub fn pacman_removal_preview(pkg: &str) -> Vec<String> {
+    std::process::Command::new("pacman")
+        .args(["-Rns", "--print", "--print-format", "%n %v", pkg])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Monta o plano. `unit` = (unidade, do usuário?) quando abre por um serviço.
 pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: bool) -> Plan {
     let mut steps = vec![];

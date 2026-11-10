@@ -1,5 +1,6 @@
 //! numapilot: escolhe socket NUMA, memória e GPU para cada programa.
 pub mod acer;
+pub mod apps;
 pub mod autostart;
 pub mod backup;
 pub mod bench;
@@ -19,6 +20,7 @@ pub mod driver;
 pub mod energy;
 pub mod fans;
 pub mod gpuctl;
+pub mod gputest;
 pub mod health;
 pub mod history;
 pub mod hybrid;

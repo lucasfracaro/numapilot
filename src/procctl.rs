@@ -201,6 +201,52 @@ pub fn gpu_use(pid: i32) -> Option<GpuUse> {
     }))
 }
 
+/// Uso da GPU de um processo separado por placa (endereço PCI). O driver da NVIDIA não
+/// publica fdinfo: processos só nela não aparecem aqui.
+pub fn gpu_use_by_pci(pid: i32) -> HashMap<String, GpuUse> {
+    let mut clients: HashMap<String, GpuUse> = HashMap::new();
+    if let Ok(dir) = fs::read_dir(format!("/proc/{pid}/fdinfo")) {
+        for e in dir.flatten() {
+            let Ok(t) = fs::read_to_string(e.path()) else {
+                continue;
+            };
+            if t.contains("drm-driver:")
+                && let Some((id, u)) = parse_drm_fdinfo(&t)
+            {
+                clients.insert(id, u);
+            }
+        }
+    }
+    let mut by: HashMap<String, GpuUse> = HashMap::new();
+    for (id, u) in clients {
+        let pci = id.split('/').next().unwrap_or("").to_string();
+        if pci.is_empty() {
+            continue;
+        }
+        let e = by.entry(pci).or_default();
+        e.engine_ns += u.engine_ns;
+        e.vram += u.vram;
+    }
+    by
+}
+
+/// O programa pediu a placa `want` (PCI), mas está usando outra? Devolve o PCI da placa em
+/// uso de verdade. Só afirma quando dá para ver: a placa pedida publica fdinfo (não é a
+/// NVIDIA) e o processo tem memória de vídeo em outra placa e nenhuma na pedida.
+pub fn wrong_gpu(by: &HashMap<String, GpuUse>, want: &str, want_is_nvidia: bool) -> Option<String> {
+    if want_is_nvidia || by.is_empty() {
+        return None;
+    }
+    let used = |u: &GpuUse| u.vram > 16 * 1024 * 1024 || u.engine_ns > 1_000_000_000;
+    if by.get(want).is_some_and(used) {
+        return None;
+    }
+    by.iter()
+        .filter(|(p, u)| p.as_str() != want && used(u))
+        .max_by_key(|(_, u)| u.vram)
+        .map(|(p, _)| p.clone())
+}
+
 /// Um fdinfo do DRM: (pdev + drm-client-id, uso). Formato do kernel em
 /// Documentation/gpu/drm-usage-stats.rst.
 pub fn parse_drm_fdinfo(t: &str) -> Option<(String, GpuUse)> {
@@ -361,5 +407,31 @@ mod tests {
     #[test]
     fn fdinfo_sem_cliente() {
         assert!(parse_drm_fdinfo("drm-driver:\tamdgpu\n").is_none());
+    }
+}
+
+#[cfg(test)]
+mod wrong_gpu_tests {
+    use super::*;
+
+    #[test]
+    fn detects_other_card() {
+        let big = GpuUse {
+            engine_ns: 5_000_000_000,
+            vram: 900 << 20,
+        };
+        let mut by = HashMap::new();
+        by.insert("0000:03:00.0".to_string(), big.clone());
+        assert_eq!(
+            wrong_gpu(&by, "0000:04:00.0", false),
+            Some("0000:03:00.0".into())
+        );
+        assert_eq!(wrong_gpu(&by, "0000:03:00.0", false), None);
+        // NVIDIA pedida: não dá para ver, não afirma
+        assert_eq!(wrong_gpu(&by, "0000:01:00.0", true), None);
+        // usa as duas (apresenta por uma, renderiza na pedida): certo
+        by.insert("0000:04:00.0".to_string(), big);
+        assert_eq!(wrong_gpu(&by, "0000:04:00.0", false), None);
+        assert_eq!(wrong_gpu(&HashMap::new(), "0000:04:00.0", false), None);
     }
 }

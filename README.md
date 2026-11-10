@@ -147,6 +147,15 @@ Máquina, Ajustar…, notebook e BC-250 usam hardware simulado com valores de ex
 
 ### Programas
 
+**Buscar app instalado…** lista tudo o que está instalado (menu do KDE, Flatpak, Snap, jogos da
+Steam, AppImages) para ajustar processador, memória e placa sem precisar abrir o programa antes:
+
+![Buscar app instalado](docs/buscar-app.png)
+
+Se um programa estiver numa placa diferente da escolhida, a coluna Placa avisa (≠). Para conferir
+a escolha: botão "Testar a escolha desta placa" em Placas de vídeo, ou `numapilot gpu-test`.
+
+
 Tabela no estilo de um gerenciador de tarefas, com os programas agrupados (jogos da Steam pelo
 AppId) em **Aplicativos** e **Sessão e sistema**:
 

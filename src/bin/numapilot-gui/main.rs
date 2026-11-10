@@ -191,6 +191,40 @@ pub(crate) fn pss_bytes(pid: i32) -> Option<u64> {
         .map(|kb| kb * 1024)
 }
 
+fn hidden_tabs_file() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| jobs::home().join(".config"))
+        .join("numapilot/gui-tabs")
+}
+
+fn load_hidden_tabs() -> Vec<String> {
+    std::fs::read_to_string(hidden_tabs_file())
+        .map(|t| {
+            t.lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Abas que dá para esconder (Programas e Configurações ficam sempre).
+pub(crate) fn hideable_tabs() -> Vec<&'static str> {
+    TABS.iter()
+        .filter(|t| !matches!(t.0, Tab::Programs | Tab::Settings))
+        .map(|t| t.2)
+        .collect()
+}
+
+pub(crate) fn save_hidden_tabs(hidden: &[String]) {
+    let f = hidden_tabs_file();
+    if let Some(d) = f.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let _ = std::fs::write(f, hidden.join("\n"));
+}
+
 /// Tamanho inicial da janela; NUMAPILOT_GUI_SIZE=LxA muda (capturas de tela).
 fn window_size() -> [f32; 2] {
     std::env::var("NUMAPILOT_GUI_SIZE")
@@ -340,6 +374,8 @@ pub(crate) struct App {
     >,
     pub(crate) map_threads: bool,
     pub(crate) checklist: checklist::Checklist,
+    /// Abas que o usuário escondeu do menu (pelo nome), salvas em ~/.config/numapilot/gui-tabs.
+    pub(crate) hidden_tabs: Vec<String>,
     pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
     prev_numa: BTreeMap<usize, (u64, u64)>,
     prev_numa_t: Instant,
@@ -469,6 +505,7 @@ impl App {
             cpu_name: numapilot::topo::short_cpu_name(&numapilot::recipes::cpu_model()),
             map_threads: true,
             checklist: checklist::Checklist::default(),
+            hidden_tabs: load_hidden_tabs(),
             numa_rates: BTreeMap::new(),
             prev_numa: BTreeMap::new(),
             prev_numa_t: Instant::now(),
@@ -812,6 +849,10 @@ impl App {
         });
         ui.add_space(14.0);
         for (t, icon, label, _) in TABS {
+            // abas escondidas em Configurações (a aberta agora nunca some)
+            if self.hidden_tabs.iter().any(|h| h == label) && self.tab != *t {
+                continue;
+            }
             if theme::nav_item(ui, icon, label, self.tab == *t).clicked() {
                 self.tab = *t;
             }

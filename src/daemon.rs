@@ -1316,6 +1316,31 @@ pub fn run(cfg: Config) -> Result<()> {
     Ok(())
 }
 
+/// Quem pode mudar a máquina inteira (modos, ventoinhas, clock/voltagem, avisos): root ou
+/// usuário de um dos grupos de `daemon.admin_groups` (padrão: wheel, sudo, numapilot).
+/// Devolve o motivo da recusa.
+fn admin_denied(uid: u32, ctx: &Ctx) -> Option<String> {
+    let allowed = &ctx.cfg.daemon.admin_groups;
+    if uid == 0 || allowed.iter().any(|g| g == "*") && uid >= ctx.cfg.daemon.min_uid {
+        return None;
+    }
+    if uid >= ctx.cfg.daemon.min_uid
+        && crate::util::groups_of_uid(uid)
+            .iter()
+            .any(|g| allowed.contains(g))
+    {
+        return None;
+    }
+    crate::nlog!(
+        "pedido recusado: usuário {uid} não está em {}",
+        allowed.join(", ")
+    );
+    Some(format!(
+        "sem permissão: só usuários dos grupos {} mudam a máquina inteira (sudo usermod -aG wheel SEU_USUARIO, ou admin_groups em /etc/numapilot.toml)",
+        allowed.join(", ")
+    ))
+}
+
 /// Atende um pedido da interface gráfica / CLI.
 #[allow(clippy::too_many_arguments)]
 fn serve(
@@ -1371,16 +1396,21 @@ fn handle(
 ) -> Response {
     let (key, profile, pid) = match req {
         Request::Ping => return Response::ok("pong"),
-        Request::Adopt { pid, profile } => {
-            return handle_adopt(uid, ctx, procs, profiles, pid, profile);
+        Request::Adopt {
+            pid,
+            profile,
+            key,
+            label,
+        } => {
+            return handle_adopt(uid, ctx, procs, profiles, pid, profile, key, label);
         }
         Request::FixMemory { key } => return handle_fix_memory(uid, ctx, procs, &key),
         Request::SetGovernor { node, governor } => {
             return handle_governor(uid, ctx, node, &governor);
         }
         Request::SetNotify { notify } => {
-            if uid != 0 && uid < ctx.cfg.daemon.min_uid {
-                return Response::err("sem permissão");
+            if let Some(e) = admin_denied(uid, ctx) {
+                return Response::err(e);
             }
             if let Err(e) = notify.validate() {
                 return Response::err(e);
@@ -1524,6 +1554,7 @@ fn gpu_tick(pci: &str, c: &gpuctl::GpuControl, last: &mut HashMap<String, f64>) 
 }
 
 /// O `numapilot run` pede, antes do exec, o que só o root faz (cgroup, prioridade alta).
+#[allow(clippy::too_many_arguments)]
 fn handle_adopt(
     uid: u32,
     ctx: &Ctx,
@@ -1531,6 +1562,8 @@ fn handle_adopt(
     profiles: &Profiles,
     pid: i32,
     given: Option<Profile>,
+    key: Option<String>,
+    label: Option<String>,
 ) -> Response {
     if uid != 0 && procfs::uid(pid) != Some(uid) {
         return Response::err("esse processo é de outro usuário");
@@ -1540,6 +1573,14 @@ fn handle_adopt(
     };
     let learned = Learned::default();
     let mut t = classify(ctx, &learned, profiles, pid, &st, None);
+    // `numapilot run` antes do exec: o perfil e o grupo de controle são os do programa que
+    // vai abrir, não os do próprio numapilot. Assim ele já nasce dentro do grupo.
+    if let Some(k) = key.filter(|k| !k.is_empty() && k.len() < 4096) {
+        t.pkey = k;
+        if let Some(l) = label {
+            t.label = l.chars().take(64).collect();
+        }
+    }
     let Some(p) = given.or_else(|| profiles.get(&t.pkey).cloned()) else {
         return Response::ok("sem perfil");
     };
@@ -1610,8 +1651,8 @@ fn write_governor(ctx: &Ctx, node: usize, gov: &str) -> Result<usize, String> {
 }
 
 fn handle_governor(uid: u32, ctx: &Ctx, node: usize, gov: &str) -> Response {
-    if uid != 0 && uid < ctx.cfg.daemon.min_uid {
-        return Response::err("sem permissão");
+    if let Some(e) = admin_denied(uid, ctx) {
+        return Response::err(e);
     }
     if !gov.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || gov.is_empty() {
         return Response::err("governador inválido");
@@ -1668,8 +1709,8 @@ fn handle_gpu(
     mut control: gpuctl::GpuControl,
     trial: bool,
 ) -> Response {
-    if uid != 0 && uid < ctx.cfg.daemon.min_uid {
-        return Response::err("sem permissão");
+    if let Some(e) = admin_denied(uid, ctx) {
+        return Response::err(e);
     }
     if !ctx.topo.gpus.iter().any(|g| g.pci == pci) {
         return Response::err(format!("GPU {pci} não existe"));
@@ -1797,8 +1838,8 @@ fn handle_gpu(
 }
 
 fn handle_machine(uid: u32, ctx: &Ctx, hw: &mut Hw, m: Machine) -> Response {
-    if uid != 0 && uid < ctx.cfg.daemon.min_uid {
-        return Response::err("sem permissão");
+    if let Some(e) = admin_denied(uid, ctx) {
+        return Response::err(e);
     }
     if let Err(e) = m.validate() {
         return Response::err(e);
@@ -1828,8 +1869,8 @@ fn handle_board_fan(
     id: String,
     mut c: fans::BoardFanControl,
 ) -> Response {
-    if uid != 0 && uid < ctx.cfg.daemon.min_uid {
-        return Response::err("sem permissão");
+    if let Some(e) = admin_denied(uid, ctx) {
+        return Response::err(e);
     }
     if !hw.board_fans.iter().any(|f| f.id == id) {
         return Response::err(format!("ventoinha {id} não existe"));

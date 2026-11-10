@@ -634,6 +634,66 @@ pub fn non_nvidia_vk_icds() -> Vec<String> {
     v
 }
 
+/// Reserva para DirectX (DXVK: D3D8–11; VKD3D-Proton: D3D12): filtro pelo nome Vulkan da placa.
+/// O seletor do Mesa (camada device-select) já esconde as outras placas, mas ele não existe em
+/// todo lugar (driver da NVIDIA, alguns runtimes/Flatpak); sem ele o DXVK escolhe sozinho.
+/// Só quando o modelo é único no PC e o nome foi confirmado pelo vulkaninfo com este ambiente.
+/// `NUMAPILOT_NO_DX_FILTER=1` desliga; um filtro que o usuário já definiu é respeitado.
+pub fn dx_filter(
+    d: &Decision,
+    topo: &Topology,
+    set: &[(String, String)],
+    unset: &[String],
+) -> Vec<(String, String)> {
+    if d.kind != Kind::Graphics
+        || std::env::var_os("NUMAPILOT_NO_DX_FILTER").is_some()
+        || std::env::var_os("NUMAPILOT_SYSFS").is_some()
+        || std::env::var_os("DXVK_FILTER_DEVICE_NAME").is_some()
+    {
+        return vec![];
+    }
+    let Some(g) = d.gpus.first() else {
+        return vec![];
+    };
+    let same = topo
+        .gpus
+        .iter()
+        .filter(|o| o.vendor == g.vendor && o.device == g.device)
+        .count();
+    // uma placa só no PC: nada a filtrar; modelos repetidos: o nome não distingue
+    if topo.gpus.len() < 2 || same != 1 {
+        return vec![];
+    }
+    match crate::gputest::vk_name_for(g, set, unset) {
+        Some(n) => vec![
+            ("DXVK_FILTER_DEVICE_NAME".into(), n.clone()),
+            ("VKD3D_FILTER_DEVICE_NAME".into(), n),
+        ],
+        None => vec![],
+    }
+}
+
+/// Como `env_for_gpu`, com as variáveis a remover também.
+pub fn env_for_gpu_full(
+    g: &crate::topo::Gpu,
+    topo: &Topology,
+) -> (Vec<(String, String)>, Vec<String>) {
+    let d = Decision {
+        nodes: vec![],
+        cpus: vec![],
+        gpus: vec![g.clone()],
+        kind: Kind::Graphics,
+        mem: crate::config::MemSpec::Local,
+        manual: true,
+        limit_visible: false,
+        priority: "normal".into(),
+        needs_daemon: false,
+        fg_gpu: None,
+        reasons: vec![],
+    };
+    gpu_env(&d, topo)
+}
+
 /// Variáveis para um programa rodar só numa placa (gráficos), sem passar pelo serviço.
 pub fn env_for_gpu(g: &crate::topo::Gpu, topo: &Topology) -> Vec<(String, String)> {
     let d = Decision {

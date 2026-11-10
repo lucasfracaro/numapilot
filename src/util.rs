@@ -148,3 +148,36 @@ mod tests {
         assert_eq!(basename("steam"), "steam");
     }
 }
+
+/// Nomes dos grupos de um usuário (o principal e os suplementares), pelo NSS do sistema.
+pub fn groups_of_uid(uid: u32) -> Vec<String> {
+    let mut out = vec![];
+    unsafe {
+        let pw = libc::getpwuid(uid);
+        if pw.is_null() {
+            return out;
+        }
+        let name = (*pw).pw_name;
+        let gid = (*pw).pw_gid;
+        let mut n: libc::c_int = 64;
+        let mut gids: Vec<libc::gid_t> = vec![0; n as usize];
+        if libc::getgrouplist(name, gid, gids.as_mut_ptr(), &mut n) < 0 {
+            gids.resize(n.max(0) as usize, 0);
+            if libc::getgrouplist(name, gid, gids.as_mut_ptr(), &mut n) < 0 {
+                return out;
+            }
+        }
+        gids.truncate(n.max(0) as usize);
+        for g in gids {
+            let gr = libc::getgrgid(g);
+            if !gr.is_null() {
+                out.push(
+                    std::ffi::CStr::from_ptr((*gr).gr_name)
+                        .to_string_lossy()
+                        .to_string(),
+                );
+            }
+        }
+    }
+    out
+}

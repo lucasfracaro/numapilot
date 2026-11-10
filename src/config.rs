@@ -48,6 +48,10 @@ pub struct DaemonCfg {
     pub gpu_irq: bool,
     /// O mesmo para discos NVMe e placas de rede.
     pub device_irq: bool,
+    /// Grupos que podem mudar a máquina inteira pelo serviço (modos, ventoinhas, clock e
+    /// voltagem das placas, avisos). Escolhas por programa continuam valendo para qualquer
+    /// usuário, só nos processos dele. `["*"]` libera para todos os usuários.
+    pub admin_groups: Vec<String>,
 }
 
 impl Default for DaemonCfg {
@@ -65,6 +69,7 @@ impl Default for DaemonCfg {
             ignore: vec!["numapilot".into(), "systemd".into(), "dbus-*".into()],
             gpu_irq: true,
             device_irq: true,
+            admin_groups: vec!["wheel".into(), "sudo".into(), "numapilot".into()],
         }
     }
 }

@@ -2,6 +2,27 @@
 
 ## Ainda não lançado
 
+- **Buscar app instalado…** (aba Programas): lista atalhos do menu, Flatpak, Snap, jogos da Steam e
+  AppImages, com busca, e abre o Ajustar… sem o programa estar aberto. A escolha fica salva para a
+  próxima abertura (`src/apps.rs`).
+- **Conferir a escolha de placa**: `numapilot gpu-test [APELIDO]` e o botão "Testar a escolha desta
+  placa" rodam vulkaninfo e glxinfo como um jogo rodaria e mostram qual placa respondeu. A aba
+  Programas avisa quando o programa está numa placa diferente da escolhida.
+- **DirectX**: reserva pelo filtro do DXVK/VKD3D (`DXVK_FILTER_DEVICE_NAME`,
+  `VKD3D_FILTER_DEVICE_NAME`) com o nome Vulkan confirmado da placa, quando o modelo é único no PC.
+  `NUMAPILOT_NO_DX_FILTER=1` desliga.
+- **Grupo de controle desde o início**: o `numapilot run` manda a chave do programa ao pedir os
+  limites, e o programa já nasce dentro do grupo certo (antes o pedido usava o perfil do próprio
+  numapilot).
+- **Permissões do serviço**: mudar a máquina inteira (modos, ventoinhas, clock/voltagem, avisos)
+  só para root ou grupos de `daemon.admin_groups` (padrão `wheel`, `sudo`, `numapilot`; `["*"]`
+  libera). Escolhas por programa continuam por usuário. Painel web: token criado já com 0600 e
+  espera de 2 s depois de 10 tokens errados seguidos.
+- **Desinstalar…** mostra sempre os caminhos que serão apagados, os pacotes que saem junto
+  (`pacman -Rns`) e os comandos exatos, e grava tudo no registro.
+- **Abas do menu**: Configurações → desmarcar as que este PC não usa.
+- **BC-250, primeira configuração**: passos em ordem (pronto / falta / opcional) na aba Placas e em
+  `numapilot board setup`.
 - **Desinstalar…** nunca apaga pastas de ferramentas ou de trabalho como "pasta do programa"
   (`~/go`, `~/.cargo`, `~/.conda`, `~/.dotnet`, `~/flutter`, `~/Projetos/...`, `~/Downloads`...).
 - Inicialização e Serviços: acesso remoto (`sshd`, Tailscale, ZeroTier), bluetooth, contas e rtkit

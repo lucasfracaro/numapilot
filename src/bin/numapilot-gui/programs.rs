@@ -49,6 +49,10 @@ pub(crate) struct ProgTable {
     io_prev: HashMap<i32, (u64, Instant)>,
     /// Leitura + escrita no disco de cada processo (bytes/s).
     disk_bps: HashMap<i32, f64>,
+    /// Janela "Buscar app": programas instalados (lidos ao abrir a janela).
+    pub(crate) finder: Option<Finder>,
+    /// Uso de GPU de cada programa separado por placa (PCI), para conferir a escolha.
+    by_pci: HashMap<String, HashMap<String, procctl::GpuUse>>,
     /// Por que o programa (processo principal) não pode ser encerrado; ausente = pode.
     blocked: HashMap<i32, &'static str>,
     /// Seções fechadas: 0 = Aplicativos, 1 = Sessão e sistema.
@@ -70,6 +74,8 @@ impl Default for ProgTable {
             pid_mem: HashMap::new(),
             io_prev: HashMap::new(),
             disk_bps: HashMap::new(),
+            finder: None,
+            by_pci: HashMap::new(),
             blocked: HashMap::new(),
             closed: [false, false],
         }
@@ -87,8 +93,21 @@ impl ProgTable {
         self.disk_bps.clear();
         let mut io_prev = HashMap::new();
         self.blocked.clear();
+        self.by_pci.clear();
         let me = unsafe { libc::getuid() };
         for g in groups {
+            // só para quem tem uma placa escolhida (é o que dá para conferir)
+            if g.gpus.len() == 1 {
+                let mut by: HashMap<String, procctl::GpuUse> = HashMap::new();
+                for &pid in &g.pids {
+                    for (pci, u) in procctl::gpu_use_by_pci(pid) {
+                        let e = by.entry(pci).or_default();
+                        e.engine_ns += u.engine_ns;
+                        e.vram += u.vram;
+                    }
+                }
+                self.by_pci.insert(g.key.clone(), by);
+            }
             if let Some(why) = procctl::kill_blocked(g.main_pid, me) {
                 self.blocked.insert(g.main_pid, why);
             }
@@ -291,11 +310,21 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.add(egui::TextEdit::singleline(&mut app.progs.filter).hint_text("🔍 Buscar").desired_width(160.0));
         });
     });
-    ui.label(
-        RichText::new("Clique numa linha para selecionar; na seta (ou dois cliques) para ver os processos e escolher processador e placa. CPU muda na hora; a GPU vale quando o programa abre.")
-            .small()
-            .weak(),
-    );
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .button("🔍 Buscar app instalado…")
+            .on_hover_text("Lista os programas instalados (menu, Flatpak, Snap, AppImage, jogos da Steam) para escolher processador, memória e placa sem precisar abrir o programa antes.")
+            .clicked()
+        {
+            app.progs.finder = Some(Finder::new());
+        }
+        ui.label(
+            RichText::new("Clique numa linha para selecionar; na seta (ou dois cliques) para ver os processos e escolher processador e placa. CPU muda na hora; a GPU vale quando o programa abre.")
+                .small()
+                .weak(),
+        );
+    });
+    finder_window(app, ui);
     ui.add_space(4.0);
 
     // ----- ordenar e filtrar -----
@@ -484,6 +513,22 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
                 for (i, g) in list.iter().enumerate() {
                     let open = app.progs.expanded.contains(&g.key);
+                    // o programa está na placa que foi escolhida para ele?
+                    let wrong: Option<(String, String)> = g.gpus.first().and_then(|alias| {
+                        let want = app.topo.gpus.iter().find(|x| &x.alias == alias)?;
+                        let by = app.progs.by_pci.get(&g.key)?;
+                        let got = procctl::wrong_gpu(by, &want.pci, want.is_nvidia())?;
+                        let name = |x: &numapilot::topo::Gpu| format!("{} ({})", x.alias, x.short_name());
+                        Some((
+                            name(want),
+                            app.topo
+                                .gpus
+                                .iter()
+                                .find(|x| x.pci == got)
+                                .map(name)
+                                .unwrap_or(got),
+                        ))
+                    });
                     let t = &app.progs;
                     let cells = Cells {
                         pid: g.main_pid.to_string(),
@@ -500,6 +545,8 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                             .unwrap_or_else(|| "—".into()),
                         card: if g.gpus.is_empty() {
                             "—".into()
+                        } else if wrong.is_some() {
+                            format!("{} ≠", g.gpus.join(", "))
                         } else {
                             g.gpus.join(", ")
                         },
@@ -581,6 +628,16 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                             })
                             .show(ui, |ui| {
                                 ui.set_width(width - 36.0);
+                                if let Some((want, got)) = &wrong {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "Placa diferente da escolhida: pediu {want}, mas está usando {got}. \
+                                             A escolha de placa só vale ao abrir: use Reabrir. Se continuar, \
+                                             confira com \"Testar a escolha desta placa\" na aba Placas de vídeo."
+                                        ))
+                                        .color(p.warn),
+                                    );
+                                }
                                 ui.horizontal_wrapped(|ui| app.program_row(ui, g));
                             });
                         ui.add_space(4.0);
@@ -774,5 +831,162 @@ fn row(
         resp,
         toggle,
         select,
+    }
+}
+
+/// Janela de busca de programas instalados.
+pub(crate) struct Finder {
+    apps: Vec<numapilot::apps::App>,
+    query: String,
+    source: Option<&'static str>,
+    focus: bool,
+}
+
+impl Finder {
+    fn new() -> Self {
+        Finder {
+            apps: numapilot::apps::list(),
+            query: String::new(),
+            source: None,
+            focus: true,
+        }
+    }
+}
+
+fn finder_window(app: &mut App, ui: &mut egui::Ui) {
+    let Some(mut f) = app.progs.finder.take() else {
+        return;
+    };
+    let p = theme::pal(ui);
+    let mut open = true;
+    let mut pick: Option<numapilot::apps::App> = None;
+    let mut menu_fix: Option<std::path::PathBuf> = None;
+    egui::Window::new("Buscar app instalado")
+        .open(&mut open)
+        .collapsible(false)
+        .default_size([640.0, 520.0])
+        .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ui.ctx(), |ui| {
+            ui.horizontal(|ui| {
+                let r = ui.add(
+                    egui::TextEdit::singleline(&mut f.query)
+                        .hint_text("🔍 Nome do programa, executável ou origem")
+                        .desired_width(360.0),
+                );
+                if f.focus {
+                    r.request_focus();
+                    f.focus = false;
+                }
+                if ui.button("Recarregar").clicked() {
+                    f.apps = numapilot::apps::list();
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let mut sources: Vec<&'static str> = f.apps.iter().map(|a| a.source).collect();
+                sources.sort_unstable();
+                sources.dedup();
+                if ui.selectable_label(f.source.is_none(), format!("Todos ({})", f.apps.len())).clicked() {
+                    f.source = None;
+                }
+                for s in sources {
+                    let n = f.apps.iter().filter(|a| a.source == s).count();
+                    if ui.selectable_label(f.source == Some(s), format!("{s} ({n})")).clicked() {
+                        f.source = Some(s);
+                    }
+                }
+            });
+            ui.label(
+                RichText::new(
+                    "A escolha fica salva e vale quando o programa abrir. Processador e memória valem em qualquer \
+                     abertura; para a placa de vídeo, abra pelo menu ajustado (opção no próprio Ajustar…) ou pelo Reabrir.",
+                )
+                .small()
+                .weak(),
+            );
+            ui.separator();
+            let shown: Vec<&numapilot::apps::App> = f
+                .apps
+                .iter()
+                .filter(|a| f.source.is_none_or(|s| a.source == s))
+                .filter(|a| numapilot::apps::matches(a, &f.query))
+                .collect();
+            if shown.is_empty() {
+                ui.label(RichText::new("Nenhum programa encontrado com essa busca.").weak());
+            }
+            egui::ScrollArea::vertical().auto_shrink(false).show_rows(ui, 44.0, shown.len(), |ui, range| {
+                for a in &shown[range] {
+                    let saved = app.profiles.map.contains_key(&a.key);
+                    let running = app.groups.iter().any(|g| g.key == a.key);
+                    ui.horizontal(|ui| {
+                        ui.set_height(40.0);
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = 1.0;
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(&a.name).family(egui::FontFamily::Name(theme::BOLD.into())));
+                                ui.label(RichText::new(a.source).small().color(p.accent));
+                                if saved {
+                                    ui.label(RichText::new("escolha salva").small().color(p.ok));
+                                }
+                                if running {
+                                    ui.label(RichText::new("aberto agora").small().color(p.weak));
+                                }
+                            });
+                            ui.label(RichText::new(&a.detail).small().weak());
+                        });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add_space(8.0);
+                            if ui.button("Ajustar…").clicked() {
+                                pick = Some((*a).clone());
+                            }
+                            // a placa de vídeo só vale se o programa abrir pelo numapilot
+                            if let Some(d) = &a.desktop {
+                                if numapilot::desktop::is_overridden(d) {
+                                    ui.label(RichText::new("menu ajustado").small().color(p.ok))
+                                        .on_hover_text("Aberto pelo menu, este programa já passa pelo numapilot (a escolha de placa vale).");
+                                } else if saved
+                                    && ui
+                                        .small_button("Ajustar o menu")
+                                        .on_hover_text("Faz o atalho do menu abrir este programa pelo numapilot, para a escolha de placa de vídeo valer. Dá para desfazer em Escolhas salvas.")
+                                        .clicked()
+                                {
+                                    menu_fix = Some(d.clone());
+                                }
+                            }
+                        });
+                    });
+                    ui.separator();
+                }
+            });
+        });
+    if let Some(d) = menu_fix {
+        match numapilot::desktop::install_override(&d) {
+            Ok(pth) => app.toast(format!("Atalho do menu ajustado ({})", pth.display()), true),
+            Err(e) => app.toast(format!("Não consegui ajustar o atalho: {e}"), false),
+        }
+    }
+    if let Some(a) = pick {
+        // se estiver aberto, usa os dados do programa em execução (vale na hora)
+        let g = app.groups.iter().find(|g| g.key == a.key).cloned();
+        let prof = app.profile_of(&a.key);
+        app.editor = Some(match g {
+            Some(g) => crate::editor::Editor::new(
+                &g.key,
+                &g.label,
+                Some(g.main_pid),
+                &g.cpus,
+                &g.mem,
+                prof,
+            ),
+            None => crate::editor::Editor::new(&a.key, &a.name, None, "", &[], prof),
+        });
+        numapilot::log::info(&format!(
+            "buscar app: {} ({}) → {}",
+            a.name, a.source, a.key
+        ));
+        open = false;
+    }
+    if open {
+        app.progs.finder = Some(f);
     }
 }

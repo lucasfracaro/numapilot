@@ -48,6 +48,11 @@ pub enum Request {
         /// Perfil a usar só neste processo (otimizador de FPS); None = o salvo.
         #[serde(default)]
         profile: Option<crate::profiles::Profile>,
+        /// Chave do programa que vai ser aberto (o processo ainda é o `numapilot run`).
+        #[serde(default)]
+        key: Option<String>,
+        #[serde(default)]
+        label: Option<String>,
     },
     /// Move a memória de um programa de volta para o(s) socket(s) dos núcleos dele.
     FixMemory {

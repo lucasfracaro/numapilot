@@ -65,6 +65,31 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
 
         ui.add_space(8.0);
+        ui.heading("Abas do menu");
+        ui.label(
+            RichText::new("Desmarque o que você não usa neste PC para o menu ficar mais curto. Nada é desligado: é só o menu.")
+                .small()
+                .weak(),
+        );
+        ui.horizontal_wrapped(|ui| {
+            let mut changed = false;
+            for name in crate::hideable_tabs() {
+                let mut on = !app.hidden_tabs.iter().any(|h| h == name);
+                if ui.checkbox(&mut on, name).changed() {
+                    if on {
+                        app.hidden_tabs.retain(|h| h != name);
+                    } else {
+                        app.hidden_tabs.push(name.to_string());
+                    }
+                    changed = true;
+                }
+            }
+            if changed {
+                crate::save_hidden_tabs(&app.hidden_tabs);
+            }
+        });
+
+        ui.add_space(8.0);
         ui.heading("Atualizações");
         let mut on = auto;
         if ui

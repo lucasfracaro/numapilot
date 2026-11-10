@@ -36,10 +36,17 @@ pub fn token() -> std::io::Result<String> {
     std::fs::File::open("/dev/urandom")?.read_exact(&mut b)?;
     let t: String = b.iter().map(|x| format!("{x:02x}")).collect();
     std::fs::create_dir_all(config_dir())?;
-    std::fs::write(token_path(), &t)?;
-    #[cfg(unix)]
+    // já nasce legível só pelo dono (antes havia um instante com a permissão padrão)
     {
-        use std::os::unix::fs::PermissionsExt;
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let _ = std::fs::remove_file(token_path());
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(token_path())?;
+        f.write_all(t.as_bytes())?;
         let _ = std::fs::set_permissions(token_path(), std::fs::Permissions::from_mode(0o600));
     }
     Ok(t)
@@ -367,13 +374,26 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
         ),
     }
     std::thread::spawn(crate::watch::run);
+    let mut bad_auth = 0u32;
     for mut req in server.incoming_requests() {
         let path = req.url().split('?').next().unwrap_or("/").to_string();
+        if bad_auth > 0 && path.starts_with("/api/") && authorized(&req, &token) {
+            bad_auth = 0;
+        }
         match (req.method(), path.as_str()) {
             (tiny_http::Method::Get, "/") => {
                 respond(req, 200, "text/html; charset=utf-8", PAGE.to_string())
             }
             (_, p) if (p.starts_with("/api/") || p == "/metrics") && !authorized(&req, &token) => {
+                // segura quem fica tentando adivinhar o token: depois de 10 erros seguidos,
+                // cada erro novo espera 2 s (um acerto zera)
+                bad_auth += 1;
+                if bad_auth > 10 {
+                    if bad_auth == 11 {
+                        crate::log::warn("painel web: muitas tentativas com token errado");
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
                 respond(
                     req,
                     401,

@@ -83,7 +83,8 @@ enum Cmd {
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
-    /// Placas especiais (BC-250...): status | governor-apply ARQUIVO (com sudo)
+    /// Placas especiais (BC-250...): setup (o que falta configurar) | status |
+    /// governor-apply ARQUIVO (com sudo)
     Board {
         action: String,
         file: Option<std::path::PathBuf>,
@@ -247,6 +248,14 @@ enum Cmd {
     /// Imprime os IDs ROCR_VISIBLE_DEVICES das GPUs de computação (para scripts).
     #[command(name = "rocr-ids")]
     RocrIds,
+    /// Confere a escolha de placa: roda vulkaninfo e glxinfo como um jogo rodaria em cada placa
+    /// e diz qual respondeu.
+    GpuTest {
+        /// Só esta placa (apelido, ex.: amd-0). Sem isso, todas.
+        gpu: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Mostra o final dos registros (serviço, programa gráfico, linha de comando) e do journal.
     Log {
         /// Linhas de cada registro.
@@ -322,6 +331,7 @@ fn real_main() -> Result<()> {
     match cli.cmd {
         Cmd::Topo => cmd_topo(&cfg),
         Cmd::Log { lines, which } => cmd_log(lines, which.as_deref()),
+        Cmd::GpuTest { gpu, json } => cmd_gpu_test(&cfg, gpu.as_deref(), json),
         Cmd::Autoteste {
             saida,
             rapido,
@@ -399,6 +409,27 @@ fn real_main() -> Result<()> {
                 return Ok(());
             }
             match action.as_str() {
+                "setup" | "configurar" => {
+                    use numapilot::boards::StepState;
+                    for (b, g) in &boards {
+                        let steps = numapilot::boards::first_setup(b, &g.pci);
+                        println!(
+                            "{} ({}): primeira configuração: {}",
+                            b.name,
+                            g.alias,
+                            numapilot::boards::setup_summary(&steps)
+                        );
+                        for s in &steps {
+                            let tag = match s.state {
+                                StepState::Ok => "pronto  ",
+                                StepState::Todo => "FALTA   ",
+                                StepState::Opcional => "opcional",
+                            };
+                            println!("  {tag} {}: {}", s.title, s.detail);
+                        }
+                    }
+                    Ok(())
+                }
                 "status" => {
                     for (b, g) in &boards {
                         println!("{} ({}, {})", b.name, g.alias, g.pci);
@@ -1382,7 +1413,8 @@ fn cmd_run(
         fg_gpu,
     };
     let d = decide_launch(cfg, &topo, &learned, &profiles, &loads, &inp)?;
-    let (set, unset) = gpu_env(&d, &topo);
+    let (mut set, unset) = gpu_env(&d, &topo);
+    set.extend(numapilot::decide::dx_filter(&d, &topo, &set, &unset));
 
     if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
         eprintln!("programa : {}", command.join(" "));
@@ -1444,7 +1476,14 @@ fn cmd_run(
     if d.needs_daemon {
         let me = std::process::id() as i32;
         let profile = tuning.as_ref().map(|t| t.3.profile.clone());
-        match ctl::send(&ctl::Request::Adopt { pid: me, profile }) {
+        // a chave do programa vai junto: neste momento o processo ainda é o numapilot, e o
+        // serviço precisa saber de quem é o perfil e o grupo de controle
+        match ctl::send(&ctl::Request::Adopt {
+            pid: me,
+            profile,
+            key: Some(pkey.clone()),
+            label: Some(basename(prog).to_string()),
+        }) {
             Ok(r) if r.ok => {}
             Ok(r) => eprintln!("numapilot: aviso: {}", r.message),
             Err(e) => {
@@ -2124,6 +2163,72 @@ fn cmd_log(lines: usize, which: Option<&str>) -> Result<()> {
     }
     if shown == 0 {
         println!("Nenhum registro ainda.");
+    }
+    Ok(())
+}
+
+fn cmd_gpu_test(cfg: &Config, only: Option<&str>, json: bool) -> Result<()> {
+    use numapilot::gputest::Verdict;
+    let topo = Topology::load(cfg);
+    let mut all = vec![];
+    let mut wrong = 0;
+    let mut found = false;
+    for g in &topo.gpus {
+        if only.is_some_and(|o| o != g.alias && o != g.pci) {
+            continue;
+        }
+        found = true;
+        if g.is_nvidia() && numapilot::nvctl::asleep(&g.pci) && only.is_none() {
+            if !json {
+                println!(
+                    "{} ({}): dormindo, pulei para não acordar (teste só ela: numapilot gpu-test {})",
+                    g.alias,
+                    g.short_name(),
+                    g.alias
+                );
+            }
+            continue;
+        }
+        let (mut set, unset) = numapilot::decide::env_for_gpu_full(g, &topo);
+        // a mesma reserva de DirectX que o `run` usa (sem efeito no vulkaninfo, mas aparece)
+        let dxf = numapilot::gputest::vk_name_for(g, &set, &unset);
+        let lines = numapilot::gputest::test(g, &topo, &set, &unset);
+        if !json {
+            println!("{} ({}, {})", g.alias, g.short_name(), g.pci);
+            for l in &lines {
+                let tag = match l.verdict {
+                    Verdict::Certa => "certa  ",
+                    Verdict::Errada => "ERRADA ",
+                    Verdict::NaoDeu => "não deu",
+                };
+                println!("  {tag} {}: {}", l.api, l.detail);
+            }
+            if let Some(n) = &dxf {
+                println!("  nome para o filtro do DXVK/VKD3D: {n}");
+            }
+        }
+        wrong += lines
+            .iter()
+            .filter(|l| l.verdict == Verdict::Errada)
+            .count();
+        set.clear();
+        all.push(
+            serde_json::json!({"alias": g.alias, "pci": g.pci, "linhas": lines, "filtro_dx": dxf}),
+        );
+    }
+    if !found {
+        anyhow::bail!("placa não encontrada (veja os apelidos em: numapilot topo)");
+    }
+    if json {
+        println!("{}", serde_json::to_string_pretty(&all)?);
+    } else if wrong > 0 {
+        println!();
+        println!(
+            "Alguma escolha caiu na placa errada. Mande esta saída e a de: numapilot run --dry-run --gpu APELIDO -- true"
+        );
+    }
+    if wrong > 0 {
+        std::process::exit(2);
     }
     Ok(())
 }

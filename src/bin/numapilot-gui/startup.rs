@@ -444,20 +444,58 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
             for s in &plan.steps {
                 ui.label(format!("• {s}"));
             }
+            // pacotes que saem junto (consulta ao pacman, sem senha)
+            if let origin::Source::Pacman { pkg, .. } = &t.source {
+                let key = egui::Id::unique(("rm-preview", pkg));
+                let prev: Vec<String> = ui.data_mut(|d| {
+                    d.get_temp_mut_or_insert_with(key, || origin::pacman_removal_preview(pkg))
+                        .clone()
+                });
+                if prev.len() > 1 {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!(
+                            "{} pacotes saem (o programa e o que só ele usava):",
+                            prev.len()
+                        ))
+                        .strong(),
+                    );
+                    egui::ScrollArea::vertical()
+                        .max_height(110.0)
+                        .id_salt("rm-prev")
+                        .show(ui, |ui| {
+                            for l in &prev {
+                                ui.label(RichText::new(l).monospace().small());
+                            }
+                        });
+                }
+            }
             if !t.configs.is_empty() || t.app_dir.is_some() {
                 ui.add_space(4.0);
-                let what: Vec<String> = t
-                    .app_dir
-                    .iter()
-                    .chain(t.configs.iter())
-                    .map(|c| c.display().to_string())
-                    .collect();
                 ui.checkbox(
                     &mut configs,
                     "Apagar também as configurações e a pasta do programa",
-                )
-                .on_hover_text(what.join("\n"));
+                );
+                // sempre à vista: exatamente o que essa opção apaga
+                for c in t.app_dir.iter().chain(t.configs.iter()) {
+                    let txt = RichText::new(format!("    {}", c.display()))
+                        .monospace()
+                        .small();
+                    ui.label(if configs {
+                        txt.color(p.err)
+                    } else {
+                        txt.weak()
+                    });
+                }
             }
+            ui.collapsing("Comandos exatos", |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(160.0)
+                    .id_salt("rm-script")
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(&plan.script).monospace().small());
+                    });
+            });
             if it.running {
                 ui.label(
                     RichText::new("O programa está aberto: ele vai ser encerrado antes.")
@@ -487,10 +525,11 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
         }
         let plan = origin::uninstall_plan(&t, unit_of(&it), configs);
         numapilot::log::info(&format!(
-            "desinstalar {} ({}): {}",
+            "desinstalar {} ({}): {}\ncomandos:\n{}",
             it.name,
             t.source.text(),
-            plan.steps.join(" | ")
+            plan.steps.join(" | "),
+            plan.script
         ));
         match crate::jobs::in_terminal(&["sh".into(), "-c".into(), plan.script]) {
             Ok(()) => app.toast(format!("Desinstalando {} no terminal", it.name), true),

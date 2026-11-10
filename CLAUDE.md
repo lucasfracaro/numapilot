@@ -13,11 +13,8 @@ Leia antes de mexer. Resume o que já foi feito e combinado com o Lucas em sess�
   - Mudanças no **boot**, **undervolt** e **mitigações** só com a confirmação dele (pkexec/senha).
   - Manter o nome **numapilot**.
   - Commits terminam com:
-    ```
-    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-    Claude-Session: https://claude.ai/code/session_01JaLAC3YoxBRZYaaPzqYegM
-    ```
-    (numa sessão nova, use o link da sessão atual no lugar do Claude-Session).
+    as linhas `Co-Authored-By:` e `Claude-Session:` que a sessão atual indicar (o modelo e o link
+    mudam de sessão para sessão).
   - **GitHub e pastas locais sempre na mesma versão** (vários PCs testando ao mesmo tempo):
     `git pull --ff-only` antes de mexer; depois de mexer, CI completa, commit e push na hora
     (nunca deixar commit só local). Nada pode quebrar os outros PCs: todo recurso depende do
@@ -132,6 +129,19 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
 `startup::essential_unit`; unidades `app-…@hash.service` são programas (ficam fora). `src/iostat.rs`:
 /proc/diskstats (só discos inteiros), /sys/class/net (física ou VPN), /proc/PID/io por processo;
 `IoMonitor` mede as velocidades entre duas leituras.
+
+## Buscar app, teste de placa, permissões (2026-11-10)
+
+- `src/apps.rs`: programas instalados (atalhos .desktop, Flatpak, Snap, Steam, AppImage) com a
+  mesma chave de perfil que o serviço calcula com o programa rodando; janela "Buscar app
+  instalado…" na aba Programas (`Finder` em `programs.rs`).
+- `src/gputest.rs`: `numapilot gpu-test`, nome Vulkan para o filtro do DXVK/VKD3D
+  (`decide::dx_filter`, cache em ~/.cache/numapilot/vk-names.json por um dia).
+  `procctl::wrong_gpu` avisa placa diferente da escolhida (fdinfo; a NVIDIA não publica).
+- `Request::Adopt` leva `key`/`label` do programa que o `run` vai abrir.
+- `daemon.admin_groups` + `util::groups_of_uid`: quem pode mudar a máquina inteira.
+- `boards::first_setup` (BC-250) e abas escondíveis (`~/.config/numapilot/gui-tabs`).
+- Falta: interface em inglês (só português por enquanto); testar tudo isso em hardware real.
 
 ## Capturas do README
 
