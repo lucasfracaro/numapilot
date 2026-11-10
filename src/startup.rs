@@ -390,6 +390,15 @@ const ESSENTIAL_UNITS: &[&str] = &[
     "xdg-",
     "plasma-",
     "at-spi",
+    // acesso remoto: no servidor e na BC-250 (sem tela) desligar o ssh tranca você fora
+    "sshd",
+    "ssh.service",
+    "tailscaled",
+    "zerotier-one",
+    // teclado/mouse sem fio, contas e áudio em tempo real
+    "bluetooth",
+    "accounts-daemon",
+    "rtkit-daemon",
 ];
 
 fn remembered_path() -> PathBuf {

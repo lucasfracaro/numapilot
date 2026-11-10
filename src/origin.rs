@@ -314,6 +314,64 @@ pub fn app_dir_of(exe: &Path, home: &Path) -> Option<PathBuf> {
         return None;
     }
     let first = parts[0].to_string_lossy().to_lowercase();
+    // Pastas de ferramentas e de trabalho que guardam muito mais que um programa: apagar
+    // ~/go, ~/.cargo, ~/.conda ou ~/Projetos/algo por causa de um binário seria um desastre.
+    const NEVER: &[&str] = &[
+        ".cargo",
+        ".rustup",
+        "go",
+        ".go",
+        ".conda",
+        ".mamba",
+        "miniconda3",
+        "anaconda3",
+        "miniforge3",
+        ".pyenv",
+        ".rbenv",
+        ".nvm",
+        ".bun",
+        ".deno",
+        ".dotnet",
+        ".npm",
+        ".npm-global",
+        ".yarn",
+        ".pnpm",
+        ".pub-cache",
+        "flutter",
+        ".gradle",
+        ".m2",
+        ".sdkman",
+        ".steam",
+        ".var",
+        ".wine",
+        ".local",
+        "snap",
+        ".nix-profile",
+        ".linuxbrew",
+        "android",
+        ".android",
+        "java",
+        "lib",
+        ".config",
+        ".cache",
+        "projetos",
+        "projects",
+        "documentos",
+        "documents",
+        "downloads",
+        "desktop",
+        "área de trabalho",
+        "código",
+        "code",
+        "src",
+        "git",
+        "repos",
+        "dev",
+        "workspace",
+    ];
+    if NEVER.contains(&first.as_str()) {
+        return None;
+    }
     const GENERIC: &[&str] = &[
         ".local",
         "bin",
@@ -750,6 +808,21 @@ mod tests {
         );
         assert_eq!(app_dir_of(Path::new("/home/x/Apps/Foo.AppImage"), h), None);
         assert_eq!(app_dir_of(Path::new("/usr/bin/steam"), h), None);
+        // pastas de ferramentas e de projetos nunca viram "pasta do programa"
+        assert_eq!(app_dir_of(Path::new("/home/x/go/bin/tool"), h), None);
+        assert_eq!(
+            app_dir_of(Path::new("/home/x/.conda/envs/a/bin/python"), h),
+            None
+        );
+        assert_eq!(app_dir_of(Path::new("/home/x/.dotnet/tools/x"), h), None);
+        assert_eq!(
+            app_dir_of(Path::new("/home/x/Projetos/meu/target/release/x"), h),
+            None
+        );
+        assert_eq!(
+            app_dir_of(Path::new("/home/x/flutter/bin/flutter"), h),
+            None
+        );
     }
 
     #[test]
