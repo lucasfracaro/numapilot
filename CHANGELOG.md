@@ -4,7 +4,8 @@
 
 - **Turbo máximo** (perfil pronto e opção no Ajustar…, só com 2 processadores): o programa fica
   em poucos núcleos e o resto do sistema sai do socket inteiro, para o clock subir ao degrau mais
-  alto do turbo.
+  alto do turbo. Com a opção marcada, o Ajustar… deixa escolher 2 a 16 núcleos e mostra o clock
+  máximo de cada escolha pela tabela do processador.
 - **Limite de processador** por programa em % de um núcleo (`CPUQuota`), e perfis prontos novos:
   Edição de vídeo e Segundo plano.
 - **Histórico por programa**: o serviço guarda um ponto por minuto (6 h) de processador e memória;

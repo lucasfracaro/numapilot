@@ -566,6 +566,61 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     });
                     ui.end_row();
 
+                    if multi && ed.p.turbo_max {
+                        ui.label(RichText::new("Núcleos no turbo").strong());
+                        ui.vertical(|ui| {
+                            let per_socket = app
+                                .topo
+                                .nodes
+                                .iter()
+                                .map(|n| n.physical_cores.max(n.cores.len()))
+                                .min()
+                                .unwrap_or(0);
+                            let table = app.turbo_tables.values().next();
+                            let ghz = |n: usize| {
+                                table
+                                    .and_then(|t| numapilot::turbo::limit_for(t, n as f32))
+                                    .map(|m| format!(" · {:.1} GHz", m as f64 / 1000.0))
+                                    .unwrap_or_default()
+                            };
+                            ui.horizontal_wrapped(|ui| {
+                                for n in [2usize, 4, 6, 8, 10, 12, 16] {
+                                    if n > per_socket {
+                                        continue;
+                                    }
+                                    let sel = ed.p.cores == Some(n) && !ed.p.smt;
+                                    if ui
+                                        .selectable_label(sel, format!("{n}{}", ghz(n)))
+                                        .on_hover_text(format!(
+                                            "{n} núcleos físicos (sem dividir núcleo) sozinhos no processador"
+                                        ))
+                                        .clicked()
+                                    {
+                                        ed.p.cores = Some(n);
+                                        ed.p.smt = false;
+                                        ed.p.cpu_list = None;
+                                        ed.picking = false;
+                                        ed.pick.clear();
+                                    }
+                                }
+                            });
+                            let all = ghz(per_socket);
+                            ui.label(
+                                RichText::new(if table.is_some() {
+                                    format!(
+                                        "Clock máximo com esse número de núcleos acordados (todos os {per_socket} ligados{all}). \
+                                         Jogos que usam muitos núcleos rendem mais com 6 ou 8 do que com 4."
+                                    )
+                                } else {
+                                    "Quanto menos núcleos, mais alto o clock. A tabela deste processador aparece com o serviço rodando (só Intel).".to_string()
+                                })
+                                .small()
+                                .weak(),
+                            );
+                        });
+                        ui.end_row();
+                    }
+
                     ui.label(RichText::new("Modo da máquina").strong())
                         .on_hover_text("Enquanto o programa está aberto a máquina fica neste modo (aba Máquina) e volta ao anterior quando ele fecha.");
                     let modes = [(None, "não trocar"), (Some("jogo"), "Jogo"), (Some("ia"), "IA"), (Some("silencioso"), "Silencioso")];
