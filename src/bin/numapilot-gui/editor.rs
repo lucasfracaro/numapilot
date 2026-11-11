@@ -583,12 +583,14 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                     .map(|m| format!(" · {:.1} GHz", m as f64 / 1000.0))
                                     .unwrap_or_default()
                             };
+                            // núcleos físicos escolhidos (o perfil conta threads quando usa os dois)
+                            let phys = ed.p.cores.map(|c| if ed.p.smt { c / 2 } else { c });
                             ui.horizontal_wrapped(|ui| {
                                 for n in [2usize, 4, 6, 8, 10, 12, 16] {
                                     if n > per_socket {
                                         continue;
                                     }
-                                    let sel = ed.p.cores == Some(n) && !ed.p.smt;
+                                    let sel = phys == Some(n);
                                     if ui
                                         .selectable_label(sel, format!("{n}{}", ghz(n)))
                                         .on_hover_text(format!(
@@ -596,14 +598,36 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                         ))
                                         .clicked()
                                     {
-                                        ed.p.cores = Some(n);
-                                        ed.p.smt = false;
+                                        // com os dois threads, a contagem do perfil é em threads
+                                        ed.p.cores = Some(if ed.p.smt { n * 2 } else { n });
                                         ed.p.cpu_list = None;
                                         ed.picking = false;
                                         ed.pick.clear();
                                     }
                                 }
                             });
+                            let mut ht = ed.p.smt;
+                            let label = match phys {
+                                Some(n) => format!(
+                                    "usar os dois threads de cada núcleo ({n} núcleos, {} threads)",
+                                    if ht { n * 2 } else { n }
+                                ),
+                                None => "usar os dois threads de cada núcleo".to_string(),
+                            };
+                            if ui
+                                .checkbox(&mut ht, label)
+                                .on_hover_text(
+                                    "O turbo conta núcleos acordados, não threads: o clock máximo é o mesmo com ou sem. \
+                                     Desmarcado, cada thread do programa tem um núcleo inteiro (melhor para a maioria dos jogos). \
+                                     Marcado, rende mais em programas que usam todos os threads (compilação, renderização).",
+                                )
+                                .changed()
+                            {
+                                ed.p.smt = ht;
+                                if let Some(n) = phys {
+                                    ed.p.cores = Some(if ht { n * 2 } else { n });
+                                }
+                            }
                             let all = ghz(per_socket);
                             ui.label(
                                 RichText::new(if table.is_some() {
