@@ -70,6 +70,8 @@ pub struct Limits {
     pub cpus: Option<Vec<usize>>,
     pub mem_nodes: Option<Vec<usize>>,
     pub mem_max_bytes: Option<u64>,
+    /// Limite de CPU em % de um núcleo (CPUQuota do systemd).
+    pub cpu_quota_pct: Option<u32>,
 }
 
 /// argv do `systemctl set-property --runtime` com os limites (vazio = sem limite).
@@ -87,6 +89,11 @@ pub fn set_props_argv(unit: &str, l: &Limits) -> Vec<String> {
             l.mem_max_bytes
                 .map(|b| b.to_string())
                 .unwrap_or_else(|| "infinity".into())
+        ),
+        // vazio = sem limite
+        format!(
+            "CPUQuota={}",
+            l.cpu_quota_pct.map(|p| format!("{p}%")).unwrap_or_default()
         ),
     ]
 }
@@ -233,6 +240,7 @@ mod tests {
                 cpus: Some(vec![0, 1, 2, 44]),
                 mem_nodes: Some(vec![0]),
                 mem_max_bytes: Some(1 << 30),
+                cpu_quota_pct: Some(150),
             },
         );
         assert_eq!(
@@ -240,13 +248,19 @@ mod tests {
             &[
                 "AllowedCPUs=0-2,44",
                 "AllowedMemoryNodes=0",
-                "MemoryMax=1073741824"
+                "MemoryMax=1073741824",
+                "CPUQuota=150%"
             ]
         );
         let p = set_props_argv("u", &Limits::default());
         assert_eq!(
             &p[4..],
-            &["AllowedCPUs=", "AllowedMemoryNodes=", "MemoryMax=infinity"]
+            &[
+                "AllowedCPUs=",
+                "AllowedMemoryNodes=",
+                "MemoryMax=infinity",
+                "CPUQuota="
+            ]
         );
         assert_eq!(attach_argv("u", &[5])[7..], ["u", "", "1", "5"]);
         assert!(

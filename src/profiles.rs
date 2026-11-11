@@ -67,6 +67,13 @@ pub struct Profile {
     /// Modo da máquina enquanto o programa está aberto (jogo, ia, silencioso); volta ao fechar.
     #[serde(default)]
     pub machine_mode: Option<String>,
+    /// Limite de processador em % de um núcleo (50 = meio núcleo, 200 = dois núcleos).
+    #[serde(default)]
+    pub cpu_max_pct: Option<f64>,
+    /// Turbo máximo: enquanto roda, o resto do sistema sai do socket inteiro dos núcleos dele,
+    /// para os outros núcleos dormirem e o clock subir (só em PCs com mais de um processador).
+    #[serde(default)]
+    pub turbo_max: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -172,6 +179,8 @@ impl Default for Profile {
             gamescope: None,
             upscale: None,
             machine_mode: None,
+            cpu_max_pct: None,
+            turbo_max: false,
         }
     }
 }
@@ -192,7 +201,11 @@ impl Profile {
 
     /// Precisa de um grupo de controle (cgroup) do systemd para valer.
     pub fn needs_scope(&self) -> bool {
-        self.memory == "strict" || self.mem_max_gb.is_some() || self.exclusive
+        self.memory == "strict"
+            || self.mem_max_gb.is_some()
+            || self.exclusive
+            || self.cpu_max_pct.is_some()
+            || self.turbo_max
     }
 
     /// Precisa do serviço (root) para aplicar: cgroup ou prioridade alta.
@@ -225,6 +238,11 @@ impl Profile {
             && m < 0.25
         {
             return Err("limite de memória muito baixo (mínimo 0,25 GB)".into());
+        }
+        if let Some(c) = self.cpu_max_pct
+            && !(5.0..=6400.0).contains(&c)
+        {
+            return Err("limite de processador: de 5% a 6400% (100% = um núcleo)".into());
         }
         if let Some(l) = &self.cpu_list
             && crate::util::parse_cpulist(l).is_empty()
@@ -275,6 +293,32 @@ impl Profile {
             "render" => {
                 p.cpu = "all".into();
                 p.memory = "interleave".into();
+            }
+            // Turbo máximo: 4 núcleos físicos do socket da GPU, sozinhos no processador
+            // (o resto do sistema vai para o outro socket), para o clock ir ao degrau mais alto.
+            "turbo" => {
+                p.cpu = "gpu".into();
+                p.cores = Some(4);
+                p.smt = false;
+                p.memory = "strict".into();
+                p.priority = "high".into();
+                p.exclusive = true;
+                p.turbo_max = true;
+                p.gpu_power = "3d".into();
+                if p.usage == "auto" {
+                    p.usage = "graphics".into();
+                }
+            }
+            // Edição de vídeo: um socket inteiro com os dois threads, memória preferindo a local.
+            "video" => {
+                p.cpu = "gpu".into();
+                p.memory = "prefer".into();
+                p.gpu_power = "video".into();
+            }
+            // Segundo plano: no máximo um núcleo, prioridade baixa (sincronizadores, launchers...).
+            "fundo" => {
+                p.priority = "low".into();
+                p.cpu_max_pct = Some(100.0);
             }
             // Silencioso: poucos núcleos, prioridade baixa (não atrapalha o resto).
             "silencioso" => {
@@ -327,5 +371,108 @@ pub fn program_key(steam_appid: Option<&str>, learn_key: &str) -> String {
     match steam_appid {
         Some(id) if !id.is_empty() && id != "0" => format!("steam:{id}"),
         _ => learn_key.to_string(),
+    }
+}
+
+/// Arquivo para trocar escolhas entre PCs ou com outras pessoas.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Exported {
+    /// versão do formato
+    pub formato: u32,
+    #[serde(default)]
+    pub maquina: String,
+    pub perfis: BTreeMap<String, Profile>,
+}
+
+/// Onde a exportação vai por padrão: ~/numapilot-escolhas-MAQUINA.json
+pub fn export_path() -> PathBuf {
+    PathBuf::from(std::env::var_os("HOME").unwrap_or_else(|| "/tmp".into())).join(format!(
+        "numapilot-escolhas-{}.json",
+        crate::selftest::hostname()
+    ))
+}
+
+/// Texto do arquivo de exportação com todas as escolhas salvas.
+pub fn export_text() -> String {
+    let e = Exported {
+        formato: 1,
+        maquina: crate::selftest::hostname(),
+        perfis: Profiles::load().map,
+    };
+    serde_json::to_string_pretty(&e).unwrap_or_default()
+}
+
+/// Lê um arquivo de exportação e devolve só os perfis válidos e os erros dos outros.
+/// Escolhas presas a núcleos ou placas de outra máquina são adaptadas: a lista de CPUs sai
+/// (os núcleos são outros) e a placa volta para "auto" se o apelido não existir aqui.
+pub fn import_text(
+    text: &str,
+    gpu_aliases: &[String],
+) -> Result<(Vec<(String, Profile)>, Vec<String>), String> {
+    let e: Exported = serde_json::from_str(text).map_err(|e| format!("arquivo inválido: {e}"))?;
+    if e.formato != 1 {
+        return Err(format!(
+            "formato {} desconhecido (atualize o numapilot)",
+            e.formato
+        ));
+    }
+    let this = crate::selftest::hostname();
+    let mut ok = vec![];
+    let mut bad = vec![];
+    for (k, mut p) in e.perfis {
+        if e.maquina != this {
+            p.cpu_list = None;
+            if !["auto", "display"].contains(&p.gpu.as_str()) && !gpu_aliases.contains(&p.gpu) {
+                p.gpu = auto();
+            }
+            if p.fg_gpu != "same" && !gpu_aliases.contains(&p.fg_gpu) {
+                p.fg_gpu = same();
+            }
+        }
+        match p.validate() {
+            Ok(()) if !k.is_empty() => ok.push((k, p)),
+            Ok(()) => bad.push("perfil sem chave".into()),
+            Err(err) => bad.push(format!("{k}: {err}")),
+        }
+    }
+    Ok((ok, bad))
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    #[test]
+    fn import_adapts_other_machine() {
+        let mut perfis = BTreeMap::new();
+        perfis.insert(
+            "steam:1091500".to_string(),
+            Profile {
+                gpu: "amd-7".into(),
+                cpu_list: Some("0-3".into()),
+                cores: Some(4),
+                ..Default::default()
+            },
+        );
+        perfis.insert(
+            "/usr/bin/x".to_string(),
+            Profile {
+                cores: Some(0),
+                ..Default::default()
+            },
+        );
+        let t = serde_json::to_string(&Exported {
+            formato: 1,
+            maquina: "outro-pc-qualquer".into(),
+            perfis,
+        })
+        .unwrap();
+        let (ok, bad) = import_text(&t, &["amd-0".to_string()]).unwrap();
+        assert_eq!(ok.len(), 1);
+        assert_eq!(ok[0].1.gpu, "auto");
+        assert_eq!(ok[0].1.cpu_list, None);
+        assert_eq!(ok[0].1.cores, Some(4));
+        assert_eq!(bad.len(), 1);
+        assert!(import_text("{}", &[]).is_err());
     }
 }

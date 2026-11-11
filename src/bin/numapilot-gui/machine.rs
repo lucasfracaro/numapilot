@@ -693,6 +693,28 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 if !r.smartctl {
                     ui.label(RichText::new("Para ver os discos: sudo pacman -S smartmontools").small().weak());
                 }
+                if !r.dimms.is_empty() {
+                    let total: f64 = r.dimms.iter().map(|d| d.size_gb).sum();
+                    let conf = r.dimms.iter().filter_map(|d| d.configured).min();
+                    let sup = r.dimms.iter().filter_map(|d| d.speed).min();
+                    ui.label(format!(
+                        "Memória: {} pente(s), {total:.0} GB{}{}",
+                        r.dimms.len(),
+                        conf.map(|c| format!(", rodando a {c} MT/s")).unwrap_or_default(),
+                        sup.map(|s| format!(" (os pentes suportam {s})")).unwrap_or_default()
+                    ))
+                    .on_hover_text(
+                        r.dimms
+                            .iter()
+                            .map(|d| format!("{} {}: {:.0} GB {}", d.bank, d.slot, d.size_gb, d.kind))
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    );
+                    let node_gb: Vec<f64> = app.topo.nodes.iter().map(|n| n.mem_total_kb as f64 / 1048576.0).collect();
+                    for n in numapilot::health::mem_notes(&r.dimms, &node_gb) {
+                        ui.label(RichText::new(n).small().color(Color32::from_rgb(230, 160, 40)));
+                    }
+                }
                 for e in &r.disk_errors {
                     ui.label(RichText::new(format!("disco não lido: {e}")).small().color(Color32::from_rgb(230, 160, 40)));
                 }

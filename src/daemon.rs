@@ -693,6 +693,7 @@ impl Ctx<'_> {
                 mem_nodes: (p.memory == "strict" && !cpus.is_empty())
                     .then(|| self.topo.nodes_of(&cpus)),
                 mem_max_bytes: p.mem_max_gb.map(|g| (g * 1073741824.0) as u64),
+                cpu_quota_pct: p.cpu_max_pct.map(|c| c.round() as u32),
             };
             match cgroup::apply(&t.pkey, &t.label, pids, &limits) {
                 Ok(name) => {
@@ -1181,6 +1182,22 @@ pub fn run(cfg: Config) -> Result<()> {
             .filter(|t| t.state == St::Placed && t.profile.as_ref().is_some_and(|p| p.exclusive))
             .flat_map(|t| t.cpus.iter().copied())
             .collect();
+        // Turbo máximo: reserva o socket inteiro dos núcleos do programa, para os outros
+        // núcleos dele dormirem. Só com mais de um processador, e nunca todos os sockets.
+        if topo.nodes.len() > 1 {
+            let mut socks: Vec<usize> = procs
+                .values()
+                .filter(|t| {
+                    t.state == St::Placed && t.profile.as_ref().is_some_and(|p| p.turbo_max)
+                })
+                .flat_map(|t| topo.nodes_of(&t.cpus))
+                .collect();
+            socks.sort_unstable();
+            socks.dedup();
+            if socks.len() < topo.nodes.len() {
+                want.extend(topo.cpus_of(&socks));
+            }
+        }
         want.sort_unstable();
         want.dedup();
         if want != reserved_now {
@@ -2236,6 +2253,14 @@ fn write_state(
             .partial_cmp(&a.cores)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+    // histórico por programa (um ponto por minuto)
+    if crate::proghist::sample(
+        rows.iter()
+            .map(|r| (r.key.as_str(), r.cores, r.mem.iter().sum::<u64>())),
+        crate::history::now(),
+    ) {
+        crate::proghist::save();
+    }
     if let Ok(s) = serde_json::to_string(&rows) {
         let tmp = run_dir().join("state.json.tmp");
         if std::fs::write(&tmp, s).is_ok() {

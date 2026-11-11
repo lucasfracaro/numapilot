@@ -2,6 +2,19 @@
 
 ## Ainda não lançado
 
+- **Turbo máximo** (perfil pronto e opção no Ajustar…, só com 2 processadores): o programa fica
+  em poucos núcleos e o resto do sistema sai do socket inteiro, para o clock subir ao degrau mais
+  alto do turbo.
+- **Limite de processador** por programa em % de um núcleo (`CPUQuota`), e perfis prontos novos:
+  Edição de vídeo e Segundo plano.
+- **Histórico por programa**: o serviço guarda um ponto por minuto (6 h) de processador e memória;
+  o Ajustar… mostra média, pico e um gráfico, para escolher limites com dados.
+- **Conferência de memória** (Máquina → Saúde): pentes, velocidade em uso contra a suportada,
+  pentes diferentes e desequilíbrio entre os processadores.
+- **Exportar/Importar escolhas**: aba Escolhas salvas e `numapilot profile export|import`; ao
+  importar de outro PC, núcleos e placas que não existem aqui voltam para o automático.
+- **Idioma**: Configurações → Português / English (parcial: menu, títulos e barra da aba
+  Programas; `src/bin/numapilot-gui/i18n.rs`).
 - **Turbo por núcleos acordados** (Intel): o Mapa mostra, por processador, quantos núcleos estão
   acordados e até que clock o turbo vai com isso; passe o mouse para ver a tabela inteira. Avisa
   quando os estados profundos (C3/C6) estão desligados. Também em `numapilot turbo`.

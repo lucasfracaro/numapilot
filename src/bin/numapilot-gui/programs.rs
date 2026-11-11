@@ -210,7 +210,7 @@ fn pct(v: f64) -> String {
 fn layout(width: f32) -> Vec<(Col, &'static str, f32)> {
     let mut cols: Vec<(Col, &str, f32)> = COLS
         .iter()
-        .copied()
+        .map(|(c, n, w)| (*c, crate::i18n::tr(n), *w))
         .filter(|(c, _, _)| {
             !(width < 900.0 && *c == Col::Card
                 || width < 760.0 && *c == Col::Vram
@@ -242,7 +242,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         .and_then(|g| app.progs.blocked.get(&g.main_pid).copied());
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(RichText::new(format!("{} programas em execução", groups.len())).size(20.0).strong());
+            ui.label(RichText::new(format!("{} {}", groups.len(), crate::i18n::tr("programas em execução"))).size(20.0).strong());
             ui.label(RichText::new(format!("{nproc} processos")).weak());
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -257,7 +257,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                 .on_hover_text("Pede para o programa fechar (SIGTERM), como fechar a janela")
                 .on_disabled_hover_text(why);
             let adjust = ui
-                .add_enabled(sel.is_some(), egui::Button::new("Ajustar…"))
+                .add_enabled(sel.is_some(), egui::Button::new(crate::i18n::tr("Ajustar…")))
                 .on_hover_text("Núcleos, memória, prioridade, GPU e perfis prontos");
             if let Some(g) = &sel {
                 if stop.clicked() {
@@ -279,7 +279,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
             ui.separator();
-            if ui.button(if app.progs.expanded.is_empty() { "Abrir tudo" } else { "Fechar tudo" }).clicked() {
+            if ui.button(crate::i18n::tr(if app.progs.expanded.is_empty() { "Abrir tudo" } else { "Fechar tudo" })).clicked() {
                 if app.progs.expanded.is_empty() {
                     app.progs.expanded = groups.iter().map(|g| g.key.clone()).collect();
                 } else {
@@ -304,7 +304,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ui.close();
                 }
             });
-            if ui.checkbox(&mut app.only_mine, "Só os meus").changed() {
+            if ui.checkbox(&mut app.only_mine, crate::i18n::tr("Só os meus")).changed() {
                 app.force_refresh();
             }
             ui.add(egui::TextEdit::singleline(&mut app.progs.filter).hint_text("🔍 Buscar").desired_width(160.0));
@@ -312,7 +312,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
     });
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button("🔍 Buscar app instalado…")
+            .button(crate::i18n::tr("🔍 Buscar app instalado…"))
             .on_hover_text("Lista os programas instalados (menu, Flatpak, Snap, AppImage, jogos da Steam) para escolher processador, memória e placa sem precisar abrir o programa antes.")
             .clicked()
         {
@@ -463,7 +463,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            for (si, (title, list)) in [("Aplicativos", apps), ("Sessão e sistema", sys)]
+            for (si, (title, list)) in [(crate::i18n::tr("Aplicativos"), apps), (crate::i18n::tr("Sessão e sistema"), sys)]
                 .into_iter()
                 .enumerate()
             {
@@ -861,7 +861,7 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
     let mut open = true;
     let mut pick: Option<numapilot::apps::App> = None;
     let mut menu_fix: Option<std::path::PathBuf> = None;
-    egui::Window::new("Buscar app instalado")
+    egui::Window::new(crate::i18n::tr("Buscar app instalado"))
         .open(&mut open)
         .collapsible(false)
         .default_size([640.0, 520.0])
@@ -936,7 +936,7 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
                         });
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(8.0);
-                            if ui.button("Ajustar…").clicked() {
+                            if ui.button(crate::i18n::tr("Ajustar…")).clicked() {
                                 pick = Some((*a).clone());
                             }
                             // a placa de vídeo só vale se o programa abrir pelo numapilot

@@ -302,6 +302,13 @@ enum ProfileCmd {
     },
     /// Apaga um perfil (o programa volta para o automático).
     Rm { key: String },
+    /// Grava todas as escolhas num arquivo, para levar a outro PC ou compartilhar.
+    Export {
+        /// Arquivo (padrão: ~/numapilot-escolhas-MAQUINA.json).
+        file: Option<std::path::PathBuf>,
+    },
+    /// Traz as escolhas de um arquivo exportado (as daqui com a mesma chave são trocadas).
+    Import { file: std::path::PathBuf },
 }
 
 fn main() {
@@ -1648,6 +1655,38 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
             let r = ctl::send(&ctl::Request::DeleteProfile { key, pid: None })?;
             println!("{}", r.message);
             if r.ok { Ok(()) } else { bail!("falhou") }
+        }
+        ProfileCmd::Export { file } => {
+            let f = file.unwrap_or_else(numapilot::profiles::export_path);
+            std::fs::write(&f, numapilot::profiles::export_text())?;
+            println!("Escolhas gravadas em {}", f.display());
+            Ok(())
+        }
+        ProfileCmd::Import { file } => {
+            let cfg = Config::load().unwrap_or_default();
+            let topo = Topology::load(&cfg);
+            let aliases: Vec<String> = topo.gpus.iter().map(|g| g.alias.clone()).collect();
+            let text = std::fs::read_to_string(&file)?;
+            let (ok, bad) = numapilot::profiles::import_text(&text, &aliases)
+                .map_err(|e| anyhow::anyhow!(e))?;
+            let mut n = 0;
+            for (key, profile) in ok {
+                let r = ctl::send(&ctl::Request::SetProfile {
+                    key: key.clone(),
+                    profile,
+                    pid: None,
+                })?;
+                if r.ok {
+                    n += 1;
+                } else {
+                    println!("{key}: {}", r.message);
+                }
+            }
+            for b in &bad {
+                println!("ignorado: {b}");
+            }
+            println!("{n} escolha(s) importada(s).");
+            Ok(())
         }
     }
 }

@@ -367,6 +367,43 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 ));
                 ui.add_space(4.0);
 
+                // Histórico: quanto o programa usou nas últimas horas (o serviço guarda)
+                {
+                    let id = ui.make_persistent_id(("prog-hist", &ed.key));
+                    let pts: Vec<numapilot::proghist::Point> = ui.data_mut(|d| {
+                        d.get_temp_mut_or_insert_with(id, || numapilot::proghist::load(&ed.key))
+                            .clone()
+                    });
+                    if let Some(s) = numapilot::proghist::summary(&pts) {
+                        let p = crate::theme::pal(ui);
+                        ui.horizontal(|ui| {
+                            let mut sp = crate::theme::Spark::default();
+                            let peak = s.peak.max(0.1);
+                            let step = (pts.len() as f32 / crate::theme::Spark::LEN as f32).max(1.0);
+                            let mut i = 0.0f32;
+                            while (i as usize) < pts.len() {
+                                sp.push(pts[i as usize].peak / peak);
+                                i += step;
+                            }
+                            let (rect, _) = ui.allocate_exact_size(egui::vec2(140.0, 30.0), egui::Sense::hover());
+                            crate::theme::spark_in(ui.painter(), rect, &sp, p.accent);
+                            let h = s.minutes / 60;
+                            let m = s.minutes % 60;
+                            ui.label(
+                                RichText::new(format!(
+                                    "Uso registrado ({}{m} min): em média {:.1} núcleos, pico {:.1}; memória no pico {}",
+                                    if h > 0 { format!("{h} h ") } else { String::new() },
+                                    s.avg,
+                                    s.peak,
+                                    crate::fmt_bytes(s.mem_peak_mb as u64 * 1048576)
+                                ))
+                                .small(),
+                            )
+                            .on_hover_text("Das últimas 6 horas em que o programa esteve aberto, um ponto por minuto. Use para escolher o limite de memória e de processador com folga sobre o pico.");
+                        });
+                        ui.add_space(4.0);
+                    }
+                }
                 // Perfis prontos
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new("Perfis prontos:").strong());
@@ -374,6 +411,9 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         ("jogo", "Jogo", "socket da GPU, 16 núcleos físicos, memória só local, prioridade alta, núcleos reservados, o jogo enxerga só esses núcleos"),
                         ("ia", "IA", "socket da GPU de computação, memória preferindo a local"),
                         ("render", "Renderização", "os 2 sockets, memória intercalada (banda máxima)"),
+                        ("turbo", "Turbo máximo", "4 núcleos físicos sozinhos num processador: o resto do sistema vai para o outro socket e o clock sobe ao degrau mais alto do turbo (precisa de 2 processadores; confira em Mapa → Turbo)"),
+                        ("video", "Edição de vídeo", "o socket da GPU inteiro, com os dois threads de cada núcleo, memória preferindo a local"),
+                        ("fundo", "Segundo plano", "no máximo um núcleo de processador e prioridade baixa: para launchers, sincronizadores e afins"),
                         ("silencioso", "Silencioso", "4 núcleos e prioridade baixa: não atrapalha o resto"),
                     ] {
                         if ui.button(name).on_hover_text(tip).clicked() {
@@ -482,6 +522,28 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     });
                     ui.end_row();
 
+                    ui.label(RichText::new("Limite de processador").strong());
+                    ui.horizontal(|ui| {
+                        let mut lim = ed.p.cpu_max_pct.is_some();
+                        if ui
+                            .checkbox(&mut lim, "Usar no máximo")
+                            .on_hover_text("Teto de uso somando todos os núcleos: 50% = meio núcleo, 200% = dois núcleos. Bom para programas de fundo.")
+                            .changed()
+                        {
+                            ed.p.cpu_max_pct = lim.then_some(100.0);
+                        }
+                        if let Some(c) = ed.p.cpu_max_pct.as_mut() {
+                            ui.add(
+                                egui::Slider::new(c, 5.0..=1600.0)
+                                    .logarithmic(true)
+                                    .suffix("%")
+                                    .fixed_decimals(0),
+                            );
+                            ui.label(RichText::new(format!("= {:.1} núcleo(s)", *c / 100.0)).small().weak());
+                        }
+                    });
+                    ui.end_row();
+
                     ui.label(RichText::new("Prioridade").strong());
                     ui.horizontal(|ui| {
                         ui.radio_value(&mut ed.p.priority, "low".to_string(), "baixa");
@@ -490,6 +552,13 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         ui.separator();
                         ui.checkbox(&mut ed.p.exclusive, "núcleos exclusivos")
                             .on_hover_text("Enquanto ele roda, o resto do sistema não usa esses núcleos.");
+                        if multi {
+                            ui.checkbox(&mut ed.p.turbo_max, "turbo máximo").on_hover_text(
+                                "Enquanto ele roda, o resto do sistema sai do processador inteiro onde ele está. \
+                                 Com os outros núcleos dormindo, o clock dos núcleos dele sobe mais (veja a tabela em Mapa → Turbo). \
+                                 Funciona melhor com poucos núcleos (2 a 8) e os estados de economia profundos ligados.",
+                            );
+                        }
                         ui.checkbox(&mut ed.p.low_latency, "baixa latência").on_hover_text(
                             "Enquanto ele roda: os núcleos dele não entram nos estados de economia profundos e o uncore do socket \
                              fica no máximo (menos travadinhas). Ajuste em Máquina → Latência em jogos.",

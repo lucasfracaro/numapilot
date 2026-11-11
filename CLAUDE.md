@@ -144,7 +144,12 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
 - `src/turbo.rs`: tabela de turbo dos MSRs 0x1AD–0x1AF (serviço publica em hw.json) e núcleos
   acordados pelo cpuidle; linha "Turbo" no Mapa e `numapilot turbo`. O 2696 v4 não tem o "turbo
   unlock" dos v3; o ganho vem de deixar poucos núcleos acordados por socket com C6 ligado.
-- Falta: interface em inglês (só português por enquanto); testar tudo isso em hardware real.
+- 2026-11-11: `Profile.turbo_max` (reserva o socket inteiro via `cgroup::set_reserved`, só com
+  >1 nó e nunca todos os sockets) e `cpu_max_pct` (`CPUQuota`); `src/proghist.rs` (histórico por
+  programa em /run/numapilot/prog-history.json); `health::parse_dimms`/`mem_notes` (dmidecode
+  pelo serviço); `profiles::export_text`/`import_text`; `i18n.rs` na interface (`tr()`, inglês
+  parcial: só navegação). O Otimizador de FPS já compara escolhas (não foi feito outro).
+- Falta: traduzir o resto da interface para inglês; testar tudo isso em hardware real.
 
 ## Capturas do README
 

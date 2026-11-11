@@ -5,6 +5,7 @@ mod bg;
 mod checklist;
 mod editor;
 mod gpus;
+mod i18n;
 mod jobs;
 mod lab;
 mod llm;
@@ -352,6 +353,8 @@ pub(crate) struct App {
     pub(crate) cpu_power: BTreeMap<u32, f64>,
     /// Nome curto do processador ("Ryzen 7 6800H").
     pub(crate) cpu_name: String,
+    /// Caminho digitado para importar escolhas.
+    import_path: String,
     /// Turbo: tabela por processador (até N núcleos acordados → MHz) e núcleos acordados agora.
     pub(crate) turbo_tables: BTreeMap<u32, numapilot::turbo::Table>,
     pub(crate) awake: BTreeMap<u32, f32>,
@@ -434,6 +437,7 @@ pub(crate) struct App {
 
 impl App {
     fn new(ctx: egui::Context) -> App {
+        i18n::init();
         theme::install(&ctx);
         let cfg = Config::load().unwrap_or_default();
         let topo = Topology::load(&cfg);
@@ -499,6 +503,7 @@ impl App {
             temp_spark: BTreeMap::new(),
             cpu_power: BTreeMap::new(),
             turbo_tables: BTreeMap::new(),
+            import_path: String::new(),
             awake: BTreeMap::new(),
             deep_prev: None,
             prog_mem: HashMap::new(),
@@ -889,7 +894,7 @@ impl App {
             if self.hidden_tabs.iter().any(|h| h == label) && self.tab != *t {
                 continue;
             }
-            if theme::nav_item(ui, icon, label, self.tab == *t).clicked() {
+            if theme::nav_item(ui, icon, i18n::tr(label), self.tab == *t).clicked() {
                 self.tab = *t;
             }
             ui.add_space(2.0);
@@ -900,9 +905,9 @@ impl App {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 for (v, l) in [
-                    (egui::ThemePreference::System, "Sistema"),
-                    (egui::ThemePreference::Light, "Claro"),
-                    (egui::ThemePreference::Dark, "Escuro"),
+                    (egui::ThemePreference::System, i18n::tr("Sistema")),
+                    (egui::ThemePreference::Light, i18n::tr("Claro")),
+                    (egui::ThemePreference::Dark, i18n::tr("Escuro")),
                 ] {
                     if ui
                         .selectable_label(pref == v, RichText::new(l).size(12.0))
@@ -914,7 +919,7 @@ impl App {
                     }
                 }
             });
-            ui.label(RichText::new("Tema").size(11.5).color(p.weak));
+            ui.label(RichText::new(i18n::tr("Tema")).size(11.5).color(p.weak));
         });
     }
 
@@ -929,17 +934,17 @@ impl App {
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 ui.label(
-                    RichText::new(title)
+                    RichText::new(i18n::tr(title))
                         .size(22.0)
                         .family(egui::FontFamily::Name(theme::BOLD.into())),
                 );
-                ui.label(RichText::new(sub).color(p.weak).size(13.0));
+                ui.label(RichText::new(i18n::tr(sub)).color(p.weak).size(13.0));
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if self.daemon_ok {
-                    theme::chip(ui, "Serviço ativo", p.ok);
+                    theme::chip(ui, i18n::tr("Serviço ativo"), p.ok);
                 } else {
-                    theme::chip(ui, "Serviço parado", p.err);
+                    theme::chip(ui, i18n::tr("Serviço parado"), p.err);
                 }
                 if self.job.is_some() && !self.show_job && ui.button("Último comando").clicked() {
                     self.show_job = true;
@@ -957,10 +962,10 @@ impl App {
                     ui.set_min_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new("O serviço do numapilot não está rodando: as escolhas não são aplicadas.")
+                            RichText::new(i18n::tr("O serviço do numapilot não está rodando: as escolhas não são aplicadas."))
                                 .color(p.err),
                         );
-                        if ui.button("Ativar o serviço").clicked() {
+                        if ui.button(i18n::tr("Ativar o serviço")).clicked() {
                             self.start_job(
                                 "Ativar o serviço",
                                 vec![
@@ -1363,6 +1368,41 @@ impl App {
             )
             .weak(),
         );
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(!self.profiles.map.is_empty(), egui::Button::new("Exportar…"))
+                .on_hover_text("Grava todas as escolhas num arquivo, para levar a outro PC ou compartilhar.")
+                .clicked()
+            {
+                let f = numapilot::profiles::export_path();
+                match std::fs::write(&f, numapilot::profiles::export_text()) {
+                    Ok(()) => self.toast(format!("Escolhas gravadas em {}", f.display()), true),
+                    Err(e) => self.toast(format!("Não consegui gravar {}: {e}", f.display()), false),
+                }
+            }
+            ui.separator();
+            ui.add(
+                egui::TextEdit::singleline(&mut self.import_path)
+                    .hint_text("arquivo .json exportado (caminho completo)")
+                    .desired_width(320.0),
+            );
+            if ui
+                .add_enabled(!self.import_path.trim().is_empty(), egui::Button::new("Importar"))
+                .on_hover_text("Traz as escolhas do arquivo. Núcleos e placas de outro PC são adaptados (voltam para o automático).")
+                .clicked()
+            {
+                let path = self.import_path.trim().replace("~/", &format!("{}/", jobs::home().display()));
+                self.start_job(
+                    "Importar escolhas",
+                    vec![
+                        jobs::sibling_abs("numapilot"),
+                        "profile".into(),
+                        "import".into(),
+                        path,
+                    ],
+                );
+            }
+        });
         ui.separator();
         if self.profiles.map.is_empty() {
             ui.label("Nenhuma escolha salva: tudo no automático.");

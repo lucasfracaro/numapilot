@@ -69,6 +69,122 @@ pub struct Report {
     /// Discos que não deu para ler, com o motivo (para o autoteste e a interface).
     #[serde(default)]
     pub disk_errors: Vec<String>,
+    /// Pentes de memória (dmidecode), para conferir velocidade e distribuição.
+    #[serde(default)]
+    pub dimms: Vec<Dimm>,
+}
+
+/// Um pente de memória instalado.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct Dimm {
+    pub slot: String,
+    pub bank: String,
+    pub size_gb: f64,
+    /// Velocidade que o pente suporta (MT/s).
+    pub speed: Option<u32>,
+    /// Velocidade em uso (MT/s).
+    pub configured: Option<u32>,
+    pub kind: String,
+}
+
+/// Lê os pentes instalados da saída do `dmidecode -t memory`.
+pub fn parse_dimms(t: &str) -> Vec<Dimm> {
+    let mut v = vec![];
+    for block in t.split("\n\n") {
+        if !block.contains("Memory Device") {
+            continue;
+        }
+        let get = |k: &str| {
+            block.lines().find_map(|l| {
+                let l = l.trim();
+                l.strip_prefix(k)
+                    .and_then(|r| r.strip_prefix(':'))
+                    .map(|r| r.trim().to_string())
+            })
+        };
+        let size = get("Size").unwrap_or_default();
+        let mut it = size.split_whitespace();
+        let gb = match (it.next().and_then(|n| n.parse::<f64>().ok()), it.next()) {
+            (Some(n), Some("GB")) => n,
+            (Some(n), Some("MB")) => n / 1024.0,
+            (Some(n), Some("TB")) => n * 1024.0,
+            _ => continue, // "No Module Installed"
+        };
+        let mts = |s: Option<String>| {
+            s.and_then(|x| {
+                x.split_whitespace()
+                    .next()
+                    .and_then(|n| n.parse::<u32>().ok())
+            })
+        };
+        v.push(Dimm {
+            slot: get("Locator").unwrap_or_default(),
+            bank: get("Bank Locator").unwrap_or_default(),
+            size_gb: gb,
+            speed: mts(get("Speed")),
+            configured: mts(
+                get("Configured Memory Speed").or_else(|| get("Configured Clock Speed"))
+            ),
+            kind: get("Type").unwrap_or_default(),
+        });
+    }
+    v
+}
+
+/// O que conferir na memória: velocidade abaixo da dos pentes, pentes diferentes, sockets
+/// desequilibrados. `node_gb`: memória de cada socket (pelo sistema).
+pub fn mem_notes(dimms: &[Dimm], node_gb: &[f64]) -> Vec<String> {
+    let mut v = vec![];
+    if dimms.is_empty() {
+        return v;
+    }
+    let slow: Vec<&Dimm> = dimms
+        .iter()
+        .filter(|d| matches!((d.speed, d.configured), (Some(s), Some(c)) if c + 50 < s))
+        .collect();
+    if let Some(d) = slow.first() {
+        v.push(format!(
+            "{} pente(s) rodando abaixo da velocidade deles ({} em vez de {} MT/s): o limite costuma ser do \
+             processador ou da placa (Xeon E5 v4: 2400; v3: 2133), ou o XMP/perfil não está ligado na BIOS",
+            slow.len(),
+            d.configured.unwrap_or(0),
+            d.speed.unwrap_or(0)
+        ));
+    }
+    let mut sizes: Vec<u64> = dimms.iter().map(|d| (d.size_gb * 1024.0) as u64).collect();
+    sizes.sort_unstable();
+    sizes.dedup();
+    if sizes.len() > 1 {
+        v.push("pentes de tamanhos diferentes: os canais podem não trabalhar em conjunto".into());
+    }
+    let mut speeds: Vec<u32> = dimms.iter().filter_map(|d| d.speed).collect();
+    speeds.sort_unstable();
+    speeds.dedup();
+    if speeds.len() > 1 {
+        v.push(format!(
+            "pentes de velocidades diferentes ({} MT/s): todos rodam na do mais lento",
+            speeds
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    if node_gb.len() > 1 {
+        let max = node_gb.iter().cloned().fold(0.0, f64::max);
+        let min = node_gb.iter().cloned().fold(f64::MAX, f64::min);
+        if max > 0.0 && min < max * 0.8 {
+            v.push(format!(
+                "memória desequilibrada entre os processadores ({}): o socket com menos enche antes e passa a \
+                 usar memória do outro, que é mais lenta para ele",
+                node_gb.iter().map(|g| format!("{g:.0} GB")).collect::<Vec<_>>().join(" e ")
+            ));
+        }
+    }
+    if dimms.len() == 1 {
+        v.push("um pente só: a memória roda em canal único (metade da banda ou menos)".into());
+    }
+    v
 }
 
 /// Discos físicos (sem loop, zram, partições e device-mapper).
@@ -256,6 +372,11 @@ pub fn collect(topo: &crate::topo::Topology) -> Report {
         gpu: topo.gpus.iter().flat_map(|g| gpu_ras(&g.pci)).collect(),
         batteries,
         disk_errors,
+        dimms: Command::new("dmidecode")
+            .args(["-t", "memory"])
+            .output()
+            .map(|o| parse_dimms(&String::from_utf8_lossy(&o.stdout)))
+            .unwrap_or_default(),
     }
 }
 
@@ -402,5 +523,31 @@ mod tests {
         let p = problems(&r);
         assert_eq!(p.len(), 2, "{p:?}");
         assert_eq!(parse_ras("ue: 1\nce: 7\n"), (7, 1));
+    }
+}
+
+#[cfg(test)]
+mod dimm_tests {
+    use super::*;
+
+    #[test]
+    fn dimms() {
+        let t = "Handle 0x0040, DMI type 17, 40 bytes\nMemory Device\n\tSize: 16 GB\n\tLocator: DIMM_A1\n\tBank Locator: NODE 1\n\tType: DDR4\n\tSpeed: 2666 MT/s\n\tConfigured Memory Speed: 2400 MT/s\n\nHandle 0x0041, DMI type 17, 40 bytes\nMemory Device\n\tSize: No Module Installed\n\tLocator: DIMM_A2\n\nHandle 0x0042, DMI type 17, 40 bytes\nMemory Device\n\tSize: 16384 MB\n\tLocator: DIMM_B1\n\tType: DDR4\n\tSpeed: 2666 MT/s\n\tConfigured Memory Speed: 2400 MT/s\n";
+        let d = parse_dimms(t);
+        assert_eq!(d.len(), 2);
+        assert_eq!(
+            (d[0].size_gb, d[0].speed, d[0].configured),
+            (16.0, Some(2666), Some(2400))
+        );
+        assert_eq!(d[1].size_gb, 16.0);
+        let n = mem_notes(&d, &[16.0, 16.0]);
+        assert_eq!(n.len(), 1);
+        assert!(n[0].contains("2400 em vez de 2666"));
+        assert!(
+            mem_notes(&d, &[64.0, 16.0])
+                .iter()
+                .any(|x| x.contains("desequilibrada"))
+        );
+        assert!(mem_notes(&[], &[1.0]).is_empty());
     }
 }

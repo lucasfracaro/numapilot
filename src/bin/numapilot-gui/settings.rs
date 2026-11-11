@@ -65,7 +65,22 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
 
         ui.add_space(8.0);
-        ui.heading("Abas do menu");
+        ui.heading(crate::i18n::tr("Idioma"));
+        ui.horizontal(|ui| {
+            let en = crate::i18n::english();
+            if ui.selectable_label(!en, "Português").clicked() {
+                crate::i18n::set_english(false);
+            }
+            if ui
+                .selectable_label(en, "English (partial)")
+                .on_hover_text("Menu, titles and the Programs toolbar are translated so far; the rest stays in Portuguese.")
+                .clicked()
+            {
+                crate::i18n::set_english(true);
+            }
+        });
+        ui.add_space(8.0);
+        ui.heading(crate::i18n::tr("Abas do menu"));
         ui.label(
             RichText::new("Desmarque o que você não usa neste PC para o menu ficar mais curto. Nada é desligado: é só o menu.")
                 .small()

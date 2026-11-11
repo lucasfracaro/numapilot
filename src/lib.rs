@@ -40,6 +40,7 @@ pub mod procctl;
 pub mod procevents;
 pub mod procfs;
 pub mod profiles;
+pub mod proghist;
 pub mod recipes;
 pub mod ryzen;
 pub mod selftest;
