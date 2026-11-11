@@ -141,6 +141,9 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
 - `Request::Adopt` leva `key`/`label` do programa que o `run` vai abrir.
 - `daemon.admin_groups` + `util::groups_of_uid`: quem pode mudar a máquina inteira.
 - `boards::first_setup` (BC-250) e abas escondíveis (`~/.config/numapilot/gui-tabs`).
+- `src/turbo.rs`: tabela de turbo dos MSRs 0x1AD–0x1AF (serviço publica em hw.json) e núcleos
+  acordados pelo cpuidle; linha "Turbo" no Mapa e `numapilot turbo`. O 2696 v4 não tem o "turbo
+  unlock" dos v3; o ganho vem de deixar poucos núcleos acordados por socket com C6 ligado.
 - Falta: interface em inglês (só português por enquanto); testar tudo isso em hardware real.
 
 ## Capturas do README

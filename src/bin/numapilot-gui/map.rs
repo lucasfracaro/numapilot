@@ -155,6 +155,46 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
             .size(12.5)
             .color(p.weak),
         );
+        // turbo: quantos núcleos estão acordados e até onde o clock pode ir com isso
+        let pkg = n.id as u32;
+        let deep = n
+            .cpus
+            .first()
+            .and_then(|c| numapilot::turbo::deep_enabled(*c));
+        if let Some(a) = app.awake.get(&pkg) {
+            let total = n.physical_cores.max(n.cores.len());
+            let mut txt = format!("Turbo: ~{a:.1} de {total} núcleos acordados");
+            let table = app.turbo_tables.get(&pkg);
+            if let Some(mhz) = table.and_then(|t| numapilot::turbo::limit_for(t, *a)) {
+                txt.push_str(&format!(" → até {:.1} GHz", mhz as f64 / 1000.0));
+            }
+            let r = ui.label(RichText::new(txt).size(12.5).color(p.weak));
+            match table {
+                Some(t) => {
+                    r.on_hover_text(format!(
+                        "Quanto menos núcleos acordados neste processador, mais alto o clock dos que estão em uso.\n\
+                         Núcleos acordados → clock máximo:\n{}\n\
+                         Programas com AVX2 pesado usam uma tabela um pouco mais baixa.",
+                        numapilot::turbo::describe(t)
+                    ));
+                }
+                None => {
+                    r.on_hover_text(
+                        "A tabela de turbo vem do serviço do numapilot (só processadores Intel).",
+                    );
+                }
+            }
+            if deep == Some(false) {
+                ui.label(
+                    RichText::new(
+                        "Os estados de economia profundos (C3/C6) estão desligados: todos os núcleos contam como \
+                         acordados e o turbo fica no valor de todos os núcleos. Ligue-os em Máquina → Processador.",
+                    )
+                    .size(12.5)
+                    .color(p.warn),
+                );
+            }
+        }
         let mut cpus = n.cpus.clone();
         cpus.sort_unstable();
         // colunas iguais que enchem a largura; de preferência um divisor do nº de threads

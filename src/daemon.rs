@@ -1165,6 +1165,7 @@ pub fn run(cfg: Config) -> Result<()> {
             }
             let live = serde_json::json!({
                 "power": hw.cpu_power,
+                "turbo": crate::turbo::tables(&topo),
                 "temp": crate::cpuctl::package_temps(),
                 "lowlat": format_cpulist(&hw.lowlat.cpus),
                 "gpu_profiles": hw.gpu_prof,

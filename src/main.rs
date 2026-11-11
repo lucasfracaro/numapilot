@@ -256,6 +256,8 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Turbo por núcleos acordados: a tabela do processador e quantos núcleos estão acordados agora.
+    Turbo,
     /// Mostra o final dos registros (serviço, programa gráfico, linha de comando) e do journal.
     Log {
         /// Linhas de cada registro.
@@ -331,6 +333,7 @@ fn real_main() -> Result<()> {
     match cli.cmd {
         Cmd::Topo => cmd_topo(&cfg),
         Cmd::Log { lines, which } => cmd_log(lines, which.as_deref()),
+        Cmd::Turbo => cmd_turbo(&cfg),
         Cmd::GpuTest { gpu, json } => cmd_gpu_test(&cfg, gpu.as_deref(), json),
         Cmd::Autoteste {
             saida,
@@ -2229,6 +2232,56 @@ fn cmd_gpu_test(cfg: &Config, only: Option<&str>, json: bool) -> Result<()> {
     }
     if wrong > 0 {
         std::process::exit(2);
+    }
+    Ok(())
+}
+
+fn cmd_turbo(cfg: &Config) -> Result<()> {
+    use numapilot::turbo;
+    let topo = Topology::load(cfg);
+    // root lê os MSRs direto; usuário comum usa o que o serviço publicou
+    let tables: std::collections::BTreeMap<u32, turbo::Table> = if unsafe { libc::geteuid() } == 0 {
+        turbo::tables(&topo).clone()
+    } else {
+        std::fs::read_to_string(numapilot::learned::run_dir().join("hw.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .and_then(|v| serde_json::from_value(v.get("turbo")?.clone()).ok())
+            .unwrap_or_default()
+    };
+    let all: Vec<usize> = topo.nodes.iter().flat_map(|n| n.cpus.clone()).collect();
+    let a = turbo::deep_time(&all);
+    let t0 = std::time::Instant::now();
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let b = turbo::deep_time(&all);
+    let dt = t0.elapsed().as_micros() as f64;
+    for n in &topo.nodes {
+        let total = n.physical_cores.max(n.cores.len());
+        let awake = turbo::awake_cores(&a, &b, dt, &n.cores);
+        println!("Processador {} ({} núcleos)", n.id, total);
+        match n.cpus.first().and_then(|c| turbo::deep_enabled(*c)) {
+            Some(true) => println!("  acordados agora: ~{awake:.1} (média de 1 s)"),
+            Some(false) => println!(
+                "  estados profundos (C3/C6) DESLIGADOS: todos os núcleos contam como acordados; ligue em Máquina → Processador"
+            ),
+            None => {
+                println!("  sem cpuidle neste sistema: não dá para estimar os núcleos acordados")
+            }
+        }
+        match tables.get(&(n.id as u32)) {
+            Some(t) => {
+                println!(
+                    "  tabela (núcleos acordados → clock máximo): {}",
+                    turbo::describe(t)
+                );
+                if let Some(mhz) = turbo::limit_for(t, awake) {
+                    println!("  com a carga de agora: até {:.1} GHz", mhz as f64 / 1000.0);
+                }
+            }
+            None => println!(
+                "  tabela de turbo indisponível (só Intel; precisa do serviço rodando ou de sudo)"
+            ),
+        }
     }
     Ok(())
 }

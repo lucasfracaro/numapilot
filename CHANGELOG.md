@@ -2,6 +2,9 @@
 
 ## Ainda não lançado
 
+- **Turbo por núcleos acordados** (Intel): o Mapa mostra, por processador, quantos núcleos estão
+  acordados e até que clock o turbo vai com isso; passe o mouse para ver a tabela inteira. Avisa
+  quando os estados profundos (C3/C6) estão desligados. Também em `numapilot turbo`.
 - **Buscar app instalado…** (aba Programas): lista atalhos do menu, Flatpak, Snap, jogos da Steam e
   AppImages, com busca, e abre o Ajustar… sem o programa estar aberto. A escolha fica salva para a
   próxima abertura (`src/apps.rs`).

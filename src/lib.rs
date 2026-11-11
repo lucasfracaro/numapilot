@@ -49,6 +49,7 @@ pub mod startup;
 pub mod steam;
 pub mod topo;
 pub mod tuner;
+pub mod turbo;
 pub mod undervolt;
 pub mod upscale;
 pub mod util;

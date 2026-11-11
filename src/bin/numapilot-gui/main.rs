@@ -352,6 +352,10 @@ pub(crate) struct App {
     pub(crate) cpu_power: BTreeMap<u32, f64>,
     /// Nome curto do processador ("Ryzen 7 6800H").
     pub(crate) cpu_name: String,
+    /// Turbo: tabela por processador (até N núcleos acordados → MHz) e núcleos acordados agora.
+    pub(crate) turbo_tables: BTreeMap<u32, numapilot::turbo::Table>,
+    pub(crate) awake: BTreeMap<u32, f32>,
+    deep_prev: Option<(BTreeMap<usize, u64>, Instant)>,
     /// Memória em uso por programa (bytes), pela chave do programa.
     pub(crate) prog_mem: HashMap<String, u64>,
     /// Tabela da aba Programas (ordem, seleção, GPU por processo).
@@ -494,6 +498,9 @@ impl App {
             cpu_freq: BTreeMap::new(),
             temp_spark: BTreeMap::new(),
             cpu_power: BTreeMap::new(),
+            turbo_tables: BTreeMap::new(),
+            awake: BTreeMap::new(),
+            deep_prev: None,
             prog_mem: HashMap::new(),
             progs: programs::ProgTable::default(),
             startup: startup::StartupTab::default(),
@@ -581,9 +588,38 @@ impl App {
             self.cpu_sparks.entry(*c).or_default().push(*l);
         }
         // potência dos processadores: o serviço mede e publica em hw.json
-        self.cpu_power = std::fs::read_to_string(numapilot::learned::run_dir().join("hw.json"))
+        let hwj = std::fs::read_to_string(numapilot::learned::run_dir().join("hw.json"))
             .ok()
-            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+        // tabela de turbo (o serviço lê os MSRs) e núcleos acordados por processador
+        if let Some(t) = hwj
+            .as_ref()
+            .and_then(|v| v.get("turbo"))
+            .and_then(|t| serde_json::from_value(t.clone()).ok())
+        {
+            self.turbo_tables = t;
+        }
+        if self.tab == Tab::Map {
+            let all: Vec<usize> = self
+                .topo
+                .nodes
+                .iter()
+                .flat_map(|n| n.cpus.clone())
+                .collect();
+            let cur = numapilot::turbo::deep_time(&all);
+            let now = Instant::now();
+            if let Some((prev, at)) = &self.deep_prev {
+                let dt = now.duration_since(*at).as_micros() as f64;
+                for n in &self.topo.nodes {
+                    let a = numapilot::turbo::awake_cores(prev, &cur, dt, &n.cores);
+                    self.awake.insert(n.id as u32, a);
+                }
+            }
+            self.deep_prev = Some((cur, now));
+        } else {
+            self.deep_prev = None;
+        }
+        self.cpu_power = hwj
             .and_then(|v| {
                 v.get("power")?.as_object().map(|o| {
                     o.iter()
