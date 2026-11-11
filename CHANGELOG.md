@@ -2,6 +2,11 @@
 
 ## Ainda não lançado
 
+- **Latência do cache por núcleo** (`numapilot bench-cores` e botão "Medir núcleos" no Mapa):
+  mede o acesso ao cache L3 a partir de cada núcleo e, quando a diferença é maior que o ruído da
+  medição, a escolha de núcleos (perfis com número de núcleos e o turbo máximo) passa a preferir
+  os mais rápidos, em ordem. Vale também em PCs de um processador. Se a diferença for pequena,
+  nada muda. `--mostrar` exibe a última medição e `--apagar` volta à ordem do sistema.
 - **Turbo máximo** (perfil pronto e opção no Ajustar…, só com 2 processadores): o programa fica
   em poucos núcleos e o resto do sistema sai do socket inteiro, para o clock subir ao degrau mais
   alto do turbo. Com a opção marcada, o Ajustar… deixa escolher 2 a 16 núcleos e mostra o clock

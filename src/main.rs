@@ -256,6 +256,16 @@ enum Cmd {
         #[arg(long)]
         json: bool,
     },
+    /// Mede a latência do cache em cada núcleo e passa a preferir os mais rápidos (se a diferença
+    /// for maior que o ruído). Deixe o PC parado; leva alguns segundos.
+    BenchCores {
+        /// Só mostra a última medição guardada.
+        #[arg(long)]
+        mostrar: bool,
+        /// Apaga a medição (a escolha de núcleos volta à ordem do sistema).
+        #[arg(long)]
+        apagar: bool,
+    },
     /// Turbo por núcleos acordados: a tabela do processador e quantos núcleos estão acordados agora.
     Turbo,
     /// Mostra o final dos registros (serviço, programa gráfico, linha de comando) e do journal.
@@ -341,6 +351,7 @@ fn real_main() -> Result<()> {
         Cmd::Topo => cmd_topo(&cfg),
         Cmd::Log { lines, which } => cmd_log(lines, which.as_deref()),
         Cmd::Turbo => cmd_turbo(&cfg),
+        Cmd::BenchCores { mostrar, apagar } => cmd_bench_cores(&cfg, mostrar, apagar),
         Cmd::GpuTest { gpu, json } => cmd_gpu_test(&cfg, gpu.as_deref(), json),
         Cmd::Autoteste {
             saida,
@@ -2320,6 +2331,75 @@ fn cmd_turbo(cfg: &Config) -> Result<()> {
             None => println!(
                 "  tabela de turbo indisponível (só Intel; precisa do serviço rodando ou de sudo)"
             ),
+        }
+    }
+    Ok(())
+}
+
+fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
+    use numapilot::corebench;
+    let topo = Topology::load(cfg);
+    if clear {
+        let r = ctl::send(&ctl::Request::SetCoreRank {
+            rank: corebench::CoreRank::default(),
+        })?;
+        println!(
+            "{}",
+            if r.ok {
+                "Medição apagada: a escolha de núcleos volta à ordem do sistema."
+            } else {
+                r.message.as_str()
+            }
+        );
+        return Ok(());
+    }
+    let rank = if show {
+        match corebench::saved() {
+            Some(r) if !r.ns.is_empty() => r,
+            _ => bail!("nenhuma medição guardada (rode: numapilot bench-cores)"),
+        }
+    } else {
+        println!("Deixe o PC parado durante a medição.");
+        corebench::measure(&topo, &mut |l| println!("{l}")).map_err(|e| anyhow::anyhow!(e))?
+    };
+    for n in &topo.nodes {
+        let mut v: Vec<(usize, usize, f32)> = n
+            .cores
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| Some((i, *c.first()?, *rank.ns.get(c.first()?)?)))
+            .collect();
+        v.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+        let Some(best) = v.first().map(|x| x.2) else {
+            continue;
+        };
+        println!("Processador {} (do mais rápido ao mais lento):", n.id);
+        for (i, cpu, ns) in &v {
+            println!(
+                "  núcleo {i:>2} (CPU {cpu:>3}): {ns:.2} ns  {:+.1}%",
+                (ns / best - 1.0) * 100.0
+            );
+        }
+    }
+    println!();
+    println!(
+        "Diferença entre o melhor e o pior núcleo: {:.1}% · ruído da medição: {:.1}%",
+        rank.spread_pct, rank.noise_pct
+    );
+    if rank.useful {
+        println!(
+            "A diferença é maior que o ruído: a escolha de núcleos passa a preferir os mais rápidos."
+        );
+    } else {
+        println!(
+            "A diferença é pequena demais (ou a medição variou muito) para valer como critério: \
+             a escolha de núcleos continua na ordem do sistema. Se o PC estava ocupado, feche tudo e meça de novo."
+        );
+    }
+    if !show {
+        let r = ctl::send(&ctl::Request::SetCoreRank { rank })?;
+        if !r.ok {
+            bail!("medi, mas o serviço não guardou: {}", r.message);
         }
     }
     Ok(())

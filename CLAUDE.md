@@ -149,6 +149,12 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   programa em /run/numapilot/prog-history.json); `health::parse_dimms`/`mem_notes` (dmidecode
   pelo serviço); `profiles::export_text`/`import_text`; `i18n.rs` na interface (`tr()`, inglês
   parcial: só navegação). O Otimizador de FPS já compara escolhas (não foi feito outro).
+- `src/corebench.rs` (`numapilot bench-cores`, botão no Mapa): corrida de ponteiros num bloco
+  entre o L2 e o L3, preso em cada núcleo; guarda em `state_dir()/core-rank.json` pelo
+  `Request::SetCoreRank`. `topo::select_cpus` ordena os núcleos por essa medição
+  (`corebench::sort_units`, degraus de 1%) só se `useful` (diferença ≥ 2% e ≥ 3× o ruído) e se o
+  modelo da CPU for o mesmo. Ainda não medido em hardware real (no servidor a diferença esperada
+  é de poucos %).
 - Falta: traduzir o resto da interface para inglês; testar tudo isso em hardware real.
 
 ## Capturas do README

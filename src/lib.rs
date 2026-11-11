@@ -10,6 +10,7 @@ pub mod cgroup;
 pub mod cmdline;
 pub mod config;
 pub mod containers;
+pub mod corebench;
 pub mod cpuctl;
 pub mod ctl;
 pub mod daemon;

@@ -35,6 +35,10 @@ pub enum Request {
         machine: crate::machine::Machine,
     },
     /// Avisos no celular (ntfy).
+    /// Guarda a medição de latência de cache por núcleo (`numapilot bench-cores`).
+    SetCoreRank {
+        rank: crate::corebench::CoreRank,
+    },
     SetNotify {
         notify: crate::notify::Notify,
     },

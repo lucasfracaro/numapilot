@@ -437,6 +437,41 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.separator();
 
         ui.horizontal(|ui| {
+            ui.heading("Latência do cache por núcleo");
+            if ui
+                .button("Medir núcleos")
+                .on_hover_text("Mede o acesso ao cache L3 a partir de cada núcleo (alguns segundos, com o PC parado). Se a diferença for maior que o ruído, as escolhas de núcleos, inclusive o turbo máximo, passam a preferir os mais rápidos.")
+                .clicked()
+            {
+                app.start_job(
+                    "Medindo a latência do cache por núcleo",
+                    vec![crate::jobs::sibling("numapilot"), "bench-cores".into()],
+                );
+            }
+        });
+        match numapilot::corebench::saved().filter(|r| !r.ns.is_empty()) {
+            Some(r) => {
+                ui.label(
+                    RichText::new(format!(
+                        "Diferença entre o melhor e o pior núcleo: {:.1}% (ruído da medição {:.1}%). {}",
+                        r.spread_pct,
+                        r.noise_pct,
+                        if r.useful {
+                            "Em uso: os programas com número de núcleos escolhido ficam nos mais rápidos."
+                        } else {
+                            "Pequena demais para usar como critério: a ordem do sistema continua."
+                        }
+                    ))
+                    .weak(),
+                );
+            }
+            None => {
+                ui.label(RichText::new("Ainda não medido.").weak());
+            }
+        }
+        ui.separator();
+
+        ui.horizontal(|ui| {
             ui.heading("Latência e banda entre sockets (medidas)");
             if ui.button("Medir agora").on_hover_text("Leva ~10 s; o PC fica ocupado durante o teste").clicked() {
                 let mut v = vec![crate::jobs::sibling("numapilot")];

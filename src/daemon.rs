@@ -1426,6 +1426,41 @@ fn handle(
         Request::SetGovernor { node, governor } => {
             return handle_governor(uid, ctx, node, &governor);
         }
+        Request::SetCoreRank { rank } => {
+            if let Some(e) = admin_denied(uid, ctx) {
+                return Response::err(e);
+            }
+            let cpus = ctx.topo.all_cpus();
+            if rank.ns.len() > 4096
+                || rank.ns.keys().any(|c| !cpus.contains(c))
+                || rank
+                    .ns
+                    .values()
+                    .any(|v| !v.is_finite() || *v <= 0.0 || *v > 10_000.0)
+            {
+                return Response::err("medição inválida");
+            }
+            let p = crate::corebench::path();
+            return match serde_json::to_string(&rank)
+                .map_err(|e| e.to_string())
+                .and_then(|t| std::fs::write(&p, t).map_err(|e| e.to_string()))
+            {
+                Ok(()) => {
+                    crate::nlog!(
+                        "latência de cache por núcleo: diferença de {:.1}% (ruído {:.1}%), {}",
+                        rank.spread_pct,
+                        rank.noise_pct,
+                        if rank.useful {
+                            "em uso na escolha de núcleos"
+                        } else {
+                            "pequena demais para usar"
+                        }
+                    );
+                    Response::ok("medição guardada")
+                }
+                Err(e) => Response::err(format!("não consegui salvar: {e}")),
+            };
+        }
         Request::SetNotify { notify } => {
             if let Some(e) = admin_denied(uid, ctx) {
                 return Response::err(e);

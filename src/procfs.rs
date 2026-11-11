@@ -241,6 +241,21 @@ pub fn clk_tck() -> f64 {
 
 // ---------- syscalls ----------
 
+/// CPUs em que a thread pode rodar agora.
+pub fn get_affinity(tid: i32) -> Option<Vec<usize>> {
+    unsafe {
+        let mut set: libc::cpu_set_t = std::mem::zeroed();
+        if libc::sched_getaffinity(tid, std::mem::size_of::<libc::cpu_set_t>(), &mut set) != 0 {
+            return None;
+        }
+        Some(
+            (0..libc::CPU_SETSIZE as usize)
+                .filter(|c| libc::CPU_ISSET(*c, &set))
+                .collect(),
+        )
+    }
+}
+
 pub fn set_affinity(tid: i32, cpus: &[usize]) -> io::Result<()> {
     unsafe {
         let mut set: libc::cpu_set_t = std::mem::zeroed();

@@ -290,16 +290,18 @@ impl Topology {
         avoid: &[usize],
     ) -> Vec<usize> {
         let units_of = |n: &Node, free: bool| -> Vec<Vec<usize>> {
-            n.cores
+            let mut cores: Vec<Vec<usize>> = n
+                .cores
                 .iter()
                 .filter(|core| core.iter().all(|c| !avoid.contains(c)) == free)
-                .map(|core| {
-                    if smt {
-                        core.clone()
-                    } else {
-                        core[..1].to_vec()
-                    }
-                })
+                .cloned()
+                .collect();
+            // núcleos com cache mais rápido primeiro, se houver medição confiável
+            // (`numapilot bench-cores`); senão a ordem do sistema
+            crate::corebench::sort_units(&mut cores, &crate::corebench::ns_of);
+            cores
+                .into_iter()
+                .map(|core| if smt { core } else { core[..1].to_vec() })
                 .collect()
         };
         let sel_nodes: Vec<&Node> = self
