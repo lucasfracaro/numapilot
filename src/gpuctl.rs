@@ -1,6 +1,6 @@
-//! Sensores e controle das GPUs AMD pelo hwmon do amdgpu: temperaturas, ventoinha
-//! (curva / fixa / automática) e limite de potência. Leitura: qualquer usuário.
-//! Escrita: só o daemon (root), pedido pela interface.
+//! Sensors and control of AMD GPUs through amdgpu's hwmon: temperatures, fan
+//! (curve / fixed / automatic) and power limit. Reading: any user.
+//! Writing: only the daemon (root), on request from the interface.
 
 use crate::learned::state_dir;
 use crate::util::{read_trim, sys};
@@ -10,7 +10,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-/// Temperatura em que a ventoinha vai a 100% independentemente da curva.
+/// Temperature at which the fan goes to 100% regardless of the curve.
 pub const EMERGENCY_C: f64 = 95.0;
 
 pub fn hwmon_dir(pci: &str) -> Option<PathBuf> {
@@ -30,25 +30,25 @@ pub struct Sensors {
     pub junction_c: Option<f64>,
     pub mem_c: Option<f64>,
     pub fan_rpm: Option<u64>,
-    /// Ventoinha atual em % (do pwm1).
+    /// Current fan in % (from pwm1).
     pub fan_pct: Option<f64>,
-    /// 1 = manual, 2 = automático (firmware)
+    /// 1 = manual, 2 = automatic (firmware)
     pub fan_mode_raw: Option<u8>,
     pub fan_controllable: bool,
     pub power_w: Option<f64>,
     pub power_cap_w: Option<f64>,
     pub power_cap_min_w: Option<f64>,
     pub power_cap_max_w: Option<f64>,
-    /// A ventoinha é controlada por uma curva no firmware (RDNA3/RDNA4), não pelo pwm1.
+    /// The fan is controlled by a curve in the firmware (RDNA3/RDNA4), not by pwm1.
     #[serde(default)]
     pub fw_fan_curve: bool,
-    /// Clock atual do núcleo da GPU (MHz), pelo hwmon (freq1_input / sclk).
+    /// Current GPU core clock (MHz), from hwmon (freq1_input / sclk).
     #[serde(default)]
     pub clock_mhz: Option<f64>,
 }
 
 impl Sensors {
-    /// Temperatura usada para a curva: junction (hotspot) se houver, senão edge.
+    /// Temperature used for the curve: junction (hotspot) if present, otherwise edge.
     pub fn control_temp(&self) -> Option<f64> {
         self.junction_c.or(self.edge_c)
     }
@@ -58,22 +58,22 @@ fn num(p: PathBuf) -> Option<f64> {
     read_trim(p)?.parse().ok()
 }
 
-/// Temperatura plausível de GPU (°C). Alguns firmwares (BC-250) mandam 0 ou lixo.
+/// Plausible GPU temperature (°C). Some firmwares (BC-250) send 0 or garbage.
 fn plausible_temp(c: f64) -> Option<f64> {
     (c > 1.0 && c < 150.0).then_some(c)
 }
 
-/// Clock plausível de GPU (MHz). Na BC-250 o pp_dpm_sclk vem com lixo, o freq1_input não.
+/// Plausible GPU clock (MHz). On the BC-250 pp_dpm_sclk comes with garbage, freq1_input does not.
 pub fn plausible_clock(mhz: f64) -> Option<f64> {
     (mhz.is_finite() && (50.0..4000.0).contains(&mhz)).then_some(mhz)
 }
 
-/// GPU da BC-250 (Cyan Skillfish, 1002:13fe)?
+/// BC-250's GPU (Cyan Skillfish, 1002:13fe)?
 fn is_bc250(pci: &str) -> bool {
     read_trim(sys(&format!("bus/pci/devices/{pci}/device"))).as_deref() == Some("0x13fe")
 }
 
-/// Potência plausível de uma GPU (W). Nenhuma placa passa de 1000 W; a BC-250 manda ~1470 W.
+/// Plausible GPU power (W). No card goes over 1000 W; the BC-250 sends ~1470 W.
 fn plausible_power(w: f64) -> Option<f64> {
     (w.is_finite() && (0.0..1000.0).contains(&w)).then_some(w)
 }
@@ -117,8 +117,8 @@ pub fn read_sensors(pci: &str) -> Sensors {
         .find(|i| read_trim(h.join(format!("freq{i}_label"))).is_none_or(|l| l == "sclk"))
         .and_then(|i| num(h.join(format!("freq{i}_input"))))
         .and_then(|hz| plausible_clock(hz / 1_000_000.0))
-        // BC-250 (1002:13fe): o máximo que algum kernel oferece é 2230 MHz; com a tabela da
-        // SMU lida errada já vieram 3882 e 4764 MHz
+        // BC-250 (1002:13fe): the most any kernel offers is 2230 MHz; with the SMU table
+        // read wrong, 3882 and 4764 MHz have shown up
         .filter(|&mhz| mhz <= 3000.0 || !is_bc250(pci));
     s.power_cap_w = w("power1_cap");
     s.power_cap_min_w = w("power1_cap_min");
@@ -129,11 +129,11 @@ pub fn read_sensors(pci: &str) -> Sensors {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FanMode {
-    /// O firmware da placa decide (padrão).
+    /// The card's firmware decides (default).
     Auto,
-    /// Curva temperatura → % controlada pelo daemon.
+    /// Temperature → % curve controlled by the daemon.
     Curve,
-    /// Velocidade fixa.
+    /// Fixed speed.
     Fixed,
 }
 
@@ -141,21 +141,21 @@ pub enum FanMode {
 #[serde(default)]
 pub struct GpuControl {
     pub fan: FanMode,
-    /// Pontos (°C, %) em ordem crescente de temperatura.
+    /// Points (°C, %) in ascending temperature order.
     pub curve: Vec<(f64, f64)>,
     pub fixed_pct: f64,
-    /// Limite de potência em W (None = padrão da placa).
+    /// Power limit in W (None = card default).
     pub power_cap_w: Option<f64>,
-    /// Clock/voltagem (OverDrive). None = padrão de fábrica.
+    /// Clock/voltage (OverDrive). None = factory default.
     pub od: Option<OdSettings>,
-    /// NVIDIA: clock máximo travado (MHz). None = normal.
+    /// NVIDIA: locked maximum clock (MHz). None = normal.
     pub clock_max_mhz: Option<u32>,
-    /// NVIDIA: deslocamento da curva clock/voltagem da GPU (MHz). Com o clock máximo travado,
-    /// um deslocamento positivo é o undervolt.
+    /// NVIDIA: offset of the GPU's clock/voltage curve (MHz). With the maximum clock locked,
+    /// a positive offset is the undervolt.
     pub nv_gpc_offset_mhz: Option<i32>,
-    /// NVIDIA: deslocamento do clock da memória (MHz).
+    /// NVIDIA: memory clock offset (MHz).
     pub nv_mem_offset_mhz: Option<i32>,
-    /// AMD: parada há 1 min, fica no nível mais baixo de clock/voltagem até voltar a ser usada.
+    /// AMD: after 1 min idle, stays at the lowest clock/voltage level until used again.
     #[serde(default)]
     pub idle_save: bool,
 }
@@ -200,7 +200,7 @@ impl GpuControl {
         Ok(())
     }
 
-    /// % da ventoinha para uma temperatura (com a regra de emergência).
+    /// Fan % for a temperature (with the emergency rule).
     pub fn target_pct(&self, temp: Option<f64>) -> Option<f64> {
         let t = temp?;
         if t >= EMERGENCY_C {
@@ -214,7 +214,7 @@ impl GpuControl {
     }
 }
 
-/// Interpolação linear na curva (abaixo do 1º ponto = 1º valor; acima do último = último).
+/// Linear interpolation on the curve (below the 1st point = 1st value; above the last = last).
 pub fn curve_pct(curve: &[(f64, f64)], t: f64) -> f64 {
     if curve.is_empty() {
         return 100.0;
@@ -264,7 +264,7 @@ impl GpuControls {
     }
 }
 
-// ---------- escrita (daemon) ----------
+// ---------- writing (daemon) ----------
 
 pub fn set_fan_auto(pci: &str) -> io::Result<()> {
     let h = hwmon_dir(pci).ok_or_else(|| io::Error::other(crate::i18n::tr("no hwmon")))?;
@@ -281,7 +281,7 @@ pub fn set_fan_pct(pci: &str, pct: f64) -> io::Result<()> {
     fs::write(h.join("pwm1"), v.to_string())
 }
 
-/// Limite de potência em W (respeitando o mínimo e o máximo da placa). None = volta ao padrão.
+/// Power limit in W (within the card's minimum and maximum). None = back to the default.
 pub fn set_power_cap(pci: &str, watts: Option<f64>) -> io::Result<f64> {
     if crate::nvctl::is_nvidia(pci) {
         return crate::nvctl::set_power_limit(pci, watts).map_err(io::Error::other);
@@ -338,22 +338,22 @@ mod tests {
     }
 }
 
-// ---------- clock e voltagem (OverDrive) ----------
+// ---------- clock and voltage (OverDrive) ----------
 
 /// Tabela do pp_od_clk_voltage (Vega 20 / MI50).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Od {
-    /// (índice, MHz) — 0 = mínimo, 1 = máximo
+    /// (index, MHz) — 0 = minimum, 1 = maximum
     pub sclk: Vec<(u32, u32)>,
     pub mclk: Vec<(u32, u32)>,
-    /// (índice, MHz, mV) — os 3 pontos da curva de voltagem
+    /// (index, MHz, mV) — the 3 points of the voltage curve
     pub curve: Vec<(u32, u32, u32)>,
     pub range_sclk: Option<(u32, u32)>,
     pub range_mclk: Option<(u32, u32)>,
-    /// por ponto: faixa de MHz e de mV
+    /// per point: MHz and mV range
     pub range_curve_sclk: Vec<(u32, u32)>,
     pub range_curve_volt: Vec<(u32, u32)>,
-    /// RDNA2/3/4: deslocamento de voltagem atual (mV) e faixa permitida.
+    /// RDNA2/3/4: current voltage offset (mV) and allowed range.
     pub vddgfx_offset: Option<i32>,
     pub range_vo: Option<(i32, i32)>,
 }
@@ -434,7 +434,7 @@ pub fn od_path(pci: &str) -> PathBuf {
     sys(&format!("bus/pci/devices/{pci}/pp_od_clk_voltage"))
 }
 
-/// None = OverDrive desligado (falta amdgpu.ppfeaturemask com o bit 0x4000).
+/// None = OverDrive off (amdgpu.ppfeaturemask is missing the 0x4000 bit).
 pub fn read_od(pci: &str) -> Option<Od> {
     let s = fs::read_to_string(od_path(pci)).ok()?;
     let od = parse_od(&s);
@@ -445,15 +445,15 @@ pub fn read_od(pci: &str) -> Option<Od> {
     }
 }
 
-/// O que o usuário escolheu (None/vazio = manter o padrão da placa).
+/// What the user chose (None/empty = keep the card default).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct OdSettings {
     pub sclk_max: Option<u32>,
     pub mclk_max: Option<u32>,
-    /// (MHz, mV) para cada um dos 3 pontos (Vega20 e RDNA1)
+    /// (MHz, mV) for each of the 3 points (Vega20 and RDNA1)
     pub curve: Vec<(u32, u32)>,
-    /// RDNA2/3/4: deslocamento de voltagem em mV (negativo = undervolt)
+    /// RDNA2/3/4: voltage offset in mV (negative = undervolt)
     #[serde(default)]
     pub voltage_offset_mv: Option<i32>,
 }
@@ -467,7 +467,7 @@ impl OdSettings {
     }
 }
 
-/// Comandos para o pp_od_clk_voltage, validando as faixas da placa.
+/// Commands for pp_od_clk_voltage, validating the card's ranges.
 pub fn od_commands(od: &Od, s: &OdSettings) -> Result<Vec<String>, String> {
     let mut v = Vec::new();
     let check = |val: u32, r: Option<(u32, u32)>, what: &str| -> Result<(), String> {
@@ -517,7 +517,7 @@ pub fn od_commands(od: &Od, s: &OdSettings) -> Result<Vec<String>, String> {
     Ok(v)
 }
 
-/// Aplica (ou, com `None`, volta ao padrão de fábrica).
+/// Applies (or, with `None`, goes back to the factory default).
 pub fn apply_od(pci: &str, s: Option<&OdSettings>) -> Result<(), String> {
     let p = od_path(pci);
     let lvl = sys(&format!(
@@ -544,7 +544,7 @@ pub fn apply_od(pci: &str, s: Option<&OdSettings>) -> Result<(), String> {
 
 // ---------- Resizable BAR ----------
 
-/// (VRAM visível pela CPU, VRAM total) em bytes. Se forem ~iguais, o Resizable BAR está ativo.
+/// (VRAM visible to the CPU, total VRAM) in bytes. If they are ~equal, Resizable BAR is active.
 pub fn bar_info(pci: &str) -> Option<(u64, u64)> {
     let r = |f: &str| {
         read_trim(sys(&format!("bus/pci/devices/{pci}/{f}")))?
@@ -570,7 +570,7 @@ fn drm_card_dir(pci: &str) -> Option<PathBuf> {
         })
 }
 
-/// (atual, mín, máx, mín de fábrica, máx de fábrica) em MHz da GPU integrada Intel.
+/// (current, min, max, factory min, factory max) in MHz of the Intel integrated GPU.
 pub fn intel_freq(pci: &str) -> Option<(u32, u32, u32, u32, u32)> {
     let c = drm_card_dir(pci)?;
     let r = |f: &str| read_trim(c.join(f)).and_then(|s| s.parse::<u32>().ok());
@@ -583,7 +583,7 @@ pub fn intel_freq(pci: &str) -> Option<(u32, u32, u32, u32, u32)> {
     ))
 }
 
-/// Teto de frequência da GPU Intel (None = o de fábrica).
+/// Intel GPU frequency ceiling (None = the factory one).
 pub fn set_intel_max_freq(pci: &str, mhz: Option<u32>) -> Result<(), String> {
     let c = drm_card_dir(pci).ok_or("sem placa DRM")?;
     let (_, min, _, _, hw_max) = intel_freq(pci).ok_or("o driver não expõe as frequências")?;
@@ -591,13 +591,13 @@ pub fn set_intel_max_freq(pci: &str, mhz: Option<u32>) -> Result<(), String> {
     fs::write(c.join("gt_max_freq_mhz"), v.to_string()).map_err(|e| e.to_string())
 }
 
-// ---------- curva da ventoinha no firmware (RDNA3/RDNA4: gpu_od/fan_ctrl) ----------
+// ---------- fan curve in the firmware (RDNA3/RDNA4: gpu_od/fan_ctrl) ----------
 
 pub fn fan_curve_path(pci: &str) -> PathBuf {
     sys(&format!("bus/pci/devices/{pci}/gpu_od/fan_ctrl/fan_curve"))
 }
 
-/// Pontos (°C, %) e faixas permitidas da curva de firmware.
+/// Points (°C, %) and allowed ranges of the firmware curve.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FwFanCurve {
     pub points: Vec<(u32, u32)>,
@@ -633,7 +633,7 @@ pub fn read_fan_curve(pci: &str) -> Option<FwFanCurve> {
     (!c.points.is_empty()).then_some(c)
 }
 
-/// Aplica o modo da ventoinha pela curva do firmware (fixa = curva plana).
+/// Applies the fan mode through the firmware curve (fixed = flat curve).
 pub fn apply_fw_fan(pci: &str, c: &GpuControl) -> Result<(), String> {
     match c.fan {
         FanMode::Auto => apply_fw_fan_curve(pci, None),
@@ -644,7 +644,7 @@ pub fn apply_fw_fan(pci: &str, c: &GpuControl) -> Result<(), String> {
     }
 }
 
-/// Grava a curva do usuário (interpolada nos pontos que o firmware tem) e confirma.
+/// Writes the user's curve (interpolated at the points the firmware has) and commits it.
 pub fn apply_fw_fan_curve(pci: &str, curve: Option<&[(f64, f64)]>) -> Result<(), String> {
     let p = fan_curve_path(pci);
     let write = |cmd: &str| fs::write(&p, cmd).map_err(|e| format!("'{cmd}': {e}"));
@@ -664,15 +664,15 @@ pub fn apply_fw_fan_curve(pci: &str, curve: Option<&[(f64, f64)]>) -> Result<(),
     write("c")
 }
 
-/// Situação do Resizable BAR de qualquer placa (AMD, NVIDIA, Intel), pelo PCI.
+/// Resizable BAR status of any card (AMD, NVIDIA, Intel), through PCI.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BarStatus {
-    /// Maior janela de memória da placa vista pela CPU (bytes).
+    /// Largest memory window of the card seen by the CPU (bytes).
     pub bar_bytes: u64,
     pub vram_bytes: Option<u64>,
-    /// A janela está acima de 4 GB (a BIOS tem "Above 4G Decoding" ligado).
+    /// The window is above 4 GB (the BIOS has "Above 4G Decoding" enabled).
     pub above_4g: bool,
-    /// Maior tamanho que a placa aceita (capacidade Resizable BAR), se informado.
+    /// Largest size the card accepts (Resizable BAR capability), if reported.
     pub max_bytes: Option<u64>,
 }
 
@@ -685,7 +685,7 @@ impl BarStatus {
     }
 }
 
-/// Lê o arquivo "resource" (início fim flags por BAR) e os tamanhos aceitos (resourceN_resize).
+/// Reads the "resource" file (start end flags per BAR) and the accepted sizes (resourceN_resize).
 pub fn bar_status(pci: &str) -> Option<BarStatus> {
     let s = fs::read_to_string(sys(&format!("bus/pci/devices/{pci}/resource"))).ok()?;
     let hex = |x: &str| u64::from_str_radix(x.trim_start_matches("0x"), 16).ok();
@@ -774,10 +774,10 @@ mod od_tests {
     }
 }
 
-// ---------- perfil de energia (pp_power_profile_mode) ----------
+// ---------- power profile (pp_power_profile_mode) ----------
 
-/// (índice, nome) dos perfis da placa e o índice ativo.
-/// Perfis (índice, nome) e o índice ativo.
+/// (index, name) of the card's profiles and the active index.
+/// Profiles (index, name) and the active index.
 pub type PowerProfiles = (Vec<(u32, String)>, Option<u32>);
 
 pub fn power_profiles(pci: &str) -> Option<PowerProfiles> {
@@ -816,7 +816,7 @@ pub fn parse_power_profiles(s: &str) -> PowerProfiles {
     (v, active)
 }
 
-/// Nome curto usado nos perfis do numapilot → nome do driver.
+/// Short name used in numapilot's profiles → driver name.
 pub fn profile_driver_name(short: &str) -> Option<&'static str> {
     Some(match short {
         "3d" => "3D_FULL_SCREEN",
@@ -829,7 +829,7 @@ pub fn profile_driver_name(short: &str) -> Option<&'static str> {
     })
 }
 
-/// Escolhe um perfil pelo nome curto ("3d", "compute", "padrao"...).
+/// Picks a profile by its short name ("3d", "compute", "padrao"...).
 pub fn set_power_profile(pci: &str, short: &str) -> Result<(), String> {
     let want = profile_driver_name(short).ok_or("perfil desconhecido")?;
     let (list, active) = power_profiles(pci).ok_or("a placa não tem pp_power_profile_mode")?;
@@ -843,7 +843,7 @@ pub fn set_power_profile(pci: &str, short: &str) -> Result<(), String> {
     let lvl = sys(&format!(
         "bus/pci/devices/{pci}/power_dpm_force_performance_level"
     ));
-    // Fora do padrão o driver exige o nível "manual"; no padrão, volta para "auto".
+    // Outside the default the driver requires the "manual" level; on the default, back to "auto".
     if want != "BOOTUP_DEFAULT" {
         let _ = fs::write(&lvl, "manual");
     }
@@ -862,10 +862,10 @@ pub fn set_power_profile(pci: &str, short: &str) -> Result<(), String> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PcieLink {
-    /// Geração e largura atuais do trecho mais lento entre a placa e o processador.
+    /// Current generation and width of the slowest stretch between the card and the processor.
     pub generation: u32,
     pub width: u32,
-    /// O máximo que o slot/placa negociariam.
+    /// The most the slot/card would negotiate.
     pub max_gen: u32,
     pub max_width: u32,
 }
@@ -882,8 +882,8 @@ fn gen_of(speed: &str) -> Option<u32> {
     })
 }
 
-/// Percorre o caminho PCI da placa até a raiz (as MI50 têm um switch PCIe interno: o link que
-/// importa é o do slot) e devolve o trecho mais limitado.
+/// Walks the card's PCI path up to the root (the MI50s have an internal PCIe switch: the link
+/// that matters is the slot's) and returns the most limited stretch.
 pub fn pcie_link(pci: &str) -> Option<PcieLink> {
     let dev = fs::canonicalize(sys(&format!("bus/pci/devices/{pci}"))).ok()?;
     let mut best: Option<PcieLink> = None;
@@ -967,7 +967,7 @@ mod profile_tests {
         let _ = std::fs::remove_dir_all(&root);
         let d = root.join("bus/pci/devices/0000:03:00.0");
         std::fs::create_dir_all(&d).unwrap();
-        // BAR0 256 MB acima de 4 GB, BAR2 2 MB, BAR5 512 KB
+        // BAR0 256 MB above 4 GB, BAR2 2 MB, BAR5 512 KB
         std::fs::write(
             d.join("resource"),
             "0x000000bff0000000 0x000000bfffffffff 0x000000000014220c\n0x0000000000000000 0x0000000000000000 0x0000000000000000\n0x000000bfe0000000 0x000000bfe01fffff 0x000000000014220c\n0x0000000000000000 0x0000000000000000 0x0000000000000000\n0x0000000000000000 0x0000000000000000 0x0000000000000000\n0x00000000fbe00000 0x00000000fbe7ffff 0x0000000000040200\n",
@@ -985,7 +985,7 @@ mod profile_tests {
     }
 
     #[test]
-    fn clock_lixo_so_na_bc250() {
+    fn garbage_clock_only_on_bc250() {
         let root = std::env::temp_dir().join("numapilot-bc250-clock-test");
         let _ = std::fs::remove_dir_all(&root);
         for (pci, dev) in [("0000:01:00.0", "0x13fe"), ("0000:03:00.0", "0x7590")] {
@@ -996,9 +996,9 @@ mod profile_tests {
             std::fs::write(d.join("hwmon/hwmon0/freq1_input"), "3882000000").unwrap();
         }
         let _g = crate::util::test_sysfs_lock(&root);
-        // BC-250: tabela da SMU lida errada, 3882 MHz é lixo
+        // BC-250: SMU table read wrong, 3882 MHz is garbage
         assert_eq!(read_sensors("0000:01:00.0").clock_mhz, None);
-        // outra placa com o mesmo valor não é afetada
+        // another card with the same value is not affected
         assert_eq!(read_sensors("0000:03:00.0").clock_mhz, Some(3882.0));
         std::fs::write(
             root.join("bus/pci/devices/0000:01:00.0/hwmon/hwmon0/freq1_input"),
@@ -1015,7 +1015,7 @@ mod profile_tests {
         assert_eq!(a, Some(0));
         assert_eq!(v.len(), 7);
         assert_eq!(v[5], (5, "COMPUTE".to_string()));
-        // formato das placas mais novas (uma linha por perfil + tabela)
+        // format of the newer cards (one line per profile + table)
         let n = "PROFILE_INDEX(NAME) CLOCK_TYPE(NAME) FPS MinActiveFreqType\n 0 BOOTUP_DEFAULT :\n 1 3D_FULL_SCREEN*:\n                    0(       GFXCLK)       1\n";
         let (v, a) = parse_power_profiles(n);
         assert_eq!(a, Some(1));

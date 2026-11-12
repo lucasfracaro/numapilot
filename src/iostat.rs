@@ -1,20 +1,20 @@
-//! Disco e rede: velocidade de leitura/escrita e tempo ativo de cada disco (/proc/diskstats),
-//! download/upload de cada placa de rede (/sys/class/net) e disco por processo (/proc/PID/io).
+//! Disk and network: read/write speed and active time of each disk (/proc/diskstats),
+//! download/upload of each network card (/sys/class/net) and disk per process (/proc/PID/io).
 
 use std::collections::HashMap;
 use std::time::Instant;
 
-/// Um disco inteiro (sem partições, loop, zram, ram).
+/// A whole disk (no partitions, loop, zram, ram).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiskCounters {
     pub name: String,
     pub read_bytes: u64,
     pub write_bytes: u64,
-    /// Tempo com E/S em andamento (ms): a diferença dá o % ativo.
+    /// Time with I/O in progress (ms): the difference gives the % active.
     pub io_ms: u64,
 }
 
-/// Disco inteiro de verdade? (nvme0n1, sda, vda, mmcblk0 — não nvme0n1p1, sda1, loop0, zram0)
+/// A real whole disk? (nvme0n1, sda, vda, mmcblk0 — not nvme0n1p1, sda1, loop0, zram0)
 pub fn is_whole_disk(name: &str) -> bool {
     if ["loop", "ram", "zram", "dm-", "md", "sr", "fd"]
         .iter()
@@ -23,7 +23,7 @@ pub fn is_whole_disk(name: &str) -> bool {
         return false;
     }
     if name.starts_with("nvme") || name.starts_with("mmcblk") {
-        // nvme0n1 sim, nvme0n1p1 não; mmcblk0 sim, mmcblk0p1 não
+        // nvme0n1 yes, nvme0n1p1 no; mmcblk0 yes, mmcblk0p1 no
         return !name.contains('p')
             || !name
                 .rsplit('p')
@@ -32,11 +32,11 @@ pub fn is_whole_disk(name: &str) -> bool {
                 .chars()
                 .all(|c| c.is_ascii_digit());
     }
-    // sda, vda, xvda: sem número no fim
+    // sda, vda, xvda: no number at the end
     !name.ends_with(|c: char| c.is_ascii_digit())
 }
 
-/// /proc/diskstats → discos inteiros (setores de 512 bytes).
+/// /proc/diskstats → whole disks (512-byte sectors).
 pub fn parse_diskstats(text: &str) -> Vec<DiskCounters> {
     text.lines()
         .filter_map(|l| {
@@ -63,7 +63,7 @@ pub struct NetCounters {
     pub wifi: bool,
 }
 
-/// Placa de rede que vale mostrar: física (tem `device`) ou VPN (wg*, tailscale*, tun*).
+/// Network card worth showing: physical (has `device`) or VPN (wg*, tailscale*, tun*).
 pub fn is_shown_iface(name: &str, has_device: bool) -> bool {
     name != "lo"
         && (has_device
@@ -97,7 +97,7 @@ fn read_net() -> Vec<NetCounters> {
     v
 }
 
-/// Bytes lidos e escritos no disco por um processo (seu; de outro usuário precisa de root).
+/// Bytes read and written to disk by a process (yours; another user's needs root).
 pub fn proc_io(pid: i32) -> Option<(u64, u64)> {
     let t = std::fs::read_to_string(format!("/proc/{pid}/io")).ok()?;
     let get = |k: &str| {
@@ -114,7 +114,7 @@ pub struct DiskRate {
     pub model: String,
     pub read_bps: f64,
     pub write_bps: f64,
-    /// % do tempo com E/S em andamento.
+    /// % of the time with I/O in progress.
     pub busy_pct: f64,
 }
 
@@ -126,7 +126,7 @@ pub struct NetRate {
     pub tx_bps: f64,
 }
 
-/// Mede as velocidades entre duas leituras.
+/// Measures the speeds between two readings.
 #[derive(Default)]
 pub struct IoMonitor {
     last: Option<Instant>,
@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn placas_de_rede() {
+    fn network_cards() {
         assert!(is_shown_iface("enp3s0", true));
         assert!(is_shown_iface("wg0", false));
         assert!(!is_shown_iface("lo", true));
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn io_do_proprio_processo() {
+    fn own_process_io() {
         assert!(proc_io(std::process::id() as i32).is_some());
     }
 }

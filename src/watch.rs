@@ -1,6 +1,6 @@
-//! Vigia do lado do usuário (roda dentro do `numapilot web`): servidor de IA que caiu, outros PCs
-//! que saíram da rede (avisos no celular) e o histórico de todos os PCs (7 dias, 1 ponto por
-//! minuto) guardado neste PC.
+//! Watcher on the user side (runs inside `numapilot web`): AI server that went down, other PCs
+//! that left the network (phone notifications) and the history of all PCs (7 days, 1 point per
+//! minute) kept on this PC.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,12 +10,12 @@ use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Point {
-    /// segundos desde 1970
+    /// seconds since 1970
     pub t: u64,
     pub name: String,
     pub online: bool,
     pub hot: Option<f64>,
-    /// uso médio dos processadores (0-1)
+    /// average processor usage (0-1)
     pub load: Option<f64>,
     pub power: Option<f64>,
 }
@@ -44,7 +44,7 @@ pub fn read_history(since: u64) -> Vec<Point> {
         .collect()
 }
 
-/// Série de um PC para o gráfico: (minutos atrás, temperatura), em degraus de `step` segundos.
+/// Series of one PC for the chart: (minutes ago, temperature), in steps of `step` seconds.
 pub fn series(points: &[Point], name: &str, since: u64, step: u64) -> Vec<(u64, Option<f64>)> {
     let mut buckets: std::collections::BTreeMap<u64, f64> = Default::default();
     for p in points.iter().filter(|p| p.name == name && p.t >= since) {
@@ -104,7 +104,7 @@ fn llm_state() -> Option<String> {
         .then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
-/// Laço do vigia (thread).
+/// Watcher loop (thread).
 pub fn run() {
     let mut last_llm = llm_state();
     let mut offline: HashMap<String, u32> = HashMap::new();
@@ -113,7 +113,7 @@ pub fn run() {
     loop {
         std::thread::sleep(Duration::from_secs(60));
         tick += 1;
-        // servidor de IA: estava rodando e parou sozinho (o "down" apaga o container: some)
+        // AI server: it was running and stopped by itself ("down" deletes the container: it is gone)
         let st = llm_state();
         if last_llm.as_deref() == Some("running")
             && let Some(s) = st.as_deref()
@@ -132,7 +132,7 @@ pub fn run() {
             );
         }
         last_llm = st;
-        // outros PCs
+        // other PCs
         let peers = crate::peers::summary();
         let t = now();
         let mut pts = vec![];
@@ -187,7 +187,7 @@ pub fn run() {
         if tick.is_multiple_of(24 * 60) {
             trim(7);
         }
-        // backup de cada PC uma vez por dia (o primeiro 10 min depois de ligar)
+        // backup of each PC once a day (the first one 10 min after starting)
         if tick % (24 * 60) == 10 {
             for m in crate::peers::backup_all() {
                 crate::nlog!("backup: {m}");

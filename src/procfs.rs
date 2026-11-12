@@ -1,4 +1,4 @@
-//! Leitura de /proc e chamadas de sistema de afinidade/memória.
+//! Reading /proc and the affinity/memory system calls.
 
 use crate::util::{basename, parse_cpulist};
 use std::collections::HashSet;
@@ -41,7 +41,7 @@ pub fn parse_stat(s: &str) -> Option<Stat> {
     let close = s.rfind(')')?;
     let comm = s[open + 1..close].to_string();
     let f: Vec<&str> = s[close + 1..].split_whitespace().collect();
-    // f[0] é o campo 3 (state); campo N => f[N-3]
+    // f[0] is field 3 (state); field N => f[N-3]
     let num = |i: usize| f.get(i).and_then(|x| x.parse::<u64>().ok());
     Some(Stat {
         ppid: f.get(1)?.parse().ok()?,
@@ -101,7 +101,7 @@ pub fn env_var(pid: i32, key: &str) -> Option<String> {
     })
 }
 
-/// Todas as variáveis de ambiente do processo (só de processos seus, ou como root).
+/// All environment variables of the process (only your own processes, or as root).
 pub fn environ(pid: i32) -> Vec<(String, String)> {
     fs::read(format!("/proc/{pid}/environ"))
         .map(|b| {
@@ -120,7 +120,7 @@ pub fn alive(pid: i32) -> bool {
     unsafe { libc::kill(pid, 0) == 0 }
 }
 
-/// Nomes usados para casar regras: comm, nome do executável e dos primeiros argumentos.
+/// Names used to match rules: comm, name of the executable and of the first arguments.
 pub fn idents(comm: &str, exe: Option<&str>, argv: &[String]) -> Vec<String> {
     let mut v = vec![comm.to_string()];
     if let Some(e) = exe {
@@ -128,7 +128,7 @@ pub fn idents(comm: &str, exe: Option<&str>, argv: &[String]) -> Vec<String> {
         v.push(e.to_string());
     }
     for (i, a) in argv.iter().enumerate() {
-        // Os 3 primeiros argumentos e qualquer .exe (jogos via Proton/Wine ficam no fim da linha).
+        // The first 3 arguments and any .exe (games through Proton/Wine sit at the end of the line).
         if !a.starts_with('-') && (i < 3 || a.to_lowercase().ends_with(".exe")) {
             v.push(basename(a).to_string());
         }
@@ -137,8 +137,8 @@ pub fn idents(comm: &str, exe: Option<&str>, argv: &[String]) -> Vec<String> {
     v
 }
 
-/// Chave estável de "programa" para o aprendizado. Para interpretadores
-/// (python, wine...) usa também o script/exe passado como argumento.
+/// Stable "program" key for learning. For interpreters
+/// (python, wine...) it also uses the script/exe passed as an argument.
 pub fn learn_key(exe: Option<&str>, argv: &[String], comm: &str) -> String {
     const INTERP: &[&str] = &[
         "python*",
@@ -161,7 +161,7 @@ pub fn learn_key(exe: Option<&str>, argv: &[String], comm: &str) -> String {
     };
     let base = basename(exe);
     if INTERP.iter().any(|p| crate::util::glob_match(p, base)) {
-        // python -m modulo / python -c "código"
+        // python -m module / python -c "code"
         if let Some(i) = argv.iter().position(|a| a == "-m") {
             return format!(
                 "{exe} -m {}",
@@ -185,7 +185,7 @@ pub fn learn_key(exe: Option<&str>, argv: &[String], comm: &str) -> String {
     }
 }
 
-/// Render nodes / cards DRM abertos pelo processo ("renderD128", "card1").
+/// DRM render nodes / cards opened by the process ("renderD128", "card1").
 pub fn open_drm(pid: i32) -> HashSet<String> {
     let mut out = HashSet::new();
     let Ok(rd) = fs::read_dir(format!("/proc/{pid}/fd")) else {
@@ -211,9 +211,9 @@ pub fn threads(pid: i32) -> Vec<i32> {
         .unwrap_or_default()
 }
 
-/// Ticks de CPU por CPU lógico a partir de /proc/stat: (ocupado, total)
+/// CPU ticks per logical CPU from /proc/stat: (busy, total)
 pub fn cpu_times() -> Vec<(usize, u64, u64)> {
-    // NUMAPILOT_PROC_STAT: outro arquivo no lugar do /proc/stat (testes e capturas de tela)
+    // NUMAPILOT_PROC_STAT: another file in place of /proc/stat (tests and screenshots)
     let path = std::env::var("NUMAPILOT_PROC_STAT").unwrap_or_else(|_| "/proc/stat".into());
     let Ok(s) = fs::read_to_string(path) else {
         return vec![];
@@ -241,7 +241,7 @@ pub fn clk_tck() -> f64 {
 
 // ---------- syscalls ----------
 
-/// CPUs em que a thread pode rodar agora.
+/// CPUs the thread may run on right now.
 pub fn get_affinity(tid: i32) -> Option<Vec<usize>> {
     unsafe {
         let mut set: libc::cpu_set_t = std::mem::zeroed();
@@ -270,7 +270,7 @@ pub fn set_affinity(tid: i32, cpus: &[usize]) -> io::Result<()> {
     Ok(())
 }
 
-/// Aplica a afinidade em todas as threads do processo. Retorna quantas deram certo.
+/// Applies the affinity to every thread of the process. Returns how many succeeded.
 pub fn set_affinity_all(pid: i32, cpus: &[usize]) -> usize {
     let mut ok = 0;
     for tid in threads(pid) {
@@ -296,7 +296,7 @@ pub const MPOL_PREFERRED: i32 = 1;
 pub const MPOL_BIND: i32 = 2;
 pub const MPOL_INTERLEAVE: i32 = 3;
 
-/// Política de memória do próprio processo (herdada pelo programa após o exec).
+/// Memory policy of the process itself (inherited by the program after exec).
 pub fn set_mempolicy(mode: i32, nodes: &[usize]) -> io::Result<()> {
     let r = if mode == MPOL_DEFAULT {
         unsafe {
@@ -319,7 +319,7 @@ pub fn set_mempolicy(mode: i32, nodes: &[usize]) -> io::Result<()> {
     }
 }
 
-/// Move as páginas do processo que estão em `from` para `to`.
+/// Moves the process's pages that are on `from` to `to`.
 pub fn migrate_pages(pid: i32, from: &[usize], to: &[usize]) -> io::Result<i64> {
     if from.is_empty() || to.is_empty() {
         return Ok(0);
@@ -393,11 +393,11 @@ mod tests {
         let cpus = allowed_cpus(0)
             .or_else(|| allowed_cpus(std::process::id() as i32))
             .unwrap();
-        // Aplicar a mesma afinidade atual nunca deve falhar.
+        // Applying the same current affinity must never fail.
         set_affinity(0, &cpus).unwrap();
-        // Política padrão sempre pode ser aplicada.
+        // The default policy can always be applied.
         set_mempolicy(MPOL_DEFAULT, &[]).unwrap();
-        // Preferir o nó 0 também (existe em qualquer sistema).
+        // Preferring node 0 too (it exists on any system).
         set_mempolicy(MPOL_PREFERRED, &[0]).unwrap();
         set_mempolicy(MPOL_DEFAULT, &[]).unwrap();
     }
@@ -405,7 +405,7 @@ mod tests {
 
 // ---------- prioridade ----------
 
-/// "Nice" em todas as threads (-20 = mais prioridade, 19 = menos). Negativo exige root.
+/// "Nice" on every thread (-20 = highest priority, 19 = lowest). Negative requires root.
 pub fn set_nice_all(pid: i32, nice: i32) -> usize {
     let mut ok = 0;
     for tid in threads(pid) {
@@ -416,7 +416,7 @@ pub fn set_nice_all(pid: i32, nice: i32) -> usize {
     ok
 }
 
-/// Prioridade de disco (classe "best effort", nível 0 = mais alta, 7 = mais baixa).
+/// Disk priority ("best effort" class, level 0 = highest, 7 = lowest).
 pub fn set_ioprio_all(pid: i32, level: i32) -> usize {
     const IOPRIO_WHO_PROCESS: i32 = 1;
     const IOPRIO_CLASS_BE: i32 = 2;
@@ -430,7 +430,7 @@ pub fn set_ioprio_all(pid: i32, level: i32) -> usize {
     ok
 }
 
-/// (nice, nível de E/S) para "low" | "normal" | "high"
+/// (nice, I/O level) for "low" | "normal" | "high"
 pub fn priority_values(p: &str) -> (i32, i32) {
     match p {
         "high" => (-5, 0),
@@ -439,9 +439,9 @@ pub fn priority_values(p: &str) -> (i32, i32) {
     }
 }
 
-// ---------- onde está a memória ----------
+// ---------- where the memory is ----------
 
-/// Bytes de memória do processo em cada nó NUMA, a partir de /proc/PID/numa_maps.
+/// Bytes of the process's memory on each NUMA node, from /proc/PID/numa_maps.
 pub fn mem_by_node(pid: i32) -> std::collections::BTreeMap<usize, u64> {
     let mut out = std::collections::BTreeMap::new();
     let Ok(s) = fs::read_to_string(format!("/proc/{pid}/numa_maps")) else {
@@ -471,7 +471,7 @@ pub fn parse_numa_maps(s: &str, out: &mut std::collections::BTreeMap<usize, u64>
     }
 }
 
-/// Contadores do nó (numa_hit, numa_miss, local_node, other_node...).
+/// Node counters (numa_hit, numa_miss, local_node, other_node...).
 pub fn numastat(node: usize) -> std::collections::BTreeMap<String, u64> {
     let p = crate::util::sys(&format!("devices/system/node/node{node}/numastat"));
     fs::read_to_string(p)

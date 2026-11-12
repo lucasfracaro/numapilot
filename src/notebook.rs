@@ -1,5 +1,5 @@
-//! Notebook: tomada ou bateria, limite de carga, perfil de energia da plataforma (ACPI) e
-//! se a placa de vídeo dedicada está dormindo.
+//! Laptop: AC power or battery, charge limit, platform power profile (ACPI) and
+//! whether the dedicated graphics card is asleep.
 
 use crate::util::{read_trim, read_u64, sys};
 use std::fs;
@@ -11,7 +11,7 @@ fn supplies() -> Vec<PathBuf> {
         .unwrap_or_default()
 }
 
-/// Baterias do próprio computador (não do mouse/fone: esses têm scope=Device).
+/// The computer's own batteries (not the mouse's/headset's: those have scope=Device).
 fn batteries() -> Vec<PathBuf> {
     supplies()
         .into_iter()
@@ -26,16 +26,16 @@ pub fn is_laptop() -> bool {
     if !batteries().is_empty() {
         return true;
     }
-    // Tipo de gabinete do DMI: 8 portátil, 9 laptop, 10 notebook, 14 sub-notebook, 31 conversível, 32 destacável
+    // DMI chassis type: 8 portable, 9 laptop, 10 notebook, 14 sub-notebook, 31 convertible, 32 detachable
     read_trim(sys("class/dmi/id/chassis_type"))
         .and_then(|s| s.parse::<u32>().ok())
         .is_some_and(|t| [8, 9, 10, 14, 31, 32].contains(&t))
 }
 
-/// Ligado na tomada? (None = não dá para saber)
+/// On AC power? (None = cannot tell)
 pub fn on_ac() -> Option<bool> {
-    // A bateria descarregando é a resposta mais confiável: um hub USB-C pode aparecer como
-    // fonte "ligada" (power delivery) sem dar conta de carregar o notebook.
+    // A discharging battery is the most reliable answer: a USB-C hub can show up as a
+    // "connected" supply (power delivery) without being able to charge the laptop.
     let discharging = supplies().into_iter().any(|p| {
         read_trim(p.join("type")).as_deref() == Some("Battery")
             && read_trim(p.join("scope")).as_deref() != Some("Device")
@@ -71,9 +71,9 @@ pub struct Battery {
     /// Charging | Discharging | Full | Not charging
     pub status: String,
     pub power_w: Option<f64>,
-    /// Saúde: capacidade atual / de fábrica (%).
+    /// Health: current / factory capacity (%).
     pub health_pct: Option<f64>,
-    /// Para de carregar em (%), se o notebook permitir.
+    /// Stops charging at (%), if the laptop allows it.
     pub charge_limit: Option<u8>,
 }
 
@@ -85,7 +85,7 @@ pub fn battery_info() -> Vec<Battery> {
             let full = n("energy_full").or_else(|| n("charge_full"));
             let design = n("energy_full_design").or_else(|| n("charge_full_design"));
             let power = n("power_now").map(|v| v as f64 / 1e6).or_else(|| {
-                // corrente (µA) × tensão (µV)
+                // current (µA) × voltage (µV)
                 Some(n("current_now")? as f64 * n("voltage_now")? as f64 / 1e12)
             });
             Battery {
@@ -127,9 +127,9 @@ pub fn set_charge_limit(pct: u8) -> Result<(), String> {
     Ok(())
 }
 
-// ---------------- perfil da plataforma (ACPI) ----------------
+// ---------------- platform profile (ACPI) ----------------
 
-/// Quem fornece o perfil de energia (kernel 6.14+): /sys/class/platform-profile/*/
+/// Who provides the power profile (kernel 6.14+): /sys/class/platform-profile/*/
 pub fn profile_handlers() -> Vec<(String, std::path::PathBuf)> {
     let mut v: Vec<(String, std::path::PathBuf)> = fs::read_dir(sys("class/platform-profile"))
         .map(|rd| {
@@ -164,7 +164,7 @@ pub fn platform_profiles() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// O power-profiles-daemon (o seletor de energia do KDE/GNOME) está cuidando do perfil?
+/// Is power-profiles-daemon (the KDE/GNOME power selector) handling the profile?
 pub fn ppd_active() -> bool {
     std::env::var_os("NUMAPILOT_SYSFS").is_none()
         && crate::containers::which("powerprofilesctl")
@@ -174,7 +174,7 @@ pub fn ppd_active() -> bool {
             .is_ok_and(|s| s.success())
 }
 
-/// Perfil do power-profiles-daemon equivalente ao perfil da plataforma.
+/// power-profiles-daemon profile equivalent to the platform profile.
 pub fn ppd_profile_for(p: &str) -> &'static str {
     match p {
         "performance" | "balanced-performance" => "performance",
@@ -190,8 +190,9 @@ pub fn set_platform_profile(p: &str) -> Result<(), String> {
             "perfil {p} não existe neste notebook"
         ));
     }
-    // Com o power-profiles-daemon ligado, troca por ele: o seletor de energia do desktop fica
-    // igual e ele não desfaz a troca. Depois acerta o perfil exato (ex.: quiet em vez de low-power).
+    // With power-profiles-daemon running, switch through it: the desktop's power selector stays
+    // in sync and it does not undo the switch. Then set the exact profile (e.g. quiet instead of
+    // low-power).
     if ppd_active() {
         let _ = std::process::Command::new("powerprofilesctl")
             .args(["set", ppd_profile_for(p)])
@@ -204,7 +205,7 @@ pub fn set_platform_profile(p: &str) -> Result<(), String> {
     if std::path::Path::new(&legacy).exists() {
         return fs::write(legacy, p).map_err(|e| e.to_string());
     }
-    // só a interface nova: escreve em cada fornecedor que aceita esse perfil
+    // only the new interface: writes to every provider that accepts this profile
     let mut last = Err(crate::i18n::tr("no power profile provider").to_string());
     for (_, d) in profile_handlers() {
         if read_trim(d.join("choices")).is_some_and(|c| c.split_whitespace().any(|x| x == p)) {
@@ -214,7 +215,7 @@ pub fn set_platform_profile(p: &str) -> Result<(), String> {
     last
 }
 
-/// Por que não há controles da Acer / perfil de energia: módulos, bloqueios e DKMS.
+/// Why there are no Acer controls / power profile: modules, blocks and DKMS.
 pub fn acer_diagnose() -> Vec<String> {
     let mut v = vec![];
     let loaded = |m: &str| std::path::Path::new(&format!("/sys/module/{m}")).exists();
@@ -255,7 +256,7 @@ pub fn acer_diagnose() -> Vec<String> {
                 .join(", ")
         )
     });
-    // bloqueios em /etc/modprobe.d
+    // blocks in /etc/modprobe.d
     if let Ok(rd) = fs::read_dir("/etc/modprobe.d") {
         for e in rd.flatten() {
             let t = fs::read_to_string(e.path()).unwrap_or_default();
@@ -266,7 +267,7 @@ pub fn acer_diagnose() -> Vec<String> {
             }
         }
     }
-    // Linuwu-Sense instalado pelo DKMS para este kernel?
+    // Is Linuwu-Sense installed through DKMS for this kernel?
     let kernel = crate::recipes::running_kernel();
     if let Ok(o) = std::process::Command::new("dkms").arg("status").output() {
         let t = String::from_utf8_lossy(&o.stdout);
@@ -304,7 +305,7 @@ pub fn acer_diagnose() -> Vec<String> {
     v
 }
 
-/// Perfil da plataforma que combina com um modo da máquina (o mais próximo disponível).
+/// Platform profile that matches a machine mode (the closest one available).
 pub fn profile_for_mode(mode: &str) -> Option<String> {
     let ch = platform_profiles();
     let want: &[&str] = match mode {
@@ -317,9 +318,9 @@ pub fn profile_for_mode(mode: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-// ---------------- placa dedicada ----------------
+// ---------------- dedicated card ----------------
 
-/// Gerência de energia do PCI da placa: "auto" deixa dormir, "on" mantém ligada.
+/// The card's PCI power management: "auto" lets it sleep, "on" keeps it on.
 pub fn runtime_pm(pci: &str) -> Option<String> {
     read_trim(sys(&format!("bus/pci/devices/{pci}/power/control")))
 }
@@ -332,8 +333,8 @@ pub fn set_runtime_pm(pci: &str, auto: bool) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
-/// "dormindo (D3cold)", "ligada"...
-/// A placa está dormindo? (`dgpu_state` responde no idioma em uso)
+/// "asleep (D3cold)", "on"...
+/// Is the card asleep? (`dgpu_state` answers in the language in use)
 pub fn dgpu_asleep(pci: &str) -> bool {
     let s = dgpu_state(pci);
     s.starts_with("dormindo") || s.starts_with("asleep")
@@ -359,7 +360,7 @@ pub fn dgpu_state(pci: &str) -> String {
     }
 }
 
-/// Serviço do Dynamic Boost da NVIDIA (passa potência da CPU para a GPU em notebooks).
+/// NVIDIA's Dynamic Boost service (shifts power from the CPU to the GPU on laptops).
 pub fn has_nvidia_powerd() -> bool {
     [
         "/usr/lib/systemd/system/nvidia-powerd.service",
@@ -392,7 +393,7 @@ pub fn set_nvidia_powerd(on: bool) -> Result<(), String> {
     }
 }
 
-/// Arquivos de dispositivo da placa: /dev/dri/cardN e renderDN, e /dev/nvidiaN na NVIDIA.
+/// The card's device files: /dev/dri/cardN and renderDN, and /dev/nvidiaN on NVIDIA.
 fn dev_nodes(pci: &str) -> Vec<String> {
     let mut v: Vec<String> = fs::read_dir(sys(&format!("bus/pci/devices/{pci}/drm")))
         .map(|rd| {
@@ -415,9 +416,9 @@ fn dev_nodes(pci: &str) -> Vec<String> {
     v
 }
 
-/// Quem abriu a placa e como: `client` = usa a placa de verdade (/dev/nvidiaN ou o nó de
-/// render: CUDA, NVENC, NVML, OpenGL/Vulkan), o que a impede de dormir; senão só abriu a saída
-/// de vídeo (cardN), como o KWin e o logind fazem com todas as placas.
+/// Who opened the card and how: `client` = really uses the card (/dev/nvidiaN or the render
+/// node: CUDA, NVENC, NVML, OpenGL/Vulkan), which keeps it from sleeping; otherwise it only
+/// opened the video output (cardN), as KWin and logind do with every card.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Holder {
     pub pid: u32,
@@ -425,11 +426,11 @@ pub struct Holder {
     pub client: bool,
 }
 
-/// Processos do sistema que só guardam uma cópia do acesso (não usam a placa).
+/// System processes that only keep a copy of the handle (they do not use the card).
 pub const SYSTEM_HOLDERS: &[&str] = &["systemd", "systemd-logind"];
 
-/// O desktop (compositor) abre todas as placas para poder ligar telas nelas. Parado, isso não
-/// impede a NVIDIA de dormir no modo "fine-grained" do driver; não conta como uso.
+/// The desktop (compositor) opens every card so it can turn displays on with them. Idle, that
+/// does not keep the NVIDIA from sleeping in the driver's "fine-grained" mode; not counted as use.
 pub const COMPOSITORS: &[&str] = &[
     "kwin_wayland",
     "kwin_x11",
@@ -479,7 +480,7 @@ pub fn dgpu_holders(pci: &str) -> Vec<Holder> {
     out
 }
 
-/// Programas que usam a placa de verdade e não deixam ela dormir (sem os do sistema).
+/// Programs that really use the card and keep it from sleeping (without the system ones).
 pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
     dgpu_holders(pci)
         .into_iter()
@@ -492,7 +493,7 @@ pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
         .collect()
 }
 
-/// Dica para os programas que costumam prender a NVIDIA do notebook.
+/// Tip for the programs that usually hold the laptop's NVIDIA.
 pub fn holder_hint(name: &str) -> Option<&'static str> {
     match name {
         "lact" | "lactd" => Some(crate::i18n::tr(
@@ -511,7 +512,7 @@ pub fn holder_hint(name: &str) -> Option<&'static str> {
     }
 }
 
-/// Ventoinhas do notebook (controlador do fabricante: acer, asus, dell_smm, thinkpad...): RPM.
+/// Laptop fans (vendor controller: acer, asus, dell_smm, thinkpad...): RPM.
 pub fn ec_fans() -> Vec<u64> {
     let Ok(rd) = fs::read_dir(sys("class/hwmon")) else {
         return vec![];

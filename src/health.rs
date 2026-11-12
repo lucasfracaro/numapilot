@@ -1,6 +1,6 @@
-//! Saúde do hardware: discos (SMART), memória com ECC (EDAC), erros corrigidos/não corrigidos
-//! das placas AMD com ECC (RAS: HBM2 das MI50) e desgaste da bateria. O serviço coleta (o SMART
-//! precisa de root) e grava em /run/numapilot/health.json; a interface e o diagnóstico leem.
+//! Hardware health: disks (SMART), ECC memory (EDAC), corrected/uncorrected errors of AMD cards
+//! with ECC (RAS: the MI50s' HBM2) and battery wear. The service collects (SMART needs root)
+//! and writes to /run/numapilot/health.json; the interface and the diagnosis read it.
 
 use crate::util::{read_trim, read_u64, sys};
 use serde::{Deserialize, Serialize};
@@ -14,16 +14,16 @@ pub struct Disk {
     pub model: String,
     /// nvme | ssd | hdd
     pub kind: String,
-    /// Resultado geral do SMART (None = não deu para ler).
+    /// Overall SMART result (None = could not be read).
     pub passed: Option<bool>,
     pub temp_c: Option<f64>,
     pub hours: Option<u64>,
-    /// NVMe: % da vida útil já usada (pode passar de 100).
+    /// NVMe: % of lifespan already used (can go over 100).
     pub used_pct: Option<u64>,
-    /// NVMe: % de reserva disponível.
+    /// NVMe: % of spare available.
     pub spare_pct: Option<u64>,
     pub media_errors: Option<u64>,
-    /// SATA: setores realocados / pendentes / incorrigíveis.
+    /// SATA: reallocated / pending / uncorrectable sectors.
     pub realloc: Option<u64>,
     pub pending: Option<u64>,
     pub uncorrectable: Option<u64>,
@@ -42,7 +42,7 @@ pub struct MemCtl {
 #[serde(default)]
 pub struct GpuRas {
     pub pci: String,
-    /// umc (memória), gfx, sdma, mmhub...
+    /// umc (memory), gfx, sdma, mmhub...
     pub block: String,
     pub ce: u64,
     pub ue: u64,
@@ -59,35 +59,35 @@ pub struct Bat {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Report {
-    /// segundos desde 1970
+    /// seconds since 1970
     pub time: u64,
     pub smartctl: bool,
     pub disks: Vec<Disk>,
     pub mem: Vec<MemCtl>,
     pub gpu: Vec<GpuRas>,
     pub batteries: Vec<Bat>,
-    /// Discos que não deu para ler, com o motivo (para o autoteste e a interface).
+    /// Disks that could not be read, with the reason (for the self-test and the interface).
     #[serde(default)]
     pub disk_errors: Vec<String>,
-    /// Pentes de memória (dmidecode), para conferir velocidade e distribuição.
+    /// Memory modules (dmidecode), to check speed and distribution.
     #[serde(default)]
     pub dimms: Vec<Dimm>,
 }
 
-/// Um pente de memória instalado.
+/// One installed memory module.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct Dimm {
     pub slot: String,
     pub bank: String,
     pub size_gb: f64,
-    /// Velocidade que o pente suporta (MT/s).
+    /// Speed the module supports (MT/s).
     pub speed: Option<u32>,
-    /// Velocidade em uso (MT/s).
+    /// Speed in use (MT/s).
     pub configured: Option<u32>,
     pub kind: String,
 }
 
-/// Lê os pentes instalados da saída do `dmidecode -t memory`.
+/// Reads the installed modules from the `dmidecode -t memory` output.
 pub fn parse_dimms(t: &str) -> Vec<Dimm> {
     let mut v = vec![];
     for block in t.split("\n\n") {
@@ -131,8 +131,8 @@ pub fn parse_dimms(t: &str) -> Vec<Dimm> {
     v
 }
 
-/// O que conferir na memória: velocidade abaixo da dos pentes, pentes diferentes, sockets
-/// desequilibrados. `node_gb`: memória de cada socket (pelo sistema).
+/// What to check in the memory: speed below the modules', different modules, unbalanced
+/// sockets. `node_gb`: each socket's memory (as the system sees it).
 pub fn mem_notes(dimms: &[Dimm], node_gb: &[f64]) -> Vec<String> {
     let mut v = vec![];
     if dimms.is_empty() {
@@ -198,7 +198,7 @@ pub fn mem_notes(dimms: &[Dimm], node_gb: &[f64]) -> Vec<String> {
     v
 }
 
-/// Discos físicos (sem loop, zram, partições e device-mapper).
+/// Physical disks (no loop, zram, partitions or device-mapper).
 pub fn disks() -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(sys("block"))
         .map(|rd| {
@@ -220,7 +220,7 @@ fn u(v: &Value) -> Option<u64> {
     v.as_u64()
 }
 
-/// Lê a saída `smartctl -j -a` (NVMe e SATA).
+/// Reads the `smartctl -j -a` output (NVMe and SATA).
 pub fn parse_smart(dev: &str, j: &Value) -> Disk {
     let rot = j["rotation_rate"].as_u64();
     let nvme = &j["nvme_smart_health_information_log"];
@@ -400,7 +400,7 @@ pub fn load() -> Option<Report> {
     serde_json::from_str(&std::fs::read_to_string(path()).ok()?).ok()
 }
 
-/// Gravidade: 2 = trocar logo / risco de perder dados, 1 = de olho, 0 = informação.
+/// Severity: 2 = replace soon / risk of data loss, 1 = keep an eye on it, 0 = information.
 pub fn problems(r: &Report) -> Vec<(u8, String)> {
     let mut v = vec![];
     for d in &r.disks {

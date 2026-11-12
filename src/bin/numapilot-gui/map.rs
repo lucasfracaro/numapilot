@@ -1,5 +1,5 @@
-//! Aba "Mapa e medições": núcleos de cada socket (uso e quem está em cada um), memória,
-//! alocações remotas, governador de frequência e a matriz de latência/banda medida.
+//! "Map & measurements" tab: each socket's cores (usage and who is on each), memory,
+//! remote allocations, frequency governor and the measured latency/bandwidth matrix.
 
 use crate::App;
 use crate::lab::gfx;
@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub fn load_color(l: f32) -> Color32 {
     let l = l.clamp(0.0, 1.0);
-    // verde-escuro (livre) → amarelo → vermelho (cheio)
+    // dark green (free) → yellow → red (full)
     let (r, g, b) = if l < 0.5 {
         let t = l / 0.5;
         (40.0 + 180.0 * t, 70.0 + 110.0 * t, 50.0)
@@ -21,8 +21,8 @@ pub fn load_color(l: f32) -> Color32 {
     Color32::from_rgb(r as u8, g as u8, b as u8)
 }
 
-/// Desenha os núcleos de cada socket. Se `selected` vier, clicar seleciona/desmarca CPUs.
-/// `who`: CPU → programas restritos a ele (para a dica ao passar o mouse).
+/// Draws each socket's cores. If `selected` is given, clicking selects/unselects CPUs.
+/// `who`: CPU → programs restricted to it (for the hover tooltip).
 pub fn core_map(
     ui: &mut egui::Ui,
     topo: &Topology,
@@ -102,7 +102,7 @@ pub fn core_map(
                     if resp.clicked()
                         && let Some(sel) = selected.as_deref_mut()
                     {
-                        // Clique: liga/desliga o núcleo inteiro (os dois threads).
+                        // Click: toggles the whole core (both threads).
                         if core.iter().all(|c| sel.contains(c)) {
                             for c in core {
                                 sel.remove(c);
@@ -114,7 +114,7 @@ pub fn core_map(
                     if resp.secondary_clicked()
                         && let Some(sel) = selected.as_deref_mut()
                     {
-                        // Botão direito: só o 1º thread (sem hyper-threading neste núcleo).
+                        // Right-click: only the 1st thread (no hyper-threading on this core).
                         for c in core {
                             sel.remove(c);
                         }
@@ -127,8 +127,8 @@ pub fn core_map(
     }
 }
 
-/// Um mini gráfico do último minuto por thread (agrupados por socket) e a temperatura do
-/// processador.
+/// A sparkline of the last minute per thread (grouped by socket) and the processor
+/// temperature.
 fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>>) {
     let p = crate::theme::pal(ui);
     let n_all = app.cpu_loads.len().max(1);
@@ -156,7 +156,7 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
             .size(12.5)
             .color(p.weak),
         );
-        // turbo: quantos núcleos estão acordados e até onde o clock pode ir com isso
+        // turbo: how many cores are awake and how far the clock can go with that
         let pkg = n.id as u32;
         let deep = n
             .cpus
@@ -207,10 +207,10 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
         }
         let mut cpus = n.cpus.clone();
         cpus.sort_unstable();
-        // colunas iguais que enchem a largura; de preferência um divisor do nº de threads
-        // (16 threads → 2 linhas de 8)
+        // equal columns that fill the width; preferably a divisor of the thread count
+        // (16 threads → 2 rows of 8)
         let gap = 6.0;
-        // desconta a barra de rolagem
+        // leave room for the scroll bar
         let avail = ui.available_width() - 12.0;
         let max_cols = (((avail + gap) / (min_w + gap)) as usize).clamp(1, cpus.len().max(1));
         let cols = (max_cols.div_ceil(2)..=max_cols)
@@ -284,7 +284,7 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
         );
         ui.add_space(4.0);
     }
-    // temperatura do processador (um gráfico por socket)
+    // processor temperature (one chart per socket)
     if !app.temp_spark.is_empty() {
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
@@ -364,7 +364,7 @@ fn governors(cpu: usize) -> (String, Vec<String>) {
 }
 
 pub fn ui(app: &mut App, ui: &mut egui::Ui) {
-    // Quem está restrito a quais CPUs (programas com núcleos escolhidos).
+    // Who is restricted to which CPUs (programs with chosen cores).
     let all = app.topo.all_cpus().len();
     let mut who: BTreeMap<usize, Vec<String>> = BTreeMap::new();
     for g in &app.groups {
@@ -539,7 +539,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
-/// Gráfico de duas séries (último minuto) na mesma escala: a = cheia, b = linha.
+/// Two-series chart (last minute) on the same scale: a = filled, b = line.
 fn dual_graph(
     ui: &mut egui::Ui,
     a: &std::collections::VecDeque<f32>,
@@ -572,7 +572,7 @@ fn dual_graph(
     }
 }
 
-/// Discos (leitura, escrita, % ativo) e rede (download, upload), com o último minuto.
+/// Disks (read, write, % active) and network (download, upload), with the last minute.
 fn disks_and_net(app: &App, ui: &mut egui::Ui) {
     use numapilot::iostat::fmt_rate;
     let read = Color32::from_rgb(0x5b, 0x8c, 0xff);

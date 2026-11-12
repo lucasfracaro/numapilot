@@ -1,5 +1,5 @@
-//! Aba Programas: tabela no estilo de um monitor do sistema (colunas ordenáveis, linhas que
-//! abrem para mostrar os processos e os controles do numapilot, Encerrar/Forçar parada).
+//! Programs tab: a system-monitor-style table (sortable columns, rows that open to show
+//! the processes and numapilot's controls, End/Force stop).
 
 use crate::{App, Group, fmt_bytes, theme};
 use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Vec2, pos2, vec2};
@@ -33,7 +33,7 @@ const COLS: &[(Col, &str, f32)] = &[
 const ROW_H: f32 = 30.0;
 const HEAD_H: f32 = 38.0;
 
-/// Estado da tabela (ordem, linhas abertas, seleção) e as medições por processo.
+/// Table state (order, open rows, selection) and the per-process measurements.
 pub(crate) struct ProgTable {
     sort: Col,
     desc: bool,
@@ -42,20 +42,20 @@ pub(crate) struct ProgTable {
     pub(crate) filter: String,
     confirm_force: Option<String>,
     gpu_prev: HashMap<i32, (u64, Instant)>,
-    /// Uso de GPU de cada processo (% de um motor), medido entre duas atualizações.
+    /// GPU usage of each process (% of one engine), measured between two refreshes.
     gpu_pct: HashMap<i32, f32>,
     vram: HashMap<i32, u64>,
     pub(crate) pid_mem: HashMap<i32, u64>,
     io_prev: HashMap<i32, (u64, Instant)>,
-    /// Leitura + escrita no disco de cada processo (bytes/s).
+    /// Disk read + write of each process (bytes/s).
     disk_bps: HashMap<i32, f64>,
-    /// Janela "Buscar app": programas instalados (lidos ao abrir a janela).
+    /// "Find app" window: installed programs (read when the window opens).
     pub(crate) finder: Option<Finder>,
-    /// Uso de GPU de cada programa separado por placa (PCI), para conferir a escolha.
+    /// GPU usage of each program split by card (PCI), to check the choice.
     by_pci: HashMap<String, HashMap<String, procctl::GpuUse>>,
-    /// Por que o programa (processo principal) não pode ser encerrado; ausente = pode.
+    /// Why the program (main process) cannot be ended; absent = it can.
     blocked: HashMap<i32, &'static str>,
-    /// Seções fechadas: 0 = Aplicativos, 1 = Sessão e sistema.
+    /// Collapsed sections: 0 = Applications, 1 = Session and system.
     closed: [bool; 2],
 }
 
@@ -83,7 +83,7 @@ impl Default for ProgTable {
 }
 
 impl ProgTable {
-    /// Mede memória e GPU de cada processo (chamado a cada atualização da interface).
+    /// Measures memory and GPU of each process (called on every interface refresh).
     pub(crate) fn sample(&mut self, groups: &[Group]) {
         let now = Instant::now();
         let mut prev = HashMap::new();
@@ -96,7 +96,7 @@ impl ProgTable {
         self.by_pci.clear();
         let me = unsafe { libc::getuid() };
         for g in groups {
-            // só para quem tem uma placa escolhida (é o que dá para conferir)
+            // only for those with a chosen card (that is what can be checked)
             if g.gpus.len() == 1 {
                 let mut by: HashMap<String, procctl::GpuUse> = HashMap::new();
                 for &pid in &g.pids {
@@ -170,7 +170,7 @@ impl ProgTable {
     }
 }
 
-/// Valores de uma linha, já formatados.
+/// Values of one row, already formatted.
 struct Cells {
     pid: String,
     cpu: String,
@@ -206,7 +206,7 @@ fn pct(v: f64) -> String {
     }
 }
 
-/// Colunas visíveis e suas larguras (a do nome ocupa o que sobra).
+/// Visible columns and their widths (the name column takes what is left).
 fn layout(width: f32) -> Vec<(Col, &'static str, f32)> {
     let mut cols: Vec<(Col, &str, f32)> = COLS
         .iter()
@@ -230,7 +230,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
     let (used_kb, total_kb) = crate::mem_system();
     let nproc: usize = groups.iter().map(|g| g.pids.len()).sum();
 
-    // ----- barra de cima: contagem, busca, filtro, ações no selecionado -----
+    // ----- top bar: count, search, filter, actions on the selected one -----
     let sel = app
         .progs
         .selected
@@ -327,7 +327,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
     finder_window(app, ui);
     ui.add_space(4.0);
 
-    // ----- ordenar e filtrar -----
+    // ----- sort and filter -----
     let t = &app.progs;
     let f = t.filter.to_lowercase();
     let mut list: Vec<&Group> = groups
@@ -365,7 +365,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
     let width = ui.available_width();
     let cols = layout(width);
 
-    // ----- cabeçalho -----
+    // ----- header -----
     let tot_cpu = groups.iter().map(|g| g.cores).sum::<f64>() / threads * 100.0;
     let tot_mem = if total_kb > 0 {
         used_kb as f64 * 100.0 / total_kb as f64
@@ -443,7 +443,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
             t.desc = !t.desc;
         } else {
             t.sort = c;
-            // nome em ordem alfabética; números do maior para o menor
+            // name in alphabetical order; numbers from largest to smallest
             t.desc = !matches!(c, Col::Name | Col::Card);
         }
     }
@@ -454,8 +454,8 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
 
-    // ----- linhas -----
-    // Aplicativos (dá para encerrar) e Sessão e sistema (protegidos), como num monitor do sistema
+    // ----- rows -----
+    // Applications (can be ended) and Session and system (protected), like in a system monitor
     let (apps, sys): (Vec<Group>, Vec<Group>) = list
         .into_iter()
         .cloned()
@@ -513,7 +513,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
                 for (i, g) in list.iter().enumerate() {
                     let open = app.progs.expanded.contains(&g.key);
-                    // o programa está na placa que foi escolhida para ele?
+                    // is the program on the card that was chosen for it?
                     let wrong: Option<(String, String)> = g.gpus.first().and_then(|alias| {
                         let want = app.topo.gpus.iter().find(|x| &x.alias == alias)?;
                         let by = app.progs.by_pci.get(&g.key)?;
@@ -583,7 +583,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                     r.resp
                         .on_hover_text(format!("{}\nPIDs: {:?}", g.exe, g.pids));
                     if open {
-                        // processos do programa
+                        // the program's processes
                         let mut procs = g.procs.clone();
                         procs.sort_by(|a, b| {
                             b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)
@@ -617,7 +617,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 egui::Id::unique(("proc", pid)),
                             );
                         }
-                        // controles do numapilot para o programa
+                        // numapilot's controls for the program
                         egui::Frame::new()
                             .fill(p.card)
                             .inner_margin(egui::Margin {
@@ -649,7 +649,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         });
 
-    // ----- confirmar "Forçar parada" -----
+    // ----- confirm "Force stop" -----
     if let Some(k) = app.progs.confirm_force.clone() {
         let g = groups.iter().find(|g| g.key == k).cloned();
         let mut close = g.is_none();
@@ -847,7 +847,7 @@ fn row(
     }
 }
 
-/// Janela de busca de programas instalados.
+/// Search window for installed programs.
 pub(crate) struct Finder {
     apps: Vec<numapilot::apps::App>,
     query: String,
@@ -952,7 +952,7 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
                             if ui.button(crate::i18n::tr("Adjust…")).clicked() {
                                 pick = Some((*a).clone());
                             }
-                            // a placa de vídeo só vale se o programa abrir pelo numapilot
+                            // the graphics card only applies if the program starts through numapilot
                             if let Some(d) = &a.desktop {
                                 if numapilot::desktop::is_overridden(d) {
                                     ui.label(RichText::new(crate::i18n::tr("menu adjusted")).small().color(p.ok))
@@ -992,7 +992,7 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
         }
     }
     if let Some(a) = pick {
-        // se estiver aberto, usa os dados do programa em execução (vale na hora)
+        // if it is open, use the running program's data (applies right away)
         let g = app.groups.iter().find(|g| g.key == a.key).cloned();
         let prof = app.profile_of(&a.key);
         app.editor = Some(match g {

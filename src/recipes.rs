@@ -1,6 +1,6 @@
-//! Receitas da comunidade (recipes/default.toml embutido no programa, ou uma cópia mais nova em
-//! /var/lib/numapilot/recipes.toml): placas especiais, kernels ruins, governors, dicas por
-//! processador e o que cada arquitetura de GPU aguenta (computação e upscaling).
+//! Community recipes (recipes/default.toml built into the program, or a newer copy in
+//! /var/lib/numapilot/recipes.toml): special boards, bad kernels, governors, per-processor
+//! tips and what each GPU architecture can do (compute and upscaling).
 
 use crate::topo::{Gpu, Topology};
 use serde::{Deserialize, Serialize};
@@ -27,38 +27,38 @@ pub struct Board {
     pub cpu_oc_url: Option<String>,
     pub docs: Option<String>,
     pub notes: Vec<String>,
-    /// Núcleos de CPU de fábrica e com desbloqueio (BC-250: 6 e 8).
+    /// CPU cores from the factory and unlocked (BC-250: 6 and 8).
     pub cores: Option<(usize, usize)>,
-    /// CUs da GPU de fábrica e com desbloqueio (BC-250: 24 e 40).
+    /// GPU CUs from the factory and unlocked (BC-250: 24 and 40).
     pub cus: Option<(u32, u32)>,
-    /// Programas da comunidade feitos para esta placa.
+    /// Community programs made for this board.
     pub apps: Vec<CommunityApp>,
-    /// Sem codificador de vídeo funcionando (streaming por software).
+    /// No working video encoder (software streaming).
     pub no_video_encoder: bool,
 }
 
-/// Programa da comunidade: o numapilot mostra, instala e atualiza (AUR ou git) e abre; não
-/// reimplementa. Sempre a versão mais nova de quem mantém: pacotes `-git` do AUR são
-/// recompilados do código atual e os repositórios git são atualizados com `git pull`.
+/// Community program: numapilot shows, installs and updates it (AUR or git) and opens it; it
+/// does not reimplement it. Always the maintainer's newest version: AUR `-git` packages are
+/// rebuilt from the current code and git repositories are updated with `git pull`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CommunityApp {
     pub name: String,
-    /// Executáveis que indicam que está instalado (o primeiro que existir é o que abre).
+    /// Executables that indicate it is installed (the first that exists is the one opened).
     pub bins: Vec<String>,
     pub aur: Option<String>,
     pub url: Option<String>,
     pub about: String,
-    /// O recomendado da placa: aparece primeiro, em destaque.
+    /// The board's recommended one: shown first, highlighted.
     pub recommended: bool,
-    /// Repositório para instalar sem pacote: clonado em
-    /// ~/.local/share/numapilot/comunidade/<nome> e atualizado com `git pull`.
+    /// Repository to install without a package: cloned into
+    /// ~/.local/share/numapilot/comunidade/<name> and updated with `git pull`.
     pub git: Option<String>,
-    /// Arquivos do repositório que viram comandos em ~/.local/bin.
+    /// Repository files that become commands in ~/.local/bin.
     pub scripts: Vec<String>,
-    /// Pacotes do AUR de que ele precisa (instalados antes).
+    /// AUR packages it needs (installed first).
     pub aur_deps: Vec<String>,
-    /// Comando rodado na pasta do repositório depois de baixar ou atualizar (compilar, instalar).
+    /// Command run in the repository folder after downloading or updating (build, install).
     pub setup: Option<String>,
 }
 
@@ -68,14 +68,14 @@ fn home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/root"))
 }
 
-/// 'texto' para o shell.
+/// 'text' for the shell.
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 impl CommunityApp {
-    /// Caminho do executável instalado: no PATH ou em ~/.local/bin (a interface aberta pelo
-    /// menu nem sempre tem o ~/.local/bin no PATH).
+    /// Path of the installed executable: in PATH or in ~/.local/bin (the interface started from
+    /// the menu does not always have ~/.local/bin in PATH).
     pub fn installed_bin(&self) -> Option<String> {
         self.bins.iter().find_map(|b| {
             if crate::containers::which(b) {
@@ -87,7 +87,7 @@ impl CommunityApp {
         })
     }
 
-    /// Pasta do clone git (`~/.local/share/numapilot/comunidade/<nome>`).
+    /// Folder of the git clone (`~/.local/share/numapilot/comunidade/<name>`).
     pub fn git_dir(&self) -> PathBuf {
         let slug: String = self
             .name
@@ -98,8 +98,8 @@ impl CommunityApp {
         home().join(".local/share/numapilot/comunidade").join(slug)
     }
 
-    /// Instalado pelo numapilot por git, ou pelo pacote do AUR. Guardado por 10 s (a interface
-    /// pergunta a cada quadro e o pacman -Q é lento).
+    /// Installed by numapilot through git, or through the AUR package. Cached for 10 s (the
+    /// interface asks every frame and pacman -Q is slow).
     pub fn installed(&self) -> bool {
         use std::collections::HashMap;
         use std::sync::Mutex;
@@ -128,16 +128,16 @@ impl CommunityApp {
             })
     }
 
-    /// Dá para instalar/atualizar pelo numapilot?
+    /// Can it be installed/updated through numapilot?
     pub fn installable(&self) -> bool {
         self.aur.is_some() || self.git.is_some()
     }
 
-    /// Comando que instala ou atualiza para a versão mais nova (rodar num terminal: pede senha
-    /// e mostra o progresso). `helper` = paru ou yay.
+    /// Command that installs or updates to the newest version (run in a terminal: asks for the
+    /// password and shows progress). `helper` = paru or yay.
     pub fn install_command(&self, helper: &str) -> Option<Vec<String>> {
         if let Some(pkg) = &self.aur {
-            // -git: o paru/yay compila de novo a partir do código atual
+            // -git: paru/yay rebuilds from the current code
             let mut v = vec![helper.to_string(), "-S".into()];
             v.extend(self.aur_deps.iter().cloned());
             v.push(pkg.clone());
@@ -214,7 +214,7 @@ pub fn parse(s: &str) -> Result<Recipes, String> {
     toml::from_str(s).map_err(|e| e.to_string())
 }
 
-/// As receitas em uso: a cópia baixada se for válida e não mais velha que a embutida.
+/// The recipes in use: the downloaded copy if valid and not older than the built-in one.
 pub fn load() -> Recipes {
     let base = parse(EMBEDDED).unwrap_or_default();
     match std::fs::read_to_string(override_path())
@@ -246,7 +246,7 @@ impl Board {
 }
 
 impl Recipes {
-    /// Placas especiais presentes neste PC.
+    /// Special boards present in this PC.
     pub fn boards<'a>(&'a self, topo: &'a Topology) -> Vec<(&'a Board, &'a Gpu)> {
         let mut v = vec![];
         for g in &topo.gpus {
@@ -261,7 +261,7 @@ impl Recipes {
         self.board.iter().find(|b| b.matches(g))
     }
 
-    /// Arquitetura da GPU (pelo gfx do ROCm, pelo fabricante ou pela placa conhecida).
+    /// GPU architecture (from ROCm's gfx, the vendor or the known board).
     pub fn arch_for(&self, g: &Gpu) -> Option<&Arch> {
         let key = if g.is_nvidia() {
             "nvidia".to_string()
@@ -272,7 +272,7 @@ impl Recipes {
         } else {
             self.board_for(g)?.gfx.first().cloned().unwrap_or_default()
         };
-        // o prefixo mais específico ganha (gfx1013 antes de gfx101)
+        // the most specific prefix wins (gfx1013 before gfx101)
         self.arch
             .iter()
             .filter(|a| key.starts_with(&a.prefix))
@@ -288,7 +288,7 @@ impl Recipes {
     }
 }
 
-/// Nome do processador (primeira "model name" do /proc/cpuinfo).
+/// Processor name (first "model name" in /proc/cpuinfo).
 pub fn cpu_model() -> String {
     if let Ok(m) = std::env::var("NUMAPILOT_CPU_MODEL") {
         return m;
@@ -332,7 +332,7 @@ pub fn running_kernel() -> String {
         .to_string()
 }
 
-/// Versão do Mesa instalada (pacman), ex.: "25.3.1".
+/// Installed Mesa version (pacman), e.g. "25.3.1".
 pub fn mesa_version() -> Option<String> {
     let o = std::process::Command::new("pacman")
         .args(["-Q", "mesa"])
@@ -350,7 +350,7 @@ pub fn mesa_version() -> Option<String> {
         .map(|v| pacman_version(&v))
 }
 
-/// Versão de pacote do pacman sem a época e o pkgrel: "3:26.2.6-1.395" → "26.2.6".
+/// pacman package version without the epoch and pkgrel: "3:26.2.6-1.395" → "26.2.6".
 pub fn pacman_version(v: &str) -> String {
     let v = v.rsplit_once(':').map_or(v, |(_, r)| r);
     v.split('-').next().unwrap_or("").to_string()
@@ -365,7 +365,7 @@ pub fn version_ge(a: &str, b: &str) -> bool {
     p(a) >= p(b)
 }
 
-/// Baixa receitas novas (o repositório precisa estar acessível) e grava a cópia local.
+/// Downloads new recipes (the repository must be reachable) and writes the local copy.
 pub fn update(url: &str) -> Result<u32, String> {
     let o = std::process::Command::new("curl")
         .args(["-fsSL", "--max-time", "20", url])
@@ -484,11 +484,11 @@ mod tests {
 
 #[cfg(test)]
 mod install_real {
-    /// Roda de verdade a instalação e a atualização por git num HOME temporário (precisa de
-    /// rede): `cargo test --release instalacao_git_de_verdade -- --ignored`.
+    /// Really runs the git install and update in a temporary HOME (needs network):
+    /// `cargo test --release real_git_install -- --ignored`.
     #[test]
     #[ignore]
-    fn instalacao_git_de_verdade() {
+    fn real_git_install() {
         let home = std::env::temp_dir().join(format!("np-home-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).unwrap();

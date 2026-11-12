@@ -1,28 +1,28 @@
-//! O que abre quando o sistema liga, no estilo da aba Inicialização do Windows: programas do
-//! login (autostart XDG e a restauração de sessão do KDE), serviços do usuário (systemd --user) e
-//! serviços do sistema. Liga, desliga, adiciona e remove de forma simples e reversível:
-//! - autostart: `Hidden=true` (no do sistema, uma cópia em ~/.config/autostart que só esconde);
-//! - serviços: `systemctl [--user] enable|disable` (só o próximo boot, não para o que está rodando).
+//! What starts when the system boots, in the style of Windows' Startup tab: login programs
+//! (XDG autostart and KDE's session restore), user services (systemd --user) and system
+//! services. Turns on, turns off, adds and removes in a simple, reversible way:
+//! - autostart: `Hidden=true` (for the system's, a copy in ~/.config/autostart that only hides it);
+//! - services: `systemctl [--user] enable|disable` (next boot only; does not stop what is running).
 //!
-//! Nada essencial (sessão gráfica, rede, login, numapilot) pode ser desligado por aqui.
+//! Nothing essential (graphical session, network, login, numapilot) can be turned off from here.
 
 use crate::autostart::{get, is_desktop_component, system_dir, user_dir};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Marca dos atalhos criados pelo numapilot (podem ser removidos).
+/// Mark of the shortcuts created by numapilot (they can be removed).
 const MARK: &str = "X-Numapilot-Startup=true";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Group {
-    /// Programas que abrem quando você entra (autostart, restauração de sessão).
+    /// Programs that start when you log in (autostart, session restore).
     Login,
-    /// Serviços do seu usuário (systemd --user): abrem no login, sem janela.
+    /// Your user's services (systemd --user): they start at login, with no window.
     UserService,
-    /// Serviços do sistema: abrem no boot, antes do login.
+    /// System services: they start at boot, before login.
     SystemService,
-    /// Partes do próprio desktop (KDE, GNOME).
+    /// Parts of the desktop itself (KDE, GNOME).
     Session,
 }
 
@@ -51,34 +51,34 @@ impl Group {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
-    /// "xdg:arquivo.desktop", "user:unidade", "sys:unidade" ou "kde:session".
+    /// "xdg:file.desktop", "user:unit", "sys:unit" or "kde:session".
     pub id: String,
     pub group: Group,
     pub name: String,
-    /// Comando ou descrição.
+    /// Command or description.
     pub detail: String,
     pub enabled: bool,
     /// "você", "pacote", "numapilot", "sistema".
     pub origin: &'static str,
-    /// Motivo para não deixar desligar (None = pode).
+    /// Reason not to allow turning it off (None = allowed).
     pub protected: Option<&'static str>,
-    /// Pode apagar de vez (criado por você ou pelo numapilot).
+    /// Can be deleted for good (created by you or by numapilot).
     pub removable: bool,
-    /// Rodando agora.
+    /// Running now.
     pub running: bool,
-    /// Memória em uso agora (bytes), se der para saber.
+    /// Memory in use now (bytes), if it can be known.
     pub mem: Option<u64>,
-    /// PIDs encontrados (para abrir na aba Programas).
+    /// PIDs found (to open in the Programs tab).
     pub pids: Vec<i32>,
-    /// Arquivo que faz abrir (.desktop do autostart ou unidade do systemd).
+    /// File that makes it start (autostart .desktop or systemd unit).
     pub file: Option<PathBuf>,
-    /// Linha de comando que é aberta.
+    /// Command line that is started.
     pub exec: String,
 }
 
 // ---------- autostart XDG ----------
 
-/// Atalhos de inicialização que não podem ser desligados: sem eles a sessão quebra.
+/// Startup shortcuts that cannot be turned off: without them the session breaks.
 const ESSENTIAL_XDG: &[&str] = &[
     "org.kde.plasmashell",
     "polkit",
@@ -102,7 +102,7 @@ fn current_desktops() -> Vec<String> {
         .collect()
 }
 
-/// O atalho roda neste desktop? (OnlyShowIn / NotShowIn)
+/// Does the shortcut run on this desktop? (OnlyShowIn / NotShowIn)
 pub fn runs_here(text: &str, desktops: &[String]) -> bool {
     let list = |k: &str| -> Vec<String> {
         get(text, k)
@@ -123,7 +123,7 @@ fn xdg_enabled(text: &str) -> bool {
     get(text, "Hidden") != Some("true") && get(text, "X-GNOME-Autostart-enabled") != Some("false")
 }
 
-/// Troca (ou põe) uma chave na seção [Desktop Entry].
+/// Replaces (or adds) a key in the [Desktop Entry] section.
 pub fn set_key(text: &str, key: &str, value: Option<&str>) -> String {
     let mut out: Vec<String> = vec![];
     let mut in_entry = false;
@@ -133,7 +133,7 @@ pub fn set_key(text: &str, key: &str, value: Option<&str>) -> String {
         if t.starts_with('[') {
             if in_entry && !done {
                 if let Some(v) = value {
-                    // antes das linhas em branco que separam as seções
+                    // before the blank lines that separate the sections
                     let blanks = out.iter().rev().take_while(|l| l.trim().is_empty()).count();
                     out.insert(out.len() - blanks, format!("{key}={v}"));
                 }
@@ -156,7 +156,7 @@ pub fn set_key(text: &str, key: &str, value: Option<&str>) -> String {
         if !text.contains("[Desktop Entry]") {
             out.insert(0, "[Desktop Entry]".into());
         }
-        // fim da seção [Desktop Entry] (ou do arquivo)
+        // end of the [Desktop Entry] section (or of the file)
         let end = out
             .iter()
             .enumerate()
@@ -243,7 +243,7 @@ fn xdg_set(file: &str, on: bool) -> Result<(), String> {
         .or_else(|_| std::fs::read_to_string(&sys))
         .map_err(|e| format!("{file}: {e}"))?;
     if on && sys.is_file() && user.is_file() {
-        // a cópia só existia para esconder o do sistema: apagar volta ao original
+        // the copy only existed to hide the system's: deleting it restores the original
         let s = std::fs::read_to_string(&sys).unwrap_or_default();
         if set_key(
             &set_key(&base, "Hidden", None),
@@ -263,7 +263,7 @@ fn xdg_set(file: &str, on: bool) -> Result<(), String> {
     std::fs::write(&user, t).map_err(|e| e.to_string())
 }
 
-// ---------- restauração de sessão do KDE ----------
+// ---------- KDE session restore ----------
 
 fn ksmserverrc() -> PathBuf {
     crate::autostart::user_dir()
@@ -272,7 +272,7 @@ fn ksmserverrc() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("ksmserverrc"))
 }
 
-/// (restaura a sessão anterior?, programas salvos no último logout)
+/// (restores the previous session?, programs saved at the last logout)
 pub fn kde_session(text: &str) -> (bool, Vec<String>) {
     let mut section = String::new();
     let mut mode = None;
@@ -298,7 +298,7 @@ pub fn kde_session(text: &str) -> (bool, Vec<String>) {
             }
         }
     }
-    // padrão do Plasma: restaurar a sessão anterior
+    // Plasma default: restore the previous session
     let on = mode
         .as_deref()
         .is_none_or(|m| m == "restorePreviousLogout" || m == "restoreSavedSession");
@@ -370,9 +370,9 @@ fn kde_set(on: bool) -> Result<(), String> {
     std::fs::write(&p, out.join("\n") + "\n").map_err(|e| e.to_string())
 }
 
-// ---------- serviços (systemd) ----------
+// ---------- services (systemd) ----------
 
-/// Serviços do sistema que não podem ser desligados por aqui.
+/// System services that cannot be turned off from here.
 const ESSENTIAL_UNITS: &[&str] = &[
     "systemd-",
     "dbus",
@@ -394,12 +394,12 @@ const ESSENTIAL_UNITS: &[&str] = &[
     "xdg-",
     "plasma-",
     "at-spi",
-    // acesso remoto: no servidor e na BC-250 (sem tela) desligar o ssh tranca você fora
+    // remote access: on the server and the BC-250 (no display) turning off ssh locks you out
     "sshd",
     "ssh.service",
     "tailscaled",
     "zerotier-one",
-    // teclado/mouse sem fio, contas e áudio em tempo real
+    // wireless keyboard/mouse, accounts and real-time audio
     "bluetooth",
     "accounts-daemon",
     "rtkit-daemon",
@@ -412,12 +412,12 @@ fn remembered_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("startup-off.txt"))
 }
 
-/// Unidade essencial (rede, login, sessão, numapilot): não deixar desligar nem parar.
+/// Essential unit (network, login, session, numapilot): never allow turning off or stopping.
 pub fn essential_unit(unit: &str) -> bool {
     ESSENTIAL_UNITS.iter().any(|e| unit.starts_with(e))
 }
 
-/// Unidades desligadas pelo numapilot: continuam na lista para poder ligar de novo.
+/// Units turned off by numapilot: they stay in the list so they can be turned on again.
 fn remembered() -> BTreeSet<String> {
     std::fs::read_to_string(remembered_path())
         .unwrap_or_default()
@@ -449,7 +449,7 @@ fn systemctl(user: bool) -> Command {
     c
 }
 
-/// Unidades ligadas (serviços e timers).
+/// Enabled units (services and timers).
 fn enabled_units(user: bool) -> Vec<String> {
     let o = systemctl(user)
         .args([
@@ -464,19 +464,19 @@ fn enabled_units(user: bool) -> Vec<String> {
     String::from_utf8_lossy(&o.stdout)
         .lines()
         .filter_map(|l| l.split_whitespace().next())
-        // modelos (getty@.service) não rodam sozinhos
+        // templates (getty@.service) do not run by themselves
         .filter(|u| !u.contains("@."))
         .map(String::from)
         .collect()
 }
 
-/// Estado da unidade (enabled, disabled, masked...).
+/// Unit state (enabled, disabled, masked...).
 fn unit_state(user: bool, unit: &str) -> Option<String> {
     let o = systemctl(user).args(["is-enabled", unit]).output().ok()?;
     Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
-/// `systemctl show` de várias unidades de uma vez: blocos separados por linha em branco.
+/// `systemctl show` of several units at once: blocks separated by a blank line.
 pub fn parse_show(text: &str) -> Vec<BTreeMap<String, String>> {
     text.split("\n\n")
         .map(|b| {
@@ -517,14 +517,14 @@ fn unit_items(user: bool) -> Vec<Item> {
         .filter_map(|m| {
             let id = m.get("Id")?.clone();
             let state = m.get("UnitFileState").map(String::as_str).unwrap_or("");
-            // estático: não é algo que se liga ou desliga; mascarado só se fomos nós
+            // static: not something you turn on or off; masked only if we did it
             let ours_masked = state == "masked" && remembered().contains(&format!("{prefix}{id}"));
             if !matches!(state, "enabled" | "disabled" | "enabled-runtime") && !ours_masked {
                 return None;
             }
             let essential = essential_unit(&id);
             let frag = m.get("FragmentPath").cloned().unwrap_or_default();
-            // mascarado: o arquivo vira /dev/null (o original é do pacote)
+            // masked: the file becomes /dev/null (the original belongs to the package)
             let mine = frag != "/dev/null"
                 && (frag.contains("/.config/systemd/") || frag.starts_with("/etc/systemd/system/"));
             let exec = m
@@ -577,10 +577,10 @@ fn unit_items(user: bool) -> Vec<Item> {
         .collect()
 }
 
-// ---------- processos rodando (para "rodando agora" e memória) ----------
+// ---------- running processes (for "running now" and memory) ----------
 
 struct Procs {
-    /// (pid, nome curto, executável, cgroup)
+    /// (pid, short name, executable, cgroup)
     list: Vec<(i32, String, String, String)>,
     me: u32,
 }
@@ -612,7 +612,7 @@ impl Procs {
         Procs { list, me }
     }
 
-    /// Processos de um Exec= de autostart (flatpak pelo id do app no cgroup).
+    /// Processes of an autostart Exec= (flatpak by the app id in the cgroup).
     fn find(&self, exec: &str) -> Vec<i32> {
         let _ = self.me;
         let toks: Vec<&str> = exec
@@ -642,7 +642,7 @@ impl Procs {
         if base.is_empty() || base == "sh" || base == "bash" {
             return vec![];
         }
-        // comm tem no máximo 15 caracteres
+        // comm has at most 15 characters
         let short: String = base.chars().take(15).collect();
         self.list
             .iter()
@@ -663,7 +663,7 @@ fn pss(pid: i32) -> Option<u64> {
 
 // ---------- API ----------
 
-/// Tudo que abre com o sistema, agrupado e em ordem de nome.
+/// Everything that starts with the system, grouped and ordered by name.
 pub fn list() -> Vec<Item> {
     let desktops = current_desktops();
     let procs = Procs::scan();
@@ -679,8 +679,8 @@ pub fn list() -> Vec<Item> {
     v
 }
 
-/// O que fazer para ligar ou desligar. Serviços do sistema precisam de root: devolve o comando
-/// (`pkexec systemctl ...`) para a interface rodar mostrando a saída.
+/// What to do to turn on or off. System services need root: returns the command
+/// (`pkexec systemctl ...`) for the interface to run showing the output.
 pub enum Action {
     Done,
     NeedsRoot(Vec<String>),
@@ -712,7 +712,7 @@ pub fn set_enabled(item: &Item, on: bool) -> Result<Action, String> {
             }
         };
         if on {
-            // desligado com mask (ligado para todos pelo pacote): tira o mask
+            // turned off with mask (enabled for everyone by the package): remove the mask
             if unit_state(true, u).as_deref() == Some("masked") {
                 run(&["unmask", u])?;
             }
@@ -721,8 +721,8 @@ pub fn set_enabled(item: &Item, on: bool) -> Result<Action, String> {
             }
         } else {
             run(&["disable", u])?;
-            // ligado para todos os usuários pelo pacote (/etc/systemd/user): o disable não
-            // alcança; o mask desliga só para você
+            // enabled for all users by the package (/etc/systemd/user): disable does not
+            // reach it; mask turns it off only for you
             if unit_state(true, u).as_deref() == Some("enabled") {
                 run(&["mask", u])?;
             }
@@ -755,7 +755,7 @@ pub fn set_enabled(item: &Item, on: bool) -> Result<Action, String> {
     ))
 }
 
-/// Apaga um atalho de inicialização criado por você ou pelo numapilot.
+/// Deletes a startup shortcut created by you or by numapilot.
 pub fn remove(item: &Item) -> Result<(), String> {
     let Some(file) = item.id.strip_prefix("xdg:").filter(|_| item.removable) else {
         return Err(crate::tf!(
@@ -777,7 +777,7 @@ fn slug(name: &str) -> String {
     if s.is_empty() { "programa".into() } else { s }
 }
 
-/// Aspas de shell para um argumento do Exec= (padrão freedesktop: aspas duplas com escape).
+/// Shell quoting for an Exec= argument (freedesktop standard: double quotes with escapes).
 pub fn exec_quote(arg: &str) -> String {
     if !arg.is_empty()
         && arg
@@ -797,7 +797,7 @@ pub fn exec_quote(arg: &str) -> String {
     s
 }
 
-/// Conteúdo de um atalho de inicialização novo.
+/// Content of a new startup shortcut.
 pub fn desktop_text(name: &str, exec: &str, delay_s: u32) -> String {
     let exec = if delay_s > 0 {
         format!(
@@ -813,7 +813,7 @@ pub fn desktop_text(name: &str, exec: &str, delay_s: u32) -> String {
     )
 }
 
-/// Adiciona um comando qualquer. Devolve o arquivo criado.
+/// Adds any command. Returns the file created.
 pub fn add_command(name: &str, exec: &str, delay_s: u32) -> Result<PathBuf, String> {
     if exec.trim().is_empty() {
         return Err(crate::i18n::tr("empty command").into());
@@ -830,8 +830,8 @@ pub fn add_command(name: &str, exec: &str, delay_s: u32) -> Result<PathBuf, Stri
     Ok(p)
 }
 
-/// Adiciona um arquivo: AppImage, script (.sh) ou binário. Torna executável se precisar
-/// (o script sem permissão roda pelo sh).
+/// Adds a file: AppImage, script (.sh) or binary. Makes it executable if needed
+/// (a script without permission runs through sh).
 pub fn add_file(path: &Path, delay_s: u32) -> Result<PathBuf, String> {
     use std::os::unix::fs::PermissionsExt;
     let md = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -868,7 +868,7 @@ pub fn add_file(path: &Path, delay_s: u32) -> Result<PathBuf, String> {
     add_command(&name, &exec, delay_s)
 }
 
-/// Adiciona um programa instalado pelo atalho do menu (.desktop).
+/// Adds an installed program through its menu shortcut (.desktop).
 pub fn add_desktop(app: &Path, delay_s: u32) -> Result<PathBuf, String> {
     let text = std::fs::read_to_string(app).map_err(|e| format!("{}: {e}", app.display()))?;
     let file = app
@@ -878,7 +878,7 @@ pub fn add_desktop(app: &Path, delay_s: u32) -> Result<PathBuf, String> {
         .to_string();
     let dest = user_dir().join(&file);
     if dest.exists() {
-        // já existe (talvez desligado): só liga
+        // already exists (maybe turned off): just turn it on
         let t = std::fs::read_to_string(&dest).unwrap_or_default();
         std::fs::write(
             &dest,
@@ -916,8 +916,8 @@ pub fn add_desktop(app: &Path, delay_s: u32) -> Result<PathBuf, String> {
     Ok(dest)
 }
 
-/// Adiciona um programa que está aberto agora: pelo atalho do menu dele, se achar; senão pela
-/// linha de comando com que ele foi aberto.
+/// Adds a program that is open right now: through its menu shortcut, if found; otherwise
+/// through the command line it was started with.
 pub fn add_running(pid: i32, label: &str) -> Result<PathBuf, String> {
     let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
         .map(|p| p.to_string_lossy().into_owned())
@@ -940,7 +940,7 @@ pub fn add_running(pid: i32, label: &str) -> Result<PathBuf, String> {
     add_command(label, &args.join(" "), 0)
 }
 
-/// O programa (pelo executável) já abre no login? Devolve o item.
+/// Does the program (by executable) already start at login? Returns the item.
 pub fn find_for_exe(exe: &str) -> Option<Item> {
     let base = crate::util::basename(exe);
     let desktops = current_desktops();
@@ -953,7 +953,7 @@ pub fn find_for_exe(exe: &str) -> Option<Item> {
     })
 }
 
-/// Programas instalados (atalhos do menu) que batem com a busca: (nome, arquivo).
+/// Installed programs (menu shortcuts) that match the search: (name, file).
 pub fn search_apps(query: &str) -> Vec<(String, PathBuf)> {
     let q = query.to_lowercase();
     let mut seen = BTreeSet::new();
@@ -992,7 +992,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chaves_do_desktop() {
+    fn desktop_keys() {
         let t = "[Desktop Entry]\nName=Steam\nExec=steam -silent\n\n[Desktop Action x]\nExec=y\n";
         let off = set_key(t, "Hidden", Some("true"));
         assert!(off.contains("Exec=steam -silent\nHidden=true\n"));
@@ -1009,7 +1009,7 @@ mod tests {
     }
 
     #[test]
-    fn so_no_desktop_certo() {
+    fn only_on_the_right_desktop() {
         let kde = vec!["kde".to_string()];
         assert!(runs_here("[Desktop Entry]\nOnlyShowIn=KDE;\n", &kde));
         assert!(!runs_here("[Desktop Entry]\nOnlyShowIn=GNOME;\n", &kde));
@@ -1018,7 +1018,7 @@ mod tests {
     }
 
     #[test]
-    fn sessao_do_kde() {
+    fn kde_session_parsing() {
         let t = "[General]\nloginMode=emptySession\n[Session: saved at previous logout]\ncount=2\nprogram1=/usr/bin/dolphin\nprogram2=kwin_x11\n";
         assert_eq!(kde_session(t), (false, vec!["dolphin".to_string()]));
         assert_eq!(kde_session("").0, true);
@@ -1033,7 +1033,7 @@ mod tests {
     }
 
     #[test]
-    fn comando_com_espaco_e_atraso() {
+    fn command_with_space_and_delay() {
         assert_eq!(exec_quote("/opt/a b/x.AppImage"), "\"/opt/a b/x.AppImage\"");
         assert_eq!(exec_quote("/usr/bin/steam"), "/usr/bin/steam");
         let t = desktop_text("Hermes", "hermes-agent --serve", 15);
@@ -1061,7 +1061,7 @@ mod tests {
             list: vec![],
             me: 0,
         };
-        // do sistema: desligar cria a cópia que esconde; ligar apaga a cópia
+        // the system's: turning off creates the hiding copy; turning on deletes the copy
         let steam = xdg_items(&[], &procs)
             .into_iter()
             .find(|i| i.id == "xdg:steam.desktop")
@@ -1071,7 +1071,7 @@ mod tests {
         assert!(!xdg_items(&[], &procs)[0].enabled);
         set_enabled(&steam, true).unwrap();
         assert!(!user_dir().join("steam.desktop").exists());
-        // comando novo: aparece, desliga, remove
+        // new command: shows up, turns off, removes
         add_command("Hermes agent", "hermes --serve", 0).unwrap();
         let h = xdg_items(&[], &procs)
             .into_iter()
@@ -1085,7 +1085,7 @@ mod tests {
                 .iter()
                 .all(|i| i.name != "Hermes agent")
         );
-        // arquivo: script sem permissão roda pelo sh
+        // file: a script without permission runs through sh
         let sh = root.join("meu script.sh");
         std::fs::write(&sh, "#!/bin/sh\necho oi\n").unwrap();
         let f = add_file(&sh, 0).unwrap();

@@ -1,7 +1,7 @@
-//! Interrupções no socket certo (PCs com 2 sockets): cada placa (GPU, NVMe, rede) avisa o
-//! processador por interrupções; atendidas no socket onde a placa está ligada, os dados não
-//! atravessam de um socket para o outro. NVMe com filas gerenciadas pelo kernel já faz isso
-//! sozinho (a escrita é recusada e tudo bem).
+//! Interrupts on the right socket (PCs with 2 sockets): each card (GPU, NVMe, network) signals
+//! the processor through interrupts; handled on the socket the card is connected to, the data
+//! does not cross from one socket to the other. NVMe with kernel-managed queues already does
+//! this by itself (the write is refused and that is fine).
 
 use crate::util::{read_trim, sys};
 
@@ -14,7 +14,7 @@ pub struct Dev {
     pub irqs: Vec<u32>,
 }
 
-/// Placas de disco NVMe e de rede com nó NUMA conhecido.
+/// NVMe disk and network cards with a known NUMA node.
 pub fn devices() -> Vec<Dev> {
     let Ok(rd) = std::fs::read_dir(sys("bus/pci/devices")) else {
         return vec![];
@@ -59,7 +59,7 @@ fn irq_root() -> String {
     std::env::var("NUMAPILOT_IRQ_ROOT").unwrap_or_else(|_| "/proc/irq".into())
 }
 
-/// Aponta as interrupções de cada placa para os CPUs do nó dela. Devolve quantas mudaram.
+/// Points each card's interrupts to the CPUs of its node. Returns how many changed.
 pub fn apply(topo: &crate::topo::Topology) -> usize {
     if topo.nodes.len() < 2 {
         return 0;
@@ -81,7 +81,7 @@ pub fn apply(topo: &crate::topo::Topology) -> usize {
     n
 }
 
-/// O irqbalance redistribui as interrupções e desfaz o ajuste de tempos em tempos.
+/// irqbalance redistributes the interrupts and undoes the tuning from time to time.
 pub fn irqbalance_active() -> bool {
     std::process::Command::new("systemctl")
         .args(["is-active", "--quiet", "irqbalance"])

@@ -1,12 +1,12 @@
-//! Encerrar programas pela interface (com proteção para o que é do sistema e da sessão
-//! gráfica) e uso da GPU por processo, lido do fdinfo do DRM.
+//! Ending programs from the interface (with protection for what belongs to the system and the
+//! graphical session) and GPU usage per process, read from DRM fdinfo.
 
 use std::collections::HashMap;
 use std::fs;
 
-/// Programas que nunca podem ser encerrados pela interface: a sessão gráfica (KDE, GNOME...),
-/// som, portais, login e o próprio numapilot. Comparação pelo nome do processo (comm) ou
-/// pelo nome do executável.
+/// Programs that can never be ended from the interface: the graphical session (KDE, GNOME...),
+/// sound, portals, login and numapilot itself. Matched by process name (comm) or
+/// by executable name.
 const PROTECTED: &[&str] = &[
     // KDE Plasma
     "plasmashell",
@@ -32,7 +32,7 @@ const PROTECTED: &[&str] = &[
     "xembedsniproxy",
     "gmenudbusmenuproxy",
     "baloo_file",
-    // GNOME e outros
+    // GNOME and others
     "gnome-shell",
     "gnome-session-binary",
     "gnome-session",
@@ -42,7 +42,7 @@ const PROTECTED: &[&str] = &[
     "Xorg",
     "X",
     "gamescope-session",
-    // sistema e sessão
+    // system and session
     "systemd",
     "init",
     "dbus-daemon",
@@ -74,13 +74,13 @@ const PROTECTED: &[&str] = &[
     "kwalletd6",
     "ssh-agent",
     "gpg-agent",
-    // o próprio numapilot
+    // numapilot itself
     "numapilot",
     "numapilot-gui",
 ];
 
-/// Motivo para NÃO deixar encerrar (None = pode). Lógica pura, para os testes.
-/// `cgroup` é o conteúdo de /proc/PID/cgroup (cgroups v2: "0::/caminho").
+/// Reason NOT to allow ending (None = allowed). Pure logic, for the tests.
+/// `cgroup` is the content of /proc/PID/cgroup (cgroups v2: "0::/path").
 pub fn protected_reason(
     pid: i32,
     comm: &str,
@@ -93,7 +93,7 @@ pub fn protected_reason(
         return Some(crate::i18n::tr("system process"));
     }
     if exe.is_empty() {
-        // threads do kernel não têm executável
+        // kernel threads have no executable
         return Some(crate::i18n::tr("kernel process"));
     }
     if uid != my_uid {
@@ -102,7 +102,7 @@ pub fn protected_reason(
         ));
     }
     let exe_name = exe.rsplit('/').next().unwrap_or(exe);
-    // "kwin_wayland (deleted)" depois de atualizar o pacote
+    // "kwin_wayland (deleted)" after the package is updated
     let exe_name = exe_name.trim_end_matches(" (deleted)");
     if PROTECTED
         .iter()
@@ -116,8 +116,8 @@ pub fn protected_reason(
         .lines()
         .find_map(|l| l.strip_prefix("0::"))
         .unwrap_or("");
-    // systemd: a sessão (KDE, GNOME) roda em session.slice; serviços do sistema em
-    // system.slice; programas abertos pelo usuário ficam em app.slice
+    // systemd: the session (KDE, GNOME) runs in session.slice; system services in
+    // system.slice; programs started by the user live in app.slice
     if path.contains("/session.slice/")
         || path.starts_with("/system.slice/")
         || path == "/init.scope"
@@ -129,7 +129,7 @@ pub fn protected_reason(
     None
 }
 
-/// Igual ao `protected_reason`, lendo tudo do /proc.
+/// Same as `protected_reason`, reading everything from /proc.
 pub fn kill_blocked(pid: i32, my_uid: u32) -> Option<&'static str> {
     let comm = fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
     let exe = fs::read_link(format!("/proc/{pid}/exe"))
@@ -151,8 +151,8 @@ pub fn kill_blocked(pid: i32, my_uid: u32) -> Option<&'static str> {
     protected_reason(pid, comm.trim(), &exe, uid, my_uid, &cg)
 }
 
-/// Encerra os processos (SIGTERM; `force` = SIGKILL). Pula os protegidos. Devolve quantos
-/// receberam o sinal e o primeiro motivo de recusa.
+/// Ends the processes (SIGTERM; `force` = SIGKILL). Skips the protected ones. Returns how many
+/// got the signal and the first refusal reason.
 pub fn terminate(pids: &[i32], my_uid: u32, force: bool) -> (usize, Option<String>) {
     let sig = if force { libc::SIGKILL } else { libc::SIGTERM };
     let mut sent = 0;
@@ -162,7 +162,7 @@ pub fn terminate(pids: &[i32], my_uid: u32, force: bool) -> (usize, Option<Strin
             refused.get_or_insert_with(|| format!("PID {pid}: {why}"));
             continue;
         }
-        // SAFETY: kill só envia um sinal; o PID foi conferido acima
+        // SAFETY: kill only sends a signal; the PID was checked above
         if unsafe { libc::kill(pid, sig) } == 0 {
             sent += 1;
         } else {
@@ -173,17 +173,17 @@ pub fn terminate(pids: &[i32], my_uid: u32, force: bool) -> (usize, Option<Strin
     (sent, refused)
 }
 
-/// Uso de GPU de um processo, somando os clientes DRM dele (cada cliente aparece uma vez,
-/// mesmo aberto em vários descritores).
+/// GPU usage of a process, adding up its DRM clients (each client shows up once,
+/// even when open on several descriptors).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct GpuUse {
-    /// Tempo total de GPU (ns) em todos os motores; a diferença entre duas leituras dá o uso.
+    /// Total GPU time (ns) on all engines; the difference between two readings gives the usage.
     pub engine_ns: u64,
-    /// Memória de vídeo (bytes).
+    /// Video memory (bytes).
     pub vram: u64,
 }
 
-/// Lê o fdinfo do DRM de um processo. None = não usa GPU (ou não dá para ler).
+/// Reads a process's DRM fdinfo. None = does not use a GPU (or cannot be read).
 pub fn gpu_use(pid: i32) -> Option<GpuUse> {
     let dir = fs::read_dir(format!("/proc/{pid}/fdinfo")).ok()?;
     let mut clients: HashMap<String, GpuUse> = HashMap::new();
@@ -207,8 +207,8 @@ pub fn gpu_use(pid: i32) -> Option<GpuUse> {
     }))
 }
 
-/// Uso da GPU de um processo separado por placa (endereço PCI). O driver da NVIDIA não
-/// publica fdinfo: processos só nela não aparecem aqui.
+/// GPU usage of a process split by card (PCI address). The NVIDIA driver does not
+/// publish fdinfo: processes only on it do not show up here.
 pub fn gpu_use_by_pci(pid: i32) -> HashMap<String, GpuUse> {
     let mut clients: HashMap<String, GpuUse> = HashMap::new();
     if let Ok(dir) = fs::read_dir(format!("/proc/{pid}/fdinfo")) {
@@ -236,9 +236,9 @@ pub fn gpu_use_by_pci(pid: i32) -> HashMap<String, GpuUse> {
     by
 }
 
-/// O programa pediu a placa `want` (PCI), mas está usando outra? Devolve o PCI da placa em
-/// uso de verdade. Só afirma quando dá para ver: a placa pedida publica fdinfo (não é a
-/// NVIDIA) e o processo tem memória de vídeo em outra placa e nenhuma na pedida.
+/// The program asked for card `want` (PCI) but is using another? Returns the PCI of the card
+/// really in use. Only asserts when it can be seen: the requested card publishes fdinfo (it is
+/// not the NVIDIA) and the process has video memory on another card and none on the requested one.
 pub fn wrong_gpu(by: &HashMap<String, GpuUse>, want: &str, want_is_nvidia: bool) -> Option<String> {
     if want_is_nvidia || by.is_empty() {
         return None;
@@ -253,14 +253,14 @@ pub fn wrong_gpu(by: &HashMap<String, GpuUse>, want: &str, want_is_nvidia: bool)
         .map(|(p, _)| p.clone())
 }
 
-/// Um fdinfo do DRM: (pdev + drm-client-id, uso). Formato do kernel em
+/// One DRM fdinfo: (pdev + drm-client-id, usage). Kernel format in
 /// Documentation/gpu/drm-usage-stats.rst.
 pub fn parse_drm_fdinfo(t: &str) -> Option<(String, GpuUse)> {
     let mut client = None;
     let mut pdev = "";
     let mut u = GpuUse::default();
-    // o amdgpu repete a VRAM em drm-memory-vram (antigo) e drm-resident-vram (atual):
-    // usa o atual se existir, senão o antigo
+    // amdgpu repeats the VRAM in drm-memory-vram (old) and drm-resident-vram (current):
+    // use the current one if present, otherwise the old one
     let (mut resident, mut legacy) = (None::<u64>, None::<u64>);
     for l in t.lines() {
         let Some((k, v)) = l.split_once(':') else {
@@ -311,7 +311,7 @@ mod tests {
     const SESSION: &str = "0::/user.slice/user-1000.slice/user@1000.service/session.slice/plasma-plasmashell.service\n";
 
     #[test]
-    fn pode_encerrar_programa_do_usuario() {
+    fn can_end_user_program() {
         assert_eq!(
             protected_reason(4242, "steam", "/usr/lib/steam/steam", 1000, 1000, APP),
             None
@@ -323,8 +323,8 @@ mod tests {
     }
 
     #[test]
-    fn protege_sessao_sistema_e_kernel() {
-        // KDE pelo nome, mesmo fora do session.slice
+    fn protects_session_system_and_kernel() {
+        // KDE by name, even outside session.slice
         assert!(
             protected_reason(10, "plasmashell", "/usr/bin/plasmashell", 1000, 1000, APP).is_some()
         );
@@ -339,9 +339,9 @@ mod tests {
             )
             .is_some()
         );
-        // qualquer coisa no session.slice
+        // anything in session.slice
         assert!(protected_reason(12, "algo", "/usr/bin/algo", 1000, 1000, SESSION).is_some());
-        // de outro usuário / root
+        // another user's / root's
         assert!(
             protected_reason(
                 13,
@@ -353,12 +353,12 @@ mod tests {
             )
             .is_some()
         );
-        // thread do kernel (sem exe)
+        // kernel thread (no exe)
         assert!(protected_reason(14, "kworker/0:1", "", 0, 1000, "0::/").is_some());
         assert!(
             protected_reason(1, "systemd", "/usr/lib/systemd/systemd", 1000, 1000, "").is_some()
         );
-        // o próprio numapilot
+        // numapilot itself
         assert!(
             protected_reason(
                 15,
@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn fdinfo_antigo_so_memory_vram() {
+    fn old_fdinfo_only_memory_vram() {
         let t = "drm-driver:\tamdgpu\ndrm-client-id:\t7\ndrm-memory-vram:\t1 MiB\n";
         assert_eq!(parse_drm_fdinfo(t).unwrap().1.vram, 1024 * 1024);
     }
@@ -398,7 +398,7 @@ mod tests {
         let pid = child.id() as i32;
         let me = unsafe { libc::getuid() };
         if let Some(why) = kill_blocked(pid, me) {
-            // ex.: a CI roda como serviço (system.slice): lá é protegido, e está certo
+            // e.g. the CI runs as a service (system.slice): protected there, and rightly so
             eprintln!("pulei: {why}");
             let _ = child.kill();
             let _ = child.wait();
@@ -411,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn fdinfo_sem_cliente() {
+    fn fdinfo_without_client() {
         assert!(parse_drm_fdinfo("drm-driver:\tamdgpu\n").is_none());
     }
 }
@@ -433,9 +433,9 @@ mod wrong_gpu_tests {
             Some("0000:03:00.0".into())
         );
         assert_eq!(wrong_gpu(&by, "0000:03:00.0", false), None);
-        // NVIDIA pedida: não dá para ver, não afirma
+        // NVIDIA requested: cannot be seen, do not assert
         assert_eq!(wrong_gpu(&by, "0000:01:00.0", true), None);
-        // usa as duas (apresenta por uma, renderiza na pedida): certo
+        // uses both (presents through one, renders on the requested one): correct
         by.insert("0000:04:00.0".to_string(), big);
         assert_eq!(wrong_gpu(&by, "0000:04:00.0", false), None);
         assert_eq!(wrong_gpu(&HashMap::new(), "0000:04:00.0", false), None);

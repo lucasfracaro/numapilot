@@ -1,4 +1,4 @@
-//! Aba "Servidor de IA": llama.cpp nas MI50 com API compatível com OpenAI.
+//! "AI server" tab: llama.cpp on the MI50s with an OpenAI-compatible API.
 
 use crate::App;
 use crate::jobs::open_url;

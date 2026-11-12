@@ -1,4 +1,4 @@
-//! Aba "Placas de vídeo": temperaturas, ventoinha (automática / curva / fixa) e potência.
+//! "Graphics cards" tab: temperatures, fan (automatic / curve / fixed) and power.
 
 use crate::App;
 use eframe::egui::{self, Color32, RichText, Stroke};
@@ -90,7 +90,7 @@ fn draw_curve(ui: &mut egui::Ui, c: &GpuControl, temp: Option<f64>) {
     );
 }
 
-/// Gráfico do histórico: temperatura (0–100 °C) e potência (0–máx W) de uma GPU.
+/// History chart: temperature (0–100 °C) and power (0–max W) of one GPU.
 fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f64) {
     let samples = h.since(secs);
     let (resp, p) = ui.allocate_painter(
@@ -187,7 +187,7 @@ fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f6
     );
 }
 
-/// Resizable BAR: situação e o que fazer para ligar (com ou sem a opção na BIOS).
+/// Resizable BAR: status and what to do to enable it (with or without the BIOS option).
 fn rebar_ui(ui: &mut egui::Ui, pci: &str) {
     let Some(b) = gpuctl::bar_status(pci) else {
         return;
@@ -249,7 +249,7 @@ fn rebar_ui(ui: &mut egui::Ui, pci: &str) {
     }
 }
 
-/// OverDrive (clock e voltagem) e Resizable BAR.
+/// OverDrive (clock and voltage) and Resizable BAR.
 fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Option<bool>) {
     rebar_ui(ui, pci);
     let Some(od) = gpuctl::read_od(pci) else {
@@ -329,7 +329,7 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
         );
     });
     if let Some(cur) = od.vddgfx_offset {
-        // RDNA2/3/4: undervolt por deslocamento
+        // RDNA2/3/4: undervolt by offset
         ui.horizontal(|ui| {
             let mut on = s.voltage_offset_mv.is_some();
             ui.checkbox(&mut on, crate::i18n::tr("offset the voltage"));
@@ -402,8 +402,8 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
     );
 }
 
-/// Botão do undervolt automático: abre um terminal com `numapilot undervolt` (mostra o passo a
-/// passo; Ctrl+C para e volta ao que era).
+/// Automatic undervolt button: opens a terminal with `numapilot undervolt` (shows the steps;
+/// Ctrl+C stops and goes back to what it was).
 fn auto_undervolt_button(ui: &mut egui::Ui, pci: &str) {
     ui.horizontal(|ui| {
         let have = numapilot::undervolt::stress_cmd().is_some();
@@ -420,7 +420,7 @@ fn auto_undervolt_button(ui: &mut egui::Ui, pci: &str) {
     });
 }
 
-/// NVIDIA: travar o clock máximo (o driver não deixa mexer na voltagem pelo Linux).
+/// NVIDIA: lock the maximum clock (the driver does not allow changing the voltage on Linux).
 fn nv_clock_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
     rebar_ui(ui, pci);
     let Some(g) = numapilot::nvctl::get(pci) else {
@@ -552,7 +552,7 @@ fn nv_driver_panel(app: &mut App, ui: &mut egui::Ui) {
     ui.add_space(4.0);
 }
 
-/// Arquitetura (o que serve para computação e upscaling) e ajustes da comunidade da placa.
+/// Architecture (what works for compute and upscaling) and the card's community tweaks.
 fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
     let rec = numapilot::recipes::load();
     if let Some(a) = rec.arch_for(g) {
@@ -706,7 +706,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                 }
             }
             let ok = Color32::from_rgb(110, 190, 120);
-            // ----- agora: núcleos e clock da CPU, CUs e clock da GPU -----
+            // ----- now: CPU cores and clock, GPU CUs and clock -----
             if b.cores.is_some() || b.cus.is_some() {
                 ui.add_space(4.0);
                 egui::Grid::new(format!("agora-{}", g.pci)).num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
@@ -753,7 +753,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                     }
                 });
             }
-            // ----- programas da comunidade: o recomendado primeiro -----
+            // ----- community programs: the recommended one first -----
             if !b.apps.is_empty() {
                 ui.add_space(6.0);
                 let helper = if numapilot::containers::which("paru") { "paru" } else { "yay" };
@@ -805,8 +805,8 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
         });
 }
 
-/// Botões de um programa da comunidade: Abrir, Instalar ou Atualizar (no terminal) e a página.
-/// Primeira configuração da placa: o que já está certo e o que falta, com o botão de cada passo.
+/// Buttons of a community program: Open, Install or Update (in the terminal) and the page.
+/// First setup of the board: what is already right and what is missing, with a button per step.
 fn first_setup_ui(
     app: &mut App,
     ui: &mut egui::Ui,
@@ -814,7 +814,7 @@ fn first_setup_ui(
     g: &numapilot::topo::Gpu,
 ) {
     use numapilot::boards::{StepAction, StepState};
-    // as leituras chamam systemctl e leem o log do kernel: guarda por 5 s
+    // the readings call systemctl and read the kernel log: cached for 5 s
     let id = egui::Id::unique(("first-setup", &g.pci));
     let now = std::time::Instant::now();
     let cached: Option<(std::time::Instant, Vec<numapilot::boards::SetupStep>)> =
@@ -1225,13 +1225,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     }
 }
 
-/// Memória que a GPU integrada (APU/BC-250) pode usar: padrão do kernel = metade da RAM, o que
-/// limita modelos de IA grandes. Grava em /etc/modprobe.d (ttm.pages_limit) e aplica já.
+/// Memory the integrated GPU (APU/BC-250) may use: the kernel default is half the RAM, which
+/// limits large AI models. Writes to /etc/modprobe.d (ttm.pages_limit) and applies right away.
 fn apu_memory_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
     let bc = numapilot::recipes::load()
         .board_for(g)
         .is_some_and(|b| b.cus.is_some());
-    // Só na BC-250 ou num PC sem placa dedicada (onde a integrada é quem roda a IA).
+    // Only on the BC-250 or on a PC without a dedicated card (where the integrated GPU runs the AI).
     let only_igpu = !app.topo.gpus.iter().any(|o| !o.is_integrated());
     if g.vendor != 0x1002 || !(bc || g.is_integrated() && only_igpu) {
         return;

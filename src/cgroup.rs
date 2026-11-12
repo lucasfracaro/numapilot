@@ -1,6 +1,6 @@
-//! Grupos de controle (cgroups v2) pelo systemd: um "scope" por programa em numapilot.slice,
-//! com limite de memória, memória só de certos nós e núcleos exclusivos.
-//! Usa o próprio systemd (busctl/systemctl) para não brigar com ele pela árvore de cgroups.
+//! Control groups (cgroups v2) through systemd: one "scope" per program in numapilot.slice,
+//! with a memory limit, memory only from certain nodes and exclusive cores.
+//! Uses systemd itself (busctl/systemctl) so as not to fight it over the cgroup tree.
 
 use crate::util::format_cpulist;
 use std::collections::hash_map::DefaultHasher;
@@ -15,7 +15,7 @@ pub fn scope_name(key: &str) -> String {
     format!("numapilot-{:016x}.scope", h.finish())
 }
 
-/// argv para criar o scope já com os PIDs.
+/// argv to create the scope already with the PIDs.
 pub fn start_scope_argv(name: &str, pids: &[i32], description: &str) -> Vec<String> {
     let mut v: Vec<String> = [
         "busctl",
@@ -44,7 +44,7 @@ pub fn start_scope_argv(name: &str, pids: &[i32], description: &str) -> Vec<Stri
     v
 }
 
-/// argv para colocar mais PIDs num scope que já existe.
+/// argv to put more PIDs into a scope that already exists.
 pub fn attach_argv(name: &str, pids: &[i32]) -> Vec<String> {
     let mut v: Vec<String> = [
         "busctl",
@@ -70,11 +70,11 @@ pub struct Limits {
     pub cpus: Option<Vec<usize>>,
     pub mem_nodes: Option<Vec<usize>>,
     pub mem_max_bytes: Option<u64>,
-    /// Limite de CPU em % de um núcleo (CPUQuota do systemd).
+    /// CPU limit in % of one core (systemd's CPUQuota).
     pub cpu_quota_pct: Option<u32>,
 }
 
-/// argv do `systemctl set-property --runtime` com os limites (vazio = sem limite).
+/// argv of `systemctl set-property --runtime` with the limits (empty = no limit).
 pub fn set_props_argv(unit: &str, l: &Limits) -> Vec<String> {
     let nodes = |v: &Option<Vec<usize>>| v.as_ref().map(|x| format_cpulist(x)).unwrap_or_default();
     vec![
@@ -90,7 +90,7 @@ pub fn set_props_argv(unit: &str, l: &Limits) -> Vec<String> {
                 .map(|b| b.to_string())
                 .unwrap_or_else(|| "infinity".into())
         ),
-        // vazio = sem limite
+        // empty = no limit
         format!(
             "CPUQuota={}",
             l.cpu_quota_pct.map(|p| format!("{p}%")).unwrap_or_default()
@@ -118,7 +118,7 @@ pub fn unit_active(unit: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Garante que os PIDs estão no scope do programa e aplica os limites.
+/// Makes sure the PIDs are in the program's scope and applies the limits.
 pub fn apply(key: &str, label: &str, pids: &[i32], limits: &Limits) -> Result<String, String> {
     let name = scope_name(key);
     if !unit_active(&name) {
@@ -126,7 +126,7 @@ pub fn apply(key: &str, label: &str, pids: &[i32], limits: &Limits) -> Result<St
         run(&set_props_argv(&name, limits))?;
         return Ok(name);
     }
-    // PIDs que ainda não estão em nenhum scope deste programa
+    // PIDs not yet in any scope of this program
     let todo: Vec<i32> = pids
         .iter()
         .copied()
@@ -134,8 +134,8 @@ pub fn apply(key: &str, label: &str, pids: &[i32], limits: &Limits) -> Result<St
         .collect();
     let mut out = name.clone();
     if !todo.is_empty() && run(&attach_argv(&name, &todo)).is_err() {
-        // O systemd só deixa juntar processos a um scope "delegado". Em vez disso, o programa
-        // reaberto ganha um scope próprio (mesmo nome + PID) com os mesmos limites.
+        // systemd only lets processes join a "delegated" scope. Instead, the reopened program
+        // gets a scope of its own (same name + PID) with the same limits.
         let extra = format!("{}-{}.scope", name.trim_end_matches(".scope"), todo[0]);
         run(&start_scope_argv(&extra, &todo, label))?;
         run(&set_props_argv(&extra, limits))?;
@@ -147,14 +147,14 @@ pub fn apply(key: &str, label: &str, pids: &[i32], limits: &Limits) -> Result<St
     Ok(out)
 }
 
-/// O processo já está num scope deste programa (o principal ou um extra)?
+/// Is the process already in a scope of this program (the main one or an extra)?
 fn in_scope_of(pid: i32, name: &str) -> bool {
     let base = name.trim_end_matches(".scope");
     std::fs::read_to_string(format!("/proc/{pid}/cgroup"))
         .is_ok_and(|c| c.lines().any(|l| l.contains(&format!("/{base}"))))
 }
 
-/// Scopes ativos deste programa: o principal e os extras (nome-PID.scope).
+/// Active scopes of this program: the main one and the extras (name-PID.scope).
 fn scopes_of(name: &str) -> Vec<String> {
     let base = name.trim_end_matches(".scope");
     let o = Command::new("systemctl")
@@ -175,14 +175,14 @@ fn scopes_of(name: &str) -> Vec<String> {
     v
 }
 
-/// Tira os limites de um programa (os scopes somem sozinhos quando os processos terminam).
+/// Removes a program's limits (the scopes go away by themselves when the processes end).
 pub fn clear(key: &str) {
     for u in scopes_of(&scope_name(key)) {
         let _ = run(&set_props_argv(&u, &Limits::default()));
     }
 }
 
-/// Núcleos exclusivos: o resto do sistema (user.slice e system.slice) fica fora de `reserved`.
+/// Exclusive cores: the rest of the system (user.slice and system.slice) stays off `reserved`.
 pub fn set_reserved(all: &[usize], reserved: &[usize]) -> Result<(), String> {
     let rest: Vec<usize> = all
         .iter()

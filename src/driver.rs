@@ -1,17 +1,17 @@
-//! Driver oficial da NVIDIA no CachyOS: escolhe o pacote certo para a geração da placa,
-//! instala (pelo chwd, a ferramenta do CachyOS, ou pelo pacman) e atualiza.
+//! Official NVIDIA driver on CachyOS: picks the right package for the card's generation,
+//! installs it (through chwd, CachyOS's tool, or through pacman) and updates it.
 //!
-//! Turing (GTX 16 / RTX 20) em diante: módulos abertos da NVIDIA (série atual).
-//! Maxwell, Pascal e Volta: série 580xx (a NVIDIA tirou essas placas dos drivers novos).
-//! Atualizar = atualizar o sistema inteiro (no Arch não se atualiza um pacote isolado).
+//! Turing (GTX 16 / RTX 20) onwards: NVIDIA open modules (current series).
+//! Maxwell, Pascal and Volta: 580xx series (NVIDIA dropped these cards from the new drivers).
+//! Updating = updating the whole system (on Arch a single package is not updated in isolation).
 
 use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Branch {
-    /// Módulos abertos, série atual.
+    /// Open modules, current series.
     Open,
-    /// Série 580xx (proprietária) para Maxwell/Pascal/Volta.
+    /// 580xx series (proprietary) for Maxwell/Pascal/Volta.
     Legacy580,
 }
 
@@ -24,7 +24,7 @@ impl Branch {
     }
 }
 
-/// Pelo ID PCI: Turing começa em 0x1e00 (TU102); antes disso, Volta/Pascal/Maxwell.
+/// By PCI ID: Turing starts at 0x1e00 (TU102); before that, Volta/Pascal/Maxwell.
 pub fn branch_for(device: u16) -> Branch {
     if device >= 0x1e00 {
         Branch::Open
@@ -55,7 +55,7 @@ fn pacman_si_version(pkg: &str) -> Option<String> {
         .and_then(|l| l.split(':').nth(1).map(|s| s.trim().to_string()))
 }
 
-/// Pacotes de kernel instalados (linux-cachyos, linux-cachyos-lts, linux-cachyos-bore...).
+/// Installed kernel packages (linux-cachyos, linux-cachyos-lts, linux-cachyos-bore...).
 pub fn kernels() -> Vec<String> {
     let Ok(o) = Command::new("pacman").args(["-Qq"]).output() else {
         return vec![];
@@ -76,7 +76,7 @@ pub fn kernels() -> Vec<String> {
         .collect()
 }
 
-/// Lista de pacotes para instalar o driver.
+/// List of packages to install the driver.
 pub fn packages(
     branch: &Branch,
     kernels: &[String],
@@ -86,7 +86,7 @@ pub fn packages(
     let mut v: Vec<String> = vec![];
     match branch {
         Branch::Open => {
-            // Módulo pronto para cada kernel do CachyOS; senão, DKMS com os headers.
+            // Prebuilt module for each CachyOS kernel; otherwise DKMS with the headers.
             let mut dkms = false;
             for k in kernels {
                 let m = format!("{k}-nvidia-open");
@@ -152,7 +152,7 @@ pub fn status(topo: &crate::topo::Topology) -> Status {
         .filter(|g| g.is_nvidia())
         .map(|g| (g.pci.clone(), g.name.clone(), g.device))
         .collect();
-    // A placa mais antiga decide (o driver é um só para todas).
+    // The oldest card decides (there is a single driver for all of them).
     let branch = gpus
         .iter()
         .map(|g| branch_for(g.2))
@@ -207,7 +207,7 @@ fn repo_has(p: &str) -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
-/// Instala o driver certo. Precisa de root.
+/// Installs the right driver. Needs root.
 pub fn install(topo: &crate::topo::Topology, log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
         return Err(
@@ -230,10 +230,10 @@ pub fn install(topo: &crate::topo::Topology, log: &mut dyn FnMut(&str)) -> Resul
         "Driver indicado: {}",
         branch.label()
     ));
-    // Sistema em dia primeiro (no Arch, instalar contra uma base desatualizada quebra).
+    // System up to date first (on Arch, installing against an outdated base breaks things).
     run(&["pacman", "-Syu", "--noconfirm"], log)?;
     if st.chwd && branch == Branch::Open {
-        // A ferramenta do próprio CachyOS escolhe e configura o perfil para o hardware.
+        // CachyOS's own tool picks and configures the profile for the hardware.
         log(crate::i18n::tr("Using chwd (CachyOS hardware detection)."));
         if run(&["chwd", "-a", "-f"], log).is_ok() {
             log(crate::i18n::tr(
@@ -253,8 +253,8 @@ pub fn install(topo: &crate::topo::Topology, log: &mut dyn FnMut(&str)) -> Resul
     }
     let mut cmd: Vec<&str> = vec!["pacman", "-S", "--needed", "--noconfirm"];
     cmd.extend(pk.iter().map(String::as_str));
-    // Trocar de série (atual ⇄ 580xx) gera conflito; o pacman pergunta e o --noconfirm não
-    // responde "sim" a remoções, então removemos a outra série antes.
+    // Switching series (current ⇄ 580xx) causes a conflict; pacman asks and --noconfirm does not
+    // answer "yes" to removals, so we remove the other series first.
     let other: &[&str] = match branch {
         Branch::Open => &[
             "nvidia-580xx-dkms",
@@ -297,7 +297,7 @@ pub fn install(topo: &crate::topo::Topology, log: &mut dyn FnMut(&str)) -> Resul
     Ok(())
 }
 
-/// Atualiza o driver junto com o sistema. Precisa de root.
+/// Updates the driver along with the system. Needs root.
 pub fn update(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
         return Err(

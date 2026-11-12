@@ -1,5 +1,5 @@
-//! Uma janela só: abrir o numapilot de novo (ícone da bandeja, menu) traz para frente
-//! a janela que já está aberta em vez de abrir outra.
+//! Single window: opening numapilot again (tray icon, menu) brings the window that is
+//! already open to the front instead of opening another.
 
 use eframe::egui;
 use std::io::Write;
@@ -20,20 +20,20 @@ fn sock() -> PathBuf {
     runtime("numapilot-gui.sock")
 }
 
-/// Já existe uma janela? Se sim, pede para ela aparecer e devolve true.
+/// Is there already a window? If so, asks it to show up and returns true.
 pub fn show_existing() -> bool {
     UnixStream::connect(sock())
         .and_then(|mut s| s.write_all(b"show\n"))
         .is_ok()
 }
 
-/// Escuta pedidos de "aparecer" das próximas aberturas.
+/// Listens for "show up" requests from later launches.
 pub fn listen(ctx: egui::Context) {
     let p = sock();
     if let Some(d) = p.parent() {
         let _ = std::fs::create_dir_all(d);
     }
-    // sobra de uma janela que fechou sem limpar (o connect acima falhou)
+    // leftover from a window that closed without cleaning up (the connect above failed)
     let _ = std::fs::remove_file(&p);
     let Ok(l) = UnixListener::bind(&p) else {
         return;
@@ -48,7 +48,7 @@ pub fn listen(ctx: egui::Context) {
     });
 }
 
-/// Traz a janela para frente se alguém pediu.
+/// Brings the window to the front if someone asked.
 pub fn handle(ctx: &egui::Context) {
     if SHOW.swap(false, Ordering::SeqCst) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
@@ -60,7 +60,7 @@ pub fn handle(ctx: &egui::Context) {
     }
 }
 
-/// Trava exclusiva (flock) num arquivo do runtime dir; None se outro processo já tem.
+/// Exclusive lock (flock) on a file in the runtime dir; None if another process already has it.
 pub fn lock(name: &str) -> Option<std::fs::File> {
     use std::os::fd::AsRawFd;
     let p = runtime(name);
@@ -76,7 +76,7 @@ pub fn lock(name: &str) -> Option<std::fs::File> {
     (unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0).then_some(f)
 }
 
-/// Remove o socket ao fechar a janela.
+/// Removes the socket when the window closes.
 pub fn cleanup() {
     let _ = std::fs::remove_file(sock());
 }

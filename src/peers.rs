@@ -1,5 +1,5 @@
-//! Outros PCs com o numapilot: cada um roda o painel web (`numapilot web`); aqui guardamos o
-//! link de cada um para o painel do celular mostrar todas as máquinas juntas.
+//! Other PCs with numapilot: each one runs the web panel (`numapilot web`); here we keep each
+//! one's link so the phone panel shows all the machines together.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -7,10 +7,10 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Peer {
     pub name: String,
-    /// http://ip:porta
+    /// http://ip:port
     pub url: String,
     pub token: String,
-    /// MAC da placa de rede com Wake-on-LAN (aprendido quando o PC está ligado).
+    /// MAC of the network card with Wake-on-LAN (learned while the PC is on).
     #[serde(default)]
     pub mac: Option<String>,
 }
@@ -49,7 +49,7 @@ pub fn save(v: &[Peer]) -> std::io::Result<()> {
     Ok(())
 }
 
-/// "http://192.168.0.10:8577/?t=abc" → (url base, token)
+/// "http://192.168.0.10:8577/?t=abc" → (base url, token)
 pub fn parse_link(link: &str) -> Option<(String, String)> {
     let l = link.trim();
     if !(l.starts_with("http://") || l.starts_with("https://")) {
@@ -105,7 +105,7 @@ pub fn remove(name: &str) -> Result<(), String> {
     save(&v).map_err(|e| e.to_string())
 }
 
-/// Estado de outro PC (None se não respondeu em 2 s).
+/// State of another PC (None if it did not answer within 2 s).
 pub fn fetch(p: &Peer) -> Option<serde_json::Value> {
     let o = std::process::Command::new("curl")
         .args(["-fsS", "--noproxy", "*", "--max-time", "2", "-H"])
@@ -148,8 +148,8 @@ fn get(p: &Peer, path: &str, out: Option<&std::path::Path>, secs: u32) -> Result
     }
 }
 
-/// Copia os perfis de programa de outro PC (os que este não tem; com `all`, todos).
-/// Perfis de jogos da Steam (steam:APPID) valem em qualquer PC.
+/// Copies the program profiles from another PC (the ones this one lacks; with `all`, all).
+/// Steam game profiles (steam:APPID) work on any PC.
 pub fn pull_profiles(name: &str, all: bool) -> Result<String, String> {
     let p = load().into_iter().find(|p| p.name == name).ok_or_else(|| {
         crate::tf!(
@@ -190,7 +190,7 @@ pub fn backup_dir() -> std::path::PathBuf {
         .join("numapilot-backups")
 }
 
-/// Guarda o backup de cada PC ligado em ~/numapilot-backups/NOME/AAAA-MM-DD.tar.gz (7 mais novos).
+/// Stores the backup of each PC that is on in ~/numapilot-backups/NAME/YYYY-MM-DD.tar.gz (7 newest).
 pub fn backup_all() -> Vec<String> {
     let mut msgs = vec![];
     for p in load() {
@@ -228,7 +228,7 @@ pub fn backup_all() -> Vec<String> {
     msgs
 }
 
-/// MAC com Wake-on-LAN ligado no estado do outro PC.
+/// MAC with Wake-on-LAN enabled in the other PC's state.
 fn wol_mac(s: &serde_json::Value) -> Option<String> {
     s["wol"]
         .as_array()?
@@ -238,7 +238,7 @@ fn wol_mac(s: &serde_json::Value) -> Option<String> {
         .map(String::from)
 }
 
-/// Liga o PC pela rede (precisa do MAC aprendido com ele ligado e do WoL ligado nele).
+/// Wakes the PC over the network (needs the MAC learned while it was on and WoL enabled on it).
 pub fn wake(name: &str) -> Result<String, String> {
     let p = load().into_iter().find(|p| p.name == name).ok_or_else(|| {
         crate::tf!(
@@ -260,7 +260,7 @@ pub fn wake(name: &str) -> Result<String, String> {
     ))
 }
 
-/// Resumo de cada PC para o painel: nome, link, online, GPU mais quente, uso dos processadores.
+/// Summary of each PC for the panel: name, link, online, hottest GPU, processor usage.
 pub fn summary() -> Vec<serde_json::Value> {
     let peers = load();
     let handles: Vec<_> = peers

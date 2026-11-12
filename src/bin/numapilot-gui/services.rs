@@ -1,5 +1,5 @@
-//! Aba Serviços: os serviços do systemd (sistema e usuário), com estado, se abrem no boot,
-//! memória, e Iniciar/Parar/Reiniciar e o log de cada um.
+//! Services tab: the systemd services (system and user), with state, whether they start at boot,
+//! memory, and Start/Stop/Restart and each one's log.
 
 use crate::{App, fmt_bytes, theme};
 use egui::RichText;

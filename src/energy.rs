@@ -1,6 +1,6 @@
-//! Consumo de energia: o serviço soma a potência dos processadores (RAPL) e das placas de vídeo
-//! (mais um valor fixo para o resto do PC, se você informar) e guarda os kWh de cada dia.
-//! Com o preço do kWh, mostra o custo do dia e do mês.
+//! Energy use: the service adds up the power of the processors (RAPL) and the graphics cards
+//! (plus a fixed value for the rest of the PC, if you enter one) and keeps each day's kWh.
+//! With the kWh price, it shows the cost for the day and the month.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Energy {
-    /// "AAAA-MM-DD" -> kWh
+    /// "YYYY-MM-DD" -> kWh
     pub days: BTreeMap<String, f64>,
 }
 
@@ -16,7 +16,7 @@ pub fn path() -> std::path::PathBuf {
     crate::learned::state_dir().join("energy.json")
 }
 
-/// Data local "AAAA-MM-DD".
+/// Local date "YYYY-MM-DD".
 pub fn today() -> String {
     let t = unsafe { libc::time(std::ptr::null_mut()) };
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
@@ -48,7 +48,7 @@ impl Energy {
         std::fs::rename(tmp, path())
     }
 
-    /// Soma `watts` durante `secs` no dia de hoje; guarda só os últimos 400 dias.
+    /// Adds `watts` for `secs` to today; keeps only the last 400 days.
     pub fn add(&mut self, watts: f64, secs: f64) {
         if !(watts.is_finite() && watts > 0.0 && secs > 0.0 && secs < 3600.0) {
             return;
@@ -60,7 +60,7 @@ impl Energy {
         }
     }
 
-    /// kWh do mês ("AAAA-MM").
+    /// kWh of the month ("YYYY-MM").
     pub fn month(&self, ym: &str) -> f64 {
         self.days
             .iter()
@@ -69,7 +69,7 @@ impl Energy {
             .sum()
     }
 
-    /// Média por dia dos últimos `n` dias completos.
+    /// Average per day over the last `n` complete days.
     pub fn avg_days(&self, n: usize) -> Option<f64> {
         let t = today();
         let v: Vec<f64> = self
@@ -84,7 +84,7 @@ impl Energy {
     }
 }
 
-/// Potência agora (W): processadores + placas de vídeo + o fixo do resto do PC.
+/// Power right now (W): processors + graphics cards + the fixed part for the rest of the PC.
 pub fn power_now(cpu: &BTreeMap<u32, f64>, topo: &crate::topo::Topology, base_w: f64) -> f64 {
     let gpus: f64 = topo
         .gpus

@@ -1,6 +1,6 @@
-//! Aviso instantâneo de programas novos via netlink "proc connector" (PROC_EVENT_EXEC).
-//! Assim o daemon posiciona o programa logo após o exec(), antes de ele alocar memória.
-//! Precisa de root (CAP_NET_ADMIN); sem isso o daemon continua só com a varredura.
+//! Instant notice of new programs through the netlink "proc connector" (PROC_EVENT_EXEC).
+//! That way the daemon places the program right after exec(), before it allocates memory.
+//! Needs root (CAP_NET_ADMIN); without it the daemon carries on with scanning only.
 
 use std::sync::mpsc::{Receiver, channel};
 
@@ -24,7 +24,7 @@ fn get_u32(b: &[u8], off: usize) -> Option<u32> {
         .map(|s| u32::from_ne_bytes(s.try_into().unwrap()))
 }
 
-/// Mensagem de inscrição (nlmsghdr + cn_msg + operação).
+/// Subscription message (nlmsghdr + cn_msg + operation).
 fn listen_msg() -> Vec<u8> {
     let mut b = Vec::with_capacity(40);
     put_u32(&mut b, (NLMSG_HDR + CN_MSG + 4) as u32);
@@ -42,7 +42,7 @@ fn listen_msg() -> Vec<u8> {
     b
 }
 
-/// Extrai os PIDs (tgid) dos eventos de exec num datagrama.
+/// Extracts the PIDs (tgid) of the exec events in a datagram.
 pub fn parse_exec_pids(buf: &[u8]) -> Vec<i32> {
     let mut out = Vec::new();
     let mut off = 0usize;
@@ -64,7 +64,7 @@ pub fn parse_exec_pids(buf: &[u8]) -> Vec<i32> {
     out
 }
 
-/// Abre o canal de eventos. Retorna None se não for possível (sem root, kernel sem suporte...).
+/// Opens the event channel. Returns None if not possible (no root, kernel without support...).
 pub fn start() -> Option<Receiver<i32>> {
     unsafe {
         let fd = libc::socket(
@@ -105,7 +105,7 @@ pub fn start() -> Option<Receiver<i32>> {
                         {
                             continue;
                         }
-                        // ENOBUFS (muitos eventos de uma vez): segue; a varredura cobre o resto.
+                        // ENOBUFS (too many events at once): carry on; the scan covers the rest.
                         if std::io::Error::last_os_error().raw_os_error() == Some(libc::ENOBUFS) {
                             continue;
                         }
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn live_events_if_permitted() {
-        // Só roda de verdade se o ambiente permitir (root com CAP_NET_ADMIN).
+        // Only really runs if the environment allows it (root with CAP_NET_ADMIN).
         let Some(rx) = start() else { return };
         let mut child = std::process::Command::new("true").spawn().unwrap();
         let pid = child.id() as i32;

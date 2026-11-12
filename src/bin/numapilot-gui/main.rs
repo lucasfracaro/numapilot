@@ -1,5 +1,5 @@
-//! numapilot-gui: escolha gráfica de CPU (socket) e GPU por programa.
-//! O daemon mapeia os programas abertos; aqui você troca o hardware de cada um.
+//! numapilot-gui: graphical choice of CPU (socket) and GPU per program.
+//! The daemon maps the running programs; here you change the hardware of each one.
 
 mod bg;
 mod checklist;
@@ -54,7 +54,7 @@ pub(crate) struct Group {
     gpus: Vec<String>,
     origin: String,
     steam: bool,
-    /// Processos do programa: (pid, nome, núcleos em uso).
+    /// The program's processes: (pid, name, cores in use).
     pub(crate) procs: Vec<(i32, String, f64)>,
 }
 
@@ -182,7 +182,7 @@ pub(crate) struct Live {
     pub(crate) vram: Option<(u64, u64)>,
 }
 
-/// Memória "proporcional" do processo (PSS) em bytes; None se não der para ler (outro usuário).
+/// The process's "proportional" memory (PSS) in bytes; None if it cannot be read (another user).
 pub(crate) fn pss_bytes(pid: i32) -> Option<u64> {
     let t = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")).ok()?;
     t.lines()
@@ -210,7 +210,7 @@ fn load_hidden_tabs() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Abas que dá para esconder (Programas e Configurações ficam sempre).
+/// Tabs that can be hidden (Programs and Settings always stay).
 pub(crate) fn hideable_tabs() -> Vec<&'static str> {
     TABS.iter()
         .filter(|t| !matches!(t.0, Tab::Programs | Tab::Settings))
@@ -226,7 +226,7 @@ pub(crate) fn save_hidden_tabs(hidden: &[String]) {
     let _ = std::fs::write(f, hidden.join("\n"));
 }
 
-/// Tamanho inicial da janela; NUMAPILOT_GUI_SIZE=LxA muda (capturas de tela).
+/// Initial window size; NUMAPILOT_GUI_SIZE=WxH changes it (screenshots).
 fn window_size() -> [f32; 2] {
     std::env::var("NUMAPILOT_GUI_SIZE")
         .ok()
@@ -247,10 +247,10 @@ pub(crate) fn fmt_bytes(b: u64) -> String {
     }
 }
 
-/// Memória do sistema (em uso, total) em kB, pelo MemAvailable: o cache de arquivos não conta
-/// como "em uso" (ele é liberado sozinho quando falta memória).
+/// System memory (in use, total) in kB, from MemAvailable: the file cache does not count
+/// as "in use" (it is freed by itself when memory runs short).
 pub(crate) fn mem_system() -> (u64, u64) {
-    // NUMAPILOT_MEMINFO: outro arquivo no lugar do /proc/meminfo (capturas de tela)
+    // NUMAPILOT_MEMINFO: another file in place of /proc/meminfo (screenshots)
     let path = std::env::var("NUMAPILOT_MEMINFO").unwrap_or_else(|_| "/proc/meminfo".into());
     let t = std::fs::read_to_string(path).unwrap_or_default();
     let get = |k: &str| {
@@ -264,7 +264,7 @@ pub(crate) fn mem_system() -> (u64, u64) {
     (total.saturating_sub(get("MemAvailable:")), total)
 }
 
-/// Abas: ícone, nome e o que cada uma faz.
+/// Tabs: icon, name and what each one does.
 const TABS: &[(Tab, &str, &str, &str)] = &[
     (
         Tab::Programs,
@@ -340,33 +340,33 @@ pub(crate) struct App {
     pub(crate) cfg: Config,
     pub(crate) editor: Option<editor::Editor>,
     pub(crate) cpu_loads: BTreeMap<usize, f32>,
-    /// Último minuto de cada thread e da temperatura do processador (aba Mapa).
+    /// Last minute of each thread and of the processor temperature (Map tab).
     pub(crate) cpu_sparks: BTreeMap<usize, theme::Spark>,
     pub(crate) cpu_freq: BTreeMap<usize, u64>,
     pub(crate) temp_spark: BTreeMap<u32, (theme::Spark, f64)>,
-    /// Potência de cada processador (W), medida pelo serviço (RAPL precisa de root).
+    /// Power of each processor (W), measured by the service (RAPL needs root).
     pub(crate) cpu_power: BTreeMap<u32, f64>,
-    /// Nome curto do processador ("Ryzen 7 6800H").
+    /// Short processor name ("Ryzen 7 6800H").
     pub(crate) cpu_name: String,
-    /// Caminho digitado para importar escolhas.
+    /// Path typed to import choices.
     import_path: String,
-    /// Turbo: tabela por processador (até N núcleos acordados → MHz) e núcleos acordados agora.
+    /// Turbo: table per processor (up to N cores awake → MHz) and cores awake right now.
     pub(crate) turbo_tables: BTreeMap<u32, numapilot::turbo::Table>,
     pub(crate) awake: BTreeMap<u32, f32>,
     deep_prev: Option<(BTreeMap<usize, u64>, Instant)>,
-    /// Memória em uso por programa (bytes), pela chave do programa.
+    /// Memory in use per program (bytes), by the program's key.
     pub(crate) prog_mem: HashMap<String, u64>,
-    /// Tabela da aba Programas (ordem, seleção, GPU por processo).
+    /// Programs tab table (order, selection, GPU per process).
     pub(crate) progs: programs::ProgTable,
-    /// Aba Inicialização.
+    /// Startup tab.
     pub(crate) startup: startup::StartupTab,
-    /// Aba Serviços.
+    /// Services tab.
     pub(crate) services: services::ServicesTab,
-    /// Disco e rede: velocidades agora e o último minuto de cada um.
+    /// Disk and network: speeds right now and the last minute of each.
     io: numapilot::iostat::IoMonitor,
     pub(crate) disk_rates: Vec<numapilot::iostat::DiskRate>,
     pub(crate) net_rates: Vec<numapilot::iostat::NetRate>,
-    /// (leitura, escrita) ou (download, upload) em bytes/s, último minuto.
+    /// (read, write) or (download, upload) in bytes/s, last minute.
     pub(crate) io_hist: BTreeMap<
         String,
         (
@@ -376,7 +376,7 @@ pub(crate) struct App {
     >,
     pub(crate) map_threads: bool,
     pub(crate) checklist: checklist::Checklist,
-    /// Abas que o usuário escondeu do menu (pelo nome), salvas em ~/.config/numapilot/gui-tabs.
+    /// Tabs the user hid from the menu (by name), saved in ~/.config/numapilot/gui-tabs.
     pub(crate) hidden_tabs: Vec<String>,
     pub(crate) numa_rates: BTreeMap<usize, (f64, f64)>,
     prev_numa: BTreeMap<usize, (u64, u64)>,
@@ -415,11 +415,11 @@ pub(crate) struct App {
     last: Instant,
     daemon_ok: bool,
     toast: Option<(String, bool, Instant)>,
-    /// Leituras ao vivo por placa (lidas 1x por segundo, não a cada quadro).
+    /// Live readings per card (read once a second, not every frame).
     live: HashMap<String, Live>,
-    /// Último minuto de CPU, memória e GPUs para os mini gráficos.
+    /// Last minute of CPU, memory and GPUs for the sparklines.
     sparks: HashMap<String, theme::Spark>,
-    /// Memória do sistema: (em uso, total) em kB, sem contar o cache que o sistema libera sozinho.
+    /// System memory: (in use, total) in kB, not counting the cache the system frees by itself.
     mem_sys: (u64, u64),
     tab: Tab,
     my_uid: u32,
@@ -436,7 +436,7 @@ impl App {
         theme::install(&ctx);
         let cfg = Config::load().unwrap_or_default();
         let topo = Topology::load(&cfg);
-        // Programas novos na inicialização também vão para a integrada (se ligado).
+        // New startup programs also go to the integrated GPU (if enabled).
         if numapilot::autostart::enabled() {
             let _ = numapilot::autostart::apply(&topo);
         }
@@ -578,7 +578,7 @@ impl App {
             live: HashMap::new(),
             sparks: HashMap::new(),
             mem_sys: (0, 0),
-            // NUMAPILOT_GUI_TAB=N abre direto na aba N (0 = Programas): para capturas de tela
+            // NUMAPILOT_GUI_TAB=N opens straight on tab N (0 = Programs): for screenshots
             tab: std::env::var("NUMAPILOT_GUI_TAB")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
@@ -612,11 +612,11 @@ impl App {
         for (c, l) in &self.cpu_loads {
             self.cpu_sparks.entry(*c).or_default().push(*l);
         }
-        // potência dos processadores: o serviço mede e publica em hw.json
+        // processor power: the service measures it and publishes it in hw.json
         let hwj = std::fs::read_to_string(numapilot::learned::run_dir().join("hw.json"))
             .ok()
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
-        // tabela de turbo (o serviço lê os MSRs) e núcleos acordados por processador
+        // turbo table (the service reads the MSRs) and cores awake per processor
         if let Some(t) = hwj
             .as_ref()
             .and_then(|v| v.get("turbo"))
@@ -654,7 +654,7 @@ impl App {
             })
             .unwrap_or_default();
         {
-            // cpufreq ou, sem ele (BC-250), o /proc/cpuinfo
+            // cpufreq or, without it (BC-250), /proc/cpuinfo
             let mhz = numapilot::cpuctl::cur_mhz_all();
             for c in self.cpu_loads.keys() {
                 if let Some(m) = mhz.get(c) {
@@ -668,7 +668,7 @@ impl App {
             e.0.push(((t - 30.0) / 70.0) as f32);
             e.1 = t;
         }
-        // Alocações de memória no outro socket (numastat), por segundo.
+        // Memory allocations on the other socket (numastat), per second.
         let dt = self.prev_numa_t.elapsed().as_secs_f64().max(0.1);
         self.prev_numa_t = Instant::now();
         for n in &self.topo.nodes {
@@ -691,7 +691,7 @@ impl App {
             self.bench_checked = Some(Instant::now());
         }
         self.prev_cpu = cur;
-        // Leituras ao vivo (uma vez por segundo) e o último minuto para os mini gráficos.
+        // Live readings (once a second) and the last minute for the sparklines.
         self.mem_sys = mem_system();
         let (mu, mt) = self.mem_sys;
         self.sparks
@@ -748,8 +748,8 @@ impl App {
         }
         self.disk_rates = d;
         self.net_rates = n;
-        // memória (PSS: a memória dividida entre processos conta uma vez só) e GPU de cada
-        // processo; a de cada programa é a soma
+        // memory (PSS: memory shared between processes counts only once) and GPU of each
+        // process; each program's is the sum
         self.progs.sample(&self.groups);
         self.prog_mem = self
             .groups
@@ -785,7 +785,7 @@ impl App {
         self.toast = Some((m, ok, Instant::now()));
     }
 
-    /// Roda um comando em segundo plano e mostra a saída numa janelinha.
+    /// Runs a command in the background and shows the output in a small window.
     pub(crate) fn start_job(&mut self, title: impl Into<String>, argv: Vec<String>) {
         if self.job.as_ref().is_some_and(|j| j.finished().is_none()) {
             self.toast(
@@ -839,9 +839,9 @@ impl App {
     }
 
     pub(crate) fn send(&mut self, req: Request) {
-        // o pedido, resumido (sem os dados grandes)
+        // the request, summarized (without the large data)
         let what = match &req {
-            // pode ter o tópico/senha dos avisos
+            // may contain the notification topic/password
             Request::SetNotify { .. } => "SetNotify { … }".to_string(),
             r => format!("{r:?}"),
         };
@@ -854,7 +854,7 @@ impl App {
             Ok(r) => self.toast(r.message, r.ok),
             Err(e) => self.toast(format!("{e:#}"), false),
         }
-        self.last = Instant::now() - Duration::from_secs(10); // atualiza já
+        self.last = Instant::now() - Duration::from_secs(10); // refresh now
     }
 
     fn profile_of(&self, key: &str) -> Profile {
@@ -871,7 +871,7 @@ impl App {
             .clone()
     }
 
-    /// Temperatura, potência e frequência média de um processador ("61 °C · 25 W · 4.2 GHz").
+    /// Temperature, power and average frequency of a processor ("61 °C · 25 W · 4.2 GHz").
     pub(crate) fn cpu_info(&self, n: &numapilot::topo::Node) -> String {
         let mut v = vec![];
         let pkg = n.id as u32;
@@ -893,7 +893,7 @@ impl App {
         v.join(" · ")
     }
 
-    /// Menu lateral.
+    /// Side menu.
     fn nav(&mut self, ui: &mut egui::Ui) {
         let p = theme::pal(ui);
         ui.add_space(6.0);
@@ -916,7 +916,7 @@ impl App {
         });
         ui.add_space(14.0);
         for (t, icon, label, _) in TABS {
-            // abas escondidas em Configurações (a aberta agora nunca some)
+            // tabs hidden in Settings (the one open now never disappears)
             if self.hidden_tabs.iter().any(|h| h == label) && self.tab != *t {
                 continue;
             }
@@ -949,7 +949,7 @@ impl App {
         });
     }
 
-    /// Topo: título da página, estado do serviço e os medidores ao vivo.
+    /// Top: page title, service state and the live meters.
     fn header(&mut self, ui: &mut egui::Ui) {
         let p = theme::pal(ui);
         let (title, sub) = TABS
@@ -1078,7 +1078,7 @@ impl App {
                             format!(
                                 "VRAM  {:.1} / {} GB",
                                 u as f64 / 1073741824.0,
-                                // integradas têm 0,5 GB: "/ 0 GB" confundia
+                                // integrated GPUs have 0.5 GB: "/ 0 GB" was confusing
                                 if t < 10 * 1073741824 {
                                     format!("{:.1}", t as f64 / 1073741824.0)
                                 } else {
@@ -1110,15 +1110,15 @@ impl App {
         programs::ui(self, ui);
     }
 
-    /// Atualiza na próxima tela (depois de mudar o filtro ou encerrar um programa).
+    /// Refresh on the next frame (after changing the filter or ending a program).
     pub(crate) fn force_refresh(&mut self) {
         self.last = Instant::now() - Duration::from_secs(10);
     }
 
-    /// Controles do numapilot para um programa (dentro da linha aberta da tabela).
+    /// numapilot's controls for a program (inside the open table row).
     fn program_row(&mut self, ui: &mut egui::Ui, g: &Group) {
         let prof = self.profile_of(&g.key);
-        // Uso: núcleos e memória (com o limite, se tiver)
+        // Usage: cores and memory (with the limit, if any)
         ui.vertical(|ui| {
             ui.set_min_width(110.0);
             ui.label(crate::tf!("{:.1} cores", "{:.1} núcleos", g.cores));
@@ -1169,7 +1169,7 @@ impl App {
                 }
             }
         });
-        // Onde está agora
+        // Where it is now
         ui.vertical(|ui| {
             ui.set_min_width(170.0);
             let where_ = match g.nodes.len() {
@@ -1220,7 +1220,7 @@ impl App {
                     ui.selectable_value(&mut cpu, v.clone(), t);
                 }
             });
-        // Placa de vídeo
+        // Graphics card
         let cur = (prof.gpu.clone(), prof.usage.clone());
         let mut sel = cur.clone();
         let mut fg = prof.fg_gpu.clone();
@@ -1239,7 +1239,7 @@ impl App {
                         ui.selectable_value(&mut sel, (gg.clone(), u.clone()), t);
                     }
                 });
-            // Lossless Scaling (lsfg-vk): em qual GPU gerar os quadros.
+            // Lossless Scaling (lsfg-vk): which GPU generates the frames.
             let fg_text = if fg == "same" {
                 crate::i18n::tr("Lossless Scaling: same GPU").to_string()
             } else {
@@ -1278,7 +1278,7 @@ impl App {
                 );
             }
         });
-        // Ações
+        // Actions
         let mut action: Option<&str> = None;
         ui.horizontal(|ui| {
             if ui.button(crate::i18n::tr("Adjust…")).on_hover_text(crate::i18n::tr("Cores, memory, priority, GPU and ready-made profiles")).clicked() {
@@ -1593,7 +1593,7 @@ impl eframe::App for App {
                 bottom: 10,
             }))
             .show(ui, |ui| self.header(ui));
-        // Aviso flutuante (some sozinho)
+        // Floating notice (goes away by itself)
         if let Some((m, ok, t)) = &self.toast
             && t.elapsed() < Duration::from_secs(8)
         {
@@ -1665,7 +1665,7 @@ fn truncate(s: &str, n: usize) -> String {
     }
 }
 
-/// Fecha o programa e abre de novo pelo `numapilot run` (vale o perfil novo).
+/// Closes the program and starts it again through `numapilot run` (the new profile applies).
 fn relaunch(g: &Group, msgs: Arc<Mutex<Vec<(String, bool)>>>) {
     let argv = procfs::cmdline(g.main_pid);
     let cwd = std::fs::read_link(format!("/proc/{}/cwd", g.main_pid))
@@ -1760,7 +1760,7 @@ fn main() -> eframe::Result {
         }
         return Ok(());
     }
-    // Já tem uma janela aberta: ela vem para frente e esta não abre outra.
+    // There is already a window open: it comes to the front and this one does not open another.
     if single::show_existing() {
         return Ok(());
     }

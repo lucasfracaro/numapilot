@@ -127,26 +127,26 @@ enum Cmd {
     /// systemd services: list [--user] [--running|--failed] | start U | stop U | restart U |
     /// log U
     #[command(name = "services", alias = "servicos")]
-    Servicos {
+    Services {
         action: Option<String>,
         unit: Option<String>,
         /// User services (systemctl --user) instead of the system ones
         #[arg(long = "user", alias = "usuario")]
-        usuario: bool,
+        user: bool,
         /// Only the running ones
         #[arg(long = "running", alias = "rodando")]
-        rodando: bool,
+        running: bool,
         /// Only the failed ones
         #[arg(long = "failed", alias = "falhas")]
-        falhas: bool,
+        failed: bool,
         /// Log lines
         #[arg(short = 'n', long = "lines", alias = "linhas", default_value_t = 60)]
-        linhas: u32,
+        lines: u32,
     },
     /// What starts when the system boots: list | on ID | off ID | remove ID | command NAME
     /// "COMMAND" | file PATH | app SEARCH | source ID | uninstall ID
     #[command(name = "startup", alias = "inicio")]
-    Inicio {
+    Startup {
         action: Option<String>,
         args: Vec<String>,
         /// desinstalar: also delete the program's settings and data
@@ -154,10 +154,10 @@ enum Cmd {
         config: bool,
         /// desinstalar: do not ask
         #[arg(long = "yes", alias = "sim")]
-        sim: bool,
+        yes: bool,
         /// Seconds to wait before starting (comando, arquivo, app)
         #[arg(long = "delay", alias = "atraso", default_value_t = 0)]
-        atraso: u32,
+        delay: u32,
     },
     /// Laptop with NVIDIA: what starts with the system on the integrated GPU: status | igpu |
     /// normal
@@ -265,10 +265,10 @@ enum Cmd {
     BenchCores {
         /// Only shows the last saved measurement.
         #[arg(long = "show", alias = "mostrar")]
-        mostrar: bool,
+        show: bool,
         /// Deletes the measurement (core choice goes back to the system order).
         #[arg(long = "clear", alias = "apagar")]
-        apagar: bool,
+        clear: bool,
     },
     /// Turbo by awake cores: the processor's table and how many cores are awake right now.
     Turbo,
@@ -283,13 +283,13 @@ enum Cmd {
     /// Tests every part of numapilot on this machine (read-only, changes nothing) and writes a
     /// report.
     #[command(name = "selftest", alias = "autoteste")]
-    Autoteste {
+    Selftest {
         /// Report file (default: ~/numapilot-autoteste-MACHINE-DATE.txt).
         #[arg(long = "out", alias = "saida")]
-        saida: Option<std::path::PathBuf>,
+        out: Option<std::path::PathBuf>,
         /// Skips the tests that run numapilot's commands one by one.
         #[arg(long = "quick", alias = "rapido")]
-        rapido: bool,
+        quick: bool,
         /// JSON output (on screen).
         #[arg(long)]
         json: bool,
@@ -329,7 +329,7 @@ enum ProfileCmd {
 }
 
 fn main() {
-    // `numapilot hybrid | head`: ao fechar o pipe, sai quieto em vez de "cair" com Broken pipe
+    // `numapilot hybrid | head`: when the pipe closes, exit quietly instead of dying with Broken pipe
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
@@ -348,7 +348,7 @@ fn real_main() -> Result<()> {
     match &cli.cmd {
         Cmd::Daemon => numapilot::log::init("daemon"),
         Cmd::Web { .. } => numapilot::log::init("web"),
-        // só leitura do próprio registro: não precisa registrar
+        // only reading its own log: no need to log
         Cmd::Log { .. } => {}
         _ => {
             numapilot::log::init("cli");
@@ -361,14 +361,10 @@ fn real_main() -> Result<()> {
         Cmd::Topo => cmd_topo(&cfg),
         Cmd::Log { lines, which } => cmd_log(lines, which.as_deref()),
         Cmd::Turbo => cmd_turbo(&cfg),
-        Cmd::BenchCores { mostrar, apagar } => cmd_bench_cores(&cfg, mostrar, apagar),
+        Cmd::BenchCores { show, clear } => cmd_bench_cores(&cfg, show, clear),
         Cmd::GpuTest { gpu, json } => cmd_gpu_test(&cfg, gpu.as_deref(), json),
-        Cmd::Autoteste {
-            saida,
-            rapido,
-            json,
-        } => {
-            let r = numapilot::selftest::run(&cfg, !rapido, &mut |l| {
+        Cmd::Selftest { out, quick, json } => {
+            let r = numapilot::selftest::run(&cfg, !quick, &mut |l| {
                 if !json {
                     println!("{l}")
                 }
@@ -377,7 +373,7 @@ fn real_main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&r)?);
                 return Ok(());
             }
-            let path = saida.unwrap_or_else(numapilot::selftest::default_path);
+            let path = out.unwrap_or_else(numapilot::selftest::default_path);
             std::fs::write(&path, numapilot::selftest::render(&r))?;
             println!();
             println!("{}", r.summary());
@@ -862,7 +858,7 @@ fn real_main() -> Result<()> {
                 }
                 "auto" | "hibrido" | "integrada" | "nao-mexer" | "hybrid" | "integrated"
                 | "leave" => {
-                    // nomes em inglês na linha de comando; o valor guardado não muda
+                    // English names on the command line; the stored value does not change
                     let act = match act {
                         "hybrid" => "hibrido",
                         "integrated" => "integrada",
@@ -996,16 +992,16 @@ fn real_main() -> Result<()> {
                 }
             }
         }
-        Cmd::Servicos {
+        Cmd::Services {
             action,
             unit,
-            usuario,
-            rodando,
-            falhas,
-            linhas,
+            user,
+            running,
+            failed,
+            lines,
         } => {
             use numapilot::services::{self, Verb};
-            let all = services::list(usuario);
+            let all = services::list(user);
             let find = |u: &Option<String>| -> anyhow::Result<services::Service> {
                 let u = u.as_deref().ok_or_else(|| {
                     anyhow::anyhow!(
@@ -1024,7 +1020,7 @@ fn real_main() -> Result<()> {
                         numapilot::tf!(
                             "service {full} not found{}",
                             "serviço {full} não encontrado{}",
-                            if usuario {
+                            if user {
                                 ""
                             } else {
                                 numapilot::i18n::tr(" (a user service? use --user)")
@@ -1037,7 +1033,7 @@ fn real_main() -> Result<()> {
                 "lista" | "list" => {
                     for s in all
                         .iter()
-                        .filter(|s| (!rodando || s.running()) && (!falhas || s.failed()))
+                        .filter(|s| (!running || s.running()) && (!failed || s.failed()))
                     {
                         let boot = match s.at_boot() {
                             Some(true) => "boot",
@@ -1060,7 +1056,7 @@ fn real_main() -> Result<()> {
                     return Ok(());
                 }
                 "log" | "logs" => {
-                    print!("{}", services::logs(&find(&unit)?, linhas));
+                    print!("{}", services::logs(&find(&unit)?, lines));
                     return Ok(());
                 }
                 "iniciar" | "start" => Verb::Start,
@@ -1087,12 +1083,12 @@ fn real_main() -> Result<()> {
             println!("{}: {}", s.unit, verb.text().to_lowercase());
             Ok(())
         }
-        Cmd::Inicio {
+        Cmd::Startup {
             action,
             args,
-            atraso,
+            delay,
             config,
-            sim,
+            yes,
         } => {
             use numapilot::startup::{self, Action};
             let items = startup::list();
@@ -1267,7 +1263,7 @@ fn real_main() -> Result<()> {
                     for s in &plan.steps {
                         println!("  - {s}");
                     }
-                    if !sim {
+                    if !yes {
                         print!(
                             "{}",
                             numapilot::tf!("Continue? [y/N] ", "Continuar? [s/N] ")
@@ -1310,7 +1306,7 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
                 "comando" | "command" => {
-                    let p = startup::add_command(&arg(0)?, &args[1..].join(" "), atraso)
+                    let p = startup::add_command(&arg(0)?, &args[1..].join(" "), delay)
                         .map_err(|e| anyhow::anyhow!(e))?;
                     println!(
                         "{}",
@@ -1319,7 +1315,7 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
                 "arquivo" | "file" => {
-                    let p = startup::add_file(std::path::Path::new(&arg(0)?), atraso)
+                    let p = startup::add_file(std::path::Path::new(&arg(0)?), delay)
                         .map_err(|e| anyhow::anyhow!(e))?;
                     println!(
                         "{}",
@@ -1333,7 +1329,7 @@ fn real_main() -> Result<()> {
                     match found.as_slice() {
                         [(n, p)] => {
                             let d =
-                                startup::add_desktop(p, atraso).map_err(|e| anyhow::anyhow!(e))?;
+                                startup::add_desktop(p, delay).map_err(|e| anyhow::anyhow!(e))?;
                             println!(
                                 "{}",
                                 numapilot::tf!(
@@ -1880,7 +1876,7 @@ fn cmd_run(
     let key = procfs::learn_key(exe.as_deref(), &command, basename(prog));
     let steam = std::env::var("SteamAppId").ok();
     let pkey = program_key(steam.as_deref(), &key);
-    // Otimizador de FPS: nesta abertura usa a próxima configuração da lista.
+    // FPS optimizer: this launch uses the next configuration in the list.
     let tuning = numapilot::tuner::Tuner::load()
         .sessions
         .get(&pkey)
@@ -2006,13 +2002,13 @@ fn cmd_run(
         }
     }
 
-    // O que só o root faz (cgroup: memória/núcleos exclusivos; prioridade alta): pede ao serviço
-    // para aplicar neste processo antes do exec — vale também para o programa.
+    // What only root can do (cgroup: memory/exclusive cores; high priority): ask the service
+    // to apply it to this process before exec — it then also applies to the program.
     if d.needs_daemon {
         let me = std::process::id() as i32;
         let profile = tuning.as_ref().map(|t| t.3.profile.clone());
-        // a chave do programa vai junto: neste momento o processo ainda é o numapilot, e o
-        // serviço precisa saber de quem é o perfil e o grupo de controle
+        // the program's key goes along: at this moment the process is still numapilot, and the
+        // service needs to know whose profile and control group it is
         match ctl::send(&ctl::Request::Adopt {
             pid: me,
             profile,
@@ -2057,7 +2053,7 @@ fn cmd_run(
             )
         );
     }
-    // MangoHud (medição) e gamescope envolvem o comando.
+    // MangoHud (measuring) and gamescope wrap the command.
     let mut argv = command.clone();
     if tuning.is_some() && which("mangohud").is_some() && basename(&argv[0]) != "mangohud" {
         argv.insert(0, "mangohud".into());
@@ -2530,7 +2526,7 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
             "mode",
             Some(name @ ("jogo" | "ia" | "silencioso" | "normal" | "game" | "ai" | "quiet")),
         ) => {
-            // nomes em inglês na linha de comando; o valor guardado não muda
+            // English names on the command line; the stored value does not change
             let name = match name {
                 "game" => "jogo",
                 "ai" => "ia",
@@ -2625,7 +2621,7 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
             Ok(())
         }
         ("cmdline", Some("apply")) => {
-            // +param liga, -param tira (vários de uma vez, um único backup e uma regravação)
+            // +param adds, -param removes (several at once, a single backup and one rewrite)
             let mut add = vec![];
             let mut rm = vec![];
             for a in &args[1..] {
@@ -2912,7 +2908,7 @@ fn cmd_pin(cfg: &Config, pid: i32, cpu: &str, no_migrate: bool) -> Result<()> {
             ),
         }
     }
-    // Avisa o daemon para não mexer mais neste processo.
+    // Tells the daemon to leave this process alone from now on.
     let mut pins = daemon::read_pins();
     pins.retain(|p| procfs::read_stat(p.pid).is_some_and(|s| s.starttime == p.starttime));
     pins.insert(daemon::Pin {
@@ -3002,7 +2998,7 @@ fn cmd_log(lines: usize, which: Option<&str>) -> Result<()> {
         println!();
     }
     if want.is_none_or(|w| w == "serviço") {
-        // o journal tem o que veio antes do registro em arquivo
+        // the journal has what came before the file log
         let o = std::process::Command::new("journalctl")
             .args([
                 "-u",
@@ -3066,7 +3062,7 @@ fn cmd_gpu_test(cfg: &Config, only: Option<&str>, json: bool) -> Result<()> {
             continue;
         }
         let (mut set, unset) = numapilot::decide::env_for_gpu_full(g, &topo);
-        // a mesma reserva de DirectX que o `run` usa (sem efeito no vulkaninfo, mas aparece)
+        // the same DirectX fallback `run` uses (no effect on vulkaninfo, but it shows up)
         let dxf = numapilot::gputest::vk_name_for(g, &set, &unset);
         let lines = numapilot::gputest::test(g, &topo, &set, &unset);
         if !json {
@@ -3128,7 +3124,7 @@ fn cmd_gpu_test(cfg: &Config, only: Option<&str>, json: bool) -> Result<()> {
 fn cmd_turbo(cfg: &Config) -> Result<()> {
     use numapilot::turbo;
     let topo = Topology::load(cfg);
-    // root lê os MSRs direto; usuário comum usa o que o serviço publicou
+    // root reads the MSRs directly; a regular user uses what the service published
     let tables: std::collections::BTreeMap<u32, turbo::Table> = if unsafe { libc::geteuid() } == 0 {
         turbo::tables(&topo).clone()
     } else {

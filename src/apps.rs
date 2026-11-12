@@ -1,7 +1,7 @@
-//! Programas instalados, para escolher processador, memória e placa de um programa sem precisar
-//! abri-lo antes: atalhos do menu (pacotes, AUR, Flatpak, Snap, AppImage integrado), jogos da
-//! Steam e AppImages soltos. Para cada um calcula a mesma chave que o serviço usa quando o
-//! programa está rodando, para a escolha salva valer na próxima abertura.
+//! Installed programs, to choose processor, memory and card for a program without having to
+//! open it first: menu shortcuts (packages, AUR, Flatpak, Snap, integrated AppImage), Steam
+//! games and loose AppImages. For each one it computes the same key the service uses when the
+//! program is running, so the saved choice applies the next time it starts.
 
 use crate::util::basename;
 use std::collections::BTreeSet;
@@ -12,9 +12,9 @@ pub struct App {
     pub name: String,
     /// "Menu", "Flatpak", "Snap", "Steam", "AppImage"
     pub source: &'static str,
-    /// Chave do perfil (executável, script ou steam:ID).
+    /// Profile key (executable, script or steam:ID).
     pub key: String,
-    /// O que mostrar embaixo do nome (executável, id do Flatpak...).
+    /// What to show under the name (executable, Flatpak id...).
     pub detail: String,
     pub desktop: Option<PathBuf>,
 }
@@ -23,7 +23,7 @@ fn home() -> PathBuf {
     PathBuf::from(std::env::var_os("HOME").unwrap_or_else(|| "/".into()))
 }
 
-/// Valor de uma chave do grupo [Desktop Entry].
+/// Value of a key in the [Desktop Entry] group.
 fn dget<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     let mut main = false;
     for l in text.lines() {
@@ -42,7 +42,7 @@ fn dget<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
-/// Nome no idioma do sistema (Name[pt_BR], Name[pt]) ou o Name.
+/// Name in the system language (Name[pt_BR], Name[pt]) or the plain Name.
 fn local_name<'a>(text: &'a str) -> Option<&'a str> {
     let lang = std::env::var("LANG").unwrap_or_default();
     let full = lang.split('.').next().unwrap_or("");
@@ -80,8 +80,8 @@ fn is_elf(p: &Path) -> bool {
         && b == [0x7f, b'E', b'L', b'F']
 }
 
-/// Num script de atalho (ex.: /usr/bin/firefox), o programa que ele abre com `exec`:
-/// é esse que aparece rodando. Só caminhos absolutos que existem.
+/// In a launcher script (e.g. /usr/bin/firefox), the program it starts with `exec`:
+/// that is the one that shows up running. Only absolute paths that exist.
 pub fn script_exec_target(text: &str, exists: &dyn Fn(&str) -> bool) -> Option<String> {
     for l in text.lines().map(str::trim) {
         let Some(rest) = l.strip_prefix("exec ") else {
@@ -95,30 +95,31 @@ pub fn script_exec_target(text: &str, exists: &dyn Fn(&str) -> bool) -> Option<S
                 continue;
             }
             if t.starts_with('-') || t.contains('=') {
-                // "exec -a nome programa": o nome vem depois do -a
+                // "exec -a name program": the name comes after -a
                 skip = t == "-a";
                 continue;
             }
             if t.starts_with('/') && !t.contains('$') && exists(t) {
                 return Some(t.to_string());
             }
-            // "exec electron37 /usr/lib/app.asar": não é caminho absoluto, deixa para o shebang
+            // "exec electron37 /usr/lib/app.asar": not an absolute path, leave it to the shebang
             break;
         }
     }
     None
 }
 
-/// Chave que o programa de um `Exec=` vai ter quando estiver rodando, e o que mostrar.
+/// Key the program of an `Exec=` will have when running, and what to show.
 pub fn key_for_exec(exec: &str) -> Option<(String, String)> {
-    // tira os códigos de campo do .desktop (%U, %f...)
+    // strips the .desktop field codes (%U, %f...)
     let toks: Vec<String> = crate::origin::split_command(exec)
         .into_iter()
         .filter(|t| !(t.len() == 2 && t.starts_with('%')))
         .collect();
     let (kind, prog) = crate::origin::program_of(&toks.join(" "))?;
     if kind == "flatpak" {
-        // o comando vem do atalho (--command=), do metadata do Flatpak ou, sem nenhum, do id
+        // the command comes from the shortcut (--command=), from the Flatpak metadata or, with neither,
+        // from the id
         let cmd = toks
             .iter()
             .find_map(|t| t.strip_prefix("--command="))
@@ -127,7 +128,7 @@ pub fn key_for_exec(exec: &str) -> Option<(String, String)> {
             .unwrap_or_else(|| prog.rsplit('.').next().unwrap_or(&prog).to_lowercase());
         return Some((format!("/app/bin/{cmd}"), format!("Flatpak {prog}")));
     }
-    // posição do programa de verdade na linha (depois de env VAR=...)
+    // position of the real program in the line (after env VAR=...)
     let start = toks
         .iter()
         .position(|t| basename(t) != "env" && !(t.contains('=') && !t.starts_with('/')))
@@ -141,7 +142,7 @@ pub fn key_for_exec(exec: &str) -> Option<(String, String)> {
         let key = crate::procfs::learn_key(Some(&exe_s), &argv, basename(&exe_s));
         return Some((key, exe_s));
     }
-    // script: o que ele abre com exec, ou o interpretador + nome do script
+    // script: what it starts with exec, or the interpreter + script name
     let text = std::fs::read_to_string(&exe).unwrap_or_default();
     if let Some(t) = script_exec_target(&text, &|p| Path::new(p).is_file()) {
         let t = std::fs::canonicalize(&t)
@@ -182,7 +183,7 @@ pub fn key_for_exec(exec: &str) -> Option<(String, String)> {
     }
 }
 
-/// `command=` do metadata de um Flatpak instalado (sistema ou usuário).
+/// `command=` from the metadata of an installed Flatpak (system or user).
 fn flatpak_command(id: &str) -> Option<String> {
     for base in [
         PathBuf::from("/var/lib/flatpak/app"),
@@ -218,7 +219,7 @@ fn desktop_apps(out: &mut Vec<App>) {
                 continue;
             }
             let f = e.file_name().to_string_lossy().to_string();
-            // o primeiro da lista ganha (o do usuário esconde o do sistema)
+            // the first in the list wins (the user's hides the system's)
             if !seen.insert(f.clone()) {
                 continue;
             }
@@ -234,10 +235,10 @@ fn desktop_apps(out: &mut Vec<App>) {
             let Some(exec) = dget(&t, "Exec") else {
                 continue;
             };
-            // atalho já passado pelo numapilot (menu ajustado): olha o comando original
+            // shortcut already routed through numapilot (adjusted menu): look at the original command
             let exec = dget(&t, "X-Numapilot-Exec").unwrap_or(exec);
             let exec = strip_numapilot(exec);
-            // jogos da Steam com atalho no menu entram pela lista da Steam
+            // Steam games with a menu shortcut come in through the Steam list
             if exec.contains("steam://rungameid/") {
                 continue;
             }
@@ -264,7 +265,7 @@ fn desktop_apps(out: &mut Vec<App>) {
     }
 }
 
-/// "numapilot run [opções] -- programa args" → "programa args"
+/// "numapilot run [options] -- program args" → "program args"
 fn strip_numapilot(exec: &str) -> String {
     let first = exec.split_whitespace().next().unwrap_or("");
     if basename(first) == "numapilot"
@@ -305,7 +306,7 @@ fn appimages(out: &mut Vec<App>) {
     }
 }
 
-/// Todos os programas instalados que dá para achar, por nome.
+/// Every installed program that can be found, by name.
 pub fn list() -> Vec<App> {
     let mut v = vec![];
     desktop_apps(&mut v);
@@ -323,7 +324,7 @@ pub fn list() -> Vec<App> {
     v
 }
 
-/// Filtra por nome, executável ou origem (sem diferenciar maiúsculas).
+/// Filters by name, executable or source (case-insensitive).
 pub fn matches(a: &App, query: &str) -> bool {
     let q = query.trim().to_lowercase();
     q.is_empty()
@@ -343,7 +344,7 @@ mod tests {
             script_exec_target(ff, &|p| p == "/usr/lib/firefox/firefox").as_deref(),
             Some("/usr/lib/firefox/firefox")
         );
-        // com variável ou programa do PATH: não adivinha
+        // with a variable or a program from PATH: do not guess
         assert_eq!(
             script_exec_target("exec \"$HERE/bin/app\" \"$@\"\n", &|_| true),
             None
@@ -360,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    fn desktop_e_flatpak() {
+    fn desktop_and_flatpak() {
         let t = "[Desktop Entry]\nName=Files\nName[pt_BR]=Arquivos\nExec=dolphin %u\n[Desktop Action n]\nName=Nova\nExec=x\n";
         assert_eq!(dget(t, "Exec"), Some("dolphin %u"));
         assert_eq!(dget(t, "Name"), Some("Files"));

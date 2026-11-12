@@ -1,10 +1,11 @@
-//! Undervolt automático: desce a voltagem (AMD) ou desloca a curva com o clock travado (NVIDIA)
-//! um passo por vez, roda um teste de carga em cada passo e para no primeiro erro. No fim volta
-//! alguns passos de margem e grava. Roda como usuário: os ajustes vão pelo serviço em modo de
-//! teste (não gravados no disco), então se o PC travar ele volta com o último valor bom.
+//! Automatic undervolt: lowers the voltage (AMD) or offsets the curve with the clock locked
+//! (NVIDIA) one step at a time, runs a load test at each step and stops at the first error. At
+//! the end it goes back a few steps of margin and saves. Runs as the user: the settings go
+//! through the service in trial mode (not written to disk), so if the PC freezes it comes back
+//! with the last good value.
 //!
-//! Erro = o teste de carga cair, o kernel registrar travamento/reset da GPU (amdgpu: ring
-//! timeout, GPU reset, page fault; NVIDIA: Xid) ou a placa sumir.
+//! Error = the load test crashing, the kernel logging a GPU hang/reset (amdgpu: ring
+//! timeout, GPU reset, page fault; NVIDIA: Xid) or the card disappearing.
 
 use crate::ctl::{Request, send};
 use crate::gpuctl::{self, GpuControl, GpuControls, OdSettings};
@@ -14,7 +15,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-/// Ctrl+C: para o teste e volta ao que era antes.
+/// Ctrl+C: stops the test and goes back to what it was before.
 pub static STOP: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn on_sigint(_: libc::c_int) {
@@ -30,11 +31,11 @@ pub fn catch_ctrl_c() {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Method {
-    /// NVIDIA: clock máximo travado + deslocamento positivo da curva (MHz).
+    /// NVIDIA: locked maximum clock + positive curve offset (MHz).
     NvOffset { clock_max: u32, limit: i32 },
-    /// AMD RDNA2/3/4: deslocamento de voltagem negativo (mV).
+    /// AMD RDNA2/3/4: negative voltage offset (mV).
     AmdOffset { limit: i32 },
-    /// AMD Vega20/RDNA1: voltagem do ponto mais alto da curva (mV), mesmo clock.
+    /// AMD Vega20/RDNA1: voltage of the curve's highest point (mV), same clock.
     AmdCurve {
         mhz: u32,
         start_mv: u32,
@@ -45,11 +46,11 @@ pub enum Method {
 #[derive(Debug, Clone)]
 pub struct Opts {
     pub secs: u64,
-    /// Passos de margem no fim (1 = volta um passo do último que passou).
+    /// Margin steps at the end (1 = goes back one step from the last that passed).
     pub margin: u32,
-    /// NVIDIA: clock máximo para travar (None = 90% do máximo da placa).
+    /// NVIDIA: maximum clock to lock (None = 90% of the card's maximum).
     pub clock: Option<u32>,
-    /// Tamanho do passo (MHz na NVIDIA, mV na AMD).
+    /// Step size (MHz on NVIDIA, mV on AMD).
     pub step: Option<i32>,
 }
 
@@ -109,7 +110,7 @@ pub fn method(g: &Gpu, base: &GpuControl, clock: Option<u32>) -> Result<Method, 
     .into())
 }
 
-/// O ajuste do passo `n` (0 = ponto de partida).
+/// The setting of step `n` (0 = starting point).
 pub fn control_at(base: &GpuControl, m: &Method, n: i32, step: i32) -> Option<GpuControl> {
     let mut c = base.clone();
     match m {
@@ -158,7 +159,7 @@ pub fn control_at(base: &GpuControl, m: &Method, n: i32, step: i32) -> Option<Gp
                 voltage_offset_mv: None,
             });
             if od.curve.is_empty() {
-                // os outros pontos ficam como estão na placa
+                // the other points stay as they are on the card
                 if let Some(o) = base.od.as_ref() {
                     od.curve = o.curve.clone();
                 }
@@ -200,9 +201,9 @@ pub fn describe(c: &GpuControl, m: &Method) -> String {
     }
 }
 
-/// Linhas do kernel que indicam GPU instável.
+/// Kernel lines that indicate an unstable GPU.
 pub fn gpu_errors(log: &str, g_pci: &str, nvidia: bool) -> Vec<String> {
-    // "0000:03:00.0" -> "03:00" (o NVRM escreve "PCI:0000:03:00", sem a função)
+    // "0000:03:00.0" -> "03:00" (NVRM writes "PCI:0000:03:00", without the function)
     let short = g_pci
         .trim_start_matches("0000:")
         .split('.')
@@ -246,8 +247,8 @@ fn kernel_log_since(t: std::time::SystemTime) -> String {
         .unwrap_or_default()
 }
 
-/// Programas de carga possíveis: vkmark (sem janela e com janela) e a cena mais pesada do
-/// glmark2 (terrain). Alguns caem ou puxam pouco com certos drivers: `pick_stress` mede e escolhe.
+/// Possible load programs: vkmark (windowless and windowed) and glmark2's heaviest scene
+/// (terrain). Some crash or load little with certain drivers: `pick_stress` measures and picks.
 pub fn stress_cmds() -> Vec<Vec<String>> {
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<String>>();
     let mut v = vec![];
@@ -266,12 +267,12 @@ pub fn stress_cmds() -> Vec<Vec<String>> {
     v
 }
 
-/// Algum programa de carga instalado?
+/// Is any load program installed?
 pub fn stress_cmd() -> Option<Vec<String>> {
     stress_cmds().into_iter().next()
 }
 
-/// Clock atual do núcleo (MHz).
+/// Current core clock (MHz).
 fn clock_now(g: &Gpu) -> Option<f64> {
     if g.is_nvidia() {
         return crate::nvctl::get(&g.pci).and_then(|n| n.clock_mhz);
@@ -296,7 +297,7 @@ fn clock_now(g: &Gpu) -> Option<f64> {
         .and_then(crate::gpuctl::plausible_clock)
 }
 
-/// Acha o programa de carga que mais puxa esta placa (cada um roda 8 s).
+/// Finds the load program that pushes this card hardest (each one runs 8 s).
 fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Vec<String>, String> {
     let env = stress_env(g, topo);
     let cands = stress_cmds();
@@ -334,7 +335,7 @@ fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Ve
                 ok = st.success();
                 break;
             }
-            // mede depois de esquentar
+            // measure after warming up
             if t0.elapsed() >= Duration::from_secs(4) {
                 util = util.max(g.busy_percent().unwrap_or(0));
                 clock = clock_now(g).or(clock);
@@ -359,7 +360,7 @@ fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Ve
         if best.as_ref().is_none_or(|(u, _)| util > *u) {
             best = Some((util, c));
         }
-        // já puxa a placa toda: não precisa testar os outros
+        // already loads the whole card: no need to test the others
         if util >= 97 {
             break;
         }
@@ -386,7 +387,7 @@ fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Ve
     Ok(c)
 }
 
-/// Médias de um passo que aguentou.
+/// Averages of a step that held.
 #[derive(Debug, Clone, Default)]
 pub struct StepStats {
     pub clock_mhz: Option<f64>,
@@ -417,7 +418,7 @@ fn stress_env(g: &Gpu, topo: &Topology) -> Vec<(String, String)> {
     crate::decide::env_for_gpu(g, topo)
 }
 
-/// Roda a carga por `secs`. Ok (com as médias) se aguentou; Err com o motivo se caiu ou o kernel reclamou.
+/// Runs the load for `secs`. Ok (with the averages) if it held; Err with the reason if it crashed or the kernel complained.
 fn stress(
     g: &Gpu,
     topo: &Topology,
@@ -449,7 +450,7 @@ fn stress(
             break Err(crate::i18n::tr("interrupted").into());
         }
         if let Ok(Some(st)) = ch.try_wait() {
-            // terminou a rodada normalmente: começa outra
+            // the round finished normally: start another
             if st.success() {
                 ch = match spawn() {
                     Ok(c) => c,
@@ -458,7 +459,7 @@ fn stress(
             } else if crashes == 0
                 && gpu_errors(&kernel_log_since(since), &g.pci, g.is_nvidia()).is_empty()
             {
-                // caiu sem a placa reclamar no kernel: pode ser o programa; dá mais uma chance
+                // crashed without the card complaining in the kernel: could be the program; one more chance
                 crashes += 1;
                 out(&crate::tf!(
                     "    the test program crashed ({st}) with no card error; trying again",
@@ -572,7 +573,7 @@ pub fn run(
     let mut good = base.clone();
     let mut ok_steps = 0u32;
     let mut n = 0;
-    // Passo 0: o ponto de partida também precisa aguentar (na NVIDIA, já com o clock travado).
+    // Step 0: the starting point also has to hold (on NVIDIA, already with the clock locked).
     loop {
         let Some(c) = control_at(&base, &m, n, step) else {
             out(crate::i18n::tr("  reached the safe limit: stopping here"));
@@ -630,7 +631,7 @@ pub fn run(
             }
         }
     }
-    // Margem: volta alguns passos do último que passou.
+    // Margin: goes back a few steps from the last that passed.
     let keep = (ok_steps as i32 - opts.margin as i32).max(0);
     let mut final_c = control_at(&base, &m, keep, step).unwrap_or(good.clone());
     if keep == 0 && ok_steps == 0 {

@@ -1,15 +1,15 @@
-//! Backup e restauração de todas as configurações (para reinstalar depois de formatar).
+//! Backup and restore of all settings (to reinstall after formatting).
 //!
-//! O arquivo .tar.gz tem:
-//!   sistema/...  arquivos do sistema com o caminho absoluto (/etc, /var/lib/numapilot)
-//!   usuario/...  arquivos da sua pasta pessoal, relativos a ela
-//!   manifesto.json  versão, data, parâmetros do kernel e serviços do usuário ligados
+//! The .tar.gz file has:
+//!   sistema/...  system files with their absolute path (/etc, /var/lib/numapilot)
+//!   usuario/...  files from your home folder, relative to it
+//!   manifesto.json  version, date, kernel parameters and enabled user services
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Prefixo para as pastas do sistema (só nos testes).
+/// Prefix for the system folders (tests only).
 fn sysroot() -> PathBuf {
     std::env::var_os("NUMAPILOT_BACKUP_ROOT")
         .map(PathBuf::from)
@@ -34,7 +34,7 @@ fn system_items() -> Vec<String> {
     v
 }
 
-/// Arquivos/pastas da pasta pessoal (relativos ao HOME).
+/// Files/folders from the home folder (relative to HOME).
 const USER_ITEMS: &[&str] = &[
     ".config/gfx906-lab",
     ".config/numapilot",
@@ -44,7 +44,7 @@ const USER_ITEMS: &[&str] = &[
     ".config/systemd/user/gfx906-update.timer",
 ];
 
-/// Serviços do usuário que voltam ligados.
+/// User services that come back enabled.
 const USER_UNITS: &[&str] = &["gfx906-update.timer", "numapilot-web.service"];
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -53,10 +53,10 @@ pub struct Manifest {
     pub version: String,
     pub created: u64,
     pub hostname: String,
-    /// Parâmetros do kernel que o numapilot conhece e estavam configurados.
+    /// Kernel parameters numapilot knows that were configured.
     pub kernel_params: Vec<String>,
     pub user_units: Vec<String>,
-    /// Atalhos do menu que abrem pelo numapilot (relativos ao HOME).
+    /// Menu shortcuts that start through numapilot (relative to HOME).
     pub desktop_files: Vec<String>,
 }
 
@@ -81,7 +81,7 @@ fn home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/root"))
 }
 
-/// Parâmetros do kernel que valem guardar (os que a interface do numapilot controla).
+/// Kernel parameters worth keeping (the ones numapilot's interface controls).
 pub fn known_params(configured: &str) -> Vec<String> {
     configured
         .split_whitespace()
@@ -104,7 +104,7 @@ fn user_unit_enabled(u: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Gera o backup. `out` = arquivo ou pasta (padrão: a pasta pessoal).
+/// Creates the backup. `out` = file or folder (default: the home folder).
 pub fn create(out: Option<&Path>) -> Result<PathBuf, String> {
     let tmp = std::env::temp_dir().join(format!("numapilot-backup-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
@@ -129,7 +129,7 @@ pub fn create(out: Option<&Path>) -> Result<PathBuf, String> {
             n += 1;
         }
     }
-    // Atalhos do menu que passam pelo numapilot.
+    // Menu shortcuts routed through numapilot.
     let mut desktop_files = vec![];
     if let Ok(rd) = std::fs::read_dir(h.join(".local/share/applications")) {
         for e in rd.flatten() {
@@ -205,7 +205,7 @@ pub fn create(out: Option<&Path>) -> Result<PathBuf, String> {
     Ok(dest)
 }
 
-/// Pasta pessoal, UID e GID de quem chamou o sudo (ou do usuário atual).
+/// Home folder, UID and GID of whoever called sudo (or of the current user).
 fn target_user() -> (PathBuf, Option<(u32, u32)>) {
     if let Ok(u) = std::env::var("SUDO_USER")
         && let Ok(pw) = std::fs::read_to_string("/etc/passwd")
@@ -230,7 +230,7 @@ fn chown_one(p: &Path, uid: u32, gid: u32) {
         .status();
 }
 
-/// Restaura. Precisa de root para as pastas do sistema (use sudo).
+/// Restores. Needs root for the system folders (use sudo).
 pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Result<(), String> {
     let tmp = std::env::temp_dir().join(format!("numapilot-restore-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
@@ -286,13 +286,14 @@ pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Resu
             }
         }
     }
-    // usuário
+    // user
     let (h, owner) = target_user();
     let usr = tmp.join("usuario");
     if usr.is_dir() {
         copy_tree(&usr, &h).map_err(|e| e.to_string())?;
         if let Some((uid, gid)) = owner {
-            // Só o que veio do backup (e as pastas criadas para ele), sem mexer no resto da pasta pessoal.
+            // Only what came from the backup (and the folders created for it), without touching the rest of
+            // the home folder.
             for e in walk(&usr) {
                 let rel = e.strip_prefix(&usr).unwrap();
                 chown_one(&h.join(rel), uid, gid);
@@ -358,7 +359,7 @@ pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Resu
     Ok(())
 }
 
-/// Tudo dentro de `p`, recursivo (pastas e arquivos).
+/// Everything inside `p`, recursively (folders and files).
 fn walk(p: &Path) -> Vec<PathBuf> {
     let mut v = vec![];
     if let Ok(rd) = std::fs::read_dir(p) {
@@ -403,7 +404,7 @@ mod tests {
             home.join(".local/share/applications/outro.desktop"),
             "Exec=outro\n",
         );
-        // Variáveis de ambiente: só este teste mexe nelas (o HOME volta no fim).
+        // Environment variables: only this test touches them (HOME is restored at the end).
         let old_home = std::env::var_os("HOME");
         unsafe {
             std::env::set_var("NUMAPILOT_BACKUP_ROOT", &a);

@@ -1,10 +1,10 @@
-//! Máquina virtual Windows com uma placa de vídeo só dela (VFIO), para os jogos com anti-cheat
-//! que não rodam no Linux. O numapilot confere os requisitos, prende a placa escolhida no
-//! vfio-pci no boot (sobrevive às atualizações do kernel) e cria a VM no libvirt com os núcleos
-//! e a memória do socket da placa.
+//! Windows virtual machine with a graphics card of its own (VFIO), for the games with
+//! anti-cheat that do not run on Linux. numapilot checks the requirements, binds the chosen
+//! card to vfio-pci at boot (survives kernel updates) and creates the VM in libvirt with the
+//! cores and memory of the card's socket.
 //!
-//! Atenção: alguns anti-cheats (ex.: Vanguard, e jogos que configuram o EasyAntiCheat/BattlEye
-//! para isso) recusam máquina virtual; nesses, nem a VM resolve.
+//! Note: some anti-cheats (e.g. Vanguard, and games that configure EasyAntiCheat/BattlEye
+//! for it) refuse virtual machines; for those, not even the VM helps.
 
 use crate::topo::{Gpu, Topology};
 use crate::util::{read_trim, sys};
@@ -28,7 +28,7 @@ pub struct Check {
     pub fix: Option<String>,
 }
 
-/// Funções PCI no mesmo grupo do IOMMU (precisam ir juntas para a VM).
+/// PCI functions in the same IOMMU group (they must go to the VM together).
 pub fn iommu_group(pci: &str) -> Option<Vec<String>> {
     let g = std::fs::read_link(sys(&format!("bus/pci/devices/{pci}/iommu_group"))).ok()?;
     let name = g.file_name()?.to_string_lossy().to_string();
@@ -56,7 +56,7 @@ fn class(pci: &str) -> String {
     read_trim(sys(&format!("bus/pci/devices/{pci}/class"))).unwrap_or_default()
 }
 
-/// A placa e as funções que vão junto (o áudio HDMI da mesma placa).
+/// The card and the functions that go with it (the same card's HDMI audio).
 pub fn functions(pci: &str) -> Vec<String> {
     let slot = pci.rsplit_once('.').map(|x| x.0).unwrap_or(pci);
     let mut v: Vec<String> = std::fs::read_dir(sys("bus/pci/devices"))
@@ -74,7 +74,7 @@ pub fn functions(pci: &str) -> Vec<String> {
     v
 }
 
-/// Placas AMD com o defeito de reset (não voltam depois de desligar a VM sem o vendor-reset).
+/// AMD cards with the reset bug (they do not come back after the VM shuts down without vendor-reset).
 pub fn needs_vendor_reset(g: &Gpu) -> bool {
     g.vendor == 0x1002
         && matches!(
@@ -306,7 +306,7 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
     v
 }
 
-/// Prende a placa no vfio-pci no boot. Precisa de root e reinício.
+/// Binds the card to vfio-pci at boot. Needs root and a reboot.
 pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
         return Err(crate::i18n::tr("needs root (sudo)").into());
@@ -388,7 +388,7 @@ pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<()
     Ok(())
 }
 
-/// Devolve a placa ao Linux.
+/// Gives the card back to Linux.
 pub fn unprepare(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
         return Err(crate::i18n::tr("needs root (sudo)").into());
@@ -419,11 +419,11 @@ pub struct NewVm {
     pub disk_gb: u32,
 }
 
-/// Linha do virt-install: UEFI, TPM, CPUs e memória no socket da placa, placa e áudio dela.
+/// virt-install line: UEFI, TPM, CPUs and memory on the card's socket, the card and its audio.
 pub fn virt_install_args(topo: &Topology, g: &Gpu, vm: &NewVm) -> Vec<String> {
     let node = g.numa_node.unwrap_or(0);
     let mut cpus = topo.cpus_of(&[node]);
-    // deixa os primeiros núcleos do socket para o Linux
+    // leaves the socket's first cores for Linux
     let want = vm.cpus.min(cpus.len().saturating_sub(2)).max(2);
     let skip = cpus.len().saturating_sub(want);
     cpus = cpus.split_off(skip);

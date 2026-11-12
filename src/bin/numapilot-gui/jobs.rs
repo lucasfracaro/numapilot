@@ -1,4 +1,4 @@
-//! Comandos em segundo plano (ligar laboratório, atualizar...) com a saída visível na interface.
+//! Background commands (turn on the lab, update...) with the output visible in the interface.
 
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -22,8 +22,8 @@ impl Job {
     }
 }
 
-/// Caminho do próprio numapilot-gui. Depois de reinstalar, o processo antigo vê
-/// "/usr/bin/numapilot-gui (deleted)": usa o arquivo novo no mesmo lugar ou o do PATH.
+/// Path of numapilot-gui itself. After a reinstall, the old process sees
+/// "/usr/bin/numapilot-gui (deleted)": use the new file in the same place or the one in PATH.
 pub fn self_exe() -> String {
     std::env::current_exe()
         .ok()
@@ -37,12 +37,12 @@ pub fn self_exe() -> String {
         .unwrap_or_else(|| "numapilot-gui".into())
 }
 
-/// O binário em execução foi trocado (reinstalado) desde que o processo abriu?
+/// Has the running binary been replaced (reinstalled) since the process started?
 pub fn self_replaced() -> bool {
     std::fs::read_link("/proc/self/exe").is_ok_and(|p| p.to_string_lossy().ends_with(" (deleted)"))
 }
 
-/// Binário irmão do numapilot-gui (ex.: gfx906-rocm), ou o do PATH.
+/// Sibling binary of numapilot-gui (e.g. gfx906-rocm), or the one in PATH.
 pub fn sibling(bin: &str) -> String {
     Some(PathBuf::from(self_exe()))
         .and_then(|p| p.parent().map(|d| d.join(bin)))
@@ -51,7 +51,7 @@ pub fn sibling(bin: &str) -> String {
         .unwrap_or_else(|| bin.to_string())
 }
 
-/// Como `sibling`, mas sempre com caminho absoluto (o pkexec exige).
+/// Like `sibling`, but always with an absolute path (pkexec requires it).
 pub fn sibling_abs(bin: &str) -> String {
     let s = sibling(bin);
     if s.contains('/') {
@@ -77,7 +77,7 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
     std::thread::spawn(move || {
         let push = |s: &str| {
             if let Ok(mut o) = j.out.lock() {
-                // Tira as cores ANSI e limita o tamanho.
+                // Strips the ANSI colors and limits the size.
                 let clean: String = strip_ansi(s);
                 o.push_str(&clean);
                 o.push('\n');
@@ -140,7 +140,7 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
         }
         let _ = t.join();
         let ok = child.wait().map(|s| s.success()).unwrap_or(false);
-        // no registro: o comando e, se deu erro, o fim da saída
+        // in the log: the command and, if it failed, the end of the output
         let title = j.title.clone();
         if ok {
             numapilot::log::info(&crate::tf!(
@@ -196,7 +196,7 @@ fn strip_ansi(s: &str) -> String {
     out
 }
 
-/// Abre um programa sem prender a interface (nova sessão, sem terminal).
+/// Starts a program without tying up the interface (new session, no terminal).
 pub fn spawn_detached(argv: &[String]) -> std::io::Result<()> {
     use std::os::unix::process::CommandExt;
     let mut c = Command::new(&argv[0]);
@@ -223,7 +223,7 @@ pub fn home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
-/// Saída de um comando curto (ou vazio se falhar).
+/// Output of a short command (or empty if it fails).
 pub fn quick(argv: &[&str]) -> String {
     Command::new(argv[0])
         .args(&argv[1..])
@@ -233,7 +233,7 @@ pub fn quick(argv: &[&str]) -> String {
         .unwrap_or_default()
 }
 
-/// Abre um terminal rodando o comando (para o que pede senha ou confirmação, como o paru).
+/// Opens a terminal running the command (for what asks for a password or confirmation, like paru).
 pub fn in_terminal(cmd: &[String]) -> Result<(), String> {
     let has = |b: &str| numapilot::containers::which(b);
     let term: Vec<String> = if has("konsole") {
@@ -252,7 +252,7 @@ pub fn in_terminal(cmd: &[String]) -> Result<(), String> {
         )
         .into());
     };
-    // Roda o comando e, no fim, deixa claro que acabou: fecha com Enter.
+    // Runs the command and, at the end, makes it clear it is done: closes with Enter.
     let quoted: Vec<String> = cmd
         .iter()
         .map(|a| format!("'{}'", a.replace('\'', "'\\''")))

@@ -1,5 +1,5 @@
-//! Otimizador de FPS: testa algumas configurações num jogo (uma por vez que ele é aberto),
-//! mede com o MangoHud (FPS médio e 1% low) e mostra qual foi a melhor.
+//! FPS optimizer: tests a few configurations on a game (one each time it is started),
+//! measures with MangoHud (average FPS and 1% low) and shows which was best.
 
 use crate::profiles::Profile;
 use crate::topo::Topology;
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Estado do usuário (o `numapilot run` roda como usuário, não como root).
+/// User state (`numapilot run` runs as the user, not as root).
 pub fn user_state_dir() -> PathBuf {
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
@@ -35,7 +35,7 @@ pub fn log_dir(key: &str) -> PathBuf {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FpsResult {
     pub avg: f64,
-    /// FPS do 1% de quadros mais lentos.
+    /// FPS of the slowest 1% of frames.
     pub low1: f64,
     pub low01: f64,
     pub frames: usize,
@@ -43,7 +43,7 @@ pub struct FpsResult {
 }
 
 impl FpsResult {
-    /// Nota usada para escolher a melhor: valoriza o 1% low (travadinhas) mais que a média.
+    /// Score used to pick the best: values the 1% low (stutter) more than the average.
     pub fn score(&self) -> f64 {
         0.4 * self.avg + 0.6 * self.low1
     }
@@ -64,7 +64,7 @@ pub struct Session {
     pub variants: Vec<Variant>,
     pub next: usize,
     pub started: u64,
-    /// Quanto tempo medir em cada abertura (s).
+    /// How long to measure on each launch (s).
     #[serde(default = "dur")]
     pub seconds: u32,
 }
@@ -127,7 +127,7 @@ impl Tuner {
     }
 }
 
-/// Configurações a testar, a partir do perfil atual do programa.
+/// Configurations to test, starting from the program's current profile.
 pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
     let mut b = base.clone();
     if b.usage == "auto" {
@@ -219,7 +219,7 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
         w.profile.memory = "auto".into();
         v.push(w);
     }
-    // GPUs alternativas (mesma CPU que a primeira configuração).
+    // Alternative GPUs (same CPU as the first configuration).
     if b.usage == "graphics" {
         for g in &topo.gpus {
             if g.alias == b.gpu || g.render.is_none() {
@@ -243,7 +243,7 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
     v
 }
 
-/// Variáveis para o MangoHud gravar um CSV com o tempo de cada quadro.
+/// Variables for MangoHud to write a CSV with each frame's time.
 pub fn mangohud_env(key: &str, seconds: u32) -> Vec<(String, String)> {
     let dir = log_dir(key);
     let _ = std::fs::create_dir_all(&dir);
@@ -278,7 +278,7 @@ pub fn newest_csv(dir: &Path, since: u64) -> Option<PathBuf> {
         .map(|(_, p)| p)
 }
 
-/// Lê o CSV do MangoHud (linhas de sistema, depois o cabeçalho "fps,frametime,...").
+/// Reads MangoHud's CSV (system lines, then the "fps,frametime,..." header).
 pub fn parse_csv(text: &str) -> Option<FpsResult> {
     let mut lines = text.lines();
     let header = lines
@@ -295,7 +295,7 @@ pub fn parse_csv(text: &str) -> Option<FpsResult> {
     }
     let total_ms: f64 = ft.iter().sum();
     let avg = ft.len() as f64 * 1000.0 / total_ms;
-    ft.sort_by(|a, b| b.total_cmp(a)); // mais lentos primeiro
+    ft.sort_by(|a, b| b.total_cmp(a)); // slowest first
     let low = |frac: f64| {
         let n = ((ft.len() as f64 * frac).ceil() as usize).max(1);
         let m: f64 = ft[..n].iter().sum::<f64>() / n as f64;

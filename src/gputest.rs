@@ -1,6 +1,6 @@
-//! Conferir a escolha de placa: roda o `vulkaninfo`/`glxinfo` com o mesmo ambiente que um jogo
-//! receberia e vê qual placa respondeu. Também descobre o nome Vulkan de cada placa, usado no
-//! filtro do DXVK/VKD3D (DirectX 8–12) como reserva para quando o seletor do Mesa não está ativo.
+//! Checking the card choice: runs `vulkaninfo`/`glxinfo` with the same environment a game would
+//! get and sees which card answered. Also finds each card's Vulkan name, used in the
+//! DXVK/VKD3D filter (DirectX 8–12) as a fallback for when Mesa's selector is not active.
 
 use crate::containers::which;
 use crate::topo::{Gpu, Topology};
@@ -16,7 +16,7 @@ pub struct VkDev {
     pub name: String,
 }
 
-/// Lê os dispositivos do `vulkaninfo --summary`, na ordem em que o Vulkan os entrega.
+/// Reads the devices from `vulkaninfo --summary`, in the order Vulkan returns them.
 pub fn parse_vk_summary(t: &str) -> Vec<VkDev> {
     let mut v = vec![];
     let (mut ven, mut dev) = (None, None);
@@ -43,7 +43,7 @@ pub fn parse_vk_summary(t: &str) -> Vec<VkDev> {
     v
 }
 
-/// Placa que o OpenGL usou, pelo `glxinfo -B`: (id do dispositivo se o Mesa informar, nome).
+/// Card OpenGL used, from `glxinfo -B`: (device id if Mesa reports it, name).
 pub fn parse_glxinfo(t: &str) -> Option<(Option<u16>, String)> {
     let line = |k: &str| {
         t.lines()
@@ -59,8 +59,9 @@ pub fn parse_glxinfo(t: &str) -> Option<(Option<u16>, String)> {
     line("OpenGL renderer string:").map(|r| (None, r))
 }
 
-/// Parte estável do nome Vulkan ("AMD Radeon RX 470 Graphics (RADV POLARIS10)" → sem o parêntese):
-/// o DXVK compara por trecho do nome, e o que vem entre parênteses muda com a versão do driver.
+/// Stable part of the Vulkan name ("AMD Radeon RX 470 Graphics (RADV POLARIS10)" → without the
+/// parenthesis): DXVK matches by a piece of the name, and what is in parentheses changes with
+/// the driver version.
 pub fn filter_name(vk_name: &str) -> String {
     vk_name
         .split(" (")
@@ -85,7 +86,7 @@ fn run_env(argv: &[&str], set: &[(String, String)], unset: &[String]) -> Option<
 
 #[derive(Serialize, Deserialize, Default)]
 struct Cache {
-    /// mtime da pasta dos drivers Vulkan quando os nomes foram lidos
+    /// mtime of the Vulkan drivers folder when the names were read
     icd_stamp: u64,
     at: u64,
     names: HashMap<String, String>,
@@ -110,8 +111,8 @@ fn icd_stamp() -> u64 {
         .unwrap_or(0)
 }
 
-/// Nome Vulkan desta placa com o ambiente dado, para o filtro do DXVK/VKD3D. Guarda por um dia
-/// (ou até os drivers Vulkan instalados mudarem). None se não der para saber com certeza.
+/// Vulkan name of this card with the given environment, for the DXVK/VKD3D filter. Cached for a
+/// day (or until the installed Vulkan drivers change). None if it cannot be known for sure.
 pub fn vk_name_for(g: &Gpu, set: &[(String, String)], unset: &[String]) -> Option<String> {
     if !which("vulkaninfo") {
         return None;
@@ -164,9 +165,9 @@ pub struct Line {
     pub detail: String,
 }
 
-/// Julga a saída do vulkaninfo para a placa pedida.
+/// Judges the vulkaninfo output for the requested card.
 pub fn judge_vulkan(g: &Gpu, same_model: usize, out: &str) -> Line {
-    // o renderizador por software (llvmpipe, vendorID 0x10005) não cabe em 16 bits e fica de fora
+    // the software renderer (llvmpipe, vendorID 0x10005) does not fit in 16 bits and is left out
     let devs: Vec<VkDev> = parse_vk_summary(out);
     let (verdict, detail) = match devs.first() {
         None => (
@@ -212,7 +213,7 @@ pub fn judge_vulkan(g: &Gpu, same_model: usize, out: &str) -> Line {
     }
 }
 
-/// Julga a saída do glxinfo -B.
+/// Judges the glxinfo -B output.
 pub fn judge_gl(g: &Gpu, out: &str) -> Line {
     let (verdict, detail) = match parse_glxinfo(out) {
         None => (
@@ -246,7 +247,7 @@ pub fn judge_gl(g: &Gpu, out: &str) -> Line {
     }
 }
 
-/// Testa a escolha desta placa com o ambiente que o `numapilot run --gpu` monta.
+/// Tests this card's choice with the environment `numapilot run --gpu` builds.
 pub fn test(g: &Gpu, topo: &Topology, set: &[(String, String)], unset: &[String]) -> Vec<Line> {
     let mut v = vec![];
     let same = topo

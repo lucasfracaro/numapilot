@@ -1,4 +1,4 @@
-//! `numapilot doctor`: testa cada parte no hardware real e diz o que corrigir.
+//! `numapilot doctor`: tests each part on the real hardware and says what to fix.
 
 use crate::config::Config;
 use crate::containers::which;
@@ -155,7 +155,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             )),
         );
     }
-    // ---- NVIDIA e notebook ----
+    // ---- NVIDIA and laptop ----
     if topo.gpus.iter().any(|g| g.is_nvidia()) {
         let st = crate::driver::status(&topo);
         match (&st.loaded, &st.installed) {
@@ -275,7 +275,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                             );
                         }
                     }
-                    // KDE: o KWin (e o Xwayland) abrem todas as placas; dá para limitar à integrada
+                    // KDE: KWin (and Xwayland) open every card; it can be limited to the integrated one
                     let kde = std::env::var("XDG_CURRENT_DESKTOP")
                         .unwrap_or_default()
                         .contains("KDE");
@@ -316,7 +316,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 }
             }
         }
-        // acer_wmi com predator_v4=1: perfis (incluindo Turbo) e leitura das ventoinhas
+        // acer_wmi with predator_v4=1: profiles (including Turbo) and fan readings
         if crate::acer::is_acer() {
             let pv4 =
                 crate::util::read_trim(crate::util::sys("module/acer_wmi/parameters/predator_v4"));
@@ -345,7 +345,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 );
             }
         }
-        // Programas que disputam ventoinha/energia com o numapilot
+        // Programs that compete with numapilot for fan/power control
         let mut rivals: Vec<String> = vec![];
         if let Ok(rd) = std::fs::read_dir("/proc") {
             for e in rd.flatten() {
@@ -547,7 +547,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             );
         }
     }
-    // ---- placas especiais e receitas da comunidade ----
+    // ---- special boards and community recipes ----
     let rec = crate::recipes::load();
     for (b, g) in rec.boards(&topo) {
         let area = b.name.clone();
@@ -754,7 +754,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             None,
         );
     }
-    // ---- interrupções no socket certo ----
+    // ---- interrupts on the right socket ----
     if topo.nodes.len() > 1 {
         let devs = crate::irqs::devices();
         if !devs.is_empty() {
@@ -793,7 +793,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             );
         }
     }
-    // ---- saúde do hardware ----
+    // ---- hardware health ----
     let rep = if crate::util::is_root() {
         Some(crate::health::collect(&topo))
     } else {
@@ -1011,7 +1011,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         );
     }
 
-    // ---- serviço ----
+    // ---- service ----
     let fresh = std::fs::metadata(crate::daemon::state_path())
         .and_then(|m| m.modified())
         .ok()
@@ -1170,15 +1170,15 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             }
         }
         let s = gpuctl::read_sensors(&g.pci);
-        // integrada e placa de notebook: ventoinha e potência são do próprio notebook
+        // integrated and laptop cards: fan and power belong to the laptop itself
         let laptop = crate::notebook::is_laptop();
         let soft = if g.is_integrated() || laptop {
             Level::Info
         } else {
             Level::Warn
         };
-        // RDNA3/RDNA4: o pwm1 é só leitura; o controle é a curva do firmware em
-        // gpu_od/fan_ctrl, que só existe com o OverDrive ligado
+        // RDNA3/RDNA4: pwm1 is read-only; control is the firmware curve in
+        // gpu_od/fan_ctrl, which only exists with OverDrive on
         let fan_ok = s.fan_controllable || s.fw_fan_curve;
         let od_off_fan = !fan_ok
             && g.vendor == 0x1002
@@ -1370,7 +1370,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         }
     }
 
-    // ---- ROCm / permissões ----
+    // ---- ROCm / permissions ----
     let groups = out(&["id", "-nG"], &[]).unwrap_or_default();
     let has_compute = topo
         .gpus
@@ -1520,7 +1520,7 @@ pub fn print(checks: &[Check]) {
     );
 }
 
-/// Relatório completo para enviar (diagnóstico + topologia + sistema).
+/// Full report to send (diagnosis + topology + system).
 pub fn report(checks: &[Check]) -> String {
     let mut s = String::from("# numapilot — diagnosis report\n\n");
     s.push_str(&crate::tf!(

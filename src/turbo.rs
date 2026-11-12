@@ -1,16 +1,16 @@
-//! Turbo por núcleos acordados (Intel): o processador sobe mais o clock quando poucos núcleos
-//! estão acordados. A tabela (quantos núcleos → frequência máxima) vem dos registradores
-//! MSR_TURBO_RATIO_LIMIT, lidos pelo serviço (root); os núcleos acordados são estimados pelo
-//! tempo em estados de economia profundos (cpuidle), que qualquer usuário lê.
+//! Turbo by awake cores (Intel): the processor raises the clock more when few cores are
+//! awake. The table (how many cores → maximum frequency) comes from the
+//! MSR_TURBO_RATIO_LIMIT registers, read by the service (root); the awake cores are estimated
+//! from the time in deep idle states (cpuidle), which any user can read.
 
 use crate::util::{read_trim, sys};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-/// (até N núcleos acordados, MHz), em ordem crescente de N.
+/// (up to N cores awake, MHz), in ascending order of N.
 pub type Table = Vec<(u32, u32)>;
 
-/// (fabricante Intel?, família, modelo) do /proc/cpuinfo.
+/// (Intel vendor?, family, model) from /proc/cpuinfo.
 pub fn cpu_ids() -> (bool, u32, u32) {
     let t = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
     let get = |k: &str| {
@@ -34,11 +34,11 @@ fn read_msr(cpu: usize, reg: u64) -> Option<u64> {
     Some(u64::from_le_bytes(b))
 }
 
-/// Monta a tabela a partir dos três registradores (0x1AD, 0x1AE, 0x1AF), conforme o modelo.
-/// - Ivy Bridge/Haswell/Broadwell de servidor (E5/E7 v2–v4): cada byte é a razão para 1, 2, 3...
-///   núcleos (0x1AD: 1–8, 0x1AE: 9–16, 0x1AF: 17–24; o último byte válido vale para o resto).
-/// - Skylake de servidor em diante: 0x1AD traz 8 razões e 0x1AE o nº de núcleos de cada grupo.
-/// - Demais (desktop/notebook): só 0x1AD, razões para 1–8 núcleos.
+/// Builds the table from the three registers (0x1AD, 0x1AE, 0x1AF), depending on the model.
+/// - Server Ivy Bridge/Haswell/Broadwell (E5/E7 v2–v4): each byte is the ratio for 1, 2, 3...
+///   cores (0x1AD: 1–8, 0x1AE: 9–16, 0x1AF: 17–24; the last valid byte applies to the rest).
+/// - Server Skylake onwards: 0x1AD holds 8 ratios and 0x1AE the core count of each group.
+/// - Others (desktop/laptop): only 0x1AD, ratios for 1–8 cores.
 pub fn decode(model: u32, m1ad: u64, m1ae: Option<u64>, m1af: Option<u64>, cores: u32) -> Table {
     let bytes = |v: u64| (0..8).map(move |i| ((v >> (i * 8)) & 0xff) as u32);
     let mut t: Table = vec![];
@@ -57,7 +57,7 @@ pub fn decode(model: u32, m1ad: u64, m1ae: Option<u64>, m1af: Option<u64>, cores
                 ratios.extend(bytes(v));
             }
             if let Some(v) = m1af {
-                // o bit 63 é um semáforo, não faz parte da razão
+                // bit 63 is a semaphore, not part of the ratio
                 ratios.extend(bytes(v & !(1 << 63)));
             }
         }
@@ -68,7 +68,7 @@ pub fn decode(model: u32, m1ad: u64, m1ae: Option<u64>, m1af: Option<u64>, cores
             t.push((i as u32 + 1, r * 100));
         }
     }
-    // junta degraus seguidos com a mesma frequência e estende o último até o total de núcleos
+    // merges consecutive steps with the same frequency and extends the last one to the core total
     let mut out: Table = vec![];
     for (n, mhz) in t {
         if n > cores && out.last().is_some_and(|l| l.0 >= cores) {
@@ -87,8 +87,8 @@ pub fn decode(model: u32, m1ad: u64, m1ae: Option<u64>, m1af: Option<u64>, cores
     out
 }
 
-/// Tabela de cada processador (pacote → tabela). Precisa de root; vazia se não for Intel ou
-/// não der para ler os MSRs. Lida uma vez.
+/// Table of each processor (package → table). Needs root; empty if not Intel or the MSRs
+/// cannot be read. Read once.
 pub fn tables(topo: &crate::topo::Topology) -> &'static BTreeMap<u32, Table> {
     static T: OnceLock<BTreeMap<u32, Table>> = OnceLock::new();
     T.get_or_init(|| {
@@ -117,7 +117,7 @@ pub fn tables(topo: &crate::topo::Topology) -> &'static BTreeMap<u32, Table> {
     })
 }
 
-/// Frequência máxima com `awake` núcleos acordados.
+/// Maximum frequency with `awake` cores awake.
 pub fn limit_for(t: &Table, awake: f32) -> Option<u32> {
     let n = awake.ceil().max(1.0) as u32;
     t.iter()
@@ -147,7 +147,7 @@ fn deep_name(name: &str) -> bool {
     !(n == "POLL" || n.starts_with("C1") || n.starts_with("C0"))
 }
 
-/// Tempo acumulado (µs) de cada CPU em estados profundos (tudo além de C1/C1E).
+/// Accumulated time (µs) of each CPU in deep states (everything beyond C1/C1E).
 pub fn deep_time(cpus: &[usize]) -> BTreeMap<usize, u64> {
     let mut m = BTreeMap::new();
     for &c in cpus {
@@ -168,7 +168,7 @@ pub fn deep_time(cpus: &[usize]) -> BTreeMap<usize, u64> {
     m
 }
 
-/// Existe algum estado profundo e ele está ligado? None: sem cpuidle (VM, BC-250).
+/// Is there any deep state and is it enabled? None: no cpuidle (VM, BC-250).
 pub fn deep_enabled(cpu: usize) -> Option<bool> {
     let mut any = None;
     for i in 0..12 {
@@ -184,8 +184,8 @@ pub fn deep_enabled(cpu: usize) -> Option<bool> {
     any
 }
 
-/// Núcleos acordados em média no intervalo: um núcleo dorme só quando os dois threads dele
-/// estão num estado profundo, então vale o thread que dormiu menos.
+/// Cores awake on average over the interval: a core sleeps only when both of its threads
+/// are in a deep state, so the thread that slept less is what counts.
 pub fn awake_cores(
     prev: &BTreeMap<usize, u64>,
     cur: &BTreeMap<usize, u64>,
@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn broadwell_ep() {
-        // E5-2696 v4 (22 núcleos): 37 37 35 34 34 34 34 34 | 33 x8 | 32 32 31 30 29 28 ...
+        // E5-2696 v4 (22 cores): 37 37 35 34 34 34 34 34 | 33 x8 | 32 32 31 30 29 28 ...
         let a = u64::from_le_bytes([37, 37, 35, 34, 34, 34, 34, 34]);
         let b = u64::from_le_bytes([33; 8]);
         let c = u64::from_le_bytes([32, 32, 31, 30, 29, 28, 28, 0x80]);
@@ -241,7 +241,7 @@ mod tests {
         let t = decode(0x55, ratios, Some(groups), None, 28);
         assert_eq!(t.first(), Some(&(2, 4000)));
         assert_eq!(t.last(), Some(&(28, 3000)));
-        // desktop de 4 núcleos: bytes além do 4º vêm repetidos ou zerados
+        // 4-core desktop: bytes beyond the 4th come repeated or zeroed
         let t = decode(
             0x9e,
             u64::from_le_bytes([45, 44, 43, 42, 0, 0, 0, 0]),
@@ -255,8 +255,8 @@ mod tests {
     #[test]
     fn awake() {
         let prev: BTreeMap<usize, u64> = [(0, 0), (1, 0), (2, 0), (3, 0)].into();
-        // núcleo A (cpus 0,2): um thread dormiu 90%, o outro 10% → acordado 90%
-        // núcleo B (cpus 1,3): os dois dormiram 100% → acordado 0
+        // core A (cpus 0,2): one thread slept 90%, the other 10% → awake 90%
+        // core B (cpus 1,3): both slept 100% → awake 0
         let cur: BTreeMap<usize, u64> =
             [(0, 900_000), (2, 100_000), (1, 1_000_000), (3, 1_000_000)].into();
         let a = awake_cores(&prev, &cur, 1_000_000.0, &[vec![0, 2], vec![1, 3]]);

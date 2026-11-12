@@ -1,4 +1,4 @@
-//! Memória do que o modo automático aprendeu sobre cada programa.
+//! Memory of what automatic mode learned about each program.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -19,12 +19,12 @@ pub fn run_dir() -> PathBuf {
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Entry {
-    /// Ganhou mais desempenho usando os dois sockets.
+    /// Got more performance using both sockets.
     pub wide: bool,
-    /// Maior fração de um nó já usada.
+    /// Largest fraction of a node ever used.
     pub peak_frac: f64,
     pub runs: u32,
-    /// Nó da GPU que o programa usou.
+    /// Node of the GPU the program used.
     pub gpu_node: Option<usize>,
     pub last_seen: u64,
 }

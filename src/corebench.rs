@@ -1,8 +1,8 @@
-//! Latência do cache por núcleo: mede, em cada núcleo físico, o tempo de um acesso que cai no
-//! cache L3 (fora do L1/L2 do próprio núcleo), e monta uma ordem do mais rápido ao mais lento.
-//! Em processadores com muitos núcleos a posição no anel do L3 muda um pouco esse tempo; em
-//! outros (núcleos preferidos da AMD, P/E da Intel) a diferença é maior. A ordem só é usada na
-//! escolha de núcleos quando a diferença medida é maior que o ruído da própria medição.
+//! Cache latency per core: measures, on each physical core, the time of an access that lands in
+//! the L3 cache (outside the core's own L1/L2), and builds an order from fastest to slowest.
+//! On processors with many cores the position on the L3 ring changes this time a little; on
+//! others (AMD preferred cores, Intel P/E) the difference is larger. The order is only used for
+//! choosing cores when the measured difference is larger than the measurement's own noise.
 
 use crate::topo::Topology;
 use serde::{Deserialize, Serialize};
@@ -13,16 +13,16 @@ use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct CoreRank {
-    /// primeiro CPU do núcleo → nanossegundos por acesso (menor = melhor)
+    /// first CPU of the core → nanoseconds per access (lower = better)
     pub ns: BTreeMap<usize, f32>,
-    /// diferença entre o melhor e o pior núcleo, em % (o maior valor entre os processadores)
+    /// difference between the best and the worst core, in % (the largest value among the processors)
     pub spread_pct: f32,
-    /// quanto a mesma medição varia sozinha, em %
+    /// how much the same measurement varies by itself, in %
     pub noise_pct: f32,
-    /// a diferença é confiável o bastante para ordenar os núcleos?
+    /// is the difference reliable enough to order the cores?
     pub useful: bool,
     pub at: u64,
-    /// modelo do processador medido (se trocar, a medição não vale mais)
+    /// model of the measured processor (if it changes, the measurement no longer holds)
     #[serde(default)]
     pub cpu: String,
 }
@@ -39,20 +39,20 @@ fn cache_bytes(cpu: usize, index: usize) -> Option<usize> {
     Some(if s.ends_with('M') { n << 20 } else { n << 10 })
 }
 
-/// Tamanho do teste: bem maior que o L2 do núcleo, cabendo com folga no L3.
+/// Test size: much larger than the core's L2, fitting comfortably in the L3.
 pub fn test_bytes(l2: Option<usize>, l3: Option<usize>) -> usize {
     let l2 = l2.unwrap_or(512 << 10);
     let l3 = l3.unwrap_or(8 << 20);
     (l3 / 4).clamp(l2 * 4, 8 << 20).min(l3.max(l2 * 4))
 }
 
-/// Uma corrida de ponteiros aleatória no vetor (cada posição aponta para outra, num ciclo único):
-/// o processador não consegue adivinhar o próximo endereço, então cada passo custa um acesso.
+/// A random pointer chase through the vector (each position points to another, in a single
+/// cycle): the processor cannot guess the next address, so every step costs one access.
 fn chase(buf: &[u32], steps: usize) -> f32 {
     let mut i = 0u32;
     let t = Instant::now();
     for _ in 0..steps {
-        // cada elemento ocupa uma linha de cache (16 × u32 = 64 bytes)
+        // each element takes one cache line (16 × u32 = 64 bytes)
         i = buf[(i as usize) << 4];
     }
     let ns = t.elapsed().as_nanos() as f32 / steps as f32;
@@ -60,7 +60,7 @@ fn chase(buf: &[u32], steps: usize) -> f32 {
     ns
 }
 
-/// Ciclo único aleatório (Sattolo) com `lines` linhas de cache.
+/// Single random cycle (Sattolo) with `lines` cache lines.
 fn make_cycle(lines: usize) -> Vec<u32> {
     let mut perm: Vec<u32> = (0..lines as u32).collect();
     let mut x = 0x9E37_79B9_7F4A_7C15u64;
@@ -78,7 +78,7 @@ fn make_cycle(lines: usize) -> Vec<u32> {
     buf
 }
 
-/// Julga as medições: `rounds[cpu]` = tempos das rodadas daquele núcleo.
+/// Judges the measurements: `rounds[cpu]` = that core's round times.
 pub fn judge(rounds: &BTreeMap<usize, Vec<f32>>, groups: &[Vec<usize>]) -> CoreRank {
     let mut ns = BTreeMap::new();
     let mut noises = vec![];
@@ -94,7 +94,7 @@ pub fn judge(rounds: &BTreeMap<usize, Vec<f32>>, groups: &[Vec<usize>]) -> CoreR
     }
     noises.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let noise_pct = noises.get(noises.len() / 2).copied().unwrap_or(100.0);
-    // diferença dentro de cada processador (entre processadores não interessa aqui)
+    // difference within each processor (between processors does not matter here)
     let spread_pct = groups
         .iter()
         .filter_map(|g| {
@@ -114,8 +114,8 @@ pub fn judge(rounds: &BTreeMap<usize, Vec<f32>>, groups: &[Vec<usize>]) -> CoreR
     }
 }
 
-/// Mede todos os núcleos físicos (um thread de cada), em rodadas intercaladas para o
-/// aquecimento e o turbo afetarem todos por igual. Leva alguns segundos; o PC deve estar parado.
+/// Measures every physical core (one thread of each), in interleaved rounds so warm-up and
+/// turbo affect all of them equally. Takes a few seconds; the PC should be idle.
 pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, String> {
     let groups: Vec<Vec<usize>> = topo
         .nodes
@@ -144,7 +144,7 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
             if crate::procfs::set_affinity(0, &[c]).is_err() {
                 continue;
             }
-            // aquece: traz o bloco para o L3 a partir deste núcleo e acorda o clock
+            // warm-up: brings the block into the L3 from this core and wakes the clock
             chase(&buf, lines);
             rounds.entry(c).or_default().push(chase(&buf, steps));
         }
@@ -167,8 +167,8 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
 
 const ROUNDS: usize = 4;
 
-/// Ordem salva (se existir, for deste processador e a diferença for confiável). Relê quando o
-/// arquivo muda.
+/// Saved order (if it exists, is from this processor and the difference is reliable). Rereads
+/// when the file changes.
 pub fn saved() -> Option<CoreRank> {
     static CACHE: Mutex<Option<(std::time::SystemTime, Option<CoreRank>)>> = Mutex::new(None);
     if std::env::var_os("NUMAPILOT_SYSFS").is_some() {
@@ -190,7 +190,7 @@ pub fn saved() -> Option<CoreRank> {
     r
 }
 
-/// Tempo de um núcleo para ordenar (só quando a medição é confiável).
+/// A core's time for ordering (only when the measurement is reliable).
 pub fn ns_of(first_cpu: usize) -> Option<f32> {
     let r = saved()?;
     if !r.useful {
@@ -199,15 +199,15 @@ pub fn ns_of(first_cpu: usize) -> Option<f32> {
     r.ns.get(&first_cpu).copied()
 }
 
-/// Ordena núcleos (cada um com seus threads) do mais rápido ao mais lento; sem medição
-/// confiável, a ordem fica como está. Diferenças menores que 1% não mudam a ordem.
+/// Orders cores (each with its threads) from fastest to slowest; without a reliable
+/// measurement the order stays as is. Differences under 1% do not change the order.
 pub fn sort_units(units: &mut [Vec<usize>], ns: &dyn Fn(usize) -> Option<f32>) {
     let key = |u: &Vec<usize>| u.first().and_then(|c| ns(*c));
     if units.iter().any(|u| key(u).is_none()) {
         return;
     }
     let best = units.iter().filter_map(key).fold(f32::MAX, f32::min);
-    // degraus de 1% sobre o melhor: núcleos praticamente iguais mantêm a ordem original
+    // 1% steps over the best: practically equal cores keep the original order
     units.sort_by_key(|u| ((key(u).unwrap_or(best) / best - 1.0) * 100.0) as i32);
 }
 
@@ -224,7 +224,7 @@ mod tests {
         let j = judge(&r, &[vec![0, 1, 2]]);
         assert!(j.useful, "{j:?}");
         assert!((j.spread_pct - 8.0).abs() < 0.2);
-        // ruído grande: não confia
+        // large noise: not trusted
         let mut n = BTreeMap::new();
         n.insert(0, vec![10.0, 11.0]);
         n.insert(1, vec![10.3, 11.5]);
@@ -233,7 +233,7 @@ mod tests {
         let ns = |c: usize| j.ns.get(&c).copied();
         let mut u = vec![vec![1, 5], vec![0, 4], vec![2, 6]];
         sort_units(&mut u, &ns);
-        // 0 (10.0) e 2 (10.05) empatam no degrau de 1% e mantêm a ordem; 1 (10.8) vai para o fim
+        // 0 (10.0) and 2 (10.05) tie in the 1% step and keep the order; 1 (10.8) goes last
         assert_eq!(u, vec![vec![0, 4], vec![2, 6], vec![1, 5]]);
         let mut v = vec![vec![1], vec![9]];
         sort_units(&mut v, &ns);
@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn chase_runs() {
         let b = make_cycle(1024);
-        // ciclo único: depois de 1024 passos volta ao início
+        // single cycle: after 1024 steps it is back at the start
         let mut i = 0u32;
         for _ in 0..1024 {
             i = b[(i as usize) << 4];

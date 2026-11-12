@@ -1,19 +1,19 @@
-//! Atualizar o próprio numapilot: pelo pacote (AUR/pacman) ou pela pasta do código de onde o
-//! `install.sh` foi rodado (git pull + install.sh --yes).
+//! Updating numapilot itself: through the package (AUR/pacman) or through the code folder
+//! `install.sh` was run from (git pull + install.sh --yes).
 
 use std::path::PathBuf;
 use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum How {
-    /// Instalado por pacote: nome do pacote.
+    /// Installed from a package: package name.
     Package(String),
-    /// Instalado pelo install.sh a partir desta pasta (repositório git).
+    /// Installed by install.sh from this folder (git repository).
     Source(PathBuf),
     Unknown,
 }
 
-/// Como foi instalado (consultado uma vez por execução).
+/// How it was installed (looked up once per run).
 pub fn how() -> How {
     static H: std::sync::OnceLock<How> = std::sync::OnceLock::new();
     H.get_or_init(detect).clone()
@@ -39,7 +39,7 @@ fn detect() -> How {
     How::Unknown
 }
 
-/// Há commits novos no repositório? (None = não deu para saber)
+/// Are there new commits in the repository? (None = could not tell)
 pub fn source_behind(dir: &std::path::Path) -> Option<u32> {
     let ok = Command::new("git")
         .arg("-C")
@@ -60,11 +60,11 @@ pub fn source_behind(dir: &std::path::Path) -> Option<u32> {
     String::from_utf8_lossy(&o.stdout).trim().parse().ok()
 }
 
-/// Commit de onde este binário foi compilado (vazio se não foi de um repositório git).
+/// Commit this binary was built from (empty if not from a git repository).
 pub const BUILT_COMMIT: &str = env!("NUMAPILOT_COMMIT");
 
-/// Quantos commits o código da pasta tem que este binário não tem (ex.: commitado aqui e ainda
-/// não reinstalado). None = não deu para saber (binário sem commit gravado, ou commit sumiu).
+/// How many commits the folder's code has that this binary does not (e.g. committed here and
+/// not reinstalled yet). None = could not tell (binary without a recorded commit, or commit gone).
 pub fn source_ahead_of_installed(dir: &std::path::Path) -> Option<u32> {
     if BUILT_COMMIT.is_empty() {
         return None;
@@ -79,7 +79,7 @@ pub fn source_ahead_of_installed(dir: &std::path::Path) -> Option<u32> {
     String::from_utf8_lossy(&o.stdout).trim().parse().ok()
 }
 
-/// Comando que atualiza (para rodar num terminal: pede senha e mostra o progresso).
+/// Command that updates (to run in a terminal: asks for the password and shows progress).
 pub fn command() -> Result<Vec<String>, String> {
     match how() {
         How::Package(p) => {

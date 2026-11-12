@@ -1,5 +1,5 @@
-//! Ajustes do usuário para o laboratório e o servidor de IA
-//! (~/.config/gfx906-lab/settings.env, lido também pelo script gfx906-rocm).
+//! User settings for the lab and the AI server
+//! (~/.config/gfx906-lab/settings.env, also read by the gfx906-rocm script).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -46,7 +46,7 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("REGRESS_PCT", "10"),
 ];
 
-/// Lê KEY="valor" (o formato que o script também lê). Ignora o resto.
+/// Reads KEY="value" (the format the script also reads). Ignores the rest.
 pub fn parse_env(s: &str) -> BTreeMap<String, String> {
     let mut m = BTreeMap::new();
     for l in s.lines() {
@@ -102,7 +102,7 @@ impl LabSettings {
         self.values.insert(k.to_string(), v.to_string());
     }
 
-    /// Grava só as chaves que o usuário mexeu pela interface.
+    /// Writes only the keys the user changed through the interface.
     pub fn save_keys(&self, keys: &[&str]) -> std::io::Result<()> {
         let mut cur = std::fs::read_to_string(Self::path())
             .map(|s| parse_env(&s))
@@ -139,7 +139,7 @@ impl LabSettings {
     }
 }
 
-/// Modelos .gguf (só a 1ª parte dos arquivos divididos), com tamanho total em bytes.
+/// .gguf models (only the 1st part of split files), with total size in bytes.
 pub fn list_models(dir: &std::path::Path) -> Vec<(String, u64)> {
     fn walk(
         base: &std::path::Path,

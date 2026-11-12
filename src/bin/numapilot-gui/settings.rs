@@ -1,4 +1,4 @@
-//! Aba "Configurações": bandeja/início automático, atualização semanal, hardware.
+//! "Settings" tab: tray/autostart, weekly update, hardware.
 
 use crate::App;
 use crate::jobs::home;
@@ -236,7 +236,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     });
 }
 
-/// Desenha um QR code (para abrir o painel no celular apontando a câmera).
+/// Draws a QR code (to open the phone panel by pointing the camera).
 fn qr(ui: &mut egui::Ui, text: &str) {
     let Ok(code) = qrcode::QrCode::new(text.as_bytes()) else {
         return;
@@ -681,7 +681,7 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
             let _ = crate::jobs::open_url(u);
         }
     });
-    // histórico
+    // history
     let hist = std::fs::read_to_string(st.join("history.jsonl")).unwrap_or_default();
     let rows: Vec<serde_json::Value> = hist
         .lines()

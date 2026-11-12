@@ -1,4 +1,4 @@
-//! numapilot: escolhe socket NUMA, memória e GPU para cada programa.
+//! numapilot: chooses NUMA socket, memory and GPU for each program.
 pub mod acer;
 pub mod apps;
 pub mod autostart;

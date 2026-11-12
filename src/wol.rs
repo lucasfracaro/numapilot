@@ -1,6 +1,6 @@
-//! Wake-on-LAN: ligar um PC desligado pela rede (ex.: a BC-250 como Steam Machine). Este PC
-//! mostra as placas de rede com fio e liga o WoL nelas (o serviço reaplica a cada boot); o
-//! painel do outro PC manda o "pacote mágico" para o endereço MAC guardado.
+//! Wake-on-LAN: turning on a powered-off PC over the network (e.g. the BC-250 as a Steam
+//! Machine). This PC shows the wired network cards and enables WoL on them (the service
+//! reapplies it every boot); the other PC's panel sends the "magic packet" to the saved MAC.
 
 use crate::util::{read_trim, sys};
 use std::net::UdpSocket;
@@ -10,13 +10,13 @@ use std::process::Command;
 pub struct Nic {
     pub iface: String,
     pub mac: String,
-    /// "g" = acorda com pacote mágico; "d" = desligado; None = não deu para ler (sem ethtool/root).
+    /// "g" = wakes on magic packet; "d" = off; None = could not be read (no ethtool/root).
     pub wol: Option<String>,
     pub supports: Option<String>,
     pub up: bool,
 }
 
-/// Placas de rede com fio de verdade (têm dispositivo; não são ponte, VPN ou wifi).
+/// Real wired network cards (they have a device; not a bridge, VPN or wifi).
 pub fn nics() -> Vec<Nic> {
     let Ok(rd) = std::fs::read_dir(sys("class/net")) else {
         return vec![];
@@ -73,7 +73,7 @@ fn ethtool_wol(iface: &str) -> (Option<String>, Option<String>) {
         .unwrap_or((None, None))
 }
 
-/// Liga o WoL (pacote mágico) na placa. Precisa de root (o serviço faz).
+/// Enables WoL (magic packet) on the card. Needs root (the service does it).
 pub fn enable(iface: &str) -> Result<(), String> {
     if !iface
         .chars()
@@ -91,7 +91,7 @@ pub fn enable(iface: &str) -> Result<(), String> {
             String::from_utf8_lossy(&o.stderr).trim()
         ));
     }
-    // NetworkManager: guarda na conexão para ele não desligar de novo.
+    // NetworkManager: stores it in the connection so it does not turn it off again.
     if let Ok(o) = Command::new("nmcli")
         .args(["-g", "NAME,DEVICE", "con", "show", "--active"])
         .output()
@@ -133,8 +133,8 @@ pub fn magic_packet(mac: [u8; 6]) -> Vec<u8> {
     v
 }
 
-/// Manda o pacote mágico para a rede local (broadcast, portas 9 e 7) e, se souber, para o
-/// broadcast da sub-rede do IP do outro PC.
+/// Sends the magic packet to the local network (broadcast, ports 9 and 7) and, if known, to the
+/// broadcast of the other PC's IP subnet.
 pub fn wake(mac: &str, ip_hint: Option<&str>) -> Result<(), String> {
     let m =
         parse_mac(mac).ok_or_else(|| crate::tf!("invalid MAC: {mac}", "MAC inválido: {mac}"))?;

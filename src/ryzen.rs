@@ -1,6 +1,6 @@
-//! Limites de potência do Ryzen de notebook (e APUs) pelo ryzenadj: STAPM (sustentado),
-//! PPT rápido e lento, e o limite de temperatura. É o equivalente do PL1/PL2 da Intel;
-//! o RAPL do Ryzen só mede, não limita.
+//! Power limits of laptop Ryzens (and APUs) through ryzenadj: STAPM (sustained),
+//! fast and slow PPT, and the temperature limit. It is the equivalent of Intel's PL1/PL2;
+//! Ryzen's RAPL only measures, it does not limit.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -9,13 +9,13 @@ use std::process::Command;
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Limits {
-    /// Sustentado (STAPM), W.
+    /// Sustained (STAPM), W.
     pub stapm_w: Option<f64>,
-    /// Picos curtos (PPT rápido), W.
+    /// Short peaks (fast PPT), W.
     pub fast_w: Option<f64>,
-    /// Média de alguns segundos (PPT lento), W.
+    /// Average over a few seconds (slow PPT), W.
     pub slow_w: Option<f64>,
-    /// Temperatura máxima (Tctl), °C.
+    /// Maximum temperature (Tctl), °C.
     pub tctl_c: Option<f64>,
 }
 
@@ -50,7 +50,7 @@ impl Limits {
         Ok(())
     }
 
-    /// Junta: o que está em `self`, senão o de `base`.
+    /// Merge: what is in `self`, otherwise what is in `base`.
     pub fn or(&self, base: &Limits) -> Limits {
         Limits {
             stapm_w: self.stapm_w.or(base.stapm_w),
@@ -60,7 +60,7 @@ impl Limits {
         }
     }
 
-    /// Diferença relevante (meio watt / meio grau) entre o pedido e o lido.
+    /// Relevant difference (half a watt / half a degree) between what was asked and what was read.
     pub fn differs(&self, now: &Limits) -> bool {
         let d = |a: Option<f64>, b: Option<f64>| matches!((a, b), (Some(a), Some(b)) if (a - b).abs() > 0.5);
         d(self.stapm_w, now.stapm_w)
@@ -78,14 +78,14 @@ pub fn available() -> bool {
     std::env::var_os("NUMAPILOT_RYZENADJ").is_some() || crate::containers::which("ryzenadj")
 }
 
-/// Só faz sentido em Ryzen de notebook/APU (o ryzenadj não mexe em Ryzen de desktop nem em EPYC).
+/// Only makes sense on laptop/APU Ryzens (ryzenadj does not touch desktop Ryzens or EPYC).
 pub fn applicable() -> bool {
     let m = crate::recipes::cpu_model();
     m.contains("AMD")
         && (crate::notebook::is_laptop() || m.contains("with Radeon") || m.contains("APU"))
 }
 
-/// Tabela do `ryzenadj -i`: "| STAPM LIMIT | 45.000 | stapm-limit |" -> nome -> valor.
+/// `ryzenadj -i` table: "| STAPM LIMIT | 45.000 | stapm-limit |" -> name -> value.
 pub fn parse_info(s: &str) -> BTreeMap<String, f64> {
     let mut m = BTreeMap::new();
     for l in s.lines() {
@@ -113,7 +113,7 @@ pub fn limits_from(info: &BTreeMap<String, f64>) -> Limits {
     }
 }
 
-/// Lê a tabela (precisa de root; usa o módulo ryzen_smu ou /dev/mem).
+/// Reads the table (needs root; uses the ryzen_smu module or /dev/mem).
 pub fn info() -> Result<BTreeMap<String, f64>, String> {
     let o = Command::new(bin())
         .arg("-i")

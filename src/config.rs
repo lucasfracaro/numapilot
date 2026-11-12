@@ -1,4 +1,4 @@
-//! Configuração em /etc/numapilot.toml (regras manuais e parâmetros do modo automático).
+//! Configuration in /etc/numapilot.toml (manual rules and automatic-mode parameters).
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
@@ -11,13 +11,13 @@ pub const DEFAULT_PATH: &str = "/etc/numapilot.toml";
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub daemon: DaemonCfg,
-    /// PCI -> apelido. Ex.: "0000:03:00.0" = "rx470"
+    /// PCI -> alias. E.g.: "0000:03:00.0" = "rx470"
     pub aliases: HashMap<String, String>,
-    /// PCI -> nó NUMA, para quando o firmware não informa.
+    /// PCI -> NUMA node, for when the firmware does not report it.
     pub gpu_node: HashMap<String, usize>,
-    /// GPU padrão para jogos/gráficos no automático (apelido ou PCI). Vazio = a que tem monitor.
+    /// Default GPU for games/graphics on automatic (alias or PCI). Empty = the one with the monitor.
     pub graphics_gpu: Option<String>,
-    /// Programas que, no automático, vão para GPU de computação (ROCm).
+    /// Programs that, on automatic, go to a compute GPU (ROCm).
     pub compute_hints: Vec<String>,
     #[serde(rename = "rule")]
     pub rules: Vec<Rule>,
@@ -26,31 +26,31 @@ pub struct Config {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default, deny_unknown_fields)]
 pub struct DaemonCfg {
-    /// Intervalo entre amostras (ms).
+    /// Interval between samples (ms).
     pub tick_ms: u64,
-    /// Só gerencia processos de usuários com UID >= este valor.
+    /// Only manages processes of users with UID >= this value.
     pub min_uid: u32,
-    /// A partir de quantos núcleos em uso um processo passa a ser posicionado.
+    /// From how many cores in use a process starts being placed.
     pub watch_cores: f64,
-    /// Quantas amostras seguidas acima de `watch_cores` antes de posicionar.
+    /// How many samples in a row above `watch_cores` before placing.
     pub watch_ticks: u32,
-    /// Fração dos CPUs do nó em uso que dispara a expansão para todos os sockets.
+    /// Fraction of the node's CPUs in use that triggers expansion to all sockets.
     pub promote_frac: f64,
     pub promote_ticks: u32,
-    /// Abaixo desta fração por `demote_ticks` amostras, volta para um socket só.
+    /// Below this fraction for `demote_ticks` samples, goes back to a single socket.
     pub demote_frac: f64,
     pub demote_ticks: u32,
-    /// Migrar a memória já alocada para o nó escolhido.
+    /// Migrate the memory already allocated to the chosen node.
     pub migrate_memory: bool,
-    /// Processos que o daemon nunca toca.
+    /// Processes the daemon never touches.
     pub ignore: Vec<String>,
-    /// Interrupções de cada GPU atendidas pelo socket onde ela está ligada.
+    /// Each GPU's interrupts handled by the socket it is connected to.
     pub gpu_irq: bool,
-    /// O mesmo para discos NVMe e placas de rede.
+    /// The same for NVMe disks and network cards.
     pub device_irq: bool,
-    /// Grupos que podem mudar a máquina inteira pelo serviço (modos, ventoinhas, clock e
-    /// voltagem das placas, avisos). Escolhas por programa continuam valendo para qualquer
-    /// usuário, só nos processos dele. `["*"]` libera para todos os usuários.
+    /// Groups that may change the whole machine through the service (modes, fans, card clock and
+    /// voltage, notifications). Per-program choices still work for any user, only on their own
+    /// processes. `["*"]` allows every user.
     pub admin_groups: Vec<String>,
 }
 
@@ -78,19 +78,19 @@ impl Default for DaemonCfg {
 #[serde(default, deny_unknown_fields)]
 pub struct Rule {
     pub name: Option<String>,
-    /// Globs comparados com o nome do processo, o executável e os primeiros argumentos.
+    /// Globs matched against the process name, the executable and the first arguments.
     #[serde(rename = "match")]
     pub patterns: Vec<String>,
     /// "auto" | "all" | "gpu" | "0" | "1" | "0,1" | "cpus:0-21"
     pub cpu: String,
-    /// "auto" | "display" | "compute" | "compute:all" | "none" | apelido | PCI (lista com vírgula)
+    /// "auto" | "display" | "compute" | "compute:all" | "none" | alias | PCI (comma-separated list)
     pub gpu: String,
-    /// "auto" | "graphics" | "compute": como usar a GPU (ex.: jogar numa MI50 = graphics)
+    /// "auto" | "graphics" | "compute": how to use the GPU (e.g. gaming on an MI50 = graphics)
     #[serde(rename = "use")]
     pub usage: String,
     /// "local" | "interleave" | "bind"
     pub mem: String,
-    /// Enquanto este programa roda, o automático evita colocar outros processos no mesmo nó.
+    /// While this program runs, automatic mode avoids placing other processes on the same node.
     pub reserve: bool,
 }
 
@@ -208,7 +208,7 @@ impl Config {
 pub enum CpuSpec {
     Auto,
     All,
-    /// Nó da(s) GPU(s) escolhida(s).
+    /// Node of the chosen GPU(s).
     GpuNode,
     Nodes(Vec<usize>),
     Cpus(Vec<usize>),
@@ -256,7 +256,7 @@ pub enum GpuSpec {
     Auto,
     None,
     Display,
-    /// N GPUs de computação menos ocupadas (0 = todas)
+    /// N least busy compute GPUs (0 = all)
     Compute(usize),
     Named(Vec<String>),
 }

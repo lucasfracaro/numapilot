@@ -1,11 +1,12 @@
-//! Aba "Streaming": Sunshine (jogar de outro aparelho com Moonlight) e qual GPU codifica o vídeo.
+//! "Streaming" tab: Sunshine (play from another device with Moonlight) and which GPU encodes
+//! the video.
 
 use crate::App;
 use crate::jobs::open_url;
 use eframe::egui::{self, Color32, RichText};
 use std::path::Path;
 
-/// Lê `adapter_name` do sunshine.conf.
+/// Reads `adapter_name` from sunshine.conf.
 pub fn read_adapter(conf: &Path) -> Option<String> {
     read_key(conf, "adapter_name")
 }
@@ -17,7 +18,7 @@ pub fn read_key(conf: &Path, key: &str) -> Option<String> {
     })
 }
 
-/// Grava (ou remove, se None) `adapter_name` no sunshine.conf, preservando o resto.
+/// Writes (or removes, if None) `adapter_name` in sunshine.conf, keeping the rest.
 pub fn write_adapter(conf: &Path, dev: Option<&str>) -> std::io::Result<()> {
     write_key(conf, "adapter_name", dev)
 }

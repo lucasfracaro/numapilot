@@ -1,17 +1,17 @@
-//! Notebook com duas placas (integrada + NVIDIA): modos da NVIDIA trocados com a sessão aberta.
+//! Laptop with two cards (integrated + NVIDIA): NVIDIA modes switched with the session open.
 //!
-//! - **Sempre disponível**: a NVIDIA fica no sistema; dorme sozinha quando ninguém usa e o HDMI
-//!   (ligado nela) funciona a qualquer hora.
-//! - **Desligada**: o serviço tira a NVIDIA do sistema (como se ela não existisse: zero consumo,
-//!   nada a acorda); o KDE percebe e segue só na integrada. O HDMI não funciona.
-//! - **Automático**: na tomada, sempre disponível; na bateria, desligada.
+//! - **Always available**: the NVIDIA stays in the system; it sleeps by itself when nobody uses
+//!   it and HDMI (wired to it) works at any time.
+//! - **Off**: the service removes the NVIDIA from the system (as if it did not exist: zero
+//!   power, nothing wakes it); KDE notices and carries on with the integrated GPU. No HDMI.
+//! - **Automatic**: on AC power, always available; on battery, off.
 //!
-//! Para devolver, o serviço pede uma nova leitura do barramento PCI: a placa volta, o driver
-//! carrega e o KDE a adiciona sozinho (sem sair da sessão). Só desliga se nenhum programa estiver
-//! usando a NVIDIA (senão espera e mostra quem está usando).
+//! To bring it back, the service asks for a rescan of the PCI bus: the card returns, the driver
+//! loads and KDE adds it by itself (without leaving the session). It only turns off if no
+//! program is using the NVIDIA (otherwise it waits and shows who is using it).
 //!
-//! O Xwayland (programas X11) costuma abrir a NVIDIA mesmo sem usar; o wrapper em
-//! /usr/local/bin/Xwayland faz ele usar só o EGL do Mesa.
+//! Xwayland (X11 programs) tends to open the NVIDIA even without using it; the wrapper in
+//! /usr/local/bin/Xwayland makes it use only Mesa's EGL.
 
 use crate::topo::{Gpu, Topology};
 use crate::util::{read_trim, sys};
@@ -34,7 +34,7 @@ pub struct Output {
     pub enabled: bool,
 }
 
-/// cardN da placa.
+/// The card's cardN.
 pub fn card(pci: &str) -> Option<String> {
     std::fs::read_dir(sys(&format!("bus/pci/devices/{pci}/drm")))
         .ok()?
@@ -43,7 +43,7 @@ pub fn card(pci: &str) -> Option<String> {
         .find(|n| n.starts_with("card"))
 }
 
-/// Saídas de vídeo da placa. Lê o estado guardado pelo driver (não acorda a placa).
+/// The card's video outputs. Reads the state kept by the driver (does not wake the card).
 pub fn outputs(pci: &str) -> Vec<Output> {
     let Some(c) = card(pci) else { return vec![] };
     let Ok(rd) = std::fs::read_dir(sys("class/drm")) else {
@@ -68,7 +68,7 @@ pub fn outputs(pci: &str) -> Vec<Output> {
     v
 }
 
-/// Notebook com integrada + NVIDIA dedicada presente: (integrada, NVIDIA).
+/// Laptop with integrated + dedicated NVIDIA present: (integrated, NVIDIA).
 pub fn pair(topo: &Topology) -> Option<(&Gpu, &Gpu)> {
     if !crate::notebook::is_laptop() {
         return None;
@@ -81,28 +81,28 @@ pub fn pair(topo: &Topology) -> Option<(&Gpu, &Gpu)> {
     Some((igpu, nv))
 }
 
-/// O que o serviço sabe da NVIDIA (em /run/numapilot/dgpu.json).
+/// What the service knows about the NVIDIA (in /run/numapilot/dgpu.json).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct State {
     pub pci: String,
     pub alias: String,
     pub name: String,
-    /// Funções PCI da placa (GPU e áudio).
+    /// The card's PCI functions (GPU and audio).
     pub functions: Vec<String>,
-    /// Tirada do sistema pelo numapilot.
+    /// Removed from the system by numapilot.
     pub removed: bool,
-    /// Modo pedido e se, por ele, a placa deveria estar no sistema agora.
+    /// Requested mode and whether, by it, the card should be in the system now.
     pub mode: String,
     pub want_present: bool,
-    /// Programas que impedem desligar.
+    /// Programs that prevent turning it off.
     pub blocked_by: Vec<String>,
-    /// Só a saída de vídeo está aberta (KWin): não tiramos a placa (não é seguro com o desktop
-    /// segurando), mas ela dorme sozinha.
+    /// Only the video output is open (KWin): we do not remove the card (not safe with the desktop
+    /// holding it), but it sleeps by itself.
     pub sleep_only: bool,
     pub last_error: Option<String>,
-    /// Ponte PCI acima da placa: a volta lê só ela de novo, sem mexer no resto do barramento
-    /// (Thunderbolt/USB4, NVMe...).
+    /// PCI bridge above the card: bringing it back rescans only that, without touching the rest of
+    /// the bus (Thunderbolt/USB4, NVMe...).
     pub bridge: String,
 }
 
@@ -118,7 +118,7 @@ pub fn save_state(s: &State) {
     let _ = std::fs::write(state_path(), serde_json::to_string(s).unwrap_or_default());
 }
 
-/// Pelo modo e pela fonte de energia, a NVIDIA deve estar no sistema?
+/// By the mode and the power source, should the NVIDIA be in the system?
 pub fn want_present(mode: &str, on_ac: Option<bool>) -> bool {
     match mode {
         "integrada" => false,
@@ -131,7 +131,7 @@ pub fn present(pci: &str) -> bool {
     sys(&format!("bus/pci/devices/{pci}")).exists()
 }
 
-/// Tira as funções da placa do sistema (root). Áudio antes da GPU.
+/// Removes the card's functions from the system (root). Audio before the GPU.
 pub fn remove(functions: &[String]) -> Result<(), String> {
     let mut f = functions.to_vec();
     f.sort();
@@ -145,17 +145,17 @@ pub fn remove(functions: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Ponte PCI acima de um dispositivo (ex.: 0000:00:01.1), se houver.
+/// PCI bridge above a device (e.g. 0000:00:01.1), if there is one.
 pub fn parent_bridge(pci: &str) -> Option<String> {
     let real = std::fs::canonicalize(sys(&format!("bus/pci/devices/{pci}"))).ok()?;
     let parent = real.parent()?.file_name()?.to_string_lossy().to_string();
-    // "0000:00:01.1" e não "pci0000:00"
+    // "0000:00:01.1" and not "pci0000:00"
     (parent.len() == 12 && parent.as_bytes()[4] == b':' && parent.as_bytes()[7] == b':')
         .then_some(parent)
 }
 
-/// Lê de novo só a ponte da placa (ou o barramento todo, se não souber qual): a placa volta
-/// e o driver carrega (root).
+/// Rescans only the card's bridge (or the whole bus, if it is not known): the card returns
+/// and the driver loads (root).
 pub fn rescan_at(bridge: &str) -> Result<(), String> {
     let b = sys(&format!("bus/pci/devices/{bridge}/rescan"));
     if !bridge.is_empty() && b.exists() {
@@ -164,12 +164,12 @@ pub fn rescan_at(bridge: &str) -> Result<(), String> {
     rescan()
 }
 
-/// Lê o barramento todo de novo (root).
+/// Rescans the whole bus (root).
 pub fn rescan() -> Result<(), String> {
     std::fs::write(sys("bus/pci/rescan"), "1").map_err(|e| format!("rescan: {e}"))
 }
 
-/// O sistema está desligando ou reiniciando?
+/// Is the system shutting down or rebooting?
 pub fn system_stopping() -> bool {
     std::process::Command::new("systemctl")
         .arg("is-system-running")
@@ -189,7 +189,7 @@ pub fn xwayland_wrapped() -> bool {
     std::fs::read_to_string(xwayland_wrapper()).is_ok_and(|s| s.contains("numapilot"))
 }
 
-/// Instala/remove o wrapper do Xwayland (root).
+/// Installs/removes the Xwayland wrapper (root).
 pub fn set_xwayland_wrapper(on: bool) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     let p = xwayland_wrapper();
@@ -222,7 +222,7 @@ pub fn set_xwayland_wrapper(on: bool) -> Result<(), String> {
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())
 }
 
-// ---------------- versão antiga (escolha no login) ----------------
+// ---------------- old version (choice at login) ----------------
 
 fn config_home() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
@@ -231,7 +231,8 @@ fn config_home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
-/// Arquivos da versão anterior (decidia só no login e travava o KDE na integrada): apaga.
+/// Files from the previous version (it decided only at login and locked KDE to the integrated
+/// GPU): delete them.
 pub fn remove_login_files() {
     for f in [
         config_home().join("plasma-workspace/env/numapilot-igpu.sh"),
@@ -242,7 +243,7 @@ pub fn remove_login_files() {
     }
 }
 
-/// EGL para um programa que vai na NVIDIA (passa por cima de uma restrição herdada).
+/// EGL for a program that goes on the NVIDIA (overrides an inherited restriction).
 pub fn nvidia_egl() -> Option<String> {
     let have: Vec<&str> = [NVIDIA_EGL, MESA_EGL]
         .into_iter()

@@ -1,5 +1,5 @@
-//! Parâmetros da linha do kernel, editados no arquivo do bootloader (que as atualizações do kernel
-//! reaproveitam): Limine, systemd-boot (sdboot-manage), GRUB ou rEFInd. Sempre com backup.
+//! Kernel command-line parameters, edited in the bootloader's file (which kernel updates
+//! reuse): Limine, systemd-boot (sdboot-manage), GRUB or rEFInd. Always with a backup.
 
 use std::path::PathBuf;
 
@@ -26,7 +26,7 @@ impl Loader {
             Kind::Refind => "rEFInd",
         }
     }
-    /// Comando que regrava as entradas do boot depois da edição.
+    /// Command that rewrites the boot entries after the edit.
     pub fn regen(&self) -> Option<Vec<&'static str>> {
         match self.kind {
             Kind::Limine => Some(vec!["limine-mkinitcpio"]),
@@ -43,7 +43,7 @@ fn root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// Descobre o bootloader pelo arquivo de configuração dos parâmetros.
+/// Finds the bootloader by its parameter configuration file.
 pub fn detect() -> Option<Loader> {
     let r = root();
     [
@@ -60,7 +60,7 @@ pub fn detect() -> Option<Loader> {
     .find(|l| l.path.is_file())
 }
 
-/// Parâmetros conhecidos: (parâmetro, título, explicação/custo).
+/// Known parameters: (parameter, title, explanation/cost).
 pub const KNOWN: &[(&str, &str, &str)] = &[
     (
         "pci=realloc",
@@ -104,18 +104,18 @@ pub const KNOWN: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// Um grupo de mitigações do processador que se desliga junto.
+/// A group of processor mitigations that is turned off together.
 pub struct Mitigation {
     pub title: &'static str,
-    /// Arquivos em /sys/devices/system/cpu/vulnerabilities/
+    /// Files in /sys/devices/system/cpu/vulnerabilities/
     pub vulns: &'static [&'static str],
     pub params: &'static [&'static str],
-    /// Risco de deixar desligado num desktop (navegador, jogos, Steam).
+    /// Risk of leaving it off on a desktop (browser, games, Steam).
     pub risk: &'static str,
-    /// Ganho típico de desempenho ao desligar.
+    /// Typical performance gain from turning it off.
     pub gain: &'static str,
     pub note: &'static str,
-    /// Das mais importantes (Spectre/Meltdown): fica ligada no "desligar as leves".
+    /// One of the most important (Spectre/Meltdown): stays on in "turn off the light ones".
     pub heavy: bool,
 }
 
@@ -240,7 +240,7 @@ pub const MITIGATIONS: &[Mitigation] = &[
     },
 ];
 
-/// (vulnerabilidade, situação) informadas pelo kernel.
+/// (vulnerability, status) reported by the kernel.
 pub fn vulnerabilities() -> Vec<(String, String)> {
     let Ok(rd) = std::fs::read_dir(crate::util::sys("devices/system/cpu/vulnerabilities")) else {
         return vec![];
@@ -258,7 +258,7 @@ pub fn vulnerabilities() -> Vec<(String, String)> {
     v
 }
 
-/// Grupos que se aplicam a este processador (algum item "afetado").
+/// Groups that apply to this processor (some item "affected").
 pub fn relevant_mitigations(vulns: &[(String, String)]) -> Vec<&'static Mitigation> {
     MITIGATIONS
         .iter()
@@ -270,7 +270,7 @@ pub fn relevant_mitigations(vulns: &[(String, String)]) -> Vec<&'static Mitigati
         .collect()
 }
 
-/// Parâmetros em que só pode haver um valor (adicionar troca o antigo).
+/// Parameters that can only have one value (adding replaces the old one).
 fn key_of(p: &str) -> &str {
     p.split('=').next().unwrap_or(p)
 }
@@ -320,7 +320,7 @@ pub fn edit_params(cur: &str, add: &[String], remove: &[String]) -> String {
     v.join(" ")
 }
 
-/// Acha o texto entre aspas depois de `prefix` numa linha `PREFIX="..."` ou `PREFIX='...'`.
+/// Finds the quoted text after `prefix` in a `PREFIX="..."` or `PREFIX='...'` line.
 fn quoted_after(line: &str, eq_pos: usize) -> Option<(usize, usize)> {
     let rest = &line[eq_pos..];
     let q = rest.find(['"', '\''])?;
@@ -330,8 +330,8 @@ fn quoted_after(line: &str, eq_pos: usize) -> Option<(usize, usize)> {
     Some((start, end))
 }
 
-/// Aplica `f` aos parâmetros das linhas certas do arquivo e devolve o novo texto
-/// (e os parâmetros encontrados na primeira linha, antes da mudança).
+/// Applies `f` to the parameters of the right lines of the file and returns the new text
+/// (and the parameters found on the first line, before the change).
 pub fn rewrite(kind: Kind, text: &str, f: &dyn Fn(&str) -> String) -> (String, Option<String>) {
     let mut first = None;
     let mut out = Vec::new();
@@ -340,7 +340,7 @@ pub fn rewrite(kind: Kind, text: &str, f: &dyn Fn(&str) -> String) -> (String, O
         let target = match kind {
             _ if t.starts_with('#') => None,
             Kind::Limine => {
-                // KERNEL_CMDLINE[default]="..."  (todas as entradas, menos a de emergência "fallback")
+                // KERNEL_CMDLINE[default]="..."  (every entry except the emergency "fallback" one)
                 if t.starts_with("KERNEL_CMDLINE[") && !t.contains("fallback") {
                     line.find('=').and_then(|e| quoted_after(line, e))
                 } else {
@@ -356,7 +356,7 @@ pub fn rewrite(kind: Kind, text: &str, f: &dyn Fn(&str) -> String) -> (String, O
                 .then(|| line.find('=').and_then(|e| quoted_after(line, e)))
                 .flatten(),
             Kind::Refind => {
-                // "Rótulo"  "opções": edita o segundo texto entre aspas
+                // "Label"  "options": edits the second quoted text
                 quoted_after(line, 0).and_then(|(_, e1)| quoted_after(line, e1 + 1))
             }
         };
@@ -378,7 +378,7 @@ pub fn rewrite(kind: Kind, text: &str, f: &dyn Fn(&str) -> String) -> (String, O
     (s, first)
 }
 
-/// Parâmetros configurados no bootloader agora (para mostrar na interface).
+/// Parameters configured in the bootloader now (to show in the interface).
 pub fn configured() -> Option<(Loader, String)> {
     let l = detect()?;
     let text = std::fs::read_to_string(&l.path).ok()?;
@@ -386,7 +386,7 @@ pub fn configured() -> Option<(Loader, String)> {
     Some((l, first.unwrap_or_default()))
 }
 
-/// Parâmetros com que o kernel atual iniciou.
+/// Parameters the running kernel booted with.
 pub fn running() -> String {
     std::fs::read_to_string("/proc/cmdline")
         .unwrap_or_default()
@@ -394,7 +394,7 @@ pub fn running() -> String {
         .to_string()
 }
 
-/// Edita (com backup) e regrava as entradas. Precisa de root.
+/// Edits (with a backup) and rewrites the entries. Needs root.
 pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Result<(), String> {
     for p in add.iter().chain(remove) {
         if p.is_empty()
@@ -469,7 +469,7 @@ pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Re
                 .status()
                 .map_err(|e| e.to_string())?;
             if !st.success() {
-                // Volta o arquivo para não deixar meio aplicado.
+                // Restores the file so it is not left half applied.
                 let _ = std::fs::write(&l.path, &text);
                 return Err(crate::tf!(
                     "{} failed ({st}); original file restored",

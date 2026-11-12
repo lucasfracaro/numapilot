@@ -1,4 +1,4 @@
-//! Lógica de decisão compartilhada: qual GPU e qual(is) nó(s) usar.
+//! Shared decision logic: which GPU and which node(s) to use.
 
 use crate::config::{Config, CpuSpec, GpuSpec, MemSpec, Rule};
 use crate::learned::Learned;
@@ -17,7 +17,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// "graphics"/"jogo" → Gráfico, "compute"/"ia" → Computação, "auto" → None
+    /// "graphics"/"jogo" → Graphics, "compute"/"ia" → Compute, "auto" → None
     pub fn parse_usage(s: &str) -> Result<Option<Kind>> {
         Ok(match s.trim().to_lowercase().as_str() {
             "" | "auto" => None,
@@ -42,18 +42,18 @@ pub struct Decision {
     pub kind: Kind,
     pub mem: MemSpec,
     pub manual: bool,
-    /// Limitar o que o programa "enxerga" (WINE_CPU_TOPOLOGY, *_NUM_THREADS...).
+    /// Limit what the program "sees" (WINE_CPU_TOPOLOGY, *_NUM_THREADS...).
     pub limit_visible: bool,
     /// "low" | "normal" | "high"
     pub priority: String,
-    /// Precisa do serviço (cgroup / prioridade alta) antes do exec.
+    /// Needs the service (cgroup / high priority) before exec.
     pub needs_daemon: bool,
-    /// GPU do frame generation (lsfg-vk), se diferente da do jogo.
+    /// Frame generation GPU (lsfg-vk), if different from the game's.
     pub fg_gpu: Option<Gpu>,
     pub reasons: Vec<String>,
 }
 
-/// Fração ocupada de cada nó, amostrando /proc/stat durante `dur`.
+/// Busy fraction of each node, sampling /proc/stat for `dur`.
 pub fn sample_node_loads(topo: &Topology, dur: Duration) -> HashMap<usize, f64> {
     let a = procfs::cpu_times();
     std::thread::sleep(dur);
@@ -91,7 +91,7 @@ pub fn node_loads(
     out
 }
 
-/// Nó menos carregado, evitando `avoid` se houver alternativa e exigindo ~5% de RAM livre.
+/// Least loaded node, avoiding `avoid` if there is an alternative and requiring ~5% free RAM.
 pub fn least_loaded_node(topo: &Topology, loads: &HashMap<usize, f64>, avoid: &[usize]) -> usize {
     let mut cands: Vec<&crate::topo::Node> = topo
         .nodes
@@ -117,7 +117,7 @@ pub fn least_loaded_node(topo: &Topology, loads: &HashMap<usize, f64>, avoid: &[
         .unwrap_or(0)
 }
 
-/// Escolhe a(s) GPU(s). `want` força o tipo de uso (ex.: jogar numa MI50 = Compute GPU usada como Graphics).
+/// Picks the GPU(s). `want` forces the kind of use (e.g. gaming on an MI50 = Compute GPU used as Graphics).
 pub fn pick_gpus(
     topo: &Topology,
     spec: &GpuSpec,
@@ -199,13 +199,13 @@ fn hint_graphics(want: Option<Kind>) -> bool {
 pub struct LaunchInput<'a> {
     pub idents: &'a [String],
     pub learn_key: &'a str,
-    /// Chave do perfil (steam:ID ou executável).
+    /// Profile key (steam:ID or executable).
     pub key: &'a str,
     pub cpu: Option<CpuSpec>,
     pub gpu: Option<GpuSpec>,
     pub mem: Option<MemSpec>,
     pub usage: Option<Kind>,
-    /// GPU do frame generation do lsfg-vk ("same" = a do jogo).
+    /// lsfg-vk frame generation GPU ("same" = the game's).
     pub fg_gpu: Option<String>,
 }
 
@@ -352,7 +352,7 @@ pub fn decide_launch(
             }
         }
     };
-    // Núcleos do perfil: lista feita no mapa, ou quantidade / sem hyper-threading.
+    // The profile's cores: list made on the map, or a count / no hyper-threading.
     let (nodes, cpus) = match profile {
         Some(p) if inp.cpu.is_none() => {
             if let Some(l) = &p.cpu_list {
@@ -435,7 +435,7 @@ pub fn decide_launch(
     })
 }
 
-/// "0000:83:00.0" → "131:0.0" (formato de barramento PCI em decimal usado pelo lsfg-vk)
+/// "0000:83:00.0" → "131:0.0" (decimal PCI bus format used by lsfg-vk)
 pub fn pci_decimal(pci: &str) -> String {
     let p: Vec<&str> = pci.split([':', '.']).collect();
     if p.len() == 4 {
@@ -446,22 +446,22 @@ pub fn pci_decimal(pci: &str) -> String {
     }
 }
 
-/// Variáveis de ambiente para direcionar o programa à(s) GPU(s) escolhida(s).
+/// Environment variables that steer the program to the chosen GPU(s).
 pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<String>) {
     let mut set = Vec::new();
     let mut unset = Vec::new();
     match d.kind {
         Kind::Graphics => {
             if let Some(g) = d.gpus.first() {
-                // OpenGL e Vulkan (Mesa) escolhem a placa por DRI_PRIME=pci-...
+                // OpenGL and Vulkan (Mesa) pick the card through DRI_PRIME=pci-...
                 set.push(("DRI_PRIME".into(), g.dri_prime()));
-                // Vulkan (jogos nativos e DirectX via DXVK/VKD3D-Proton) só enxerga esta GPU:
-                // evita que o jogo escolha sozinho outra placa (ex.: a MI50 com mais VRAM).
+                // Vulkan (native games and DirectX through DXVK/VKD3D-Proton) sees only this GPU:
+                // keeps the game from picking another card by itself (e.g. the MI50 with more VRAM).
                 set.push((
                     "MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE".into(),
                     "1".into(),
                 ));
-                // vendor:device só serve se for único (as duas MI50 têm o mesmo ID).
+                // vendor:device only works if it is unique (both MI50s have the same ID).
                 let same = topo
                     .gpus
                     .iter()
@@ -475,23 +475,23 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
                 } else {
                     unset.push("MESA_VK_DEVICE_SELECT".into());
                 }
-                // Lossless Scaling (lsfg-vk): por padrão gera quadros na mesma GPU do jogo
-                // (o lsfg-vk oficial exige isso); com perfil dual GPU, na GPU escolhida.
+                // Lossless Scaling (lsfg-vk): by default generates frames on the same GPU as the game
+                // (official lsfg-vk requires it); with a dual-GPU profile, on the chosen GPU.
                 let fg = d.fg_gpu.as_ref().unwrap_or(g);
                 set.push(("LSFGVK_GPU".into(), pci_decimal(&fg.pci)));
                 set.push(("NUMAPILOT_FG_GPU".into(), fg.pci.clone()));
-                // Driver oficial da NVIDIA (PRIME render offload): OpenGL e Vulkan na NVIDIA,
-                // ou o contrário quando a escolhida é a outra placa num PC com NVIDIA.
+                // Official NVIDIA driver (PRIME render offload): OpenGL and Vulkan on the NVIDIA,
+                // or the opposite when the chosen one is the other card on a PC with NVIDIA.
                 let has_nv = topo.gpus.iter().any(|o| o.is_nvidia());
                 if g.is_nvidia() {
                     set.push(("__NV_PRIME_RENDER_OFFLOAD".into(), "1".into()));
-                    // sessão "NVIDIA só quando precisar": o login limitou o EGL ao Mesa
+                    // "NVIDIA only when needed" session: login limited EGL to Mesa
                     if let Some(egl) = crate::hybrid::nvidia_egl() {
                         set.push(("__EGL_VENDOR_LIBRARY_FILENAMES".into(), egl));
                     }
                     set.push(("__GLX_VENDOR_LIBRARY_NAME".into(), "nvidia".into()));
                     set.push(("__VK_LAYER_NV_optimus".into(), "NVIDIA_only".into()));
-                    // herdado de um programa que abriu na integrada (ex.: o Steam da inicialização)
+                    // inherited from a program that started on the integrated GPU (e.g. Steam from startup)
                     for v in [
                         "VK_DRIVER_FILES",
                         "VK_ICD_FILENAMES",
@@ -514,8 +514,8 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
                     set.push(("__GLX_VENDOR_LIBRARY_NAME".into(), "mesa".into()));
                     set.push(("__VK_LAYER_NV_optimus".into(), "non_NVIDIA_only".into()));
                     unset.push("__NV_PRIME_RENDER_OFFLOAD".into());
-                    // Sem isso, programas com EGL/Vulkan (Chromium, Qt WebEngine, Electron)
-                    // carregam o driver da NVIDIA e acordam a placa do notebook à toa.
+                    // Without this, programs with EGL/Vulkan (Chromium, Qt WebEngine, Electron)
+                    // load the NVIDIA driver and wake the laptop card for no reason.
                     let egl = "/usr/share/glvnd/egl_vendor.d/50_mesa.json";
                     if std::path::Path::new(egl).exists() {
                         set.push(("__EGL_VENDOR_LIBRARY_FILENAMES".into(), egl.into()));
@@ -543,7 +543,7 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
             let ids: Vec<String> = d.gpus.iter().filter_map(|g| g.rocr_id.clone()).collect();
             if !ids.is_empty() {
                 set.push(("ROCR_VISIBLE_DEVICES".into(), ids.join(",")));
-                // Índices HIP/CUDA herdados apontariam para a lista já filtrada.
+                // Inherited HIP/CUDA indices would point into the already filtered list.
                 unset.push("HIP_VISIBLE_DEVICES".into());
                 if cuda.is_empty() {
                     unset.push("CUDA_VISIBLE_DEVICES".into());
@@ -554,7 +554,7 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
     }
     if d.limit_visible {
         let n = d.cpus.len().to_string();
-        // Proton/Wine: o jogo Windows vê só estes CPUs (taskset sozinho não muda o que ele conta).
+        // Proton/Wine: the Windows game sees only these CPUs (taskset alone does not change what it counts).
         set.push((
             "WINE_CPU_TOPOLOGY".into(),
             format!(
@@ -611,8 +611,8 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
     (set, unset)
 }
 
-/// Variáveis de "quantos threads usar" de bibliotecas comuns. O `numapilot run` só as define
-/// se o usuário ainda não definiu (respeita a escolha dele).
+/// "How many threads to use" variables of common libraries. `numapilot run` only sets them
+/// if the user has not already (it respects their choice).
 pub const SOFT_THREAD_VARS: &[&str] = &[
     "OMP_NUM_THREADS",
     "MKL_NUM_THREADS",
@@ -623,14 +623,14 @@ pub const SOFT_THREAD_VARS: &[&str] = &[
     "DOTNET_PROCESSOR_COUNT",
 ];
 
-/// Avisos de compatibilidade para jogos (problemas comuns em servidores dual-socket).
+/// Compatibility warnings for games (common problems on dual-socket servers).
 pub fn game_warnings(topo: &Topology, d: &Decision) -> Vec<String> {
     let mut w = Vec::new();
     if d.kind != Kind::Graphics {
         return w;
     }
     let Some(g) = d.gpus.first() else { return w };
-    // No notebook, a dedicada sempre renderiza e a integrada mostra a imagem (é o normal).
+    // On a laptop, the dedicated card always renders and the integrated one shows the image (normal).
     if !g.display_connected && !crate::notebook::is_laptop() {
         w.push(crate::tf!(
             "The game will render on the {} but the monitor is on another card. Some games and anti-cheats \
@@ -665,7 +665,7 @@ pub fn game_warnings(topo: &Topology, d: &Decision) -> Vec<String> {
     w
 }
 
-/// Drivers Vulkan instalados que não são o da NVIDIA (radeon, intel, lvp...).
+/// Installed Vulkan drivers other than NVIDIA's (radeon, intel, lvp...).
 pub fn non_nvidia_vk_icds() -> Vec<String> {
     let mut v: Vec<String> = ["/usr/share/vulkan/icd.d", "/etc/vulkan/icd.d"]
         .iter()
@@ -689,11 +689,11 @@ pub fn non_nvidia_vk_icds() -> Vec<String> {
     v
 }
 
-/// Reserva para DirectX (DXVK: D3D8–11; VKD3D-Proton: D3D12): filtro pelo nome Vulkan da placa.
-/// O seletor do Mesa (camada device-select) já esconde as outras placas, mas ele não existe em
-/// todo lugar (driver da NVIDIA, alguns runtimes/Flatpak); sem ele o DXVK escolhe sozinho.
-/// Só quando o modelo é único no PC e o nome foi confirmado pelo vulkaninfo com este ambiente.
-/// `NUMAPILOT_NO_DX_FILTER=1` desliga; um filtro que o usuário já definiu é respeitado.
+/// Fallback for DirectX (DXVK: D3D8–11; VKD3D-Proton: D3D12): filter by the card's Vulkan name.
+/// Mesa's selector (device-select layer) already hides the other cards, but it does not exist
+/// everywhere (NVIDIA driver, some runtimes/Flatpak); without it DXVK picks by itself.
+/// Only when the model is unique in the PC and the name was confirmed by vulkaninfo in this
+/// environment. `NUMAPILOT_NO_DX_FILTER=1` turns it off; a filter the user already set is kept.
 pub fn dx_filter(
     d: &Decision,
     topo: &Topology,
@@ -715,7 +715,7 @@ pub fn dx_filter(
         .iter()
         .filter(|o| o.vendor == g.vendor && o.device == g.device)
         .count();
-    // uma placa só no PC: nada a filtrar; modelos repetidos: o nome não distingue
+    // a single card in the PC: nothing to filter; repeated models: the name does not tell them apart
     if topo.gpus.len() < 2 || same != 1 {
         return vec![];
     }
@@ -728,7 +728,7 @@ pub fn dx_filter(
     }
 }
 
-/// Como `env_for_gpu`, com as variáveis a remover também.
+/// Like `env_for_gpu`, with the variables to remove as well.
 pub fn env_for_gpu_full(
     g: &crate::topo::Gpu,
     topo: &Topology,
@@ -749,7 +749,7 @@ pub fn env_for_gpu_full(
     gpu_env(&d, topo)
 }
 
-/// Variáveis para um programa rodar só numa placa (gráficos), sem passar pelo serviço.
+/// Variables for a program to run on a single card (graphics), without going through the service.
 pub fn env_for_gpu(g: &crate::topo::Gpu, topo: &Topology) -> Vec<(String, String)> {
     let d = Decision {
         nodes: vec![],

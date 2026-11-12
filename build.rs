@@ -1,9 +1,10 @@
-// Grava no binário o commit de onde ele foi compilado, para o `self-update` saber se o código
-// da pasta já é mais novo que o instalado. Sem git (tarball, pacote), fica vazio.
+// Records in the binary the commit it was built from, so `self-update` can tell whether the
+// code in the folder is already newer than what is installed. Without git (tarball, package)
+// it stays empty.
 use std::process::Command;
 
 fn main() {
-    // só o git desta pasta (não o de uma pasta acima, como a do PKGBUILD do AUR)
+    // only this folder's git (not a parent folder's, like the AUR PKGBUILD's)
     let has_git = std::path::Path::new(".git").exists();
     let commit = has_git
         .then(|| {

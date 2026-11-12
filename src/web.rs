@@ -1,5 +1,5 @@
-//! Painel web para o celular: temperaturas, uso, programas (com perfis de um toque) e atalhos
-//! do laboratório/servidor de IA. Roda como usuário (`numapilot web`), protegido por um token.
+//! Web panel for the phone: temperatures, usage, programs (with one-tap profiles) and shortcuts
+//! for the lab/AI server. Runs as the user (`numapilot web`), protected by a token.
 
 use crate::config::Config;
 use crate::ctl::{self, Request};
@@ -24,7 +24,7 @@ pub fn token_path() -> PathBuf {
     config_dir().join("web-token")
 }
 
-/// Lê (ou cria) o token de acesso.
+/// Reads (or creates) the access token.
 pub fn token() -> std::io::Result<String> {
     if let Ok(t) = std::fs::read_to_string(token_path()) {
         let t = t.trim().to_string();
@@ -36,7 +36,7 @@ pub fn token() -> std::io::Result<String> {
     std::fs::File::open("/dev/urandom")?.read_exact(&mut b)?;
     let t: String = b.iter().map(|x| format!("{x:02x}")).collect();
     std::fs::create_dir_all(config_dir())?;
-    // já nasce legível só pelo dono (antes havia um instante com a permissão padrão)
+    // created readable only by the owner (before, there was a moment with the default permission)
     {
         use std::io::Write;
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -52,10 +52,10 @@ pub fn token() -> std::io::Result<String> {
     Ok(t)
 }
 
-/// IP da máquina na rede local (o que o celular usa).
+/// The machine's IP on the local network (what the phone uses).
 pub fn lan_ip() -> Option<String> {
     let s = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
-    s.connect("192.0.2.1:9").ok()?; // não envia nada; só escolhe a interface
+    s.connect("192.0.2.1:9").ok()?; // sends nothing; only picks the interface
     Some(s.local_addr().ok()?.ip().to_string())
 }
 
@@ -242,7 +242,7 @@ fn act(body: &Value, topo: &Topology) -> Result<String, String> {
     }
 }
 
-/// Métricas no formato do Prometheus (para o Grafana): GPUs, processadores e os outros PCs.
+/// Metrics in Prometheus format (for Grafana): GPUs, processors and the other PCs.
 pub fn metrics(topo: &Topology) -> String {
     let host = std::fs::read_to_string("/etc/hostname")
         .unwrap_or_default()
@@ -303,7 +303,7 @@ pub fn metrics(topo: &Topology) -> String {
     out
 }
 
-/// Roda sem esperar e sem prender a saída (o painel continua respondendo).
+/// Runs without waiting and without holding the output (the panel keeps answering).
 fn spawn_quiet(cmd: &[&str]) -> Result<(), String> {
     std::process::Command::new(cmd[0])
         .args(&cmd[1..])
@@ -315,7 +315,7 @@ fn spawn_quiet(cmd: &[&str]) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", cmd[0]))
 }
 
-/// Liga o Sunshine: serviço do usuário, Flatpak ou o executável.
+/// Starts Sunshine: user service, Flatpak or the executable.
 fn sunshine_start() -> Result<String, String> {
     for unit in [
         "sunshine.service",
@@ -356,7 +356,7 @@ fn authorized(req: &tiny_http::Request, token: &str) -> bool {
         .find_map(|kv| kv.strip_prefix("t="))
         .map(String::from);
     let given = hdr.or(qt).unwrap_or_default();
-    // comparação em tempo constante
+    // constant-time comparison
     given.len() == token.len()
         && given
             .bytes()
@@ -402,8 +402,8 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
         match (req.method(), path.as_str()) {
             (tiny_http::Method::Get, "/") => respond(req, 200, "text/html; charset=utf-8", page()),
             (_, p) if (p.starts_with("/api/") || p == "/metrics") && !authorized(&req, &token) => {
-                // segura quem fica tentando adivinhar o token: depois de 10 erros seguidos,
-                // cada erro novo espera 2 s (um acerto zera)
+                // slows down whoever keeps guessing the token: after 10 errors in a row,
+                // every new error waits 2 s (a correct one resets it)
                 bad_auth += 1;
                 if bad_auth > 10 {
                     if bad_auth == 11 {
@@ -525,7 +525,7 @@ const PAGE_PT: &[(&str, &str)] = &[
     (r#"})'>Wake</button>"#, r#"})'>Ligar</button>"#),
 ];
 
-/// A página no idioma em uso (o escolhido na interface deste PC).
+/// The page in the language in use (the one chosen in this PC's interface).
 fn page() -> String {
     crate::i18n::refresh();
     let mut p = PAGE.to_string();

@@ -1,22 +1,22 @@
-//! Histórico por programa: quanto de processador e memória cada um usou nas últimas horas,
-//! um ponto por minuto, para escolher limites com dados. O serviço grava em
-//! /run/numapilot/prog-history.json (some ao reiniciar o PC).
+//! History per program: how much processor and memory each one used over the last hours,
+//! one point per minute, to pick limits with data. The service writes to
+//! /run/numapilot/prog-history.json (gone when the PC reboots).
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Mutex;
 
-/// Pontos guardados por programa (um por minuto): 6 horas.
+/// Points kept per program (one per minute): 6 hours.
 pub const KEEP: usize = 360;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Point {
-    /// segundos desde 1970
+    /// seconds since 1970
     pub t: u64,
-    /// núcleos em uso: média e pico do minuto
+    /// cores in use: average and peak of the minute
     pub avg: f32,
     pub peak: f32,
-    /// memória (MB) no fim do minuto
+    /// memory (MB) at the end of the minute
     pub mem_mb: u32,
 }
 
@@ -41,12 +41,12 @@ pub fn path() -> std::path::PathBuf {
     crate::learned::run_dir().join("prog-history.json")
 }
 
-/// Uma amostra (o serviço chama a cada leitura): (chave do programa, núcleos, memória em MB),
-/// uma entrada por processo. Devolve true quando fechou um minuto (hora de gravar).
+/// One sample (the service calls it on every reading): (program key, cores, memory in MB),
+/// one entry per process. Returns true when a minute closed (time to write).
 pub fn sample<'a>(rows: impl Iterator<Item = (&'a str, f64, u64)>, now: u64) -> bool {
     let mut g = STATE.lock().unwrap_or_else(|e| e.into_inner());
     let st = g.get_or_insert_with(State::default);
-    // soma os processos do mesmo programa nesta amostra
+    // adds up the processes of the same program in this sample
     let mut tick: HashMap<&str, (f64, u64)> = HashMap::new();
     for (k, c, m) in rows {
         if k.is_empty() {
@@ -87,13 +87,13 @@ pub fn sample<'a>(rows: impl Iterator<Item = (&'a str, f64, u64)>, now: u64) -> 
             mem_mb: a.mem.min(u32::MAX as u64) as u32,
         });
     }
-    // esquece quem não aparece há mais de 6 horas
+    // forgets whoever has not shown up for more than 6 hours
     let old = now.saturating_sub(KEEP as u64 * 60);
     st.hist.retain(|_, v| v.back().is_some_and(|p| p.t >= old));
     true
 }
 
-/// Grava o histórico (o serviço chama quando `sample` devolve true).
+/// Writes the history (the service calls it when `sample` returns true).
 pub fn save() {
     let g = STATE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(st) = g.as_ref()
@@ -106,7 +106,7 @@ pub fn save() {
     }
 }
 
-/// Histórico de um programa (para a interface).
+/// History of one program (for the interface).
 pub fn load(key: &str) -> Vec<Point> {
     std::fs::read_to_string(path())
         .ok()
@@ -115,7 +115,7 @@ pub fn load(key: &str) -> Vec<Point> {
         .unwrap_or_default()
 }
 
-/// Resumo para decidir limites.
+/// Summary to decide limits.
 #[derive(Debug, PartialEq)]
 pub struct Summary {
     pub minutes: usize,
@@ -144,7 +144,7 @@ mod tests {
     fn minute_points() {
         *STATE.lock().unwrap() = None;
         let t0 = 6_000_000;
-        // dois processos do mesmo programa somam
+        // two processes of the same program add up
         assert!(!sample(
             [("a", 1.0, 100), ("a", 0.5, 50), ("b", 0.2, 10)].into_iter(),
             t0

@@ -1,5 +1,5 @@
-//! Aba Inicialização: tudo que abre quando o sistema liga, agrupado como na aba Programas, com
-//! ligar/desligar, remover e adicionar (programa instalado, aberto agora, arquivo ou comando).
+//! Startup tab: everything that starts when the system boots, grouped like in the Programs tab,
+//! with turn on/off, remove and add (installed program, open now, file or command).
 
 use crate::{App, fmt_bytes, theme};
 use egui::RichText;
@@ -15,7 +15,7 @@ pub(crate) enum AddMode {
     Command,
 }
 
-/// Estado da aba.
+/// Tab state.
 pub(crate) struct StartupTab {
     items: Vec<Item>,
     at: Option<Instant>,
@@ -29,9 +29,9 @@ pub(crate) struct StartupTab {
     name: String,
     command: String,
     delay: u32,
-    /// Janela Detalhes: o item, de onde ele veio e o log (serviços).
+    /// Details window: the item, where it came from and the log (services).
     details: Option<(Item, origin::Trace, Option<String>)>,
-    /// Janela Desinstalar: item, origem e "apagar também configurações e a pasta".
+    /// Uninstall window: item, source and "also delete the settings and the folder".
     uninstall: Option<(Item, origin::Trace, bool)>,
 }
 
@@ -41,7 +41,7 @@ impl Default for StartupTab {
             items: vec![],
             at: None,
             filter: String::new(),
-            // componentes da sessão fechados: quase ninguém mexe
+            // session components collapsed: hardly anyone touches them
             closed: [false, false, false, true],
             add: None,
             query: String::new(),
@@ -72,7 +72,7 @@ fn group_index(g: Group) -> usize {
     }
 }
 
-/// Escolher um arquivo pelo diálogo do desktop (kdialog ou zenity), se existir.
+/// Pick a file through the desktop's dialog (kdialog or zenity), if there is one.
 fn pick_file() -> Option<String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let tries: [(&str, Vec<String>); 2] = [
@@ -218,7 +218,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                 .min_col_width(60.0)
                 .show(ui, |ui| {
                     for it in list {
-                        // ligar/desligar
+                        // turn on/off
                         let mut v = it.enabled;
                         let resp = ui.add_enabled(it.protected.is_none() || !it.enabled, egui::Checkbox::new(&mut v, ""));
                         let resp = match it.protected {
@@ -228,7 +228,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                         if resp.changed() {
                             change = Some((it.clone(), v));
                         }
-                        // nome e comando
+                        // name and command
                         ui.vertical(|ui| {
                             ui.set_max_width(520.0);
                             let name = if it.name.chars().count() > 70 { format!("{}…", it.name.chars().take(70).collect::<String>()) } else { it.name.clone() };
@@ -238,7 +238,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                         });
                         // origem
                         ui.label(RichText::new(it.origin).small().color(p.weak));
-                        // agora + ações
+                        // now + actions
                         ui.horizontal(|ui| {
                             let now = if it.id.ends_with(".timer") {
                                 if it.running { crate::i18n::tr("scheduled").to_string() } else { String::new() }
@@ -358,7 +358,7 @@ fn unit_of(it: &Item) -> Option<(&str, bool)> {
         .or_else(|| it.id.strip_prefix("sys:").map(|u| (u, false)))
 }
 
-/// Uma linha "rótulo: caminho [Abrir pasta]".
+/// A "label: path [Open folder]" row.
 fn path_row(ui: &mut egui::Ui, label: &str, p: &std::path::Path) {
     ui.label(RichText::new(label).strong());
     ui.horizontal(|ui| {
@@ -518,7 +518,7 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
             for s in &plan.steps {
                 ui.label(format!("• {s}"));
             }
-            // pacotes que saem junto (consulta ao pacman, sem senha)
+            // packages that go away with it (pacman query, no password)
             if let origin::Source::Pacman { pkg, .. } = &t.source {
                 let key = egui::Id::unique(("rm-preview", pkg));
                 let prev: Vec<String> = ui.data_mut(|d| {
@@ -551,7 +551,7 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
                     &mut configs,
                     crate::i18n::tr("Also delete the settings and the program's folder"),
                 );
-                // sempre à vista: exatamente o que essa opção apaga
+                // always in view: exactly what this option deletes
                 for c in t.app_dir.iter().chain(t.configs.iter()) {
                     let txt = RichText::new(format!("    {}", c.display()))
                         .monospace()

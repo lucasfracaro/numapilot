@@ -1,6 +1,6 @@
-//! Ajustes da máquina inteira (processadores, memória, escalonador, ventoinhas IPMI) e os modos
-//! de um clique (Jogo, IA, Silencioso, Normal). Quem aplica é o serviço (root); ao voltar para
-//! "não mexer", cada ajuste volta ao valor que o sistema tinha quando o serviço iniciou.
+//! Whole-machine settings (processors, memory, scheduler, IPMI fans) and the one-click modes
+//! (Game, AI, Quiet, Normal). The service (root) applies them; on going back to "leave as is",
+//! each setting returns to the value the system had when the service started.
 
 use crate::cpuctl;
 use crate::learned::state_dir;
@@ -14,16 +14,16 @@ use std::path::PathBuf;
 #[serde(default)]
 pub struct SocketTune {
     pub governor: Option<String>,
-    /// Energy Performance Bias: 0 desempenho, 4, 6 normal, 8, 15 economia.
+    /// Energy Performance Bias: 0 performance, 4, 6 normal, 8, 15 power saving.
     pub epb: Option<u8>,
-    /// Energy Performance Preference (Ryzen com amd-pstate, Intel com HWP).
+    /// Energy Performance Preference (Ryzen with amd-pstate, Intel with HWP).
     pub epp: Option<String>,
     pub min_mhz: Option<u32>,
     pub max_mhz: Option<u32>,
     pub uncore_min_mhz: Option<u32>,
     pub uncore_max_mhz: Option<u32>,
     pub power_limit_w: Option<f64>,
-    /// PL2: pico de curto prazo (W).
+    /// PL2: short-term peak (W).
     pub power_limit2_w: Option<f64>,
 }
 
@@ -39,51 +39,51 @@ pub struct Machine {
     /// "normal" | "jogo" | "ia" | "silencioso" | "personalizado"
     pub mode: String,
     pub turbo: Option<bool>,
-    /// Por nó NUMA (= socket); chave = número do nó em texto (JSON).
+    /// Per NUMA node (= socket); key = node number as text (JSON).
     pub sockets: BTreeMap<String, SocketTune>,
-    /// Balanceamento NUMA automático do kernel (move páginas sozinho).
+    /// Kernel automatic NUMA balancing (moves pages by itself).
     pub numa_balancing: Option<bool>,
     pub zone_reclaim: Option<bool>,
     /// Transparent Huge Pages: "always" | "madvise" | "never"
     pub thp: Option<String>,
-    /// Hugepages de 2 MB reservadas por nó (em MB).
+    /// 2 MB hugepages reserved per node (in MB).
     pub hugepages_mb: BTreeMap<String, u64>,
-    /// Escalonador sched_ext pelo scx_loader: None = não mexer, "none" = desligar, "lavd"...
+    /// sched_ext scheduler through scx_loader: None = leave as is, "none" = turn off, "lavd"...
     pub scx: Option<String>,
     /// auto | gaming | powersave | lowlatency | server
     pub scx_mode: Option<String>,
-    /// Enquanto um programa com "baixa latência" roda, desliga nos núcleos dele os estados de
-    /// economia com latência de saída acima disto (µs).
+    /// While a program with "low latency" runs, disables on its cores the idle states
+    /// with exit latency above this (µs).
     pub game_latency_us: u64,
-    /// ... e fixa o uncore do socket dele no máximo.
+    /// ... and pins its socket's uncore at maximum.
     pub game_uncore_max: bool,
-    /// Modo das ventoinhas por IPMI (placas Supermicro): 0 padrão, 1 máximo, 2 ótimo, 4 "heavy IO".
+    /// Fan mode through IPMI (Supermicro boards): 0 default, 1 maximum, 2 optimal, 4 "heavy IO".
     pub ipmi_fan_mode: Option<u8>,
     // ---- notebook ----
-    /// Para de carregar a bateria em (%).
+    /// Stop charging the battery at (%).
     pub charge_limit: Option<u8>,
-    /// Perfil de energia da plataforma (ACPI): low-power, balanced, performance...
+    /// Platform power profile (ACPI): low-power, balanced, performance...
     pub platform_profile: Option<String>,
-    /// Modo aplicado sozinho ao ligar na tomada / ao ir para a bateria.
+    /// Mode applied by itself when plugging into AC / going to battery.
     pub ac_mode: Option<String>,
     pub battery_mode: Option<String>,
-    /// Deixar a placa dedicada dormir quando ninguém usa.
+    /// Let the dedicated card sleep when nobody uses it.
     pub dgpu_autosuspend: Option<bool>,
-    /// Dynamic Boost da NVIDIA (nvidia-powerd).
+    /// NVIDIA Dynamic Boost (nvidia-powerd).
     pub nvidia_powerd: Option<bool>,
-    /// Limites de potência do Ryzen de notebook (ryzenadj).
+    /// Laptop Ryzen power limits (ryzenadj).
     pub ryzen: Option<crate::ryzen::Limits>,
-    /// Acer Predator/Nitro (Linuwu-Sense): chave -> valor.
+    /// Acer Predator/Nitro (Linuwu-Sense): key -> value.
     pub acer: BTreeMap<String, String>,
-    /// Placas de rede com Wake-on-LAN ligado (o serviço reaplica a cada boot).
+    /// Network cards with Wake-on-LAN enabled (the service reapplies it every boot).
     pub wol: Vec<String>,
-    /// Preço do kWh (R$) para mostrar o custo.
+    /// kWh price (R$) to show the cost.
     pub price_kwh: Option<f64>,
-    /// Consumo fixo do resto do PC (placa-mãe, discos, ventoinhas, perda da fonte), em W.
+    /// Fixed draw of the rest of the PC (motherboard, disks, fans, power supply losses), in W.
     pub base_w: Option<f64>,
-    /// Modos por horário (ex.: Silencioso das 0:00 às 7:00).
+    /// Scheduled modes (e.g. Quiet from 0:00 to 7:00).
     pub schedule: Vec<Sched>,
-    /// Notebook com NVIDIA: auto | hibrido | integrada (None = não mexer).
+    /// Laptop with NVIDIA: auto | hibrido | integrada (None = leave as is).
     pub dgpu_mode: Option<String>,
 }
 
@@ -108,7 +108,7 @@ impl Sched {
             && hm(&self.to).is_some()
             && ["normal", "jogo", "ia", "silencioso"].contains(&self.mode.as_str())
     }
-    /// Vale no minuto do dia `now` (0..1440)? Atravessa a meia-noite se `to` < `from`.
+    /// In effect at minute of day `now` (0..1440)? Crosses midnight if `to` < `from`.
     pub fn active_at(&self, now: u32) -> bool {
         let (Some(a), Some(b)) = (hm(&self.from), hm(&self.to)) else {
             return false;
@@ -121,7 +121,7 @@ impl Sched {
     }
 }
 
-/// Minuto do dia no horário local.
+/// Minute of the day in local time.
 pub fn local_minute() -> u32 {
     let t = unsafe { libc::time(std::ptr::null_mut()) };
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
@@ -129,8 +129,8 @@ pub fn local_minute() -> u32 {
     (tm.tm_hour * 60 + tm.tm_min) as u32
 }
 
-/// Modo que as regras automáticas pedem agora: programa aberto (jogo > ia > silencioso > normal)
-/// tem prioridade sobre o horário.
+/// Mode the automatic rules ask for now: a running program (jogo > ia > silencioso > normal)
+/// takes priority over the schedule.
 pub fn auto_mode(program_modes: &[String], schedule: &[Sched], minute: u32) -> Option<String> {
     for m in ["jogo", "ia", "silencioso", "normal"] {
         if program_modes.iter().any(|x| x == m) {
@@ -291,7 +291,7 @@ impl Machine {
         Ok(())
     }
 
-    /// Modos de um clique. `game_node` = socket da placa do jogo.
+    /// One-click modes. `game_node` = socket of the game's card.
     pub fn preset(
         name: &str,
         topo: &Topology,
@@ -396,7 +396,7 @@ impl Machine {
             }
             _ => {
                 m.mode = "normal".into();
-                // Normal: tudo como o sistema tinha (mas desliga o escalonador que um modo ligou).
+                // Normal: everything as the system had it (but turns off the scheduler a mode turned on).
             }
         }
         m
@@ -414,7 +414,7 @@ fn thp_path() -> PathBuf {
     sys("kernel/mm/transparent_hugepage/enabled")
 }
 
-/// Modo atual do THP (o que está entre colchetes).
+/// Current THP mode (the one in brackets).
 pub fn thp() -> Option<String> {
     let s = read_trim(thp_path())?;
     let a = s.find('[')?;
@@ -432,7 +432,7 @@ pub fn hugepages(node: usize) -> Option<u64> {
     read_u64(huge_path(node))
 }
 
-/// Valores que o sistema tinha quando o serviço iniciou.
+/// Values the system had when the service started.
 #[derive(Debug, Clone, Default)]
 pub struct Orig {
     pub turbo: Option<bool>,
@@ -449,7 +449,7 @@ pub struct Orig {
     pub ipmi: Option<u8>,
     pub charge_limit: Option<u8>,
     pub platform_profile: Option<String>,
-    /// power/control das placas dedicadas
+    /// power/control of the dedicated cards
     pub dgpu_pm: BTreeMap<String, String>,
     pub ryzen: Option<crate::ryzen::Limits>,
     pub acer: BTreeMap<String, String>,
@@ -526,7 +526,7 @@ fn package_of(topo: &Topology, node: usize) -> u32 {
         .unwrap_or(node as u32)
 }
 
-/// Uncore do socket conforme o ajuste salvo (ou o de fábrica).
+/// The socket's uncore according to the saved setting (or the factory one).
 pub fn apply_uncore(topo: &Topology, node: usize, t: Option<&SocketTune>) -> Result<(), String> {
     let pkg = package_of(topo, node);
     match t.map(|t| (t.uncore_min_mhz, t.uncore_max_mhz)) {
@@ -545,8 +545,8 @@ pub fn apply_uncore(topo: &Topology, node: usize, t: Option<&SocketTune>) -> Res
     }
 }
 
-/// Aplica tudo. `prev` = o que estava aplicado antes (para o escalonador só mudar quando precisa);
-/// `base_gov` = governor escolhido por socket na aba Mapa (vale quando o modo não define).
+/// Applies everything. `prev` = what was applied before (so the scheduler only changes when
+/// needed); `base_gov` = governor chosen per socket in the Map tab (used when the mode sets none).
 pub fn apply(
     m: &Machine,
     prev: Option<&Machine>,
@@ -726,8 +726,9 @@ pub fn apply(
             crate::i18n::tr("charge limit"),
         );
     }
-    // Só quando o perfil pedido mudou (ou na primeira aplicação): trocar outra coisa da máquina
-    // (ex.: o modo da NVIDIA) não pode desfazer o perfil que o usuário escolheu no desktop.
+    // Only when the requested profile changed (or on the first application): changing something
+    // else on the machine (e.g. the NVIDIA mode) must not undo the profile the user chose in the
+    // desktop.
     let profile_changed = prev.is_none_or(|p| p.platform_profile != m.platform_profile);
     if profile_changed
         && let Some(p) = m.platform_profile.clone().or(orig.platform_profile.clone())
@@ -842,7 +843,7 @@ fn apply_scx(sched: Option<&str>, mode: Option<&str>, had: bool) -> Result<(), S
     }
 }
 
-/// (escalonador atual, lista dos disponíveis) pelo scxctl.
+/// (current scheduler, list of available ones) through scxctl.
 pub fn scx_status() -> Option<(String, Vec<String>)> {
     if !crate::containers::which("scxctl") {
         return None;
@@ -868,9 +869,9 @@ pub fn scx_status() -> Option<(String, Vec<String>)> {
     Some((cur, list))
 }
 
-// ---------------- baixa latência por programa ----------------
+// ---------------- low latency per program ----------------
 
-/// Estado aplicado para os programas com "baixa latência" (C-states e uncore).
+/// State applied for the programs with "low latency" (C-states and uncore).
 #[derive(Debug, Default)]
 pub struct LowLatency {
     pub cpus: Vec<usize>,
@@ -879,7 +880,7 @@ pub struct LowLatency {
 }
 
 impl LowLatency {
-    /// Ajusta para o novo conjunto de núcleos (vazio = devolve tudo).
+    /// Adjusts to the new set of cores (empty = gives everything back).
     pub fn set(&mut self, want: Vec<usize>, m: &Machine, topo: &Topology) {
         if want == self.cpus {
             return;
@@ -1004,7 +1005,7 @@ mod tests {
         assert!(l.contains("--stapm-limit=30000 --tctl-temp=85"), "{l}");
         assert_eq!(crate::acer::read("battery_limiter").as_deref(), Some("1"));
         assert_eq!(crate::acer::read("fan_speed").as_deref(), Some("60,70"));
-        // tirar os ajustes volta os originais
+        // removing the settings restores the originals
         let prev = m.clone();
         let m2 = Machine::default();
         let errs = apply(&m2, Some(&prev), &orig, &topo, &BTreeMap::new());
@@ -1044,7 +1045,7 @@ mod tests {
         assert!(m.validate().is_ok());
         let s = serde_json::to_string(&m).unwrap();
         assert_eq!(serde_json::from_str::<Machine>(&s).unwrap(), m);
-        // Arquivo antigo/parcial ganha os padrões.
+        // An old/partial file gets the defaults.
         let p: Machine = serde_json::from_str(r#"{"mode":"jogo"}"#).unwrap();
         assert_eq!(p.game_latency_us, 2);
         assert!(p.game_uncore_max);

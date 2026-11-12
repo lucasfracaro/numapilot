@@ -1,5 +1,5 @@
-//! Perfis por programa escolhidos pela interface gráfica (ou por `numapilot profile`).
-//! Ficam em /var/lib/numapilot/profiles.json (gravados pelo daemon, legíveis por todos).
+//! Per-program profiles chosen in the graphical interface (or through `numapilot profile`).
+//! They live in /var/lib/numapilot/profiles.json (written by the daemon, readable by everyone).
 
 use crate::learned::state_dir;
 use serde::{Deserialize, Serialize};
@@ -12,66 +12,66 @@ fn auto() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Profile {
-    /// Nome amigável mostrado na interface (ex.: "Cyberpunk2077.exe").
+    /// Friendly name shown in the interface (e.g. "Cyberpunk2077.exe").
     #[serde(default)]
     pub label: String,
     /// "auto" | "gpu" | "0" | "1" | "all" ...
     #[serde(default = "auto")]
     pub cpu: String,
-    /// "auto" | "display" | apelido/PCI da GPU
+    /// "auto" | "display" | GPU alias/PCI
     #[serde(default = "auto")]
     pub gpu: String,
-    /// "auto" | "graphics" | "compute": como usar a GPU escolhida.
+    /// "auto" | "graphics" | "compute": how to use the chosen GPU.
     #[serde(default = "auto", rename = "use")]
     pub usage: String,
-    /// GPU do frame generation do Lossless Scaling (lsfg-vk): "same" = a mesma do jogo.
-    /// Outra GPU só funciona com uma versão do lsfg-vk que suporte dual GPU.
+    /// GPU for Lossless Scaling frame generation (lsfg-vk): "same" = the game's.
+    /// Another GPU only works with an lsfg-vk version that supports dual GPU.
     #[serde(default = "same")]
     pub fg_gpu: String,
-    /// Quantos CPUs lógicos o programa pode usar (None = todos os dos sockets escolhidos).
+    /// How many logical CPUs the program may use (None = all of the chosen sockets').
     #[serde(default)]
     pub cores: Option<usize>,
-    /// Pode usar os dois threads de cada núcleo (hyper-threading)?
+    /// May it use both threads of each core (hyper-threading)?
     #[serde(default = "yes")]
     pub smt: bool,
-    /// CPUs escolhidos à mão no mapa (ex.: "22-29,66-73"); tem prioridade sobre sockets/núcleos.
+    /// CPUs picked by hand on the map (e.g. "22-29,66-73"); takes priority over sockets/cores.
     #[serde(default)]
     pub cpu_list: Option<String>,
-    /// Memória: "auto" | "strict" (só do(s) socket(s) dos núcleos) | "prefer" | "interleave" | "free"
+    /// Memory: "auto" | "strict" (only from the cores' socket(s)) | "prefer" | "interleave" | "free"
     #[serde(default = "auto")]
     pub memory: String,
-    /// Limite de memória em GB.
+    /// Memory limit in GB.
     #[serde(default)]
     pub mem_max_gb: Option<f64>,
     /// "low" | "normal" | "high"
     #[serde(default = "normal")]
     pub priority: String,
-    /// Reserva os núcleos só para este programa enquanto ele roda.
+    /// Reserves the cores for this program alone while it runs.
     #[serde(default)]
     pub exclusive: bool,
-    /// Faz o programa "enxergar" só os núcleos liberados (Proton/Wine, OpenMP, MKL, .NET, Java...).
+    /// Makes the program "see" only the allowed cores (Proton/Wine, OpenMP, MKL, .NET, Java...).
     #[serde(default = "yes")]
     pub limit_visible: bool,
-    /// Enquanto roda: núcleos dele sem os estados de economia profundos e uncore no máximo.
+    /// While it runs: its cores without the deep idle states and uncore at maximum.
     #[serde(default)]
     pub low_latency: bool,
-    /// Perfil de energia da GPU enquanto roda: "auto" (não mexe) | "3d" | "compute" | "vr" | "video" | "economia"
+    /// GPU power profile while it runs: "auto" (leave as is) | "3d" | "compute" | "vr" | "video" | "economia"
     #[serde(default = "auto")]
     pub gpu_power: String,
-    /// Abre o jogo dentro do gamescope (resolução interna, FSR, limite de FPS).
+    /// Starts the game inside gamescope (internal resolution, FSR, FPS limit).
     #[serde(default)]
     pub gamescope: Option<Gamescope>,
-    /// Upscaling do jogo (FSR 4/DLSS/XeSS pelo Proton, ou OptiScaler).
+    /// Game upscaling (FSR 4/DLSS/XeSS through Proton, or OptiScaler).
     #[serde(default)]
     pub upscale: Option<Upscale>,
-    /// Modo da máquina enquanto o programa está aberto (jogo, ia, silencioso); volta ao fechar.
+    /// Machine mode while the program is open (jogo, ia, silencioso); goes back when it closes.
     #[serde(default)]
     pub machine_mode: Option<String>,
-    /// Limite de processador em % de um núcleo (50 = meio núcleo, 200 = dois núcleos).
+    /// Processor limit in % of one core (50 = half a core, 200 = two cores).
     #[serde(default)]
     pub cpu_max_pct: Option<f64>,
-    /// Turbo máximo: enquanto roda, o resto do sistema sai do socket inteiro dos núcleos dele,
-    /// para os outros núcleos dormirem e o clock subir (só em PCs com mais de um processador).
+    /// Maximum turbo: while it runs, the rest of the system leaves the whole socket of its cores,
+    /// so the other cores sleep and the clock rises (only on PCs with more than one processor).
     #[serde(default)]
     pub turbo_max: bool,
 }
@@ -81,27 +81,27 @@ pub struct Profile {
 pub struct Upscale {
     /// nenhum | fsr4 | fsr4-rdna3 | fsr3 | dlss | xess | optiscaler
     pub mode: String,
-    /// Mostra a marca d'água do FSR 4/DLSS (para conferir se pegou).
+    /// Shows the FSR 4/DLSS watermark (to check that it took effect).
     pub indicator: bool,
-    /// OptiScaler: força o FSR 4 INT8 em placas sem suporte oficial (experimental).
+    /// OptiScaler: forces FSR 4 INT8 on cards without official support (experimental).
     pub int8: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Gamescope {
-    /// Resolução em que o jogo renderiza (None = a da tela).
+    /// Resolution the game renders at (None = the display's).
     #[serde(default)]
     pub render_w: Option<u32>,
     #[serde(default)]
     pub render_h: Option<u32>,
-    /// Resolução de saída (None = a da tela).
+    /// Output resolution (None = the display's).
     #[serde(default)]
     pub out_w: Option<u32>,
     #[serde(default)]
     pub out_h: Option<u32>,
     #[serde(default = "yes")]
     pub fullscreen: bool,
-    /// Amplia com FSR 1 quando a resolução interna é menor.
+    /// Upscales with FSR 1 when the internal resolution is lower.
     #[serde(default)]
     pub fsr: bool,
     #[serde(default)]
@@ -123,7 +123,7 @@ impl Default for Gamescope {
 }
 
 impl Gamescope {
-    /// Argumentos do gamescope (sem o "--" final).
+    /// gamescope arguments (without the final "--").
     pub fn argv(&self) -> Vec<String> {
         let mut a = vec!["gamescope".to_string()];
         let mut push = |f: &str, v: Option<u32>| {
@@ -194,12 +194,12 @@ impl Profile {
         *self == d
     }
 
-    /// Algo na parte de CPU/memória que não é automático?
+    /// Anything in the CPU/memory part that is not automatic?
     pub fn has_cpu_choice(&self) -> bool {
         self.cpu != "auto" || self.cores.is_some() || !self.smt || self.cpu_list.is_some()
     }
 
-    /// Precisa de um grupo de controle (cgroup) do systemd para valer.
+    /// Needs a systemd control group (cgroup) to take effect.
     pub fn needs_scope(&self) -> bool {
         self.memory == "strict"
             || self.mem_max_gb.is_some()
@@ -208,7 +208,7 @@ impl Profile {
             || self.turbo_max
     }
 
-    /// Precisa do serviço (root) para aplicar: cgroup ou prioridade alta.
+    /// Needs the service (root) to apply: cgroup or high priority.
     pub fn needs_daemon_hw(&self) -> bool {
         self.low_latency || self.gpu_power != "auto"
     }
@@ -266,7 +266,7 @@ impl Profile {
         Ok(())
     }
 
-    /// Perfis prontos de um clique.
+    /// One-click ready-made profiles.
     pub fn preset(name: &str, base: &Profile) -> Profile {
         let mut p = Profile {
             label: base.label.clone(),
@@ -279,8 +279,8 @@ impl Profile {
             ..Default::default()
         };
         match name {
-            // Jogo: socket da GPU, núcleos físicos (sem dividir núcleo), memória só local,
-            // prioridade alta e núcleos reservados.
+            // Game: GPU's socket, physical cores (no core sharing), local memory only,
+            // high priority and reserved cores.
             "jogo" => {
                 p.cpu = "gpu".into();
                 p.cores = Some(16);
@@ -294,7 +294,7 @@ impl Profile {
                     p.usage = "graphics".into();
                 }
             }
-            // IA: socket(s) da(s) GPU(s) de computação, memória preferindo a local.
+            // AI: socket(s) of the compute GPU(s), memory preferring local.
             "ia" => {
                 p.cpu = "gpu".into();
                 p.memory = "prefer".into();
@@ -303,13 +303,13 @@ impl Profile {
                     p.usage = "compute".into();
                 }
             }
-            // Renderização/compilação: tudo, memória intercalada (banda dos dois sockets).
+            // Rendering/compiling: everything, interleaved memory (bandwidth of both sockets).
             "render" => {
                 p.cpu = "all".into();
                 p.memory = "interleave".into();
             }
-            // Turbo máximo: 4 núcleos físicos do socket da GPU, sozinhos no processador
-            // (o resto do sistema vai para o outro socket), para o clock ir ao degrau mais alto.
+            // Maximum turbo: 4 physical cores of the GPU's socket, alone on the processor
+            // (the rest of the system goes to the other socket), so the clock reaches the highest step.
             "turbo" => {
                 p.cpu = "gpu".into();
                 p.cores = Some(4);
@@ -323,18 +323,18 @@ impl Profile {
                     p.usage = "graphics".into();
                 }
             }
-            // Edição de vídeo: um socket inteiro com os dois threads, memória preferindo a local.
+            // Video editing: a whole socket with both threads, memory preferring local.
             "video" => {
                 p.cpu = "gpu".into();
                 p.memory = "prefer".into();
                 p.gpu_power = "video".into();
             }
-            // Segundo plano: no máximo um núcleo, prioridade baixa (sincronizadores, launchers...).
+            // Background: at most one core, low priority (sync tools, launchers...).
             "fundo" => {
                 p.priority = "low".into();
                 p.cpu_max_pct = Some(100.0);
             }
-            // Silencioso: poucos núcleos, prioridade baixa (não atrapalha o resto).
+            // Quiet: few cores, low priority (stays out of the way).
             "silencioso" => {
                 p.cores = Some(4);
                 p.priority = "low".into();
@@ -379,8 +379,8 @@ impl Profiles {
     }
 }
 
-/// Chave do programa: jogos da Steam usam o AppId (todos os processos do jogo
-/// ficam juntos); o resto usa a chave de aprendizado (executável / script).
+/// Program key: Steam games use the AppId (all of the game's processes
+/// stay together); the rest use the learning key (executable / script).
 pub fn program_key(steam_appid: Option<&str>, learn_key: &str) -> String {
     match steam_appid {
         Some(id) if !id.is_empty() && id != "0" => format!("steam:{id}"),
@@ -388,17 +388,17 @@ pub fn program_key(steam_appid: Option<&str>, learn_key: &str) -> String {
     }
 }
 
-/// Arquivo para trocar escolhas entre PCs ou com outras pessoas.
+/// File to exchange choices between PCs or with other people.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Exported {
-    /// versão do formato
+    /// format version
     pub formato: u32,
     #[serde(default)]
     pub maquina: String,
     pub perfis: BTreeMap<String, Profile>,
 }
 
-/// Onde a exportação vai por padrão: ~/numapilot-escolhas-MAQUINA.json
+/// Where the export goes by default: ~/numapilot-escolhas-MACHINE.json
 pub fn export_path() -> PathBuf {
     PathBuf::from(std::env::var_os("HOME").unwrap_or_else(|| "/tmp".into())).join(format!(
         "numapilot-escolhas-{}.json",
@@ -406,7 +406,7 @@ pub fn export_path() -> PathBuf {
     ))
 }
 
-/// Texto do arquivo de exportação com todas as escolhas salvas.
+/// Text of the export file with all saved choices.
 pub fn export_text() -> String {
     let e = Exported {
         formato: 1,
@@ -416,9 +416,9 @@ pub fn export_text() -> String {
     serde_json::to_string_pretty(&e).unwrap_or_default()
 }
 
-/// Lê um arquivo de exportação e devolve só os perfis válidos e os erros dos outros.
-/// Escolhas presas a núcleos ou placas de outra máquina são adaptadas: a lista de CPUs sai
-/// (os núcleos são outros) e a placa volta para "auto" se o apelido não existir aqui.
+/// Reads an export file and returns only the valid profiles and the errors of the others.
+/// Choices tied to another machine's cores or cards are adapted: the CPU list is dropped
+/// (the cores are different) and the card goes back to "auto" if the alias does not exist here.
 pub fn import_text(
     text: &str,
     gpu_aliases: &[String],

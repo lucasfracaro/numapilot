@@ -1,5 +1,5 @@
-//! Aba "Laboratório e containers": liga/desliga o laboratório, abre as IDEs e mostra
-//! os containers com os apps instalados em cada um.
+//! "Lab and containers" tab: turns the lab on/off, opens the IDEs and shows
+//! the containers with the apps installed in each one.
 
 use crate::App;
 use crate::jobs::{home, open_url, sibling, spawn_detached};
@@ -7,7 +7,7 @@ use eframe::egui::{self, Color32, RichText};
 use numapilot::containers::{self, Container, Kind};
 use numapilot::labcfg::LabSettings;
 
-// ---------- ações (usadas também pelo ícone da bandeja) ----------
+// ---------- actions (also used by the tray icon) ----------
 
 pub fn jupyter_url(st: &LabSettings) -> String {
     format!(
@@ -132,7 +132,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     let lab_running = lab.as_ref().is_some_and(|c| c.running);
 
     egui::ScrollArea::vertical().show(ui, |ui| {
-        // ---- laboratório ----
+        // ---- lab ----
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {

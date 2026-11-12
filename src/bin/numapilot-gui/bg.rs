@@ -1,5 +1,5 @@
-//! Informações atualizadas em segundo plano (containers, servidor de IA, Sunshine, atualizações),
-//! para a interface nunca travar esperando um comando.
+//! Information refreshed in the background (containers, AI server, Sunshine, updates), so the
+//! interface never freezes waiting for a command.
 
 use crate::jobs::quick;
 use numapilot::containers::{self, Apps, Container};
@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Default, Clone)]
 pub struct Sunshine {
-    /// "sistema" | "flatpak" | None (não instalado)
+    /// "sistema" | "flatpak" | None (not installed)
     pub install: Option<String>,
     pub unit: Option<String>,
     pub active: bool,
@@ -28,7 +28,7 @@ pub struct Bg {
     /// None = servidor parado; Some(false) = carregando; Some(true) = pronto
     pub llm: Option<bool>,
     pub sunshine: Sunshine,
-    /// render node → codecs de codificação (VA-API)
+    /// render node → encoding codecs (VA-API)
     pub vaapi: HashMap<String, String>,
     pub autoupdate: bool,
     pub last_update: Option<serde_json::Value>,
@@ -94,7 +94,7 @@ pub fn sunshine_info() -> Sunshine {
     s
 }
 
-/// Codecs que a GPU consegue codificar (para streaming), via `vainfo`.
+/// Codecs the GPU can encode (for streaming), through `vainfo`.
 pub fn vaapi_encoders(render: &str) -> String {
     if !containers::which("vainfo") {
         return crate::i18n::tr("install libva-utils to check").into();
@@ -184,7 +184,7 @@ pub fn start(ctx: eframe::egui::Context, renders: Vec<String>) -> Shared {
     shared
 }
 
-/// Descobre os apps de um container (em segundo plano).
+/// Finds the apps of a container (in the background).
 pub fn inspect(shared: &Shared, c: Container, ctx: eframe::egui::Context) {
     if let Ok(mut b) = shared.lock()
         && !b.inspecting.insert(c.id.clone())

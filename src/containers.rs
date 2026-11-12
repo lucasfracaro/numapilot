@@ -1,15 +1,15 @@
-//! Containers (podman ou docker): lista, apps instalados em cada um e como abri-los.
+//! Containers (podman or docker): list, apps installed in each and how to open them.
 
 use serde_json::Value;
 use std::process::{Command, Stdio};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Kind {
-    /// Laboratório do numapilot (Jupyter, VS Code, PyCharm).
+    /// numapilot's lab (Jupyter, VS Code, PyCharm).
     Lab,
-    /// Servidor de IA (llama.cpp).
+    /// AI server (llama.cpp).
     Llm,
-    /// Distrobox: compartilha a tela e a pasta pessoal, então os apps abrem direto.
+    /// Distrobox: shares the display and the home folder, so apps open directly.
     Distrobox,
     Other,
 }
@@ -34,11 +34,11 @@ pub struct Container {
 
 #[derive(Debug, Clone, Default)]
 pub struct Apps {
-    /// Apps com atalho (.desktop): (nome, comando)
+    /// Apps with a shortcut (.desktop): (name, command)
     pub desktop: Vec<(String, String)>,
-    /// IDEs / ferramentas conhecidas encontradas: (nome, caminho)
+    /// Known IDEs / tools found: (name, path)
     pub tools: Vec<(String, String)>,
-    /// Pacotes Python: (nome, versão)
+    /// Python packages: (name, version)
     pub python: Vec<(String, String)>,
     /// Pacotes do sistema instalados explicitamente
     pub system: Vec<String>,
@@ -180,7 +180,7 @@ pub fn list(lab: &str, llm: &str) -> Result<Vec<Container>, String> {
     ))
 }
 
-/// Script rodado dentro do container para descobrir o que está instalado.
+/// Script run inside the container to find out what is installed.
 pub const INSPECT_SCRIPT: &str = r#"
 echo '##DESKTOP'
 for f in /usr/share/applications/*.desktop /usr/local/share/applications/*.desktop /opt/*/share/applications/*.desktop; do
@@ -272,7 +272,7 @@ pub fn inspect_apps(c: &Container) -> Apps {
     }
 }
 
-/// Remove os códigos de campo (%f, %U...) de uma linha Exec=.
+/// Removes the field codes (%f, %U...) from an Exec= line.
 pub fn clean_exec(exec: &str) -> String {
     exec.split_whitespace()
         .filter(|t| !(t.len() == 2 && t.starts_with('%')))
@@ -280,7 +280,7 @@ pub fn clean_exec(exec: &str) -> String {
         .join(" ")
 }
 
-/// Comando (no host) que abre um app gráfico de dentro do container, se for possível.
+/// Command (on the host) that opens a graphical app from inside the container, if possible.
 pub fn open_command(c: &Container, exec: &str) -> Option<Vec<String>> {
     let eng = engine()?;
     let exec = clean_exec(exec);

@@ -1,12 +1,13 @@
-//! Notebooks Acer Predator/Nitro com o módulo da comunidade Linuwu-Sense (linuwu_sense):
-//! ventoinhas, limite de carga em 80%, overdrive da tela, carga USB desligado, luz do teclado
-//! e RGB de 4 zonas. Os arquivos ficam em /sys/devices/platform/acer-wmi/{predator,nitro}_sense.
-//! O perfil de energia (incluindo o Turbo) vem pelo platform_profile, que o numapilot já controla.
+//! Acer Predator/Nitro laptops with the community module Linuwu-Sense (linuwu_sense):
+//! fans, 80% charge limit, display overdrive, USB charging while off, keyboard light
+//! and 4-zone RGB. The files live in /sys/devices/platform/acer-wmi/{predator,nitro}_sense.
+//! The power profile (including Turbo) comes through platform_profile, which numapilot already
+//! controls.
 
 use crate::util::{read_trim, sys};
 use std::path::PathBuf;
 
-/// Ajustes conhecidos: chave, arquivo, nome, explicação.
+/// Known settings: key, file, name, explanation.
 pub const KNOBS: &[(&str, &str, &str, &str)] = &[
     (
         "fan_speed",
@@ -46,7 +47,7 @@ pub const KNOBS: &[(&str, &str, &str, &str)] = &[
     ),
 ];
 
-/// Efeitos do RGB de 4 zonas (four_zone_mode).
+/// 4-zone RGB effects (four_zone_mode).
 pub const EFFECTS: &[(u8, &str)] = &[
     (0, "fixed"),
     (1, "breathing"),
@@ -62,7 +63,7 @@ fn platform() -> PathBuf {
     sys("devices/platform/acer-wmi")
 }
 
-/// Pasta do Linuwu-Sense (predator_sense ou nitro_sense), se o módulo estiver carregado.
+/// Linuwu-Sense folder (predator_sense or nitro_sense), if the module is loaded.
 pub fn sense_dir() -> Option<PathBuf> {
     ["predator_sense", "nitro_sense"]
         .iter()
@@ -79,7 +80,7 @@ pub fn is_acer() -> bool {
     read_trim(sys("class/dmi/id/sys_vendor")).is_some_and(|v| v.to_lowercase().contains("acer"))
 }
 
-/// Ajustes que este notebook tem: (chave, valor atual).
+/// Settings this laptop has: (key, current value).
 pub fn knobs() -> Vec<(&'static str, Option<String>)> {
     let Some(d) = sense_dir() else { return vec![] };
     KNOBS
@@ -104,7 +105,7 @@ pub fn read(key: &str) -> Option<String> {
     read_trim(path_for(key)?)
 }
 
-/// Confere o formato antes de gravar no driver.
+/// Checks the format before writing to the driver.
 pub fn validate(key: &str, v: &str) -> Result<(), String> {
     let nums = |n: usize, max: &[u32]| -> Result<(), String> {
         let p: Vec<&str> = v.split(',').collect();
@@ -140,9 +141,9 @@ pub fn validate(key: &str, v: &str) -> Result<(), String> {
                 Err("usb_charging: use 0, 10, 20 or 30".into())
             }
         }
-        // modo, velocidade, brilho, direção, r, g, b
+        // mode, speed, brightness, direction, r, g, b
         "kb_effect" => nums(7, &[7, 9, 100, 2, 255]),
-        // RRGGBB,RRGGBB,RRGGBB,RRGGBB,brilho
+        // RRGGBB,RRGGBB,RRGGBB,RRGGBB,brightness
         "kb_zones" => {
             let p: Vec<&str> = v.split(',').collect();
             let hex_ok = p.len() == 5

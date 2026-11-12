@@ -1,4 +1,4 @@
-//! Histórico de temperatura, potência, ventoinha e uso (gravado pelo daemon a cada 30 s, 24 h).
+//! History of temperature, power, fan and usage (written by the daemon every 30 s, 24 h).
 
 use crate::learned::run_dir;
 use serde::{Deserialize, Serialize};
@@ -9,16 +9,16 @@ pub const MAX_SAMPLES: usize = 2880;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sample {
-    /// segundos desde 1970
+    /// seconds since 1970
     pub t: u64,
-    /// por GPU: [temperatura °C, potência W, ventoinha %, uso %]
+    /// per GPU: [temperature °C, power W, fan %, usage %]
     pub g: Vec<[f32; 4]>,
-    /// uso de cada nó (0..1)
+    /// usage of each node (0..1)
     pub n: Vec<f32>,
-    /// potência de cada socket (W)
+    /// power of each socket (W)
     #[serde(default)]
     pub p: Vec<f32>,
-    /// temperatura de cada socket (°C)
+    /// temperature of each socket (°C)
     #[serde(default)]
     pub ct: Vec<f32>,
 }
@@ -48,14 +48,14 @@ impl History {
         std::fs::write(&tmp, serde_json::to_string(self).unwrap_or_default())?;
         std::fs::rename(tmp, Self::path())
     }
-    /// Amostras dos últimos `secs` segundos.
+    /// Samples from the last `secs` seconds.
     pub fn since(&self, secs: u64) -> Vec<&Sample> {
         let last = self.samples.back().map(|s| s.t).unwrap_or(0);
         self.samples.iter().filter(|s| s.t + secs >= last).collect()
     }
 }
 
-/// Estado do serviço para o diagnóstico (/run/numapilot/status.json).
+/// Service state for the diagnosis (/run/numapilot/status.json).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Status {

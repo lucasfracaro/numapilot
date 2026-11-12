@@ -1,10 +1,10 @@
-//! Opções que só valem a partir do boot, aplicadas de um jeito que sobrevive às atualizações do
-//! kernel: opções de módulo em /etc/modprobe.d (não dependem do bootloader nem da versão do kernel)
-//! e a imagem de boot (initramfs) refeita com a ferramenta da distro.
+//! Options that only apply from boot, applied in a way that survives kernel updates: module
+//! options in /etc/modprobe.d (independent of the bootloader and of the kernel version) and the
+//! boot image (initramfs) rebuilt with the distro's tool.
 
 use std::path::PathBuf;
 
-/// Arquivo gerenciado pelo numapilot.
+/// File managed by numapilot.
 pub fn conf_path() -> PathBuf {
     std::env::var_os("NUMAPILOT_MODPROBE_CONF")
         .map(PathBuf::from)
@@ -22,13 +22,13 @@ fn parse_hex(s: &str) -> Option<u64> {
     }
 }
 
-/// Valor em uso agora pelo driver (None = amdgpu não carregado).
+/// Value in use now by the driver (None = amdgpu not loaded).
 pub fn current_mask() -> Option<u64> {
     let p = crate::util::sys("module/amdgpu/parameters/ppfeaturemask");
     crate::util::read_trim(p).and_then(|s| parse_hex(&s))
 }
 
-/// Valor definido na linha do kernel (amdgpu.ppfeaturemask=...), que tem prioridade.
+/// Value set on the kernel command line (amdgpu.ppfeaturemask=...), which takes priority.
 pub fn cmdline_mask() -> Option<u64> {
     let c = std::fs::read_to_string("/proc/cmdline").ok()?;
     c.split_whitespace()
@@ -36,7 +36,7 @@ pub fn cmdline_mask() -> Option<u64> {
         .and_then(parse_hex)
 }
 
-/// Valor salvo no nosso arquivo.
+/// Value saved in our file.
 pub fn saved_mask() -> Option<u64> {
     let s = std::fs::read_to_string(conf_path()).ok()?;
     s.lines()
@@ -48,15 +48,15 @@ pub fn saved_mask() -> Option<u64> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OverdriveState {
-    /// Ativo agora (o driver carregou com o bit).
+    /// Active now (the driver loaded with the bit).
     pub active: bool,
-    /// Vai estar ativo depois de reiniciar.
+    /// Will be active after a reboot.
     pub on_next_boot: bool,
-    /// A linha do kernel define o valor (nosso arquivo é ignorado).
+    /// The kernel command line sets the value (our file is ignored).
     pub from_cmdline: bool,
 }
 
-/// ppfeaturemask definido em qualquer arquivo do modprobe.d (o nosso ou outro).
+/// ppfeaturemask set in any modprobe.d file (ours or another).
 pub fn any_modprobe_mask() -> Option<u64> {
     if let Some(m) = saved_mask() {
         return Some(m);
@@ -88,7 +88,7 @@ pub fn overdrive_state() -> OverdriveState {
     let cmd = cmdline_mask();
     let on_next_boot = match (cmd, any_modprobe_mask()) {
         (Some(m), _) | (None, Some(m)) => m & OVERDRIVE_BIT != 0,
-        // ninguém define: é o padrão do kernel (o do CachyOS já vem com o OverDrive)
+        // nobody sets it: it is the kernel default (CachyOS's already ships with OverDrive)
         (None, None) => active,
     };
     OverdriveState {
@@ -98,7 +98,7 @@ pub fn overdrive_state() -> OverdriveState {
     }
 }
 
-/// Máscara a gravar: a atual com só o bit do OverDrive ligado (não mexe em mais nada).
+/// Mask to write: the current one with only the OverDrive bit turned on (touches nothing else).
 pub fn overdrive_mask(base: u64) -> u64 {
     base | OVERDRIVE_BIT
 }
@@ -122,7 +122,7 @@ fn render(mask: Option<u64>, ttm_pages: Option<u64>) -> String {
     s
 }
 
-/// Limite de memória da GPU (páginas de 4 KiB) salvo no nosso arquivo.
+/// GPU memory limit (4 KiB pages) saved in our file.
 pub fn saved_ttm() -> Option<u64> {
     let s = std::fs::read_to_string(conf_path()).ok()?;
     s.lines()
@@ -132,7 +132,7 @@ pub fn saved_ttm() -> Option<u64> {
         .and_then(|v| v.parse().ok())
 }
 
-/// Limite em uso agora (páginas de 4 KiB).
+/// Limit in use now (4 KiB pages).
 pub fn ttm_now() -> Option<u64> {
     crate::util::read_u64(crate::util::sys("module/ttm/parameters/pages_limit"))
 }
@@ -141,7 +141,7 @@ pub fn gib_to_pages(gib: f64) -> u64 {
     (gib * 1073741824.0 / 4096.0).round() as u64
 }
 
-/// Memória total do sistema (GiB).
+/// Total system memory (GiB).
 pub fn mem_total_gib() -> f64 {
     std::fs::read_to_string("/proc/meminfo")
         .ok()
@@ -181,8 +181,8 @@ fn write_conf(text: &str, empty: bool, log: &mut dyn FnMut(&str)) -> Result<bool
     Ok(true)
 }
 
-/// Memória que a GPU integrada (APU, BC-250) pode usar para IA/jogos: grava no boot e tenta
-/// aplicar já. None = volta ao padrão do kernel (metade da RAM).
+/// Memory the integrated GPU (APU, BC-250) may use for AI/games: writes it for boot and tries
+/// to apply it right away. None = back to the kernel default (half the RAM).
 pub fn set_gpu_memory(gib: Option<f64>, log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
         return Err(crate::i18n::tr(
@@ -229,7 +229,7 @@ pub fn set_gpu_memory(gib: Option<f64>, log: &mut dyn FnMut(&str)) -> Result<(),
     Ok(())
 }
 
-/// Ferramenta que refaz a imagem de boot, na ordem de preferência.
+/// Tool that rebuilds the boot image, in order of preference.
 pub fn initramfs_tool() -> Option<Vec<&'static str>> {
     let has = |b: &str| crate::containers::which(b);
     if has("limine-mkinitcpio") {
@@ -272,7 +272,7 @@ pub fn regenerate(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     }
 }
 
-/// Liga/desliga o OverDrive no boot. Precisa de root.
+/// Turns OverDrive on/off at boot. Needs root.
 pub fn set_overdrive(on: bool, log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
         return Err(crate::i18n::tr(
@@ -287,7 +287,7 @@ pub fn set_overdrive(on: bool, log: &mut dyn FnMut(&str)) -> Result<(), String> 
         ));
     }
     let new = if on {
-        // Parte do valor em uso (padrão do driver) para não mudar outros recursos.
+        // Starts from the value in use (driver default) so other features do not change.
         let base = saved_mask().or_else(current_mask).unwrap_or(0xfff7_bfff);
         Some(overdrive_mask(base))
     } else {

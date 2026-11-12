@@ -1,13 +1,13 @@
-//! De onde veio um programa (pacote do repositório ou do AUR, Flatpak, npm, pipx, cargo, programa
-//! da comunidade baixado pelo numapilot, AppImage ou arquivo solto) e como desinstalar do jeito
-//! certo para cada origem. Usado pela aba Inicialização: "Detalhes" e "Desinstalar…".
+//! Where a program came from (repository or AUR package, Flatpak, npm, pipx, cargo, community
+//! program downloaded by numapilot, AppImage or loose file) and how to uninstall it the right
+//! way for each source. Used by the Startup tab: "Details" and "Uninstall…".
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Source {
-    /// Pacote do pacman (`aur` = não veio de um repositório oficial).
+    /// pacman package (`aur` = did not come from an official repository).
     Pacman {
         pkg: String,
         aur: bool,
@@ -26,11 +26,11 @@ pub enum Source {
     Cargo {
         krate: String,
     },
-    /// Programa da comunidade baixado pelo numapilot (git).
+    /// Community program downloaded by numapilot (git).
     Numapilot {
         dir: PathBuf,
     },
-    /// Arquivos soltos (AppImage, binário, script). `root` = precisa de sudo para apagar.
+    /// Loose files (AppImage, binary, script). `root` = needs sudo to delete.
     Manual {
         paths: Vec<PathBuf>,
         root: bool,
@@ -95,19 +95,19 @@ impl Source {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Trace {
-    /// Arquivo que faz abrir (.desktop ou unidade do systemd) e o pacote dono dele.
+    /// File that makes it start (.desktop or systemd unit) and the package that owns it.
     pub file: Option<PathBuf>,
     pub file_pkg: Option<String>,
-    /// Programa de verdade (o script, se for `node script.js`, `python x.py`...).
+    /// The real program (the script, if it is `node script.js`, `python x.py`...).
     pub exe: Option<PathBuf>,
     pub source: Source,
-    /// Descrição do pacote, se houver.
+    /// Package description, if any.
     pub description: Option<String>,
-    /// Tamanho em disco (bytes), quando dá para saber.
+    /// Size on disk (bytes), when it can be known.
     pub size: Option<u64>,
-    /// Pastas de configuração e dados que existem para ele.
+    /// Configuration and data folders that exist for it.
     pub configs: Vec<PathBuf>,
-    /// Pasta própria do programa instalado à mão (ex.: ~/homebrew do Decky).
+    /// Own folder of a program installed by hand (e.g. Decky's ~/homebrew).
     pub app_dir: Option<PathBuf>,
 }
 
@@ -117,7 +117,7 @@ fn home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/root"))
 }
 
-/// Divide uma linha de comando respeitando aspas.
+/// Splits a command line respecting quotes.
 pub fn split_command(s: &str) -> Vec<String> {
     let mut out = vec![];
     let mut cur = String::new();
@@ -162,7 +162,7 @@ const INTERPRETERS: &[&str] = &[
     "deno", "electron", "wine",
 ];
 
-/// O que a linha de comando abre de verdade: ("flatpak", id) ou ("", programa/script).
+/// What the command line really starts: ("flatpak", id) or ("", program/script).
 pub fn program_of(exec: &str) -> Option<(String, String)> {
     let toks = split_command(exec);
     let mut i = 0;
@@ -173,7 +173,7 @@ pub fn program_of(exec: &str) -> Option<(String, String)> {
             i += 1;
             continue;
         }
-        // sh -c "sleep 10; exec programa": olha dentro
+        // sh -c "sleep 10; exec program": look inside
         if matches!(base, "sh" | "bash") && toks.get(i + 1).is_some_and(|a| a == "-c") {
             let inner = toks.get(i + 2)?;
             let last = inner
@@ -193,7 +193,7 @@ pub fn program_of(exec: &str) -> Option<(String, String)> {
             ));
         }
         if INTERPRETERS.contains(&base) {
-            // o script é o primeiro argumento que parece caminho
+            // the script is the first argument that looks like a path
             if let Some(s) = toks[i + 1..]
                 .iter()
                 .find(|a| a.contains('/') && !a.starts_with('-'))
@@ -230,12 +230,12 @@ fn out(cmd: &str, args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
-/// Dono de um arquivo no pacman.
+/// Owner of a file in pacman.
 fn pacman_owner(p: &Path) -> Option<String> {
     out("pacman", &["-Qqo", &p.to_string_lossy()]).filter(|s| !s.is_empty() && !s.contains('\n'))
 }
 
-/// Origem pelo caminho do programa (sem chamar o pacman: os testes usam isto).
+/// Source from the program's path (without calling pacman: the tests use this).
 pub fn source_from_path(p: &Path, home: &Path) -> Option<Source> {
     let s = p.to_string_lossy();
     if let Some(rest) = s.split("/node_modules/").nth(1) {
@@ -271,7 +271,7 @@ pub fn source_from_path(p: &Path, home: &Path) -> Option<Source> {
     None
 }
 
-/// Crate do `cargo install` que instalou este binário.
+/// `cargo install` crate that installed this binary.
 fn cargo_crate(bin: &str) -> Option<String> {
     let list = out("cargo", &["install", "--list"])?;
     let mut cur = None;
@@ -306,7 +306,7 @@ fn dir_size(p: &Path, budget: &mut u32) -> u64 {
         .sum()
 }
 
-/// Pastas de configuração e dados que existem para estes nomes.
+/// Configuration and data folders that exist for these names.
 pub fn config_dirs(names: &[String], home: &Path) -> Vec<PathBuf> {
     let mut v = vec![];
     for n in names.iter().filter(|n| n.len() >= 3) {
@@ -324,9 +324,9 @@ pub fn config_dirs(names: &[String], home: &Path) -> Vec<PathBuf> {
     v
 }
 
-/// Pasta própria de um programa instalado à mão dentro da pasta pessoal: a primeira pasta
-/// abaixo do home (ex.: ~/homebrew), ou a pasta do programa quando a primeira é genérica
-/// (~/Apps/Programa). Nada para ~/.local/bin, ~/bin e afins.
+/// Own folder of a program installed by hand inside the home folder: the first folder
+/// below home (e.g. ~/homebrew), or the program's folder when the first one is generic
+/// (~/Apps/Program). Nothing for ~/.local/bin, ~/bin and the like.
 pub fn app_dir_of(exe: &Path, home: &Path) -> Option<PathBuf> {
     let rel = exe.strip_prefix(home).ok()?;
     let parts: Vec<_> = rel.iter().collect();
@@ -334,8 +334,8 @@ pub fn app_dir_of(exe: &Path, home: &Path) -> Option<PathBuf> {
         return None;
     }
     let first = parts[0].to_string_lossy().to_lowercase();
-    // Pastas de ferramentas e de trabalho que guardam muito mais que um programa: apagar
-    // ~/go, ~/.cargo, ~/.conda ou ~/Projetos/algo por causa de um binário seria um desastre.
+    // Tool and work folders that hold far more than one program: deleting
+    // ~/go, ~/.cargo, ~/.conda or ~/Projetos/something because of one binary would be a disaster.
     const NEVER: &[&str] = &[
         ".cargo",
         ".rustup",
@@ -413,13 +413,13 @@ pub fn app_dir_of(exe: &Path, home: &Path) -> Option<PathBuf> {
         return None;
     }
     if GENERIC.contains(&first.as_str()) {
-        // ~/Apps/Programa/bin/x → ~/Apps/Programa; ~/Apps/x.AppImage → nada (o arquivo basta)
+        // ~/Apps/Program/bin/x → ~/Apps/Program; ~/Apps/x.AppImage → nothing (the file is enough)
         return (parts.len() >= 3).then(|| home.join(parts[0]).join(parts[1]));
     }
     Some(home.join(parts[0]))
 }
 
-/// Rastreia o programa de uma linha de comando (e o arquivo que faz ele abrir).
+/// Traces the program of a command line (and the file that makes it start).
 pub fn trace(exec: &str, file: Option<&Path>) -> Trace {
     let h = home();
     let file_pkg = file.and_then(pacman_owner);
@@ -517,7 +517,7 @@ pub fn trace(exec: &str, file: Option<&Path>) -> Trace {
     t
 }
 
-/// Pacotes que nunca devem ser removidos por aqui (sistema, sessão, rede, numapilot).
+/// Packages that must never be removed from here (system, session, network, numapilot).
 const ESSENTIAL_PKGS: &[&str] = &[
     "systemd",
     "glibc",
@@ -556,17 +556,17 @@ fn q(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-/// O que "Desinstalar" vai fazer: passos para mostrar e o script para rodar no terminal.
+/// What "Uninstall" will do: steps to show and the script to run in the terminal.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
     pub steps: Vec<String>,
     pub script: String,
-    /// Motivo para não deixar (None = pode).
+    /// Reason not to allow it (None = allowed).
     pub blocked: Option<String>,
 }
 
-/// Pacotes que o `pacman -Rns` tiraria junto (o pacote e as dependências que só ele usa).
-/// Só consulta (`--print`), não precisa de senha. Vazio se não deu para saber.
+/// Packages `pacman -Rns` would remove along with it (the package and the dependencies only it
+/// uses). Query only (`--print`), no password needed. Empty if it could not be determined.
 pub fn pacman_removal_preview(pkg: &str) -> Vec<String> {
     std::process::Command::new("pacman")
         .args(["-Rns", "--print", "--print-format", "%n %v", pkg])
@@ -583,7 +583,7 @@ pub fn pacman_removal_preview(pkg: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Monta o plano. `unit` = (unidade, do usuário?) quando abre por um serviço.
+/// Builds the plan. `unit` = (unit, user's?) when it starts through a service.
 pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: bool) -> Plan {
     let mut steps = vec![];
     let mut sc = vec!["set -e".to_string()];
@@ -612,7 +612,7 @@ pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: boo
             );
         }
     }
-    // o arquivo de inicialização sem pacote dono fica para trás: apaga
+    // the startup file with no owning package would be left behind: delete it
     if let Some(f) = &t.file
         && t.file_pkg.is_none()
     {
@@ -786,7 +786,7 @@ mod tests {
     }
 
     #[test]
-    fn programa_de_verdade() {
+    fn real_program() {
         let p = |e: &str| program_of(e).map(|x| x.1);
         assert_eq!(
             p("/usr/bin/steam -silent").as_deref(),
@@ -865,7 +865,7 @@ mod tests {
     }
 
     #[test]
-    fn pasta_do_programa() {
+    fn program_folder() {
         let h = Path::new("/home/x");
         assert_eq!(
             app_dir_of(Path::new("/home/x/homebrew/services/PluginLoader"), h),
@@ -881,7 +881,7 @@ mod tests {
         );
         assert_eq!(app_dir_of(Path::new("/home/x/Apps/Foo.AppImage"), h), None);
         assert_eq!(app_dir_of(Path::new("/usr/bin/steam"), h), None);
-        // pastas de ferramentas e de projetos nunca viram "pasta do programa"
+        // tool and project folders never become the "program folder"
         assert_eq!(app_dir_of(Path::new("/home/x/go/bin/tool"), h), None);
         assert_eq!(
             app_dir_of(Path::new("/home/x/.conda/envs/a/bin/python"), h),

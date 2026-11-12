@@ -1,6 +1,6 @@
-//! Daemon do modo automático: observa processos, coloca cada um no melhor socket
-//! e expande para os dois sockets quando o programa satura o nó.
-//! Também atende a interface gráfica pelo socket de controle (perfis por programa).
+//! Automatic-mode daemon: watches processes, puts each one on the best socket
+//! and expands to both sockets when the program saturates the node.
+//! Also serves the graphical interface through the control socket (per-program profiles).
 
 use crate::cgroup::{self, Limits};
 use crate::config::{Config, CpuSpec, GpuSpec};
@@ -28,7 +28,7 @@ use std::time::{Duration, Instant};
 
 static STOP: AtomicBool = AtomicBool::new(false);
 
-/// Estado dos controles de hardware da máquina (fora das GPUs).
+/// State of the machine's hardware controls (other than the GPUs).
 struct Hw {
     machine: Machine,
     orig: Orig,
@@ -42,7 +42,7 @@ struct Hw {
     cpu_power: BTreeMap<u32, f64>,
     last_ac: Option<bool>,
     ryzen_info: BTreeMap<String, f64>,
-    /// Placas em teste de undervolt: o valor bom que fica no disco.
+    /// Cards under an undervolt trial: the good value that stays on disk.
     gpu_trial: HashMap<String, gpuctl::GpuControl>,
     health_at: Option<Instant>,
     started: Instant,
@@ -51,16 +51,16 @@ struct Hw {
     energy_at: Instant,
     energy_saved: Instant,
     watts: f64,
-    /// GPU parada: desde quando, e o nível que estava antes de baixarmos.
+    /// Idle GPU: since when, and the level it had before we lowered it.
     idle: HashMap<String, (Option<Instant>, Option<String>)>,
-    /// Modo posto pelas regras automáticas (programa/horário) e o modo manual para voltar.
+    /// Mode set by the automatic rules (program/schedule) and the manual mode to go back to.
     auto_mode: Option<String>,
     manual_mode: Option<String>,
-    /// O usuário trocou o modo à mão enquanto uma regra valia: não reaplica a mesma regra.
+    /// The user switched the mode by hand while a rule was in effect: do not reapply the same rule.
     auto_suppressed: Option<String>,
-    /// NVIDIA do notebook (modos trocados com a sessão aberta).
+    /// Laptop NVIDIA (modes switched with the session open).
     dgpu: Option<crate::hybrid::State>,
-    /// Serviços da NVIDIA parados para poder tirar a placa (voltam junto com ela).
+    /// NVIDIA services stopped so the card can be removed (they come back with it).
     dgpu_stopped: Vec<String>,
 }
 
@@ -117,7 +117,7 @@ impl Hw {
         }
     }
 
-    /// Notebook: troca de modo ao ligar/desligar da tomada.
+    /// Laptop: mode switch when plugging/unplugging AC power.
     fn power_source_tick(&mut self, topo: &Topology) {
         let ac = crate::notebook::on_ac();
         if ac.is_none() || ac == self.last_ac {
@@ -131,7 +131,7 @@ impl Hw {
         };
         let Some(name) = target else { return };
         if self.auto_mode.is_some() {
-            // uma regra automática manda agora; vale ao terminar
+            // an automatic rule is in charge now; applies when it ends
             self.manual_mode = Some(name);
             return;
         }
@@ -153,8 +153,8 @@ impl Hw {
         );
     }
 
-    /// O firmware do notebook volta os limites do Ryzen ao trocar tomada/bateria ou perfil:
-    /// confere de tempos em tempos e reaplica o que foi pedido.
+    /// The laptop firmware resets the Ryzen limits when switching AC/battery or profile:
+    /// check from time to time and reapply what was asked.
     fn ryzen_tick(&mut self) {
         if !(crate::ryzen::available() && crate::ryzen::applicable()) {
             return;
@@ -173,7 +173,7 @@ impl Hw {
         self.ryzen_info = info;
     }
 
-    /// Regras automáticas: modo por programa aberto e por horário.
+    /// Automatic rules: mode by running program and by schedule.
     fn auto_mode_tick(&mut self, topo: &Topology, procs: &HashMap<i32, Tracked>) {
         let progs: Vec<String> = procs
             .values()
@@ -217,7 +217,7 @@ impl Hw {
         );
     }
 
-    /// Modos da NVIDIA do notebook: tira ou devolve a placa conforme o modo e a tomada.
+    /// Laptop NVIDIA modes: removes or brings back the card depending on the mode and AC power.
     fn dgpu_tick(&mut self) {
         let Some(mut st) = self.dgpu.clone() else {
             return;
@@ -226,7 +226,7 @@ impl Hw {
         let mode = self.machine.dgpu_mode.clone();
         let want = match &mode {
             Some(m) => crate::hybrid::want_present(m, crate::notebook::on_ac()),
-            // "não mexer": se fomos nós que tiramos, devolve
+            // "leave as is": if we were the ones who removed it, bring it back
             None => here || st.removed,
         };
         st.mode = mode.clone().unwrap_or_default();
@@ -245,7 +245,7 @@ impl Hw {
                 Err(e) => st.last_error = Some(e),
             }
         } else if !want && here {
-            // Os serviços da NVIDIA seguram a placa: param junto e voltam quando ela voltar.
+            // The NVIDIA services hold the card: they stop with it and come back when it returns.
             let svcs = ["nvidia-powerd", "nvidia-persistenced"];
             let holders = crate::notebook::dgpu_holders(&st.pci);
             let users: Vec<String> = {
@@ -263,9 +263,9 @@ impl Hw {
                 u.dedup();
                 u
             };
-            // O desktop (KWin) com a saída de vídeo da NVIDIA aberta: tirar a placa do sistema
-            // nessas condições não é seguro (o driver espera o desktop soltar). A placa dorme
-            // sozinha sem programas usando; é o que vale.
+            // The desktop (KWin) with the NVIDIA's video output open: removing the card from the system
+            // under these conditions is not safe (the driver waits for the desktop to let go). The card
+            // sleeps by itself with no programs using it; that is what counts.
             let display_open = holders.iter().any(|h| {
                 (!h.client || crate::notebook::COMPOSITORS.contains(&h.name.as_str()))
                     && !crate::notebook::SYSTEM_HOLDERS.contains(&h.name.as_str())
@@ -313,7 +313,7 @@ impl Hw {
 
     fn apply_machine(&mut self, topo: &Topology, prev: Option<&Machine>) -> Vec<String> {
         let errs = machine::apply(&self.machine, prev, &self.orig, topo, &base_governors());
-        // O uncore dos programas de baixa latência tem prioridade sobre o do modo.
+        // The uncore of low-latency programs takes priority over the mode's.
         let cpus = std::mem::take(&mut self.lowlat.cpus);
         self.lowlat = LowLatency::default();
         self.lowlat.set(cpus, &self.machine, topo);
@@ -354,7 +354,7 @@ impl Hw {
         }
     }
 
-    /// Perfil de energia de cada GPU conforme os programas que a usam agora.
+    /// Power profile of each GPU according to the programs using it now.
     fn gpu_profiles_tick(&mut self, topo: &Topology, procs: &HashMap<i32, Tracked>) {
         let mut want: BTreeMap<String, String> = BTreeMap::new();
         for t in procs.values() {
@@ -363,7 +363,7 @@ impl Hw {
             };
             for a in &t.gpus {
                 if let Some(g) = topo.gpus.iter().find(|g| g.alias == *a) {
-                    // compute ganha de 3d se dois programas disputarem a mesma placa
+                    // compute wins over 3d if two programs compete for the same card
                     let e = want
                         .entry(g.pci.clone())
                         .or_insert_with(|| p.gpu_power.clone());
@@ -411,7 +411,7 @@ impl Hw {
         want.sort_unstable();
         want.dedup();
         if want.len() == topo.all_cpus().len() {
-            // Programa sem núcleos definidos: não desliga a economia da máquina inteira.
+            // Program without defined cores: does not disable power saving for the whole machine.
             want.clear();
         }
         self.lowlat.set(want, &self.machine, topo);
@@ -463,9 +463,9 @@ enum St {
 struct Tracked {
     starttime: u64,
     comm: String,
-    /// Chave de aprendizado (executável/script).
+    /// Learning key (executable/script).
     key: String,
-    /// Chave do perfil (steam:ID ou executável).
+    /// Profile key (steam:ID or executable).
     pkey: String,
     label: String,
     exe: Option<String>,
@@ -473,7 +473,7 @@ struct Tracked {
     origin: String,
     state: St,
     nodes: Vec<usize>,
-    /// Decisão fixa (regra ou perfil): o automático não expande nem reduz.
+    /// Fixed decision (rule or profile): automatic mode neither expands nor shrinks it.
     fixed: bool,
     reserve: bool,
     last_ticks: u64,
@@ -484,15 +484,15 @@ struct Tracked {
     gpus: Vec<String>,
     gpu_node: Option<usize>,
     reapply_at: Option<u64>,
-    /// CPUs exatos (quando o perfil escolhe núcleos); vazio = todos os dos nós.
+    /// Exact CPUs (when the profile picks cores); empty = all of the nodes'.
     cpus: Vec<usize>,
-    /// Perfil aplicado a este processo.
+    /// Profile applied to this process.
     profile: Option<Profile>,
-    /// Memória por nó (MB), medida pelo numa_maps.
+    /// Memory per node (MB), measured through numa_maps.
     mem: Vec<u64>,
 }
 
-/// Linha do /run/numapilot/state.json (lida por `status` e pela interface gráfica).
+/// Row of /run/numapilot/state.json (read by `status` and by the graphical interface).
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(default)]
 pub struct Row {
@@ -509,7 +509,7 @@ pub struct Row {
     pub cpus: String,
     pub cores: f64,
     pub gpus: String,
-    /// Memória do processo em cada nó NUMA (MB), índice = nó.
+    /// The process's memory on each NUMA node (MB), index = node.
     pub mem: Vec<u64>,
 }
 
@@ -553,7 +553,7 @@ impl Ctx<'_> {
         self.topo.node(id).map(|n| n.cpus.len()).unwrap_or(1).max(1) as f64
     }
 
-    /// Nós correspondentes a uma especificação de CPU (de regra ou perfil). None = automático.
+    /// Nodes matching a CPU specification (from a rule or profile). None = automatic.
     fn nodes_for(
         &self,
         cpu: &CpuSpec,
@@ -629,7 +629,7 @@ impl Ctx<'_> {
         if migrate && self.cfg.daemon.migrate_memory && nodes.len() < all.len() {
             let from: Vec<usize> = all.iter().copied().filter(|x| !nodes.contains(x)).collect();
             let to = nodes.clone();
-            // Migração pode demorar em processos grandes: roda em segundo plano.
+            // Migration can take a while on large processes: runs in the background.
             std::thread::spawn(move || {
                 let _ = procfs::migrate_pages(pid, &from, &to);
             });
@@ -646,7 +646,7 @@ impl Ctx<'_> {
         t.reapply_at = Some(tick + 2);
     }
 
-    /// CPUs que o perfil pede (None = deixar no automático).
+    /// CPUs the profile asks for (None = leave on automatic).
     fn plan_cpus(&self, p: &Profile, current_nodes: &[usize]) -> Option<Vec<usize>> {
         if let Some(l) = &p.cpu_list {
             let v: Vec<usize> = crate::util::parse_cpulist(l)
@@ -671,7 +671,7 @@ impl Ctx<'_> {
         if v.is_empty() { None } else { Some(v) }
     }
 
-    /// Prioridade e grupo de controle (memória, núcleos exclusivos) de um programa.
+    /// Priority and control group (memory, exclusive cores) of a program.
     fn apply_extras(&self, pids: &[i32], t: &Tracked, p: &Profile, prev: Option<&Profile>) {
         let prev_prio = prev.map(|x| x.priority.as_str()).unwrap_or("normal");
         if p.priority != "normal" || prev_prio != "normal" {
@@ -708,7 +708,7 @@ impl Ctx<'_> {
         }
     }
 
-    /// Aplica (ao vivo) a escolha de CPU de um perfil num processo em execução.
+    /// Applies (live) a profile's CPU choice to a running process.
     fn apply_profile_live(&self, pid: i32, t: &mut Tracked, p: &Profile, tick: u64) {
         t.profile = if p.is_auto() { None } else { Some(p.clone()) };
         let cur = t.nodes.clone();
@@ -726,7 +726,7 @@ impl Ctx<'_> {
                 );
             }
             None => {
-                // Voltou para o automático: libera e deixa o daemon decidir de novo.
+                // Back to automatic: release it and let the daemon decide again.
                 procfs::set_affinity_all(pid, &self.all_cpus);
                 t.fixed = false;
                 t.origin = "auto".into();
@@ -752,7 +752,7 @@ fn bind_ctl() -> Option<UnixListener> {
     let _ = std::fs::remove_file(&p);
     match UnixListener::bind(&p) {
         Ok(l) => {
-            // Qualquer usuário local pode falar com o daemon; a permissão é checada por pedido (SO_PEERCRED).
+            // Any local user may talk to the daemon; permission is checked per request (SO_PEERCRED).
             let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o666));
             let _ = l.set_nonblocking(true);
             Some(l)
@@ -786,7 +786,7 @@ pub fn run(cfg: Config) -> Result<()> {
         node_sets: topo.nodes.iter().map(|n| n.cpus.clone()).collect(),
     };
     let _ = std::fs::create_dir_all(run_dir());
-    // Valores originais antes de qualquer mudança (para devolver depois).
+    // Original values before any change (to restore later).
     let mut hw = Hw::new(&topo);
     let listener = bind_ctl();
     let mut learned = Learned::load();
@@ -823,7 +823,7 @@ pub fn run(cfg: Config) -> Result<()> {
     }
     let reserved_flag = run_dir().join("reserved");
     if reserved_flag.exists() {
-        // O daemon anterior parou com núcleos reservados: devolve tudo.
+        // The previous daemon stopped with reserved cores: give everything back.
         let _ = cgroup::set_reserved(&ctx.all_cpus, &[]);
         let _ = std::fs::remove_file(&reserved_flag);
     }
@@ -898,7 +898,7 @@ pub fn run(cfg: Config) -> Result<()> {
     );
 
     while !STOP.load(Ordering::SeqCst) {
-        // Espera o próximo tick atendendo a interface gráfica nesse meio tempo.
+        // Waits for the next tick while serving the graphical interface in the meantime.
         let wait_start = Instant::now();
         while wait_start.elapsed() < tick_dur && !STOP.load(Ordering::SeqCst) {
             if let Some(l) = &listener {
@@ -959,7 +959,7 @@ pub fn run(cfg: Config) -> Result<()> {
             ppids.insert(pid, st.ppid);
             let reclassify = match procs.get(&pid) {
                 None => true,
-                // pid reaproveitado, ou exec() trocou o programa
+                // pid reused, or exec() replaced the program
                 Some(t) => t.starttime != st.starttime || t.comm != st.comm,
             };
             if reclassify {
@@ -979,7 +979,7 @@ pub fn run(cfg: Config) -> Result<()> {
             let delta = st.cpu_ticks.saturating_sub(t.last_ticks) as f64;
             t.last_ticks = st.cpu_ticks;
             t.cores = delta / tck / dt;
-            // GPUs em uso (para a interface), a cada 5 amostras.
+            // GPUs in use (for the interface), every 5 samples.
             let visible = !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual"));
             if visible && tick.is_multiple_of(10) && (t.state == St::Placed || t.cores >= 0.05) {
                 let m = procfs::mem_by_node(pid);
@@ -1008,7 +1008,7 @@ pub fn run(cfg: Config) -> Result<()> {
         for (pci, c) in &gpuc.map {
             gpu_tick(pci, c, &mut fan_last);
         }
-        // GPU parada: nível baixo até voltar a ser usada.
+        // Idle GPU: low level until it is used again.
         for (pci, c) in &gpuc.map {
             let Some(g) = topo.gpus.iter().find(|g| &g.pci == pci) else {
                 continue;
@@ -1043,8 +1043,8 @@ pub fn run(cfg: Config) -> Result<()> {
                 }
             }
         }
-        // O deslocamento da NVIDIA se perde quando a placa do notebook dorme e acorda:
-        // confere de tempos em tempos (só com ela acordada, para não acordá-la).
+        // The NVIDIA offset is lost when the laptop card sleeps and wakes:
+        // check from time to time (only while it is awake, so as not to wake it).
         if tick.is_multiple_of(10) {
             for (pci, c) in &gpuc.map {
                 if (c.nv_gpc_offset_mhz.is_some() || c.nv_mem_offset_mhz.is_some())
@@ -1081,7 +1081,7 @@ pub fn run(cfg: Config) -> Result<()> {
             hw.auto_mode_tick(&topo, &procs);
             hw.dgpu_tick();
         }
-        // o irqbalance desfaz de tempos em tempos: reaplica a cada 5 min
+        // irqbalance undoes it from time to time: reapply every 5 min
         if tick.is_multiple_of(300) {
             if cfg.daemon.gpu_irq {
                 gpu_irqs(&ctx);
@@ -1090,7 +1090,7 @@ pub fn run(cfg: Config) -> Result<()> {
                 crate::irqs::apply(&topo);
             }
         }
-        // Aviso de GPU quente no celular (3 leituras seguidas acima do limite).
+        // Hot GPU notification on the phone (3 readings in a row above the limit).
         if tick.is_multiple_of(5) {
             let n = crate::notify::Notify::load();
             if n.enabled && n.gpu_hot {
@@ -1127,8 +1127,8 @@ pub fn run(cfg: Config) -> Result<()> {
                 }
             }
         }
-        // Saúde do hardware (SMART, ECC, bateria) a cada 30 min, em segundo plano.
-        // (a primeira 1 min depois de iniciar, para não atrasar o boot)
+        // Hardware health (SMART, ECC, battery) every 30 min, in the background.
+        // (the first one 1 min after starting, so boot is not delayed)
         let due = match hw.health_at {
             None => hw.started.elapsed() >= Duration::from_secs(60),
             Some(t) => t.elapsed() >= Duration::from_secs(30 * 60),
@@ -1162,7 +1162,7 @@ pub fn run(cfg: Config) -> Result<()> {
             if !p.is_empty() {
                 hw.cpu_power = p;
             }
-            // energia: integra a potência desde a última amostra
+            // energy: integrates the power since the last sample
             let dt = hw.energy_at.elapsed().as_secs_f64();
             hw.energy_at = Instant::now();
             hw.watts =
@@ -1184,14 +1184,14 @@ pub fn run(cfg: Config) -> Result<()> {
             });
             let _ = std::fs::write(run_dir().join("hw.json"), live.to_string());
         }
-        // Núcleos exclusivos: união dos programas com "exclusivo" rodando agora.
+        // Exclusive cores: union of the programs with "exclusive" running now.
         let mut want: Vec<usize> = procs
             .values()
             .filter(|t| t.state == St::Placed && t.profile.as_ref().is_some_and(|p| p.exclusive))
             .flat_map(|t| t.cpus.iter().copied())
             .collect();
-        // Turbo máximo: reserva o socket inteiro dos núcleos do programa, para os outros
-        // núcleos dele dormirem. Só com mais de um processador, e nunca todos os sockets.
+        // Maximum turbo: reserves the whole socket of the program's cores, so its other
+        // cores sleep. Only with more than one processor, and never all sockets.
         if topo.nodes.len() > 1 {
             let mut socks: Vec<usize> = procs
                 .values()
@@ -1285,7 +1285,7 @@ pub fn run(cfg: Config) -> Result<()> {
         }
     }
 
-    // Ao parar, devolve todos os processos gerenciados para todos os CPUs.
+    // On stop, gives every managed process back to all CPUs.
     for (pid, t) in &procs {
         if t.state == St::Placed && !t.fixed {
             procfs::set_affinity_all(*pid, &ctx.all_cpus);
@@ -1296,8 +1296,8 @@ pub fn run(cfg: Config) -> Result<()> {
         let _ = std::fs::remove_file(&reserved_flag);
     }
     hw.restore(&topo);
-    // Devolve a NVIDIA se fomos nós que tiramos. Desligando/reiniciando, não: ela volta sozinha
-    // no próximo boot, e carregar o driver no meio do desligamento pode travar.
+    // Brings the NVIDIA back if we removed it. Not on shutdown/reboot: it comes back by itself
+    // at the next boot, and loading the driver in the middle of shutdown can hang.
     if let Some(d) = hw.dgpu.as_ref().filter(|d| d.removed)
         && !crate::hybrid::system_stopping()
     {
@@ -1320,7 +1320,7 @@ pub fn run(cfg: Config) -> Result<()> {
         }
     }
     let _ = std::fs::remove_file(run_dir().join("hw.json"));
-    // Ventoinhas voltam para o controle da placa.
+    // Fans go back to the board's control.
     for pci in fan_last.keys() {
         let _ = gpuctl::set_fan_auto(pci);
     }
@@ -1342,9 +1342,9 @@ pub fn run(cfg: Config) -> Result<()> {
     Ok(())
 }
 
-/// Quem pode mudar a máquina inteira (modos, ventoinhas, clock/voltagem, avisos): root ou
-/// usuário de um dos grupos de `daemon.admin_groups` (padrão: wheel, sudo, numapilot).
-/// Devolve o motivo da recusa.
+/// Who may change the whole machine (modes, fans, clock/voltage, notifications): root or a
+/// user in one of the `daemon.admin_groups` groups (default: wheel, sudo, numapilot).
+/// Returns the reason for the refusal.
 fn admin_denied(uid: u32, ctx: &Ctx) -> Option<String> {
     let allowed = &ctx.cfg.daemon.admin_groups;
     if uid == 0 || allowed.iter().any(|g| g == "*") && uid >= ctx.cfg.daemon.min_uid {
@@ -1368,7 +1368,7 @@ fn admin_denied(uid: u32, ctx: &Ctx) -> Option<String> {
     ))
 }
 
-/// Atende um pedido da interface gráfica / CLI.
+/// Handles a request from the graphical interface / CLI.
 #[allow(clippy::too_many_arguments)]
 fn serve(
     s: UnixStream,
@@ -1531,7 +1531,7 @@ fn handle(
             "não consegui salvar o perfil: {e}"
         ));
     }
-    // Aplica já a escolha de CPU em todos os processos desse programa.
+    // Applies the CPU choice right away to every process of that program.
     let mut n = 0;
     let mut pids = Vec::new();
     let mut sample: Option<(Tracked, Option<Profile>)> = None;
@@ -1548,7 +1548,7 @@ fn handle(
             n += 1;
         }
     }
-    // Prioridade e grupo de controle valem para o programa inteiro.
+    // Priority and control group apply to the whole program.
     if let Some((t, prev)) = sample {
         ctx.apply_extras(&pids, &t, &profile, prev.as_ref());
     }
@@ -1558,7 +1558,7 @@ fn handle(
     ))
 }
 
-/// Classifica um processo novo e já aplica a decisão (regra, perfil ou aprendizado).
+/// Classifies a new process and applies the decision right away (rule, profile or learning).
 fn admit(
     ctx: &Ctx,
     learned: &Learned,
@@ -1589,7 +1589,7 @@ fn admit(
         learned.get(&t.key).and_then(|e| e.gpu_node),
         ctx.topo.nodes.len() > 1,
     ) {
-        // Já sabemos que este programa usa a GPU do nó n: começa lá (first touch local).
+        // We already know this program uses the GPU on node n: start there (local first touch).
         ctx.apply(
             pid,
             &mut t,
@@ -1603,7 +1603,7 @@ fn admit(
     procs.insert(pid, t);
 }
 
-/// Aplica ventoinha/potência de uma GPU conforme a configuração salva.
+/// Applies a GPU's fan/power according to the saved configuration.
 fn gpu_tick(pci: &str, c: &gpuctl::GpuControl, last: &mut HashMap<String, f64>) {
     let s = gpuctl::read_sensors(pci);
     if !s.fan_controllable {
@@ -1612,7 +1612,7 @@ fn gpu_tick(pci: &str, c: &gpuctl::GpuControl, last: &mut HashMap<String, f64>) 
     match c.target_pct(s.control_temp()) {
         Some(pct) => {
             let prev = last.get(pci).copied();
-            // Sobe na hora; desce só com 3% de diferença (evita a ventoinha "caçando").
+            // Goes up right away; goes down only with a 3% difference (keeps the fan from "hunting").
             if prev.is_none_or(|p| pct > p || p - pct >= 3.0 || s.fan_mode_raw != Some(1)) {
                 if let Err(e) = gpuctl::set_fan_pct(pci, pct) {
                     crate::nlog!("fan {pci}: {e}");
@@ -1629,7 +1629,7 @@ fn gpu_tick(pci: &str, c: &gpuctl::GpuControl, last: &mut HashMap<String, f64>) 
     }
 }
 
-/// O `numapilot run` pede, antes do exec, o que só o root faz (cgroup, prioridade alta).
+/// `numapilot run` asks, before exec, for what only root can do (cgroup, high priority).
 #[allow(clippy::too_many_arguments)]
 fn handle_adopt(
     uid: u32,
@@ -1649,8 +1649,8 @@ fn handle_adopt(
     };
     let learned = Learned::default();
     let mut t = classify(ctx, &learned, profiles, pid, &st, None);
-    // `numapilot run` antes do exec: o perfil e o grupo de controle são os do programa que
-    // vai abrir, não os do próprio numapilot. Assim ele já nasce dentro do grupo.
+    // `numapilot run` before exec: the profile and the control group are those of the program
+    // about to start, not numapilot's own. That way it is born inside the group.
     if let Some(k) = key.filter(|k| !k.is_empty() && k.len() < 4096) {
         t.pkey = k;
         if let Some(l) = label {
@@ -1671,7 +1671,7 @@ fn handle_adopt(
     Response::ok(crate::i18n::tr("profile applied"))
 }
 
-/// Traz de volta a memória que ficou no socket errado.
+/// Brings back the memory left on the wrong socket.
 fn handle_fix_memory(uid: u32, ctx: &Ctx, procs: &HashMap<i32, Tracked>, key: &str) -> Response {
     let all = ctx.topo.node_ids();
     let mut n = 0;
@@ -1760,7 +1760,7 @@ fn handle_governor(uid: u32, ctx: &Ctx, node: usize, gov: &str) -> Response {
     }
 }
 
-/// Interrupções de cada GPU atendidas pelos CPUs do socket dela.
+/// Each GPU's interrupts handled by the CPUs of its socket.
 fn gpu_irqs(ctx: &Ctx) {
     for g in &ctx.topo.gpus {
         let Some(n) = g.numa_node else { continue };
@@ -1859,7 +1859,7 @@ fn handle_gpu(
             return Response::err(crate::i18n::tr("clock offset here is NVIDIA only"));
         }
         let mut c = control.clone();
-        // o que foi tirado volta a 0
+        // what was removed goes back to 0
         if old.nv_gpc_offset_mhz.is_some() && c.nv_gpc_offset_mhz.is_none() {
             c.nv_gpc_offset_mhz = Some(0);
         }
@@ -1902,7 +1902,7 @@ fn handle_gpu(
         fan_last.remove(&pci);
         msg.push(crate::i18n::tr("automatic fan").into());
     } else if control.fan != FanMode::Auto {
-        fan_last.remove(&pci); // força reaplicar no próximo tick
+        fan_last.remove(&pci); // forces a reapply on the next tick
         msg.push(match control.fan {
             FanMode::Fixed => crate::tf!(
                 "fan fixed at {:.0}%",
@@ -1922,7 +1922,7 @@ fn handle_gpu(
     } else {
         gpuc.map.insert(pci.clone(), control);
     }
-    // No disco, as placas em teste ficam com o último valor bom.
+    // On disk, the cards under trial keep the last good value.
     let mut disk = GpuControls {
         map: gpuc.map.clone(),
     };
@@ -1961,7 +1961,7 @@ fn handle_machine(uid: u32, ctx: &Ctx, hw: &mut Hw, m: Machine) -> Response {
             "não consegui salvar: {e}"
         ));
     }
-    // Trocou o modo à mão enquanto uma regra automática valia: respeita até a regra mudar.
+    // Mode switched by hand while an automatic rule was in effect: respected until the rule changes.
     if hw.auto_mode.is_some() && prev.mode != hw.machine.mode {
         hw.auto_suppressed = hw.auto_mode.take();
         hw.manual_mode = None;
@@ -2118,7 +2118,7 @@ fn classify(
         return t;
     }
 
-    // Perfil salvo pela interface gráfica tem prioridade sobre as regras.
+    // A profile saved by the graphical interface takes priority over the rules.
     if let Some(p) = profiles.get(&pkey).filter(|p| !p.is_auto()) {
         t.profile = Some(p.clone());
         if let Some(cpus) = ctx.plan_cpus(p, &[]) {
@@ -2145,7 +2145,7 @@ fn classify(
         return t;
     }
 
-    // Filho de um processo com decisão fixa (ex.: jogo aberto pela Steam) herda a decisão.
+    // A child of a process with a fixed decision (e.g. game started by Steam) inherits it.
     if let Some(p) = parent
         && p.fixed
         && p.state == St::Placed
@@ -2182,7 +2182,7 @@ fn step(
     let multi = ctx.topo.nodes.len() > 1;
 
     if t.reapply_at == Some(tick) {
-        // Pega threads criadas durante a primeira aplicação.
+        // Catches threads created during the first application.
         let cpus = if t.cpus.is_empty() {
             ctx.topo.cpus_of(&t.nodes)
         } else {
@@ -2203,7 +2203,7 @@ fn step(
             if !multi {
                 return;
             }
-            // Usa GPU? Então vai para o socket dessa GPU.
+            // Uses a GPU? Then it goes to that GPU's socket.
             if t.cores > 0.05 && tick.is_multiple_of(2) {
                 let drm = procfs::open_drm(pid);
                 let gpus: Vec<_> = drm
@@ -2247,7 +2247,7 @@ fn step(
             if t.fixed || !multi {
                 return;
             }
-            // Começou a usar uma GPU de outro socket depois de posicionado? Muda para lá.
+            // Started using a GPU on another socket after being placed? Move there.
             if t.nodes.len() == 1
                 && t.gpu_node.is_none()
                 && t.cores > 0.05
@@ -2378,7 +2378,7 @@ fn write_state(
             .partial_cmp(&a.cores)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    // histórico por programa (um ponto por minuto)
+    // history per program (one point per minute)
     if crate::proghist::sample(
         rows.iter()
             .map(|r| (r.key.as_str(), r.cores, r.mem.iter().sum::<u64>())),
@@ -2394,7 +2394,7 @@ fn write_state(
     }
 }
 
-/// Aplica os deslocamentos de clock da NVIDIA (dentro da faixa que a placa aceita).
+/// Applies the NVIDIA clock offsets (within the range the card accepts).
 fn nv_offsets(pci: &str, c: &gpuctl::GpuControl) -> Result<(), String> {
     if c.nv_gpc_offset_mhz.is_none() && c.nv_mem_offset_mhz.is_none() {
         return Ok(());

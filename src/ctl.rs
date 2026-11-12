@@ -1,5 +1,5 @@
-//! Protocolo do socket de controle do daemon (/run/numapilot/ctl.sock).
-//! Uma linha JSON de pedido → uma linha JSON de resposta.
+//! Protocol of the daemon's control socket (/run/numapilot/ctl.sock).
+//! One JSON request line → one JSON response line.
 
 use crate::learned::run_dir;
 use crate::profiles::Profile;
@@ -18,8 +18,8 @@ pub fn sock_path() -> PathBuf {
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Request {
     Ping,
-    /// Salva o perfil do programa `key`. Se `pid` vier, aplica já a escolha de CPU
-    /// em todos os processos desse programa (do mesmo usuário).
+    /// Saves the profile of program `key`. If `pid` is given, applies the CPU choice right away
+    /// to every process of that program (same user).
     SetProfile {
         key: String,
         profile: Profile,
@@ -29,50 +29,50 @@ pub enum Request {
         key: String,
         pid: Option<i32>,
     },
-    /// O `numapilot run` pede para aplicar no próprio processo o que exige root.
-    /// Ajustes da máquina (modos, processadores, memória, escalonador).
+    /// `numapilot run` asks to apply to its own process what requires root.
+    /// Machine settings (modes, processors, memory, scheduler).
     SetMachine {
         machine: crate::machine::Machine,
     },
-    /// Avisos no celular (ntfy).
-    /// Guarda a medição de latência de cache por núcleo (`numapilot bench-cores`).
+    /// Phone notifications (ntfy).
+    /// Stores the cache latency per core measurement (`numapilot bench-cores`).
     SetCoreRank {
         rank: crate::corebench::CoreRank,
     },
     SetNotify {
         notify: crate::notify::Notify,
     },
-    /// Ventoinha da placa-mãe.
+    /// Motherboard fan.
     SetBoardFan {
         id: String,
         control: crate::fans::BoardFanControl,
     },
     Adopt {
         pid: i32,
-        /// Perfil a usar só neste processo (otimizador de FPS); None = o salvo.
+        /// Profile to use only on this process (FPS optimizer); None = the saved one.
         #[serde(default)]
         profile: Option<crate::profiles::Profile>,
-        /// Chave do programa que vai ser aberto (o processo ainda é o `numapilot run`).
+        /// Key of the program about to be started (the process is still `numapilot run`).
         #[serde(default)]
         key: Option<String>,
         #[serde(default)]
         label: Option<String>,
     },
-    /// Move a memória de um programa de volta para o(s) socket(s) dos núcleos dele.
+    /// Moves a program's memory back to the socket(s) of its cores.
     FixMemory {
         key: String,
     },
-    /// Governador de frequência dos CPUs de um socket (performance, schedutil, powersave...).
+    /// Frequency governor of a socket's CPUs (performance, schedutil, powersave...).
     SetGovernor {
         node: usize,
         governor: String,
     },
-    /// Ventoinha / potência de uma GPU (por endereço PCI).
+    /// Fan / power of a GPU (by PCI address).
     SetGpuControl {
         pci: String,
         control: crate::gpuctl::GpuControl,
-        /// Teste (undervolt automático): aplica, mas não grava no disco; se o PC travar,
-        /// volta com o último valor bom.
+        /// Trial (automatic undervolt): applies but does not write to disk; if the PC freezes,
+        /// it comes back with the last good value.
         #[serde(default)]
         trial: bool,
     },
@@ -105,7 +105,7 @@ pub fn send(req: &Request) -> Result<Response> {
         "daemon is not running (systemctl status numapilot)",
     ))?;
     s.set_read_timeout(Some(Duration::from_secs(5)))?;
-    // o serviço responde no idioma de quem pede
+    // the service answers in the language of whoever asks
     let mut v = serde_json::to_value(req)?;
     if let Some(o) = v.as_object_mut() {
         o.insert("lang".into(), crate::i18n::code().into());
@@ -118,7 +118,7 @@ pub fn send(req: &Request) -> Result<Response> {
     Ok(serde_json::from_str(r.trim())?)
 }
 
-/// UID de quem está do outro lado do socket.
+/// UID of whoever is on the other side of the socket.
 pub fn peer_uid(s: &UnixStream) -> Option<u32> {
     use std::os::fd::AsRawFd;
     let mut cred: libc::ucred = unsafe { std::mem::zeroed() };

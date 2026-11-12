@@ -1,5 +1,5 @@
-//! Atalhos do menu (.desktop): cria uma cópia em ~/.local/share/applications que
-//! abre o programa via `numapilot run`, para o perfil (GPU) valer sem digitar comandos.
+//! Menu shortcuts (.desktop): creates a copy in ~/.local/share/applications that
+//! starts the program through `numapilot run`, so the profile (GPU) applies with no typing.
 
 use crate::util::basename;
 use std::fs;
@@ -33,7 +33,7 @@ pub fn search_dirs() -> Vec<PathBuf> {
     v
 }
 
-/// Primeiro programa de uma linha Exec=, pulando `env` e VAR=valor.
+/// First program of an Exec= line, skipping `env` and VAR=value.
 pub fn exec_program(exec: &str) -> Option<String> {
     let mut it = exec.split_whitespace().map(|t| t.trim_matches('"'));
     loop {
@@ -58,7 +58,7 @@ fn exec_line(content: &str) -> Option<&str> {
     None
 }
 
-/// Procura o .desktop que abre este executável.
+/// Looks for the .desktop that starts this executable.
 pub fn find_for_exe(exe: &str) -> Option<PathBuf> {
     let exe_base = basename(exe);
     let exe_canon = fs::canonicalize(exe).ok();
@@ -120,7 +120,7 @@ pub fn is_overridden(original: &Path) -> bool {
     fs::read_to_string(override_path(original)).is_ok_and(|c| c.contains(MARK))
 }
 
-/// Reescreve todas as linhas Exec= para passar pelo numapilot.
+/// Rewrites every Exec= line to go through numapilot.
 pub fn wrap_content(content: &str, bin: &str) -> String {
     let mut out = String::new();
     let mut marked = content.contains(MARK);
@@ -133,7 +133,7 @@ pub fn wrap_content(content: &str, bin: &str) -> String {
                 out.push_str(&format!("Exec={bin} run -- {e}"));
             }
         } else if t.starts_with("DBusActivatable=") {
-            // Ativação por D-Bus ignora o Exec=; desliga para o numapilot valer.
+            // D-Bus activation ignores Exec=; turned off so numapilot applies.
             out.push_str("DBusActivatable=false");
         } else {
             out.push_str(l);
@@ -153,7 +153,7 @@ pub fn install_override(original: &Path) -> std::io::Result<PathBuf> {
     let dest = override_path(original);
     fs::create_dir_all(user_dir())?;
     if dest == original && !c.contains(MARK) {
-        // O original já está na pasta do usuário: guarda uma cópia.
+        // The original is already in the user's folder: keep a copy.
         fs::write(dest.with_extension("desktop.numapilot-bak"), &c)?;
     }
     fs::write(&dest, wrap_content(&c, &numapilot_bin()))?;

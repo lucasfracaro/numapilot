@@ -1,7 +1,7 @@
-//! Tudo que abre com o sistema na placa integrada (notebook com NVIDIA): os atalhos de
-//! inicialização (~/.config/autostart e /etc/xdg/autostart) e os serviços do usuário ligados
-//! no login ganham as variáveis que fazem OpenGL/EGL/Vulkan usarem só a integrada. Assim
-//! nenhum deles acorda a NVIDIA à toa. Reversível: o Exec original fica guardado no arquivo.
+//! Everything that starts with the system on the integrated card (laptop with NVIDIA): the
+//! startup shortcuts (~/.config/autostart and /etc/xdg/autostart) and the user services enabled
+//! at login get the variables that make OpenGL/EGL/Vulkan use only the integrated GPU. That way
+//! none of them wakes the NVIDIA for no reason. Reversible: the original Exec is kept in the file.
 
 use crate::topo::Topology;
 use std::path::{Path, PathBuf};
@@ -34,8 +34,9 @@ pub fn enabled() -> bool {
     flag_file().exists()
 }
 
-/// Variáveis da integrada (vazio se não for notebook com integrada + NVIDIA). Só as que
-/// escolhem a placa (sem as do numapilot, que fariam o serviço tratar o programa como manual).
+/// Variables for the integrated GPU (empty if not a laptop with integrated + NVIDIA). Only the
+/// ones that choose the card (without numapilot's own, which would make the service treat the
+/// program as manual).
 pub fn igpu_env(topo: &Topology) -> Vec<(String, String)> {
     let Some((ig, _)) = crate::hybrid::pair(topo) else {
         return vec![];
@@ -46,7 +47,7 @@ pub fn igpu_env(topo: &Topology) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Lançadores de jogos ficam como estão: o que eles abrem (os jogos) deve poder ir para a NVIDIA.
+/// Game launchers stay as they are: what they start (the games) must be able to go to the NVIDIA.
 pub const SKIP: &[&str] = &[
     "steam",
     "heroic",
@@ -59,8 +60,8 @@ pub const SKIP: &[&str] = &[
     "retroarch",
 ];
 
-/// Componentes do próprio desktop (Plasma, GNOME...): não usam a NVIDIA e uma cópia deles na pasta
-/// do usuário esconderia as atualizações do sistema.
+/// Components of the desktop itself (Plasma, GNOME...): they do not use the NVIDIA and a copy of
+/// them in the user's folder would hide system updates.
 pub(crate) fn is_desktop_component(text: &str, file: &str) -> bool {
     get(text, "OnlyShowIn").is_some()
         || get(text, "X-KDE-autostart-phase").is_some()
@@ -108,7 +109,7 @@ pub(crate) fn get<'a>(text: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
-/// Troca o Exec da seção [Desktop Entry] (e guarda o original).
+/// Replaces the Exec of the [Desktop Entry] section (and keeps the original).
 pub fn wrap(text: &str, prefix: &str) -> Option<String> {
     let exec = get(text, "Exec")?;
     if exec.starts_with("env ") && text.contains(MARK) {
@@ -142,7 +143,7 @@ pub fn wrap(text: &str, prefix: &str) -> Option<String> {
     Some(out)
 }
 
-/// Desfaz o `wrap`.
+/// Undoes `wrap`.
 pub fn unwrap(text: &str) -> Option<String> {
     let orig = get(text, MARK.trim_end_matches('='))?.to_string();
     let mut out = String::new();
@@ -194,7 +195,7 @@ fn desktop_files(dir: &Path) -> Vec<PathBuf> {
     v
 }
 
-/// O que abre com o sistema (o arquivo do usuário vale por cima do do sistema).
+/// What starts with the system (the user's file overrides the system's).
 pub fn entries() -> Vec<Entry> {
     let mut map: std::collections::BTreeMap<String, PathBuf> = Default::default();
     for d in [system_dir(), user_dir()] {
@@ -222,7 +223,7 @@ pub fn entries() -> Vec<Entry> {
         .collect()
 }
 
-/// Serviços do usuário ligados no login (ex.: sunshine.service).
+/// User services enabled at login (e.g. sunshine.service).
 pub fn user_services() -> Vec<String> {
     let base = config_home().join("systemd/user");
     let mut v = vec![];
@@ -249,7 +250,7 @@ fn dropin(svc: &str) -> PathBuf {
     config_home().join(format!("systemd/user/{svc}.d/numapilot-igpu.conf"))
 }
 
-/// Aplica (ou reaplica, pegando programas novos). Devolve o que mudou.
+/// Applies (or reapplies, picking up new programs). Returns what changed.
 pub fn apply(topo: &Topology) -> Result<Vec<String>, String> {
     let env = igpu_env(topo);
     if env.is_empty() {
@@ -258,8 +259,8 @@ pub fn apply(topo: &Topology) -> Result<Vec<String>, String> {
     let pre = prefix(&env);
     let mut changed = vec![];
     std::fs::create_dir_all(user_dir()).map_err(|e| e.to_string())?;
-    // Cópias de entradas do sistema: some se o sistema tirou, refaz se o sistema mudou, e tira as
-    // de componentes do desktop (a versão anterior do numapilot copiava).
+    // Copies of system entries: removed if the system dropped it, redone if the system changed it,
+    // and the ones for desktop components are removed (the previous numapilot version copied them).
     for f in desktop_files(&user_dir()) {
         let Ok(t) = std::fs::read_to_string(&f) else {
             continue;
@@ -337,8 +338,8 @@ pub fn apply(topo: &Topology) -> Result<Vec<String>, String> {
     Ok(changed)
 }
 
-/// O mesmo programa aberto pelo menu (ou pela restauração da sessão) também vai para a
-/// integrada: atalho do menu com as mesmas variáveis.
+/// The same program started from the menu (or by session restore) also goes to the integrated
+/// GPU: menu shortcut with the same variables.
 fn menu_override(autostart_text: &str, pre: &str) {
     let Some(prog) = crate::desktop::exec_program(get(autostart_text, "Exec").unwrap_or("")) else {
         return;
@@ -373,7 +374,7 @@ fn menu_override(autostart_text: &str, pre: &str) {
     }
 }
 
-/// Desfaz tudo.
+/// Undoes everything.
 pub fn revert() -> Vec<String> {
     for f in desktop_files(&crate::desktop::user_dir()) {
         if std::fs::read_to_string(&f).is_ok_and(|t| t.contains(MARK) && t.contains(COPIED)) {

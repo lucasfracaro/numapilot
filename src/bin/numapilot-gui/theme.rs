@@ -1,5 +1,5 @@
-//! Visual do numapilot: fonte Inter, cores próprias (escuro e claro, segue o sistema), cartões,
-//! medidores que deslizam em vez de pular e mini gráficos do último minuto.
+//! numapilot's look: Inter font, its own colors (dark and light, follows the system), cards,
+//! meters that slide instead of jumping and sparklines of the last minute.
 
 use eframe::egui::{
     self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, Rect,
@@ -73,7 +73,7 @@ fn theme_file() -> std::path::PathBuf {
         .join("numapilot/gui-theme")
 }
 
-/// Tema escolhido no menu (Sistema, Claro, Escuro); fica salvo entre aberturas.
+/// Theme chosen in the menu (System, Light, Dark); saved between launches.
 pub fn saved_theme() -> egui::ThemePreference {
     match std::fs::read_to_string(theme_file())
         .unwrap_or_default()
@@ -98,7 +98,7 @@ pub fn save_theme(t: egui::ThemePreference) {
     let _ = std::fs::write(f, v);
 }
 
-/// Fonte, cores e espaçamentos; segue o tema claro/escuro do sistema.
+/// Font, colors and spacing; follows the system's light/dark theme.
 pub fn install(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     fonts.font_data.insert(
@@ -113,7 +113,7 @@ pub fn install(ctx: &egui::Context) {
             "../../../assets/fonts/Inter-SemiBold.otf"
         ))),
     );
-    // Inter primeiro; as fontes padrão continuam atrás para símbolos e emoji.
+    // Inter first; the default fonts stay behind it for symbols and emoji.
     let prop = fonts.families.entry(FontFamily::Proportional).or_default();
     prop.insert(0, "inter".into());
     let fallback = prop.clone();
@@ -230,7 +230,7 @@ pub fn install(ctx: &egui::Context) {
     }
 }
 
-/// Cartão: fundo próprio, borda fina e cantos arredondados.
+/// Card: its own background, thin border and rounded corners.
 #[allow(dead_code)]
 pub fn card<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let p = pal(ui);
@@ -243,7 +243,7 @@ pub fn card<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
         .inner
 }
 
-/// Cartão com título (e uma linha de explicação opcional).
+/// Card with a title (and an optional line of explanation).
 #[allow(dead_code)]
 pub fn section<R>(
     ui: &mut egui::Ui,
@@ -266,7 +266,7 @@ pub fn section<R>(
     })
 }
 
-/// Etiqueta colorida (status).
+/// Colored tag (status).
 pub fn chip(ui: &mut egui::Ui, text: &str, color: Color32) -> egui::Response {
     egui::Frame::new()
         .fill(color.gamma_multiply(0.16))
@@ -283,13 +283,13 @@ pub fn chip(ui: &mut egui::Ui, text: &str, color: Color32) -> egui::Response {
         .response
 }
 
-/// Valor que desliza até o alvo (sem pulos quando a leitura muda).
+/// Value that slides to the target (no jumps when the reading changes).
 pub fn smooth(ui: &egui::Ui, id: &str, target: f32) -> f32 {
     ui.ctx()
         .animate_value_with_time(ui.make_persistent_id(("smooth", id)), target, 0.45)
 }
 
-/// Cor do medidor pelo nível: normal, alto, crítico.
+/// Meter color by level: normal, high, critical.
 pub fn level_color(p: &Pal, frac: f32, color: Color32) -> Color32 {
     if frac >= 0.95 {
         p.err
@@ -300,7 +300,7 @@ pub fn level_color(p: &Pal, frac: f32, color: Color32) -> Color32 {
     }
 }
 
-/// Barra fina arredondada.
+/// Thin rounded bar.
 pub fn meter(ui: &mut egui::Ui, frac: f32, width: f32, color: Color32) -> egui::Response {
     let p = pal(ui);
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 6.0), Sense::hover());
@@ -315,7 +315,7 @@ pub fn meter(ui: &mut egui::Ui, frac: f32, width: f32, color: Color32) -> egui::
     resp
 }
 
-/// Histórico curto (último minuto) para os mini gráficos.
+/// Short history (last minute) for the sparklines.
 #[derive(Default, Clone)]
 pub struct Spark(VecDeque<f32>);
 
@@ -366,8 +366,8 @@ pub fn nav_item(ui: &mut egui::Ui, icon: &str, label: &str, selected: bool) -> e
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// Cartão de medida: nome, valor grande, detalhe, mini gráfico do último minuto, barra que
-/// desliza até o valor novo e, opcionalmente, uma segunda barra (ex.: VRAM).
+/// Metric card: name, large value, detail, sparkline of the last minute, a bar that slides
+/// to the new value and, optionally, a second bar (e.g. VRAM).
 pub struct Metric<'a> {
     pub key: &'a str,
     pub name: &'a str,
@@ -393,7 +393,7 @@ pub fn metric(ui: &mut egui::Ui, m: &Metric) -> egui::Response {
     );
     let inner = rect.shrink(14.0);
     let x = inner.left();
-    // nome em toda a largura (cortado se não couber)
+    // name across the full width (clipped if it does not fit)
     let name: String = if m.name.chars().count() > 36 {
         m.name.chars().take(35).collect::<String>() + "…"
     } else {

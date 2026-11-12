@@ -1,14 +1,15 @@
-//! Upscaling por jogo: as trocas automáticas do Proton (FSR 4, DLSS, XeSS, FSR 3.1) e o
-//! OptiScaler (instalado na pasta do jogo, com desinstalação limpa).
+//! Upscaling per game: Proton's automatic swaps (FSR 4, DLSS, XeSS, FSR 3.1) and
+//! OptiScaler (installed in the game's folder, with a clean uninstall).
 //!
-//! As variáveis PROTON_*_UPGRADE são do proton-cachyos e do GE-Proton: o jogo precisa usar um deles.
+//! The PROTON_*_UPGRADE variables belong to proton-cachyos and GE-Proton: the game must use one
+//! of them.
 
 use crate::profiles::Upscale;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Modos: (id, nome, explicação).
+/// Modes: (id, name, explanation).
 pub const MODES: &[(&str, &str, &str)] = &[
     ("nenhum", "None", "the game as it is"),
     (
@@ -39,7 +40,7 @@ pub const MODES: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// Variáveis de ambiente do modo (o OptiScaler também precisa estar instalado na pasta do jogo).
+/// Environment variables of the mode (OptiScaler must also be installed in the game's folder).
 pub fn env(u: &Upscale) -> Vec<(String, String)> {
     let mut v: Vec<(String, String)> = vec![];
     let mut s = |k: &str, val: &str| v.push((k.to_string(), val.to_string()));
@@ -61,7 +62,7 @@ pub fn env(u: &Upscale) -> Vec<(String, String)> {
                 },
             );
             if u.int8 {
-                // RDNA 3 no Linux: o caminho de compatibilidade do vkd3d-proton
+                // RDNA 3 on Linux: vkd3d-proton's compatibility path
                 s("DXIL_SPIRV_CONFIG", "wmma_rdna3_workaround");
             }
         }
@@ -74,7 +75,7 @@ pub fn env(u: &Upscale) -> Vec<(String, String)> {
     v
 }
 
-/// Modos indicados para a arquitetura da placa (das receitas), na ordem de preferência.
+/// Modes suggested for the card's architecture (from the recipes), in order of preference.
 pub fn suggested(arch_upscale: &[String]) -> Vec<&'static str> {
     let mut v = vec![];
     for u in arch_upscale {
@@ -112,7 +113,7 @@ fn data_dir() -> PathBuf {
         .join("numapilot/optiscaler")
 }
 
-/// Versão já baixada mais nova (pasta extraída).
+/// Newest version already downloaded (extracted folder).
 pub fn local_release() -> Option<(String, PathBuf)> {
     let mut v: Vec<(String, PathBuf)> = std::fs::read_dir(data_dir())
         .ok()?
@@ -140,7 +141,7 @@ fn find_file(dir: &Path, name: &str, depth: usize) -> Option<PathBuf> {
     None
 }
 
-/// Baixa a última versão estável do GitHub e extrai (precisa do 7z ou unzip).
+/// Downloads the latest stable version from GitHub and extracts it (needs 7z or unzip).
 pub fn fetch(log: &mut dyn FnMut(&str)) -> Result<String, String> {
     let out = Command::new("curl")
         .args([
@@ -241,7 +242,7 @@ const SKIP_EXE: &[&str] = &[
     "uninstall",
 ];
 
-/// Pasta do executável principal do jogo (a dos .exe "-Shipping" da Unreal, ou a do maior .exe).
+/// Folder of the game's main executable (the one with Unreal's "-Shipping" .exe, or the largest .exe).
 pub fn exe_dir(game_root: &Path) -> Option<PathBuf> {
     let mut best: Option<(u64, bool, PathBuf)> = None;
     let mut stack = vec![(game_root.to_path_buf(), 0usize)];
@@ -274,7 +275,7 @@ pub fn exe_dir(game_root: &Path) -> Option<PathBuf> {
     best.map(|b| b.2)
 }
 
-/// Pasta de instalação de um jogo da Steam pelo appid.
+/// Install folder of a Steam game by appid.
 pub fn steam_game_root(appid: &str) -> Option<PathBuf> {
     for lib in crate::steam::libraries() {
         let Ok(s) = std::fs::read_to_string(lib.join(format!("appmanifest_{appid}.acf"))) else {
@@ -296,7 +297,7 @@ pub struct Installed {
     pub version: String,
     pub dir: PathBuf,
     pub files: Vec<String>,
-    /// dxgi.dll que já existia e foi renomeada para dxgi-original.dll (o OptiScaler carrega ela).
+    /// dxgi.dll that already existed and was renamed to dxgi-original.dll (OptiScaler loads it).
     pub had_dxgi: bool,
 }
 
@@ -306,7 +307,7 @@ pub fn installed(dir: &Path) -> Option<Installed> {
     serde_json::from_str(&std::fs::read_to_string(dir.join(MANIFEST)).ok()?).ok()
 }
 
-/// Copia o OptiScaler para a pasta do executável (como dxgi.dll).
+/// Copies OptiScaler into the executable's folder (as dxgi.dll).
 pub fn install(dir: &Path, int8: bool) -> Result<String, String> {
     let (ver, src) = local_release().ok_or(crate::i18n::tr(
         "download OptiScaler first (Download button / numapilot upscale fetch)",
@@ -334,7 +335,7 @@ pub fn install(dir: &Path, int8: bool) -> Result<String, String> {
                 stack.push(p);
                 continue;
             }
-            // .bat e .reg são do instalador do Windows
+            // .bat and .reg belong to the Windows installer
             if n.ends_with(".bat") || n.ends_with(".reg") {
                 continue;
             }
@@ -344,7 +345,7 @@ pub fn install(dir: &Path, int8: bool) -> Result<String, String> {
                 n.clone()
             };
             if dir.join(&target).exists() && target != "dxgi.dll" {
-                continue; // não sobrescreve arquivos do jogo
+                continue; // does not overwrite the game's files
             }
             std::fs::copy(&p, dir.join(&target)).map_err(|e| format!("{target}: {e}"))?;
             files.push(target);
@@ -386,7 +387,7 @@ pub fn install(dir: &Path, int8: bool) -> Result<String, String> {
     Ok(ver)
 }
 
-/// Tira só o que o numapilot colocou e devolve a dxgi.dll original.
+/// Removes only what numapilot put there and restores the original dxgi.dll.
 pub fn remove(dir: &Path) -> Result<(), String> {
     let m = installed(dir).ok_or(crate::i18n::tr(
         "OptiScaler was not installed by numapilot in this folder",
@@ -424,7 +425,7 @@ mod tests {
             vec!["optiscaler", "fsr3"]
         );
 
-        // pasta de jogo Unreal falsa + pacote do OptiScaler falso
+        // fake Unreal game folder + fake OptiScaler package
         let base = std::env::temp_dir().join("numapilot-upscale-test");
         let _ = std::fs::remove_dir_all(&base);
         let game = base.join("Jogo");

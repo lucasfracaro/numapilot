@@ -1,5 +1,5 @@
-//! Ícone na bandeja (StatusNotifierItem: KDE, GNOME com extensão AppIndicator...).
-//! Mostra as temperaturas das GPUs e dá atalhos para o laboratório, as IDEs e o servidor de IA.
+//! Tray icon (StatusNotifierItem: KDE, GNOME with the AppIndicator extension...).
+//! Shows the GPU temperatures and gives shortcuts to the lab, the IDEs and the AI server.
 
 use crate::jobs::{open_url, spawn_detached};
 use crate::lab::{code_url, gfx, jupyter_url, open_code_app, open_terminal};
@@ -17,7 +17,7 @@ struct NumaTray {
     hot: bool,
 }
 
-/// Abre a janela (ou traz para frente a que já está aberta: ver `single`).
+/// Opens the window (or brings the one already open to the front: see `single`).
 fn open_window() {
     let exe = crate::jobs::self_exe();
     match std::process::Command::new(&exe)
@@ -26,7 +26,7 @@ fn open_window() {
         .stderr(std::process::Stdio::null())
         .spawn()
     {
-        // espera numa thread para não deixar processo zumbi
+        // waits on a thread so no zombie process is left
         Ok(mut ch) => {
             std::thread::spawn(move || ch.wait());
         }
@@ -132,8 +132,8 @@ impl Tray for NumaTray {
     }
 }
 
-/// Avisa (notificação do sistema) quando uma GPU passa de 90 °C por 3 leituras seguidas;
-/// no máximo uma vez a cada 10 minutos por placa.
+/// Notifies (system notification) when a GPU stays above 90 °C for 3 readings in a row;
+/// at most once every 10 minutes per card.
 #[derive(Default)]
 struct Alerts {
     streak: std::collections::HashMap<String, u32>,
@@ -143,8 +143,8 @@ struct Alerts {
 
 impl Alerts {
     fn check(&mut self, topo: &Topology) {
-        // "NVIDIA só quando precisar": tela ligada na saída da NVIDIA depois do login
-        // Modo da NVIDIA: avisa uma vez quando não deu para desligar porque um programa usa a placa.
+        // "NVIDIA only when needed": display connected to the NVIDIA output after login
+        // NVIDIA mode: notifies once when it could not be turned off because a program uses the card.
         if let Some(st) = numapilot::hybrid::load_state() {
             if !st.want_present && !st.blocked_by.is_empty() {
                 if !self.battery_warned {
@@ -224,7 +224,7 @@ fn summary(topo: &Topology) -> (String, bool) {
 }
 
 pub fn main_loop() -> Result<(), String> {
-    // Um ícone só: se outro já está na bandeja, sai quieto.
+    // A single icon: if another is already in the tray, quit quietly.
     let _lock = match crate::single::lock("numapilot-tray.lock") {
         Some(l) => l,
         None => return Ok(()),
@@ -238,7 +238,7 @@ pub fn main_loop() -> Result<(), String> {
     let mut alerts = Alerts::default();
     loop {
         std::thread::sleep(Duration::from_secs(5));
-        // Reinstalaram o numapilot: troca este ícone pela versão nova.
+        // numapilot was reinstalled: replace this icon with the new version.
         if crate::jobs::self_replaced() {
             use std::os::unix::process::CommandExt;
             drop(handle);

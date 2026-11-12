@@ -1,16 +1,16 @@
-//! Funções auxiliares: caminhos do sysfs, listas de CPU, glob.
+//! Helper functions: sysfs paths, CPU lists, glob.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Raiz do sysfs. Pode ser trocada com NUMAPILOT_SYSFS (usado nos testes).
+/// sysfs root. Can be replaced with NUMAPILOT_SYSFS (used in the tests).
 pub fn sys_root() -> PathBuf {
     std::env::var_os("NUMAPILOT_SYSFS")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/sys"))
 }
 
-/// Testes que trocam o NUMAPILOT_SYSFS rodam um de cada vez.
+/// Tests that replace NUMAPILOT_SYSFS run one at a time.
 #[cfg(test)]
 static SYSFS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -80,7 +80,7 @@ pub fn format_cpulist(cpus: &[usize]) -> String {
     out.join(",")
 }
 
-/// Glob simples, sem diferenciar maiúsculas: `*` e `?`.
+/// Simple glob, case-insensitive: `*` and `?`.
 pub fn glob_match(pat: &str, s: &str) -> bool {
     let p: Vec<char> = pat.to_lowercase().chars().collect();
     let t: Vec<char> = s.to_lowercase().chars().collect();
@@ -108,7 +108,7 @@ pub fn glob_match(pat: &str, s: &str) -> bool {
     pi == p.len()
 }
 
-/// Último componente de um caminho, aceitando "/" e "\" (caminhos do Wine).
+/// Last component of a path, accepting "/" and "\" (Wine paths).
 pub fn basename(s: &str) -> &str {
     s.rsplit(['/', '\\']).next().unwrap_or(s)
 }
@@ -149,7 +149,7 @@ mod tests {
     }
 }
 
-/// Nomes dos grupos de um usuário (o principal e os suplementares), pelo NSS do sistema.
+/// Names of a user's groups (primary and supplementary), through the system's NSS.
 pub fn groups_of_uid(uid: u32) -> Vec<String> {
     let mut out = vec![];
     unsafe {

@@ -1,9 +1,9 @@
-//! Pedaço da NVML (libnvidia-ml, que vem com o driver) carregado em tempo de execução:
-//! deslocamento de clock da GPU e da memória. É o "undervolt" possível na NVIDIA pelo Linux:
-//! com um deslocamento positivo, cada ponto da curva clock/voltagem sobe de clock, então o clock
-//! desejado é alcançado com voltagem menor; junto com o clock máximo travado (nvidia-smi -lgc),
-//! a placa roda no mesmo clock gastando menos. Funciona sem X (diferente do nvidia-settings).
-//! Precisa de root.
+//! A piece of NVML (libnvidia-ml, which ships with the driver) loaded at run time:
+//! GPU and memory clock offset. It is the "undervolt" possible on NVIDIA under Linux:
+//! with a positive offset, every point of the clock/voltage curve moves up in clock, so the
+//! wanted clock is reached at a lower voltage; together with the locked maximum clock
+//! (nvidia-smi -lgc), the card runs at the same clock using less power. Works without X (unlike
+//! nvidia-settings). Needs root.
 
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::sync::OnceLock;
@@ -99,8 +99,8 @@ pub struct Offsets {
     pub mem_range: Option<(i32, i32)>,
 }
 
-/// NVML aberta só durante a chamada. Aberta o tempo todo, ela segura /dev/nvidia* e a placa
-/// do notebook não pode ser desligada ("NVIDIA em uso: numapilot").
+/// NVML open only during the call. Kept open, it holds /dev/nvidia* and the laptop's card
+/// cannot be turned off ("NVIDIA in use: numapilot").
 struct Session(&'static Lib);
 
 impl Drop for Session {
@@ -140,7 +140,7 @@ pub fn offsets(pci: &str) -> Result<Offsets, String> {
     })
 }
 
-/// Deslocamento do clock da GPU (MHz). 0 = de fábrica.
+/// GPU clock offset (MHz). 0 = factory.
 pub fn set_gpc_offset(pci: &str, mhz: i32) -> Result<(), String> {
     let s = session()?;
     let l = s.0;
@@ -150,7 +150,7 @@ pub fn set_gpc_offset(pci: &str, mhz: i32) -> Result<(), String> {
     check(l, unsafe { f(dev(l, pci)?, mhz as c_int) })
 }
 
-/// Deslocamento do clock da memória (MHz). 0 = de fábrica.
+/// Memory clock offset (MHz). 0 = factory.
 pub fn set_mem_offset(pci: &str, mhz: i32) -> Result<(), String> {
     let s = session()?;
     let l = s.0;
@@ -160,8 +160,8 @@ pub fn set_mem_offset(pci: &str, mhz: i32) -> Result<(), String> {
     check(l, unsafe { f(dev(l, pci)?, mhz as c_int) })
 }
 
-/// O limite que a NVML aceita para um valor (algumas placas devolvem faixas enormes; o
-/// numapilot usa no máximo +300 na GPU e +1500 na memória).
+/// The limit NVML accepts for a value (some cards return huge ranges; numapilot
+/// uses at most +300 on the GPU and +1500 on the memory).
 pub fn clamp(v: i32, range: Option<(i32, i32)>, hard: i32) -> i32 {
     let (lo, hi) = range.unwrap_or((-hard, hard));
     v.clamp(lo.max(-hard), hi.min(hard))
@@ -179,7 +179,7 @@ mod tests {
 
 #[cfg(test)]
 mod stub_tests {
-    /// Com a biblioteca de mentira de /tmp/nvmlstub (gcc), se existir.
+    /// With the fake library from /tmp/nvmlstub (gcc), if it exists.
     #[test]
     fn stub() {
         let p = "/tmp/nvmlstub/libnvml.so";

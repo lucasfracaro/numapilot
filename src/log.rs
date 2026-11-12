@@ -1,10 +1,10 @@
-//! Registro (log) em arquivo: o que o numapilot fez, o que falhou e quando.
+//! File log: what numapilot did, what failed and when.
 //!
-//! - serviço (root): `/var/log/numapilot/daemon.log` (e também no journal)
-//! - programa gráfico e linha de comando: `~/.local/state/numapilot/{gui,cli}.log`
+//! - service (root): `/var/log/numapilot/daemon.log` (and also in the journal)
+//! - graphical program and command line: `~/.local/state/numapilot/{gui,cli}.log`
 //!
-//! Cada arquivo passa para `.1` ao chegar em 2 MB (fica o atual e o anterior).
-//! `numapilot log` mostra o final de todos.
+//! Each file moves to `.1` on reaching 2 MB (the current and the previous one are kept).
+//! `numapilot log` shows the end of all of them.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ const MAX_BYTES: u64 = 2 * 1024 * 1024;
 
 static LOG: Mutex<Option<(String, PathBuf)>> = Mutex::new(None);
 
-/// Pasta dos registros deste usuário (root: /var/log/numapilot).
+/// This user's log folder (root: /var/log/numapilot).
 pub fn dir() -> PathBuf {
     if let Some(d) = std::env::var_os("NUMAPILOT_LOG_DIR") {
         return PathBuf::from(d);
@@ -25,7 +25,7 @@ pub fn dir() -> PathBuf {
     user_dir()
 }
 
-/// Pasta dos registros do usuário (mesmo rodando como root, para o `numapilot log`).
+/// The user's log folder (even when running as root, for `numapilot log`).
 pub fn user_dir() -> PathBuf {
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
@@ -36,7 +36,7 @@ pub fn user_dir() -> PathBuf {
         .join("numapilot")
 }
 
-/// Liga o registro em arquivo para este componente ("daemon", "gui", "cli"...).
+/// Turns on file logging for this component ("daemon", "gui", "cli"...).
 pub fn init(component: &str) {
     let d = dir();
     let _ = std::fs::create_dir_all(&d);
@@ -44,7 +44,7 @@ pub fn init(component: &str) {
     if let Ok(mut g) = LOG.lock() {
         *g = Some((component.to_string(), path));
     }
-    // erro fatal também vai para o arquivo
+    // a fatal error also goes to the file
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let loc = info
@@ -68,7 +68,7 @@ pub fn init(component: &str) {
     }));
 }
 
-/// Data e hora locais "2026-11-08 06:47:01".
+/// Local date and time "2026-11-08 06:47:01".
 pub fn now() -> String {
     let t = unsafe { libc::time(std::ptr::null_mut()) };
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
@@ -84,7 +84,7 @@ pub fn now() -> String {
     )
 }
 
-/// Grava uma linha (nível: INFO, AVISO, ERRO). Sem `init`, não faz nada.
+/// Writes a line (level: INFO, WARN, ERROR). Without `init`, does nothing.
 pub fn write(level: &str, msg: &str) {
     let Ok(g) = LOG.lock() else {
         return;
@@ -126,9 +126,9 @@ pub fn error(msg: &str) {
     write("ERROR", msg);
 }
 
-/// Nível pelo texto da mensagem: as do serviço não dizem o nível, mas dizem "não consegui"…
+/// Level from the message text: the service's messages do not state a level, but say "could not"…
 pub fn level_of(msg: &str) -> &'static str {
-    // "(0 erro(s))" não é erro; "10 erro(s)" é
+    // "(0 error(s))" is not an error; "10 error(s)" is
     let mut m = msg.to_lowercase();
     while let Some(i) = m.find("0 erro").or_else(|| m.find("0 error")) {
         if m[..i].ends_with(|c: char| c.is_ascii_digit()) {
@@ -165,7 +165,7 @@ pub fn level_of(msg: &str) -> &'static str {
     }
 }
 
-/// Mensagem do serviço: vai para o journal (stderr) e para o arquivo.
+/// Service message: goes to the journal (stderr) and to the file.
 #[macro_export]
 macro_rules! nlog {
     ($($arg:tt)*) => {{
@@ -175,7 +175,7 @@ macro_rules! nlog {
     }};
 }
 
-/// Últimas `n` linhas de um arquivo (lendo só o fim).
+/// Last `n` lines of a file (reading only the end).
 pub fn tail(path: &std::path::Path, n: usize) -> Vec<String> {
     use std::io::{Read, Seek, SeekFrom};
     let Ok(mut f) = std::fs::File::open(path) else {
@@ -191,7 +191,7 @@ pub fn tail(path: &std::path::Path, n: usize) -> Vec<String> {
     lines.into_iter().skip(skip).collect()
 }
 
-/// Arquivos de registro conhecidos: (nome, caminho).
+/// Known log files: (name, path).
 pub fn files() -> Vec<(String, PathBuf)> {
     let mut v = vec![(
         "serviço".to_string(),
@@ -201,7 +201,7 @@ pub fn files() -> Vec<(String, PathBuf)> {
     for c in ["gui", "cli", "tray", "web"] {
         v.push((c.to_string(), u.join(format!("{c}.log"))));
     }
-    // comandos rodados com sudo gravam na pasta do root
+    // commands run with sudo write to root's folder
     for c in ["cli", "web"] {
         v.push((
             format!("{c} (root)"),

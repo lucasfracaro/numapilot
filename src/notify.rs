@@ -1,6 +1,6 @@
-//! Avisos no celular pelo ntfy (app ntfy no Android/iOS, servidor ntfy.sh ou o seu): GPU quente,
-//! disco falhando, servidor de IA caiu, PC saiu da rede, undervolt terminou. A configuração fica
-//! em /var/lib/numapilot/notify.json (o serviço grava; todos leem para mandar avisos).
+//! Phone notifications through ntfy (ntfy app on Android/iOS, ntfy.sh server or your own): hot
+//! GPU, failing disk, AI server down, PC off the network, undervolt done. The configuration is
+//! in /var/lib/numapilot/notify.json (the service writes it; everyone reads it to send notices).
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,11 +11,11 @@ use std::time::{Duration, Instant};
 #[serde(default)]
 pub struct Notify {
     pub enabled: bool,
-    /// https://ntfy.sh ou o seu servidor
+    /// https://ntfy.sh or your own server
     pub server: String,
-    /// Tópico (o "canal" que o app do celular assina). Use um nome difícil de adivinhar.
+    /// Topic (the "channel" the phone app subscribes to). Use a name that is hard to guess.
     pub topic: String,
-    /// Token de acesso (servidor com senha), opcional.
+    /// Access token (server with a password), optional.
     pub token: Option<String>,
     pub gpu_hot: bool,
     pub gpu_hot_c: f64,
@@ -80,12 +80,12 @@ impl Notify {
         Ok(())
     }
 
-    /// Link para assinar no app (também abre no navegador).
+    /// Link to subscribe in the app (also opens in the browser).
     pub fn subscribe_url(&self) -> String {
         format!("{}/{}", self.server.trim_end_matches('/'), self.topic)
     }
 
-    /// Manda já (sem cooldown). prio: 1 mínima .. 5 urgente.
+    /// Sends right away (no cooldown). prio: 1 minimum .. 5 urgent.
     pub fn send_now(&self, title: &str, body: &str, prio: u8, tags: &[&str]) -> Result<(), String> {
         if self.topic.is_empty() {
             return Err(crate::i18n::tr("no topic configured").into());
@@ -131,8 +131,8 @@ impl Notify {
 
 static LAST: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
 
-/// Manda um aviso se esse tipo estiver ligado e o mesmo `key` não foi avisado nos últimos
-/// `cooldown`. Não trava: roda em segundo plano.
+/// Sends a notification if this kind is enabled and the same `key` was not notified in the
+/// last `cooldown`. Does not block: runs in the background.
 pub fn event(kind: &str, key: &str, title: &str, body: &str, prio: u8, cooldown: Duration) {
     let n = Notify::load();
     let on = n.enabled
@@ -166,7 +166,7 @@ pub fn event(kind: &str, key: &str, title: &str, body: &str, prio: u8, cooldown:
     });
 }
 
-/// Tópico novo e difícil de adivinhar.
+/// New topic that is hard to guess.
 pub fn random_topic() -> String {
     let mut b = [0u8; 8];
     if let Ok(mut f) = std::fs::File::open("/dev/urandom") {

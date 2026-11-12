@@ -1,6 +1,6 @@
-//! Placas NVIDIA pelo driver oficial (nvidia-smi): sensores, limite de potência, limite de
-//! clock e modo persistente. No notebook, a placa dedicada dorme quando ninguém usa: aí o
-//! numapilot não chama o nvidia-smi (isso acordaria a placa e gastaria bateria).
+//! NVIDIA cards through the official driver (nvidia-smi): sensors, power limit, clock limit
+//! and persistence mode. On a laptop, the dedicated card sleeps when nobody uses it: then
+//! numapilot does not call nvidia-smi (that would wake the card and drain the battery).
 
 use crate::util::{read_trim, sys};
 use std::collections::BTreeMap;
@@ -19,7 +19,7 @@ pub fn is_nvidia(pci: &str) -> bool {
         .is_some_and(|v| v.trim_start_matches("0x").eq_ignore_ascii_case("10de"))
 }
 
-/// "active" | "suspended" | ... (gerência de energia do PCI).
+/// "active" | "suspended" | ... (PCI power management).
 pub fn runtime_status(pci: &str) -> Option<String> {
     read_trim(sys(&format!("bus/pci/devices/{pci}/power/runtime_status")))
 }
@@ -28,7 +28,7 @@ pub fn asleep(pci: &str) -> bool {
     runtime_status(pci).as_deref() == Some("suspended")
 }
 
-/// Driver carregado agora (versão do módulo).
+/// Driver loaded now (module version).
 pub fn driver_version() -> Option<String> {
     read_trim(sys("module/nvidia/version"))
 }
@@ -53,8 +53,8 @@ pub struct NvGpu {
     pub pstate: String,
     pub driver: String,
     pub persistence: bool,
-    /// O limite de potência pode ser mudado? Em notebooks o `power.limit` vem [N/A] e o
-    /// nvidia-smi -pl só avisa "not supported" (e sai com sucesso).
+    /// Can the power limit be changed? On laptops `power.limit` comes as [N/A] and
+    /// nvidia-smi -pl only warns "not supported" (and exits successfully).
     pub power_limit_settable: bool,
 }
 
@@ -86,7 +86,7 @@ pub fn parse(out: &str) -> Vec<NvGpu> {
                 name: c[2].to_string(),
                 temp_c: f(3),
                 power_w: f(4),
-                // notebooks: power.limit vem [N/A]; o limite em uso fica no enforced.power.limit
+                // laptops: power.limit comes as [N/A]; the limit in use is in enforced.power.limit
                 power_limit_w: f(5).or(f(18)).or(f(8)),
                 power_min_w: f(6),
                 power_max_w: f(7),
@@ -108,8 +108,8 @@ pub fn parse(out: &str) -> Vec<NvGpu> {
 
 static CACHE: Mutex<Option<(Instant, Vec<NvGpu>)>> = Mutex::new(None);
 
-/// Todas as placas NVIDIA (cache de 2 s). Vazio se o driver oficial não estiver carregado
-/// ou se todas estiverem dormindo.
+/// All NVIDIA cards (2 s cache). Empty if the official driver is not loaded
+/// or if all of them are asleep.
 pub fn query() -> Vec<NvGpu> {
     if let Ok(c) = CACHE.lock()
         && let Some((t, v)) = c.as_ref()
@@ -133,7 +133,7 @@ pub fn query() -> Vec<NvGpu> {
     v
 }
 
-/// Dados de uma placa, sem acordá-la.
+/// Data of one card, without waking it.
 pub fn get(pci: &str) -> Option<NvGpu> {
     if asleep(pci) {
         return None;
@@ -141,7 +141,7 @@ pub fn get(pci: &str) -> Option<NvGpu> {
     query().into_iter().find(|g| g.pci == pci)
 }
 
-/// Sensores no formato comum das GPUs (para a interface, alertas e histórico).
+/// Sensors in the common GPU format (for the interface, alerts and history).
 pub fn sensors(pci: &str) -> crate::gpuctl::Sensors {
     let Some(g) = get(pci) else {
         return Default::default();
@@ -151,7 +151,7 @@ pub fn sensors(pci: &str) -> crate::gpuctl::Sensors {
         fan_pct: g.fan_pct,
         power_w: g.power_w,
         power_cap_w: g.power_limit_w,
-        // sem limite ajustável, a interface não mostra o controle
+        // with no adjustable limit, the interface does not show the control
         power_cap_min_w: g.power_min_w.filter(|_| g.power_limit_settable),
         power_cap_max_w: g.power_max_w.filter(|_| g.power_limit_settable),
         ..Default::default()
@@ -177,7 +177,7 @@ fn run(args: &[String]) -> Result<(), String> {
         *c = None;
     }
     let text = String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr);
-    // o nvidia-smi sai com sucesso mesmo quando não muda nada ("... is not supported ...")
+    // nvidia-smi exits successfully even when it changes nothing ("... is not supported ...")
     if o.status.success() && text.to_lowercase().contains("not supported") {
         return Err(crate::tf!(
             "this card does not allow changing this (the vendor locks it): {}",
@@ -196,7 +196,7 @@ fn run(args: &[String]) -> Result<(), String> {
     }
 }
 
-/// Limite de potência (None = padrão da placa). Notebooks costumam travar esse valor.
+/// Power limit (None = card default). Laptops usually lock this value.
 pub fn set_power_limit(pci: &str, watts: Option<f64>) -> Result<f64, String> {
     let g = get(pci).ok_or(crate::i18n::tr("card asleep or no driver"))?;
     let target = watts.or(g.power_default_w).ok_or(crate::i18n::tr(
@@ -215,8 +215,8 @@ pub fn set_power_limit(pci: &str, watts: Option<f64>) -> Result<f64, String> {
     Ok(v)
 }
 
-/// Trava o clock máximo da GPU (None = volta ao normal). Junto com o limite de potência,
-/// é o jeito de fazer a placa gastar e esquentar menos pelo nvidia-smi.
+/// Locks the GPU's maximum clock (None = back to normal). Together with the power limit,
+/// it is the way to make the card draw and heat less through nvidia-smi.
 pub fn set_clock_max(pci: &str, mhz: Option<u32>) -> Result<(), String> {
     let i = index_of(pci)?.to_string();
     match mhz {
@@ -235,7 +235,7 @@ pub fn set_persistence(pci: &str, on: bool) -> Result<(), String> {
     ])
 }
 
-/// Índices CUDA (ordem do barramento PCI) das placas NVIDIA, para CUDA_VISIBLE_DEVICES.
+/// CUDA indices (PCI bus order) of the NVIDIA cards, for CUDA_VISIBLE_DEVICES.
 pub fn cuda_indices(topo: &crate::topo::Topology) -> BTreeMap<String, usize> {
     let mut v: Vec<&str> = topo
         .gpus
@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn parse_smi() {
         let out = "0, 00000000:01:00.0, NVIDIA GeForce RTX 4060 Laptop GPU, 52, 18.43, 80.00, 5.00, 115.00, 80.00, [N/A], 7, 512, 8188, 1530, 3105, P3, 580.119.02, Disabled\n";
-        // notebook de verdade (RTX 3070 Ti, 615.78): power.limit [N/A], limite em uso 115 W
+        // a real laptop (RTX 3070 Ti, 615.78): power.limit [N/A], limit in use 115 W
         let nb = parse(
             "0, 00000000:01:00.0, NVIDIA GeForce RTX 3070 Ti Laptop GPU, 43, 9.81, [N/A], 1.00, 150.00, [N/A], [N/A], 0, 207, 8192, 210, 1785, P8, 615.78.08, Disabled, 115.00\n",
         );

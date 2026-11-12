@@ -1,6 +1,6 @@
-//! Placas com ajustes da comunidade. Hoje: o governor de clock da BC-250 (lê e edita a
-//! configuração dele, qualquer que seja o formato, e reinicia o serviço) e as ferramentas de
-//! overclock da CPU pela SMU.
+//! Boards with community tweaks. Today: the BC-250's clock governor (reads and edits its
+//! configuration, whatever the format, and restarts the service) and the CPU overclock tools
+//! through the SMU.
 
 use crate::recipes::Board;
 use std::process::Command;
@@ -38,7 +38,7 @@ pub fn services(b: &Board) -> Vec<Service> {
         .collect()
 }
 
-/// Arquivo de configuração do governor em uso (o primeiro que existe).
+/// Configuration file of the governor in use (the first that exists).
 pub fn governor_config(b: &Board) -> Option<String> {
     b.governor_configs
         .iter()
@@ -46,7 +46,7 @@ pub fn governor_config(b: &Board) -> Option<String> {
         .cloned()
 }
 
-/// Um valor numérico editável da configuração ("chave" ou "tabela.chave").
+/// An editable numeric value of the configuration ("key" or "table.key").
 #[derive(Debug, Clone, PartialEq)]
 pub enum Field {
     Num {
@@ -54,7 +54,7 @@ pub enum Field {
         value: f64,
         int: bool,
     },
-    /// Lista de pontos [[MHz, mV], ...]
+    /// List of points [[MHz, mV], ...]
     Points {
         key: String,
         value: Vec<(f64, f64)>,
@@ -123,7 +123,7 @@ fn set_path(t: &mut toml::Table, key: &str, v: toml::Value) {
     cur.insert(last.to_string(), v);
 }
 
-/// Aplica os campos editados no texto original (mantém chaves que não conhecemos).
+/// Applies the edited fields to the original text (keeps keys we do not know).
 pub fn apply_fields(text: &str, f: &[Field]) -> Result<String, String> {
     let mut t: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
     for x in f {
@@ -157,7 +157,7 @@ pub fn apply_fields(text: &str, f: &[Field]) -> Result<String, String> {
     toml::to_string_pretty(&t).map_err(|e| e.to_string())
 }
 
-/// Grava a configuração nova do governor (com backup) e reinicia o serviço. Precisa de root.
+/// Writes the governor's new configuration (with a backup) and restarts the service. Needs root.
 pub fn governor_apply(
     b: &Board,
     new_file: &std::path::Path,
@@ -244,7 +244,7 @@ mod tests {
     }
 }
 
-/// Núcleos físicos ativos (pares pacote/núcleo distintos).
+/// Active physical cores (distinct package/core pairs).
 pub fn active_cores() -> usize {
     let mut set = std::collections::BTreeSet::new();
     if let Ok(rd) = std::fs::read_dir(crate::util::sys("devices/system/cpu")) {
@@ -268,18 +268,18 @@ pub fn active_cores() -> usize {
     set.len()
 }
 
-/// Como o amdgpu em uso lê a tabela de métricas da SMU numa BC-250 com 8 núcleos.
-/// O linux-cachyos-bc250 escolhe a tabela pelo número de núcleos desde 2026-08-28
-/// (`cs_eight_core_map` marca esse código) e tirou o `cs_legacy_8core_metrics` em 2026-09-17;
-/// um kernel sem nenhum dos dois lê a tabela de 6 núcleos. (Lógica do BC250 Control Center,
+/// How the amdgpu in use reads the SMU metrics table on a BC-250 with 8 cores.
+/// linux-cachyos-bc250 has picked the table by core count since 2026-08-28
+/// (`cs_eight_core_map` marks that code) and dropped `cs_legacy_8core_metrics` on 2026-09-17;
+/// a kernel with neither reads the 6-core table. (Logic from BC250 Control Center,
 /// MIT, https://github.com/movacx/bc250-control-center.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetricsDecode {
-    /// Kernel lê a tabela de 8 núcleos: a SMU precisa do "SMU Reporting Patch" no BIOS.
+    /// Kernel reads the 8-core table: the SMU needs the "SMU Reporting Patch" in the BIOS.
     EightCore,
-    /// `cs_legacy_8core_metrics=1` ligado: opção antiga, removida do kernel.
+    /// `cs_legacy_8core_metrics=1` set: old option, removed from the kernel.
     Legacy,
-    /// Kernel comum: lê a tabela de 6 núcleos.
+    /// Regular kernel: reads the 6-core table.
     Stock,
 }
 
@@ -293,7 +293,7 @@ pub fn metrics_decode(legacy: Option<&str>, eight_core_map: bool) -> MetricsDeco
     }
 }
 
-/// O que fazer quando a telemetria vem embaralhada, para cada jeito de ler a tabela.
+/// What to do when telemetry comes scrambled, for each way of reading the table.
 pub fn mismatch_fix(d: MetricsDecode) -> &'static str {
     match d {
         MetricsDecode::EightCore => {
@@ -311,9 +311,9 @@ pub fn mismatch_fix(d: MetricsDecode) -> &'static str {
     }
 }
 
-/// BC-250 com 8 núcleos e temperatura/potência da GPU embaralhadas (0 °C, ~1470 W): a tabela
-/// de métricas que a SMU grava não bate com a que o kernel lê. Os clocks continuam certos.
-/// Devolve a explicação quando é esse o caso.
+/// BC-250 with 8 cores and scrambled GPU temperature/power (0 °C, ~1470 W): the metrics table
+/// the SMU writes does not match the one the kernel reads. The clocks are still right.
+/// Returns the explanation when that is the case.
 pub fn smu_table_mismatch(pci: &str) -> Option<String> {
     if active_cores() != 8 {
         return None;
@@ -334,10 +334,10 @@ pub fn smu_table_mismatch(pci: &str) -> Option<String> {
     ))
 }
 
-/// BC-250: o amdgpu do linux-cachyos-bc250 com `bc250_cc_write_mode=3` limpa, ao carregar, os
-/// bits que desligam os shader arrays: os 40 CUs já vêm do boot e o driver conta todos. Aí o
-/// desbloqueio ao vivo (umr, bc250-cu-live-manager) não tem o que fazer e mexer nele por baixo
-/// do driver é arriscado.
+/// BC-250: the amdgpu of linux-cachyos-bc250 with `bc250_cc_write_mode=3` clears, on load, the
+/// bits that disable the shader arrays: all 40 CUs come from boot and the driver counts them
+/// all. The live unlock (umr, bc250-cu-live-manager) then has nothing to do, and touching it
+/// underneath the driver is risky.
 pub fn cu_unlock_by_kernel() -> bool {
     crate::util::read_trim(crate::util::sys(
         "module/amdgpu/parameters/bc250_cc_write_mode",
@@ -345,8 +345,8 @@ pub fn cu_unlock_by_kernel() -> bool {
     .is_some_and(|v| v == "3")
 }
 
-/// Onde o EFI que desbloqueia os núcleos antes do boot (Hexxeh/bc250-efi-core-unlock) costuma
-/// ficar.
+/// Where the EFI that unlocks the cores before boot (Hexxeh/bc250-efi-core-unlock) usually
+/// lives.
 const EFI_SHIM_PATHS: &[&str] = &[
     "/boot/EFI/BOOT/COREUNLOCK.EFI",
     "/boot/efi/EFI/BOOT/COREUNLOCK.EFI",
@@ -356,7 +356,7 @@ const EFI_SHIM_PATHS: &[&str] = &[
     "/efi/EFI/BOOT/bc250-unlock.efi",
 ];
 
-/// Há o EFI de desbloqueio dos núcleos (arquivo ou entrada "CoreUnlock" no efibootmgr)?
+/// Is the core-unlock EFI there (file or "CoreUnlock" entry in efibootmgr)?
 pub fn efi_core_unlock() -> bool {
     EFI_SHIM_PATHS
         .iter()
@@ -372,7 +372,7 @@ pub fn efi_core_unlock() -> bool {
             })
 }
 
-/// Se os núcleos desbloqueados ficam depois de desligar da tomada. Só lê, não muda nada.
+/// Whether the unlocked cores survive unplugging from the wall. Read-only, changes nothing.
 pub fn core_unlock_persistence(cores: usize, full: usize, efi: bool) -> Option<&'static str> {
     if cores < full {
         return None;
@@ -385,16 +385,16 @@ pub fn core_unlock_persistence(cores: usize, full: usize, efi: bool) -> Option<&
     })
 }
 
-/// De onde veio o número de CUs.
+/// Where the CU count came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CuSource {
-    /// Leitura ao vivo do BC250 Control Center (helper do Decky, neste boot).
+    /// Live reading from BC250 Control Center (Decky helper, this boot).
     ControlCenterLive,
-    /// Última leitura autorizada no app do BC250 Control Center, feita neste boot.
+    /// Last authorized reading in the BC250 Control Center app, taken this boot.
     ControlCenter,
-    /// O kernel liberou no boot (bc250_cc_write_mode=3).
+    /// The kernel unlocked them at boot (bc250_cc_write_mode=3).
     Kernel,
-    /// O que o driver contou no boot (log do kernel ou KFD).
+    /// What the driver counted at boot (kernel log or KFD).
     Boot,
 }
 
@@ -409,9 +409,9 @@ impl CuSource {
     }
 }
 
-/// CUs ativos agora, da melhor fonte que existir. O desbloqueio ao vivo (umr) não muda o que o
-/// driver contou no boot; quem lê os registradores é o BC250 Control Center (com root), e ele
-/// deixa a leitura em arquivos que qualquer usuário lê. Guardado por 5 s.
+/// CUs active now, from the best source available. The live unlock (umr) does not change what
+/// the driver counted at boot; BC250 Control Center reads the registers (with root) and leaves
+/// the reading in files any user can read. Cached for 5 s.
 pub fn cu_now() -> Option<(u32, CuSource)> {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
@@ -462,7 +462,7 @@ fn read_cu_now() -> Option<(u32, CuSource)> {
     ))
 }
 
-/// Hora do boot (btime do /proc/stat).
+/// Boot time (btime from /proc/stat).
 fn boot_time() -> Option<std::time::SystemTime> {
     let t = std::fs::read_to_string("/proc/stat").ok()?;
     let secs: u64 = t
@@ -474,8 +474,8 @@ fn boot_time() -> Option<std::time::SystemTime> {
     Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
 }
 
-/// /run/bc250-control-center/cu-live-state.json (helper do Decky do BC250 Control Center):
-/// vale só se for deste boot e se os números baterem (2 CUs por WGP, 24 a 40).
+/// /run/bc250-control-center/cu-live-state.json (BC250 Control Center's Decky helper):
+/// valid only if it is from this boot and the numbers match (2 CUs per WGP, 24 to 40).
 pub fn parse_cc_runtime(text: &str, boot_id: &str) -> Option<u32> {
     let v: serde_json::Value = serde_json::from_str(text).ok()?;
     if boot_id.is_empty()
@@ -494,8 +494,8 @@ pub fn parse_cc_runtime(text: &str, boot_id: &str) -> Option<u32> {
     (n == from_masks && (24..=40).contains(&n) && n % 2 == 0).then_some(n as u32)
 }
 
-/// "CUs active & routed : 40 / 40" no painel do bc250-cu-live-manager guardado pelo
-/// BC250 Control Center. Só vale se aparecer uma vez.
+/// "CUs active & routed : 40 / 40" in the bc250-cu-live-manager panel saved by
+/// BC250 Control Center. Only valid if it appears once.
 pub fn parse_cc_dashboard(text: &str) -> Option<u32> {
     let found: Vec<u32> = text
         .lines()
@@ -518,13 +518,13 @@ pub fn parse_cc_dashboard(text: &str) -> Option<u32> {
     }
 }
 
-/// Frequência atual da CPU (MHz): a maior entre os núcleos (/proc/cpuinfo).
+/// Current CPU frequency (MHz): the highest among the cores (/proc/cpuinfo).
 pub fn cpu_mhz_now() -> Option<u64> {
     crate::cpuctl::cur_mhz_all().values().copied().max()
 }
 
-/// CUs ativos da GPU no boot, pela mensagem do amdgpu ("active_cu_number N"). Lido uma vez por
-/// execução; um desbloqueio feito depois do boot (ao vivo, pelo umr) não aparece aqui.
+/// GPU CUs active at boot, from the amdgpu message ("active_cu_number N"). Read once per
+/// run; an unlock done after boot (live, through umr) does not show up here.
 pub fn active_cu() -> Option<u32> {
     static CU: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
     *CU.get_or_init(read_active_cu)
@@ -556,8 +556,8 @@ fn read_active_cu() -> Option<u32> {
         .or_else(kfd_cu)
 }
 
-/// CUs pela topologia do KFD (simd_count / simd_per_cu), legível por qualquer usuário.
-/// Útil quando a mensagem do boot já saiu do buffer do kernel.
+/// CUs from the KFD topology (simd_count / simd_per_cu), readable by any user.
+/// Useful when the boot message has already left the kernel buffer.
 fn kfd_cu() -> Option<u32> {
     let base = crate::util::sys("class/kfd/kfd/topology/nodes");
     std::fs::read_dir(base)
@@ -604,7 +604,7 @@ mod unlock_tests {
     }
 
     #[test]
-    fn cus_do_control_center() {
+    fn control_center_cus() {
         let j = r#"{"schema":13,"producer":"bc250-quick-access-helper","boot_id":"abc","cu_active_cus":40,"cu_total_cus":40,"cu_masks":[31,31,31,31]}"#;
         assert_eq!(super::parse_cc_runtime(j, "abc"), Some(40));
         assert_eq!(super::parse_cc_runtime(j, "outro-boot"), None);
@@ -624,7 +624,7 @@ mod unlock_tests {
     }
 
     #[test]
-    fn tabela_da_smu() {
+    fn smu_table() {
         use super::{MetricsDecode::*, metrics_decode};
         assert_eq!(metrics_decode(Some("Y"), true), Legacy);
         assert_eq!(metrics_decode(Some("N"), true), EightCore);
@@ -635,7 +635,7 @@ mod unlock_tests {
     }
 
     #[test]
-    fn persistencia_dos_nucleos() {
+    fn core_persistence() {
         assert_eq!(super::core_unlock_persistence(6, 8, false), None);
         assert!(
             super::core_unlock_persistence(8, 8, true)
@@ -650,27 +650,27 @@ mod unlock_tests {
     }
 }
 
-/// Estado de um passo da primeira configuração.
+/// State of one first-setup step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum StepState {
     /// Pronto.
     Ok,
-    /// Falta fazer (afeta o funcionamento).
+    /// Still to do (affects operation).
     Todo,
-    /// Opcional: funciona sem, mas vale conhecer.
+    /// Optional: it works without it, but worth knowing.
     Opcional,
 }
 
-/// O que a interface pode fazer por um passo.
+/// What the interface can do for a step.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub enum StepAction {
-    /// Ligar um serviço já instalado (pede a senha).
+    /// Enable an already installed service (asks for the password).
     EnableService(String),
-    /// Instalar um pacote do AUR num terminal.
+    /// Install an AUR package in a terminal.
     InstallAur(String),
-    /// Instalar um programa da comunidade (pelo nome na receita).
+    /// Install a community program (by its name in the recipe).
     InstallApp(String),
-    /// Abrir a seção de memória da GPU (mais abaixo na mesma aba).
+    /// Open the GPU memory section (further down in the same tab).
     GpuMemory,
 }
 
@@ -682,8 +682,8 @@ pub struct SetupStep {
     pub action: Option<StepAction>,
 }
 
-/// Primeira configuração de uma placa especial (BC-250): o que já está certo e o que falta,
-/// em ordem. Só lê; quem age é a interface (ou o usuário, pelos comandos indicados).
+/// First setup of a special board (BC-250): what is already right and what is missing,
+/// in order. Read-only; the interface acts (or the user, through the commands shown).
 pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
     let mut v = vec![];
     let mut add = |title: &str, state: StepState, detail: String, action: Option<StepAction>| {
@@ -694,7 +694,7 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             action,
         })
     };
-    // 1. kernel e Mesa
+    // 1. kernel and Mesa
     let k = crate::recipes::running_kernel();
     if !b.bad_kernels.is_empty() {
         if crate::recipes::kernel_in(&k, &b.bad_kernels) {
@@ -727,7 +727,7 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             ),
         }
     }
-    // 2. parâmetros do kernel
+    // 2. kernel parameters
     let cmd = crate::cmdline::running();
     for p in &b.kernel_params {
         if cmd.split_whitespace().any(|t| t == p) {
@@ -746,7 +746,7 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             );
         }
     }
-    // 3. governor de clock
+    // 3. clock governor
     if !b.governor_services.is_empty() {
         let sv = services(b);
         if let Some(s) = sv.iter().find(|s| s.active) {
@@ -798,7 +798,7 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             None,
         ),
     }
-    // 5. núcleos e CUs
+    // 5. cores and CUs
     if let Some((stock, full)) = b.cores {
         let n = active_cores();
         if n >= full {
@@ -847,7 +847,7 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             ),
         }
     }
-    // 6. memória para a GPU
+    // 6. memory for the GPU
     if b.cus.is_some() {
         let gib = |p: u64| p as f64 * 4096.0 / 1073741824.0;
         match crate::bootcfg::saved_ttm().or_else(crate::bootcfg::ttm_now) {
@@ -865,7 +865,7 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             ),
         }
     }
-    // 7. programas recomendados da comunidade
+    // 7. recommended community programs
     for a in b.apps.iter().filter(|a| a.recommended) {
         if a.installed() {
             add(&a.name, StepState::Ok, "instalado".into(), None);
@@ -882,7 +882,7 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
     v
 }
 
-/// "3 de 5 prontos, 1 por fazer"
+/// "3 of 5 ready, 1 to do"
 pub fn setup_summary(steps: &[SetupStep]) -> String {
     let n = |s: StepState| steps.iter().filter(|x| x.state == s).count();
     let todo = n(StepState::Todo);

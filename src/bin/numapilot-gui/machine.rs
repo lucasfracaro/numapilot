@@ -1,5 +1,5 @@
-//! Aba "Máquina": modos de um clique, processadores (governor, EPB, frequência, uncore, potência),
-//! latência para jogos, memória, escalonador, ventoinhas da placa-mãe, mitigações e boot.
+//! "Machine" tab: one-click modes, processors (governor, EPB, frequency, uncore, power),
+//! gaming latency, memory, scheduler, motherboard fans, mitigations and boot.
 
 use crate::App;
 use eframe::egui::{self, Color32, RichText};
@@ -191,7 +191,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     b.health_pct.map(|h| crate::tf!(" · health {h:.0}%", " · saúde {h:.0}%")).unwrap_or_default()
                 ));
             }
-            // ---- telas e modo da NVIDIA (trocado com a sessão aberta) ----
+            // ---- displays and NVIDIA mode (switched with the session open) ----
             let dstate = numapilot::hybrid::load_state();
             let pair = numapilot::hybrid::pair(&topo);
             if pair.is_some() || dstate.as_ref().is_some_and(|s| s.removed) {
@@ -412,7 +412,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             });
         }
 
-        // ---------------- Ryzen de notebook (ryzenadj) ----------------
+        // ---------------- laptop Ryzen (ryzenadj) ----------------
         if numapilot::ryzen::applicable() {
             ui.add_space(8.0);
             ui.heading(crate::i18n::tr("Ryzen power limits"));
@@ -584,7 +584,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             });
         }
 
-        // ---------------- horários ----------------
+        // ---------------- schedules ----------------
         ui.add_space(8.0);
         ui.heading(crate::i18n::tr("Scheduled modes"));
         ui.label(
@@ -671,7 +671,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         }
 
-        // ---------------- saúde ----------------
+        // ---------------- health ----------------
         ui.add_space(8.0);
         ui.heading(crate::i18n::tr("Hardware health"));
         match &mu.health {
@@ -770,7 +770,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         }
 
-        // ---------------- rede: ligar pela rede ----------------
+        // ---------------- network: wake over the network ----------------
         if !mu.nics.is_empty() {
             ui.add_space(8.0);
             ui.heading(crate::i18n::tr("Wake over the network (Wake-on-LAN)"));
@@ -967,7 +967,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         });
 
-        // ---------------- latência ----------------
+        // ---------------- latency ----------------
         ui.add_space(8.0);
         ui.heading(crate::i18n::tr("Gaming latency"));
         ui.label(
@@ -1000,7 +1000,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.label(RichText::new(crate::tf!("Active now on cores {l}", "Ativo agora nos núcleos {l}")).color(GREEN));
         }
 
-        // ---------------- memória ----------------
+        // ---------------- memory ----------------
         ui.add_space(8.0);
         ui.heading(crate::i18n::tr("Memory"));
         egui::Grid::new("mem").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
@@ -1122,7 +1122,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.label(RichText::new(crate::i18n::tr("The service applies them; if it stops, everything goes back to what it was.")).small().weak());
         });
 
-        // ---------------- ventoinhas da placa-mãe ----------------
+        // ---------------- motherboard fans ----------------
         ui.add_space(10.0);
         ui.heading(crate::i18n::tr("Motherboard fans"));
         if mu.fans.is_empty() && mu.ipmi.is_empty() {
@@ -1194,7 +1194,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.label(RichText::new(crate::tf!("Above {:.0} °C on the CPU the controlled fans go to 100%.", "Acima de {:.0} °C na CPU as ventoinhas controladas vão a 100%.", fans::EMERGENCY_CPU_C)).small().weak());
         }
 
-        // ---------------- mitigações ----------------
+        // ---------------- mitigations ----------------
         ui.add_space(10.0);
         ui.heading(crate::i18n::tr("Processor mitigations"));
         ui.label(
@@ -1276,7 +1276,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.label(RichText::new(crate::i18n::tr("The kernel reported no vulnerabilities (or this processor is not affected).")).weak());
         }
 
-        // ---------------- outros parâmetros ----------------
+        // ---------------- other parameters ----------------
         ui.add_space(10.0);
         ui.heading(crate::i18n::tr("Kernel parameters"));
         ui.label(
@@ -1307,7 +1307,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
         });
-        // diferença entre o configurado e o escolhido (só parâmetros que o numapilot conhece ou que foram adicionados aqui)
+        // difference between what is configured and what was chosen (only parameters numapilot knows or that were added here)
         let before: BTreeSet<String> = mu.configured.split_whitespace().map(String::from).collect();
         let add: Vec<String> = mu.sel.difference(&before).cloned().collect();
         let rm: Vec<String> = before.difference(&mu.sel).cloned().collect();
@@ -1356,7 +1356,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     if let Some(m) = app_toast_ok2 {
         app.toast(m, true);
     }
-    // o modo da NVIDIA vale na hora (sem o "Aplicar ajustes")
+    // the NVIDIA mode applies right away (without "Apply machine settings")
     if let Some(v) = dgpu_send {
         let mut s = app.mach.saved.clone();
         s.dgpu_mode = v;

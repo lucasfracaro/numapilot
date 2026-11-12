@@ -1,6 +1,6 @@
-//! Aba "Testes": roteiro para testar o programa à mão (só os itens que valem para esta
-//! máquina), com OK / Falhou / Pulei e uma nota em cada um, mais o autoteste da linha de
-//! comando e um relatório único com tudo (respostas, autoteste e o final dos registros).
+//! "Tests" tab: a script to test the program by hand (only the items that apply to this
+//! machine), with OK / Failed / Skipped and a note on each, plus the command-line self-test
+//! and a single report with everything (answers, self-test and the end of the logs).
 
 use crate::App;
 use crate::theme;
@@ -19,9 +19,9 @@ enum When {
     MultiSocket,
     RyzenLaptop,
     Acer,
-    /// alguma placa com ventoinha controlável
+    /// some card with a controllable fan
     FanControl,
-    /// placa AMD com o OverDrive desligado / ligado
+    /// AMD card with OverDrive off / on
     AmdOdOff,
     AmdOdOn,
 }
@@ -252,7 +252,7 @@ const ITEMS: &[Item] = &[
         "Under load, the card's clock stays under the chosen value; Undo restores the factory value.",
         AmdOdOn,
     ),
-    // Máquina
+    // Machine
     it(
         "modo",
         "Machine",
@@ -342,7 +342,7 @@ const ITEMS: &[Item] = &[
         "The laptop responds (fan/profile change) and the value stays saved.",
         Acer,
     ),
-    // Placa especial
+    // Special board
     it(
         "bc-apps",
         "BC-250",
@@ -534,7 +534,7 @@ fn st_label(st: &str) -> &'static str {
     }
 }
 
-/// Relatório único: respostas, autoteste e o final dos registros.
+/// Single report: answers, self-test and the end of the logs.
 fn report(app: &App) -> Result<PathBuf, String> {
     let f = app.checklist.flags.unwrap_or_else(|| flags(app));
     let items: Vec<&Item> = ITEMS.iter().filter(|i| applies(i.when, &f)).collect();

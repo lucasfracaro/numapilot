@@ -1,5 +1,5 @@
-//! Janela "Ajustar programa": onde no hardware ele roda (núcleos, memória, prioridade, GPU),
-//! com perfis prontos e avisos de compatibilidade para jogos.
+//! "Adjust program" window: where on the hardware it runs (cores, memory, priority, GPU),
+//! with ready-made profiles and compatibility warnings for games.
 
 use crate::App;
 use crate::map::core_map;
@@ -82,7 +82,7 @@ const MEM_OPTS: &[(&str, &str, &str)] = &[
 fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
     use numapilot::upscale;
     ui.label(RichText::new("Upscaling").strong());
-    // placa em que o jogo vai rodar → o que funciona nela
+    // card the game will run on → what works on it
     let gpu = app
         .topo
         .gpus
@@ -378,7 +378,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.label(RichText::new(&ed.key).small().weak());
-                // Situação atual
+                // Current situation
                 let tot: u64 = ed.mem.iter().sum();
                 let cur = parse_cpulist(&ed.current_cpus);
                 let local_nodes = app.topo.nodes_of(&cur);
@@ -392,7 +392,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 ));
                 ui.add_space(4.0);
 
-                // Histórico: quanto o programa usou nas últimas horas (o serviço guarda)
+                // History: how much the program used over the last hours (the service keeps it)
                 {
                     let id = ui.make_persistent_id(("prog-hist", &ed.key));
                     let pts: Vec<numapilot::proghist::Point> = ui.data_mut(|d| {
@@ -429,7 +429,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         ui.add_space(4.0);
                     }
                 }
-                // Perfis prontos
+                // Ready-made profiles
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(crate::i18n::tr("Ready-made profiles:")).strong());
                     for (id, name, tip) in [
@@ -507,7 +507,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     ui.label(RichText::new(crate::i18n::tr("Memory")).strong());
                     let multi = app.topo.nodes.len() > 1;
                     ui.vertical(|ui| {
-                        // Com um processador só, não há memória "do outro socket".
+                        // With a single processor there is no "other socket's" memory.
                         for (v, t, d) in MEM_OPTS.iter().filter(|_| multi) {
                             ui.horizontal(|ui| {
                                 ui.radio_value(&mut ed.p.memory, v.to_string(), crate::i18n::tr(t));
@@ -608,7 +608,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                     .map(|m| crate::tf!(" · {:.1} GHz", " · {:.1} GHz", m as f64 / 1000.0))
                                     .unwrap_or_default()
                             };
-                            // núcleos físicos escolhidos (o perfil conta threads quando usa os dois)
+                            // chosen physical cores (the profile counts threads when it uses both)
                             let phys = ed.p.cores.map(|c| if ed.p.smt { c / 2 } else { c });
                             ui.horizontal_wrapped(|ui| {
                                 for n in [2usize, 4, 6, 8, 10, 12, 16] {
@@ -623,7 +623,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                         ))
                                         .clicked()
                                     {
-                                        // com os dois threads, a contagem do perfil é em threads
+                                        // with both threads, the profile's count is in threads
                                         ed.p.cores = Some(if ed.p.smt { n * 2 } else { n });
                                         ed.p.cpu_list = None;
                                         ed.picking = false;
@@ -798,11 +798,11 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 ui.separator();
                 upscale_ui(app, ui, &mut ed);
 
-                // Otimizador de FPS
+                // FPS optimizer
                 ui.separator();
                 tuner_ui(app, ui, &mut ed);
 
-                // Prévia: o que vai acontecer ao abrir (mesma lógica do numapilot run).
+                // Preview: what will happen on start (same logic as numapilot run).
                 ui.separator();
                 let mut profs = Profiles::default();
                 profs.map.insert(ed.key.clone(), ed.p.clone());

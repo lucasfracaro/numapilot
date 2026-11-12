@@ -1,6 +1,6 @@
-//! Serviços do systemd (do sistema e do usuário), como a aba Serviços de um gerenciador de
-//! tarefas: estado, se abre no boot, memória, e iniciar/parar/reiniciar e ver o log.
-//! Serviços do sistema precisam de root: as ações viram um comando `pkexec systemctl ...`.
+//! systemd services (system and user), like the Services tab of a task manager: state,
+//! whether it starts at boot, memory, and start/stop/restart and view the log.
+//! System services need root: the actions become a `pkexec systemctl ...` command.
 
 use std::collections::BTreeMap;
 use std::process::Command;
@@ -8,7 +8,7 @@ use std::process::Command;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Service {
     pub unit: String,
-    /// Do usuário (systemctl --user) ou do sistema.
+    /// The user's (systemctl --user) or the system's.
     pub user: bool,
     pub description: String,
     /// active, inactive, failed, activating...
@@ -19,7 +19,7 @@ pub struct Service {
     pub file_state: String,
     pub main_pid: i32,
     pub mem: Option<u64>,
-    /// Por que não deixar parar (None = pode).
+    /// Why it may not be stopped (None = it may).
     pub protected: Option<&'static str>,
 }
 
@@ -30,7 +30,7 @@ impl Service {
     pub fn failed(&self) -> bool {
         self.active == "failed"
     }
-    /// "rodando", "parado", "com falha"...
+    /// "running", "stopped", "failed"...
     pub fn state_text(&self) -> &'static str {
         match (self.active.as_str(), self.sub.as_str()) {
             ("active", "running") => crate::i18n::tr("running"),
@@ -65,11 +65,11 @@ fn systemctl(user: bool) -> Command {
     c
 }
 
-/// Linhas do `systemctl list-units --plain --no-legend`: unidade, load, active, sub, descrição.
+/// `systemctl list-units --plain --no-legend` lines: unit, load, active, sub, description.
 pub fn parse_list_units(text: &str) -> Vec<(String, String, String, String)> {
     text.lines()
         .filter_map(|l| {
-            // falha ou não encontrado vem com "●" na frente
+            // failed or not-found comes with "●" in front
             let mut it = l.split_whitespace().skip_while(|t| *t == "●");
             let unit = it.next()?.trim_start_matches('●').to_string();
             if !unit.ends_with(".service") {
@@ -84,7 +84,7 @@ pub fn parse_list_units(text: &str) -> Vec<(String, String, String, String)> {
         .collect()
 }
 
-/// Todos os serviços (carregados e instalados), do sistema ou do usuário.
+/// All services (loaded and installed), system or user.
 pub fn list(user: bool) -> Vec<Service> {
     let mut map: BTreeMap<String, Service> = BTreeMap::new();
     if let Ok(o) = systemctl(user)
@@ -115,7 +115,7 @@ pub fn list(user: bool) -> Vec<Service> {
             );
         }
     }
-    // instalados que nunca foram carregados (desligados e parados)
+    // installed ones that were never loaded (disabled and stopped)
     if let Ok(o) = systemctl(user)
         .args([
             "list-unit-files",
@@ -147,7 +147,7 @@ pub fn list(user: bool) -> Vec<Service> {
             e.file_state = st.to_string();
         }
     }
-    // memória e PID de quem está rodando (uma chamada só)
+    // memory and PID of the ones running (a single call)
     let running: Vec<String> = map
         .values()
         .filter(|s| s.running())
@@ -177,8 +177,8 @@ pub fn list(user: bool) -> Vec<Service> {
             "essential for the system, the network or login",
         ));
     }
-    // programas abertos pelo desktop viram unidades temporárias (app-...@hash.service): são
-    // programas, não serviços (estão na aba Programas)
+    // programs started by the desktop become transient units (app-...@hash.service): they are
+    // programs, not services (they are in the Programs tab)
     let mut v: Vec<Service> = map
         .into_values()
         .filter(|s| !(s.unit.starts_with("app-") && s.unit.contains('@')))
@@ -211,7 +211,7 @@ impl Verb {
     }
 }
 
-/// Comando da ação. Do usuário roda direto; do sistema, pelo pkexec (pede a senha).
+/// Command of the action. The user's runs directly; the system's, through pkexec (asks for the password).
 pub fn action_command(s: &Service, v: Verb) -> Result<Vec<String>, String> {
     if v != Verb::Start
         && let Some(why) = s.protected
@@ -237,7 +237,7 @@ pub fn action_command(s: &Service, v: Verb) -> Result<Vec<String>, String> {
     Ok(c)
 }
 
-/// Roda a ação de um serviço do usuário na hora.
+/// Runs a user service's action right away.
 pub fn run_user(s: &Service, v: Verb) -> Result<(), String> {
     let c = action_command(s, v)?;
     let o = Command::new(&c[0])
@@ -251,12 +251,12 @@ pub fn run_user(s: &Service, v: Verb) -> Result<(), String> {
     }
 }
 
-/// Últimas linhas do log (journal) do serviço.
+/// Last log (journal) lines of the service.
 pub fn logs(s: &Service, lines: u32) -> String {
     unit_logs(&s.unit, s.user, lines)
 }
 
-/// Últimas linhas do log (journal) de uma unidade.
+/// Last log (journal) lines of a unit.
 pub fn unit_logs(unit: &str, user: bool, lines: u32) -> String {
     let mut c = Command::new("journalctl");
     if user {
@@ -299,7 +299,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lista_de_unidades() {
+    fn unit_list() {
         let t = "accounts-daemon.service   loaded    active   running Accounts Service\n\
                  ● foo.service             not-found inactive dead    foo.service\n\
                  alsa-state.service        loaded    inactive dead    Manage Sound Card State\n\
@@ -319,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn estados_e_protecao() {
+    fn states_and_protection() {
         let mut s = Service {
             unit: "NetworkManager.service".into(),
             user: false,

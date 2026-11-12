@@ -1,10 +1,10 @@
-//! Steam: lista os jogos instalados e coloca `numapilot run -- %command%` nas opções de
-//! inicialização de todos eles (editando o localconfig.vdf com a Steam fechada, com backup).
+//! Steam: lists the installed games and puts `numapilot run -- %command%` in the launch
+//! options of all of them (editing localconfig.vdf with Steam closed, with a backup).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-// ---------------- VDF (KeyValues em texto) ----------------
+// ---------------- VDF (text KeyValues) ----------------
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Vdf {
@@ -42,7 +42,7 @@ fn tokens(s: &str) -> Vec<String> {
                 it.next();
             }
             '/' => {
-                // comentário até o fim da linha
+                // comment to the end of the line
                 for c in it.by_ref() {
                     if c == '\n' {
                         break;
@@ -142,7 +142,7 @@ impl Vdf {
             _ => None,
         }
     }
-    /// Pega (ou cria) um objeto filho.
+    /// Gets (or creates) a child object.
     pub fn child(&mut self, key: &str) -> &mut Vdf {
         if self.get(key).is_none()
             && let Vdf::Obj(o) = self
@@ -231,7 +231,7 @@ fn is_tool(name: &str) -> bool {
     .any(|t| name.contains(t))
 }
 
-/// (appid, nome) dos jogos instalados (sem Proton/runtimes).
+/// (appid, name) of the installed games (without Proton/runtimes).
 pub fn installed_games() -> Vec<(String, String)> {
     let mut v = Vec::new();
     for lib in libraries() {
@@ -274,7 +274,7 @@ pub fn find_localconfigs() -> Vec<PathBuf> {
             }
         }
     }
-    // A conta usada por último primeiro.
+    // The most recently used account first.
     v.sort_by_key(|p| std::cmp::Reverse(p.metadata().and_then(|m| m.modified()).ok()));
     v
 }
@@ -310,7 +310,7 @@ pub fn has_numapilot(opt: &str) -> bool {
     opt.contains("numapilot run")
 }
 
-/// Coloca o numapilot antes do %command%, preservando o que o usuário já tinha.
+/// Puts numapilot before %command%, keeping what the user already had.
 pub fn wrap_option(opt: &str) -> String {
     let o = opt.trim();
     if has_numapilot(o) {
@@ -320,7 +320,7 @@ pub fn wrap_option(opt: &str) -> String {
     } else if o.contains("%command%") {
         o.replacen("%command%", &format!("{WRAP} %command%"), 1)
     } else {
-        // Só argumentos do jogo (sem %command%): a Steam os coloca no fim.
+        // Only game arguments (no %command%): Steam puts them at the end.
         format!("{WRAP} %command% {o}")
     }
 }
@@ -331,7 +331,7 @@ pub fn unwrap_option(opt: &str) -> String {
     if o == "%command%" {
         String::new()
     } else if let Some(rest) = o.strip_prefix("%command% ") {
-        // "%command% -arg" equivale a "-arg"
+        // "%command% -arg" is equivalent to "-arg"
         rest.to_string()
     } else {
         o
@@ -346,8 +346,8 @@ pub fn steam_running() -> bool {
         .unwrap_or(false)
 }
 
-/// Liga (ou desliga) o numapilot nas opções de inicialização de todos os jogos instalados.
-/// Retorna quantos jogos mudaram.
+/// Turns numapilot on (or off) in the launch options of every installed game.
+/// Returns how many games changed.
 pub fn apply_all(path: &Path, games: &[(String, String)], enable: bool) -> Result<usize, String> {
     if steam_running() {
         return Err(

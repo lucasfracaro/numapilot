@@ -1,4 +1,5 @@
-//! Medição real de latência e banda de memória entre os sockets (matriz CPU-nó × memória-nó).
+//! Real measurement of memory latency and bandwidth between sockets (CPU-node × memory-node
+//! matrix).
 
 use crate::procfs;
 use crate::topo::Topology;
@@ -30,7 +31,7 @@ pub fn paths() -> Vec<PathBuf> {
     ]
 }
 
-/// O resultado mais recente (do serviço ou do usuário).
+/// The most recent result (the service's or the user's).
 pub fn load() -> Option<BenchResult> {
     paths()
         .iter()
@@ -56,14 +57,14 @@ fn bind_here(cpu: usize, mem_node: usize) -> bool {
         && procfs::set_mempolicy(procfs::MPOL_BIND, &[mem_node]).is_ok()
 }
 
-/// Latência média (ns) de acessos dependentes ("pointer chasing") num buffer aleatório.
+/// Average latency (ns) of dependent accesses ("pointer chasing") in a random buffer.
 fn latency(cpu: usize, mem_node: usize, size_mb: usize) -> f64 {
     std::thread::spawn(move || {
         if !bind_here(cpu, mem_node) {
             return f64::NAN;
         }
         let n = size_mb * 1024 * 1024 / 4;
-        // Ciclo aleatório único (Sattolo) para o processador não conseguir prever.
+        // Single random cycle (Sattolo) so the processor cannot predict it.
         let mut perm: Vec<u32> = (0..n as u32).collect();
         let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
         for i in (1..n).rev() {
@@ -94,7 +95,7 @@ fn latency(cpu: usize, mem_node: usize, size_mb: usize) -> f64 {
     .unwrap_or(f64::NAN)
 }
 
-/// Banda de leitura (GB/s) com vários threads nos CPUs de um nó lendo memória de outro.
+/// Read bandwidth (GB/s) with several threads on one node's CPUs reading another node's memory.
 fn bandwidth(cpus: &[usize], mem_node: usize, size_mb: usize) -> f64 {
     let barrier = Arc::new(Barrier::new(cpus.len()));
     let handles: Vec<_> = cpus
@@ -169,7 +170,7 @@ pub fn run(
     };
     for (i, &cn) in nodes.iter().enumerate() {
         let node = topo.node(cn).unwrap();
-        // Um CPU por núcleo físico, para não medir dois threads no mesmo núcleo.
+        // One CPU per physical core, so two threads on the same core are not measured.
         let firsts: Vec<usize> = node.cores.iter().map(|c| c[0]).collect();
         let lat_cpu = firsts.first().copied().unwrap_or(node.cpus[0]);
         let bw_cpus: Vec<usize> = firsts.iter().copied().take(threads.max(1)).collect();
@@ -240,7 +241,7 @@ mod tests {
 
     #[test]
     fn tiny_bench_on_this_machine() {
-        // Topologia mínima (CPU 0, nó 0): só verifica que mede algo plausível.
+        // Minimal topology (CPU 0, node 0): only checks that it measures something plausible.
         let t = Topology {
             nodes: vec![crate::topo::Node {
                 id: 0,

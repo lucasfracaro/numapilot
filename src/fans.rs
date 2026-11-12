@@ -1,5 +1,5 @@
-//! Ventoinhas da placa-mãe (gabinete e processadores): pelo chip de sensores (hwmon: nct67xx,
-//! it87, ...) e, em placas de servidor, pelo IPMI (leitura; modo das ventoinhas em Supermicro).
+//! Motherboard fans (case and processors): through the sensor chip (hwmon: nct67xx, it87, ...)
+//! and, on server boards, through IPMI (reading; fan mode on Supermicro).
 
 use crate::gpuctl::{FanMode, curve_pct};
 use crate::learned::state_dir;
@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
-/// Chips que não são da placa-mãe (GPUs, discos, ...).
+/// Chips that are not the motherboard's (GPUs, disks, ...).
 const SKIP: &[&str] = &[
     "amdgpu",
     "nouveau",
@@ -24,7 +24,7 @@ const SKIP: &[&str] = &[
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardFan {
-    /// Identificador estável entre boots: "chip@dispositivo/pwmN".
+    /// Identifier stable across boots: "chip@device/pwmN".
     pub id: String,
     pub chip: String,
     #[serde(skip)]
@@ -33,7 +33,7 @@ pub struct BoardFan {
     pub label: String,
     pub rpm: Option<u64>,
     pub pct: Option<f64>,
-    /// 1 = manual, 2+ = automático do chip, 0 = máximo
+    /// 1 = manual, 2+ = chip automatic, 0 = maximum
     pub enable: Option<u8>,
 }
 
@@ -92,7 +92,7 @@ pub struct BoardFanControl {
     pub fan: FanMode,
     pub curve: Vec<(f64, f64)>,
     pub fixed_pct: f64,
-    /// Temperatura que guia a curva: "cpu" (mais quente dos sockets), "cpu0", "cpu1", "gpu" (mais quente das GPUs), "max"
+    /// Temperature that drives the curve: "cpu" (hottest socket), "cpu0", "cpu1", "gpu" (hottest GPU), "max"
     pub source: String,
     pub label: String,
 }
@@ -157,7 +157,7 @@ impl BoardFans {
     }
 }
 
-/// Temperatura da fonte escolhida.
+/// Temperature of the chosen source.
 pub fn source_temp(source: &str, topo: &crate::topo::Topology) -> Option<f64> {
     let cpu = crate::cpuctl::package_temps();
     let gpu = || {
@@ -182,7 +182,7 @@ pub fn source_temp(source: &str, topo: &crate::topo::Topology) -> Option<f64> {
     }
 }
 
-/// Acima disto (CPU) as ventoinhas controladas vão a 100%, qualquer que seja o modo.
+/// Above this (CPU) the controlled fans go to 100%, whatever the mode.
 pub const EMERGENCY_CPU_C: f64 = 90.0;
 
 pub fn set_pct(f: &BoardFan, pct: f64) -> Result<(), String> {
@@ -199,14 +199,14 @@ pub fn set_pct(f: &BoardFan, pct: f64) -> Result<(), String> {
     .map_err(|e| format!("{}: {e}", p.display()))
 }
 
-/// Devolve ao controle do chip (o valor de pwmN_enable de antes, ou 2 = automático).
+/// Gives control back to the chip (the previous pwmN_enable value, or 2 = automatic).
 pub fn set_auto(f: &BoardFan, orig: Option<u8>) -> Result<(), String> {
     let en = f.dir.join(format!("pwm{}_enable", f.idx));
     fs::write(&en, orig.filter(|&o| o != 1).unwrap_or(2).to_string())
         .map_err(|e| format!("{}: {e}", en.display()))
 }
 
-/// Porcentagem desejada agora (None = automático do chip).
+/// Wanted percentage right now (None = chip automatic).
 pub fn target(c: &BoardFanControl, temp: Option<f64>, cpu_max: Option<f64>) -> Option<f64> {
     if cpu_max.is_some_and(|t| t >= EMERGENCY_CPU_C) && c.fan != FanMode::Auto {
         return Some(100.0);
@@ -233,7 +233,7 @@ fn ipmitool(args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&o.stdout).to_string())
 }
 
-/// (nome, RPM) das ventoinhas vistas pelo BMC.
+/// (name, RPM) of the fans seen by the BMC.
 pub fn ipmi_fans() -> Vec<(String, Option<u64>)> {
     let Some(s) = ipmitool(&["sdr", "type", "Fan"]) else {
         return vec![];
@@ -263,7 +263,7 @@ pub fn is_supermicro() -> bool {
         .is_some_and(|v| v.to_lowercase().contains("supermicro"))
 }
 
-/// Modo das ventoinhas no BMC Supermicro (0 padrão, 1 máximo, 2 ótimo, 4 heavy IO).
+/// Fan mode on the Supermicro BMC (0 default, 1 maximum, 2 optimal, 4 heavy IO).
 pub fn supermicro_mode() -> Option<u8> {
     if !is_supermicro() {
         return None;

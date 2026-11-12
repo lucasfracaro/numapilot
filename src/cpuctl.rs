@@ -1,6 +1,5 @@
-//! Controles do processador pelo sysfs: estados de economia (C-states), turbo, frequências,
-//! viés de energia (EPB), frequência do "uncore" (L3 + controlador de memória) e limite de
-//! potência por socket (RAPL).
+//! Processor controls through sysfs: idle states (C-states), turbo, frequencies, energy bias
+//! (EPB), "uncore" frequency (L3 + memory controller) and power limit per socket (RAPL).
 
 use crate::util::{read_trim, read_u64, sys};
 use std::collections::BTreeMap;
@@ -48,8 +47,8 @@ pub fn set_cstate_disabled(cpu: usize, idx: usize, off: bool) -> Result<(), Stri
     )
 }
 
-/// Desliga, nos CPUs dados, os estados com latência de saída acima de `max_us`.
-/// Devolve os (cpu, estado) que estavam ligados e foram desligados (para devolver depois).
+/// Disables, on the given CPUs, the states with exit latency above `max_us`.
+/// Returns the (cpu, state) pairs that were enabled and got disabled (to restore later).
 pub fn limit_latency(cpus: &[usize], max_us: u64) -> Vec<(usize, usize)> {
     let mut changed = Vec::new();
     for &c in cpus {
@@ -74,7 +73,7 @@ pub fn restore_cstates(list: &[(usize, usize)]) {
 
 // ---------------- turbo ----------------
 
-/// Turbo ligado? (intel_pstate/no_turbo ou cpufreq/boost)
+/// Turbo on? (intel_pstate/no_turbo or cpufreq/boost)
 pub fn turbo() -> Option<bool> {
     if let Some(v) = read_trim(sys("devices/system/cpu/intel_pstate/no_turbo")) {
         return Some(v == "0");
@@ -94,7 +93,7 @@ pub fn set_turbo(on: bool) -> Result<(), String> {
     Err(crate::i18n::tr("this system does not expose turbo control").into())
 }
 
-// ---------------- frequência / governor / EPB ----------------
+// ---------------- frequency / governor / EPB ----------------
 
 fn cpufreq(cpu: usize, f: &str) -> PathBuf {
     sys(&format!("devices/system/cpu/cpu{cpu}/cpufreq/{f}"))
@@ -119,8 +118,8 @@ pub fn freq(cpu: usize) -> Option<Freq> {
     })
 }
 
-/// MHz atual de cada CPU lógica: cpufreq (scaling_cur_freq) ou, sem ele (BC-250), o
-/// "cpu MHz" do /proc/cpuinfo, que o kernel mede pelo APERF/MPERF.
+/// Current MHz of each logical CPU: cpufreq (scaling_cur_freq) or, without it (BC-250), the
+/// "cpu MHz" from /proc/cpuinfo, which the kernel measures through APERF/MPERF.
 pub fn cur_mhz_all() -> std::collections::BTreeMap<usize, u64> {
     let mut m = std::collections::BTreeMap::new();
     let txt = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
@@ -153,7 +152,7 @@ pub fn parse_cpuinfo_mhz(txt: &str) -> Vec<(usize, u64)> {
     v
 }
 
-/// Define mínimo e máximo (kHz). A ordem importa para não ficar mínimo > máximo no meio.
+/// Sets minimum and maximum (kHz). The order matters so minimum > maximum never happens midway.
 pub fn set_freq(cpus: &[usize], min_khz: u64, max_khz: u64) -> Result<(), String> {
     let mut err = None;
     for &c in cpus {
@@ -192,8 +191,8 @@ pub fn set_governor(cpus: &[usize], gov: &str) -> Result<(), String> {
     err.map_or(Ok(()), Err)
 }
 
-/// Governor "econômico" que ainda acompanha a carga: powersave no intel_pstate,
-/// schedutil nos outros drivers (o powersave do acpi-cpufreq trava no mínimo).
+/// "Power-saving" governor that still follows the load: powersave on intel_pstate,
+/// schedutil on the other drivers (acpi-cpufreq's powersave locks at the minimum).
 pub fn eco_governor(cpu: usize) -> String {
     let driver = read_trim(cpufreq(cpu, "scaling_driver")).unwrap_or_default();
     let av = governors_available(cpu);
@@ -206,7 +205,7 @@ pub fn eco_governor(cpu: usize) -> String {
     }
 }
 
-/// Energy Performance Bias: 0 = desempenho ... 15 = economia.
+/// Energy Performance Bias: 0 = performance ... 15 = power saving.
 pub fn epb(cpu: usize) -> Option<u8> {
     read_trim(sys(&format!(
         "devices/system/cpu/cpu{cpu}/power/energy_perf_bias"
@@ -217,7 +216,7 @@ pub fn epb(cpu: usize) -> Option<u8> {
 
 static EPB_UNSUPPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// O processador aceita mudar o EPB? (nos AMD o arquivo existe mas a escrita é negada)
+/// Does the processor accept changing EPB? (on AMD the file exists but the write is denied)
 pub fn epb_supported() -> bool {
     !EPB_UNSUPPORTED.load(std::sync::atomic::Ordering::Relaxed)
         && std::path::Path::new(&sys("devices/system/cpu/cpu0/power/energy_perf_bias")).exists()
@@ -233,7 +232,7 @@ pub fn set_epb(cpus: &[usize], v: u8) -> Result<(), String> {
             sys(&format!("devices/system/cpu/cpu{c}/power/energy_perf_bias")),
             &v.to_string(),
         ) {
-            // negado até para o root: este processador não deixa mudar; não é erro
+            // denied even for root: this processor does not allow changing it; not an error
             if e.contains("Permission denied") || e.contains("os error 13") {
                 EPB_UNSUPPORTED.store(true, std::sync::atomic::Ordering::Relaxed);
                 return Ok(());
@@ -244,7 +243,7 @@ pub fn set_epb(cpus: &[usize], v: u8) -> Result<(), String> {
     err.map_or(Ok(()), Err)
 }
 
-/// Energy Performance Preference (amd-pstate/intel_pstate em modo ativo):
+/// Energy Performance Preference (amd-pstate/intel_pstate in active mode):
 /// performance, balance_performance, balance_power, power.
 pub fn epp(cpu: usize) -> Option<String> {
     read_trim(cpufreq(cpu, "energy_performance_preference"))
@@ -256,7 +255,7 @@ pub fn epp_available(cpu: usize) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Grava o EPP. Com o governor performance o driver trava o EPP em performance: isso não é erro.
+/// Writes EPP. With the performance governor the driver locks EPP to performance: not an error.
 pub fn set_epp(cpus: &[usize], v: &str) -> Result<(), String> {
     let mut err = None;
     for &c in cpus {
@@ -283,7 +282,7 @@ pub struct Uncore {
     pub cur_khz: Option<u64>,
 }
 
-/// Zonas do driver intel_uncore_frequency (uma por socket).
+/// Zones of the intel_uncore_frequency driver (one per socket).
 pub fn uncores() -> Vec<Uncore> {
     let base = sys("devices/system/cpu/intel_uncore_frequency");
     let Ok(rd) = fs::read_dir(&base) else {
@@ -293,7 +292,7 @@ pub fn uncores() -> Vec<Uncore> {
         .flatten()
         .filter_map(|e| {
             let n = e.file_name().to_string_lossy().to_string();
-            // package_00_die_00 (driver antigo) — os "uncoreNN" novos têm package_id dentro
+            // package_00_die_00 (old driver) — the new "uncoreNN" ones have package_id inside
             let package = if let Some(rest) = n.strip_prefix("package_") {
                 rest.split('_').next()?.parse().ok()?
             } else if n.starts_with("uncore") {
@@ -334,7 +333,7 @@ pub fn set_uncore(package: u32, min_khz: u64, max_khz: u64) -> Result<(), String
     }
 }
 
-/// Volta para os valores de fábrica.
+/// Back to the factory values.
 pub fn reset_uncore(package: u32) -> Result<(), String> {
     let u = uncores()
         .into_iter()
@@ -352,11 +351,11 @@ pub fn reset_uncore(package: u32) -> Result<(), String> {
 pub struct Rapl {
     pub dir: PathBuf,
     pub package: u32,
-    /// Limite de longo prazo atual (W).
+    /// Current long-term limit (W).
     pub limit_w: Option<f64>,
-    /// Potência de projeto (TDP), quando o kernel mostra.
+    /// Design power (TDP), when the kernel shows it.
     pub max_w: Option<f64>,
-    /// Limite de curto prazo (PL2), quando existe.
+    /// Short-term limit (PL2), when it exists.
     pub limit2_w: Option<f64>,
 }
 
@@ -369,7 +368,7 @@ pub fn rapl_zones() -> Vec<Rapl> {
         .flatten()
         .filter_map(|e| {
             let n = e.file_name().to_string_lossy().to_string();
-            // só as zonas de pacote (intel-rapl:0, intel-rapl:1), não as subzonas (intel-rapl:0:0)
+            // only the package zones (intel-rapl:0, intel-rapl:1), not the subzones (intel-rapl:0:0)
             let rest = n.strip_prefix("intel-rapl:")?;
             if rest.contains(':') {
                 return None;
@@ -405,7 +404,7 @@ pub fn set_rapl_limit(package: u32, watts: f64) -> Result<(), String> {
     )
 }
 
-/// Limite de curto prazo (PL2: o pico que o processador pode puxar por alguns segundos).
+/// Short-term limit (PL2: the peak the processor may draw for a few seconds).
 pub fn set_rapl_limit2(package: u32, watts: f64) -> Result<(), String> {
     let z = rapl_zones()
         .into_iter()
@@ -420,7 +419,7 @@ pub fn set_rapl_limit2(package: u32, watts: f64) -> Result<(), String> {
     )
 }
 
-/// Mede a potência de cada socket pela diferença do contador de energia (precisa de root).
+/// Measures each socket's power from the energy counter difference (needs root).
 #[derive(Default)]
 pub struct PowerMeter {
     last: BTreeMap<u32, (u64, Instant)>,
@@ -454,7 +453,7 @@ pub fn package_temps() -> BTreeMap<u32, f64> {
     let Ok(rd) = fs::read_dir(sys("class/hwmon")) else {
         return out;
     };
-    // AMD (k10temp/zenpower): um por socket, na ordem do barramento; Tctl/Tdie
+    // AMD (k10temp/zenpower): one per socket, in bus order; Tctl/Tdie
     let mut amd: Vec<(String, f64)> = vec![];
     let entries: Vec<_> = rd.flatten().collect();
     for e in &entries {
@@ -566,7 +565,7 @@ mod tests {
         mk("class/hwmon/hwmon3/temp1_label", "Package id 1");
         mk("class/hwmon/hwmon3/temp1_input", "54000");
 
-        // As funções leem NUMAPILOT_SYSFS; este teste roda sozinho no seu próprio caminho.
+        // The functions read NUMAPILOT_SYSFS; this test runs alone on its own path.
         let _g = crate::util::test_sysfs_lock(&root);
         let ch = limit_latency(&[0], 2);
         assert_eq!(ch, vec![(0, 2), (0, 3)]);
