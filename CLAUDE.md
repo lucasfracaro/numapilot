@@ -154,12 +154,17 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   (`corebench::sort_units`, degraus de 1%) só se `useful` (diferença ≥ 2% e ≥ 3× o ruído) e se o
   modelo da CPU for o mesmo. Ainda não medido em hardware real (no servidor a diferença esperada
   é de poucos %).
-- Inglês (2026-11-12): a interface inteira. Texto fixo = `crate::i18n::tr("pt")` com o par em
-  `src/bin/numapilot-gui/i18n_en.rs`; texto com valores = `crate::tf!("pt {}", "en {}", v)`;
-  tabelas `const` guardam o português e o `tr()` fica onde o texto é mostrado. O teste
-  `every_tr_has_a_pair` falha se um `tr()` novo ficar sem par. Texto novo na interface: sempre
-  nos dois idiomas. Biblioteca, serviço e CLI (doctor, autoteste, erros) seguem só em português.
-- Falta: inglês nas mensagens do serviço/CLI; testar tudo isso em hardware real.
+- Inglês (2026-11-12): interface, serviço e CLI. Texto fixo = `crate::i18n::tr("pt")` com o par
+  na tabela (`src/i18n_en.rs` para biblioteca/CLI, `src/bin/numapilot-gui/i18n_en.rs` para a
+  interface, que cai na da biblioteca); texto com valores = `crate::tf!("pt {}", "en {}", v)`
+  (`numapilot::` no `main.rs`); tabelas `const` guardam o português e o `tr()` fica onde o texto
+  é mostrado. Os testes `every_tr_has_a_pair` falham se um `tr()` ficar sem par. Texto novo:
+  sempre nos dois idiomas. Idioma (`src/i18n.rs`): `NUMAPILOT_LANG`, `~/.config/numapilot/lang`,
+  para o root `/var/lib/numapilot/lang`, senão o do sistema; cada pedido ao serviço leva `"lang"`
+  e o serviço passa a responder nele. Nos testes é sempre português. Não traduzir: palavras
+  usadas como chave/comparação (modos `jogo`/`ia`, `nenhum`, `padrao`, subcomandos), conteúdo de
+  arquivos gravados, `nlog!`, e os estados `AVISO`/`FALHOU`/`PULOU` do autoteste.
+- Falta: `--help` (clap), painel web e documentação em inglês; testar tudo isso em hardware real.
 
 ## Capturas do README
 

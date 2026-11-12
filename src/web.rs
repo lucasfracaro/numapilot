@@ -113,7 +113,7 @@ pub fn state(topo: &Topology) -> Value {
         .map(|(k, (label, cores, nodes, gpus))| {
             let p = profiles.get(&k);
             json!({"key": k, "label": label, "cores": cores, "nodes": nodes, "gpus": gpus,
-                   "profile": p.map(describe).unwrap_or_else(|| "automático".into())})
+                   "profile": p.map(describe).unwrap_or_else(|| crate::i18n::tr("automático").into())})
         })
         .collect();
     programs.sort_by(|a, b| {
@@ -143,23 +143,30 @@ pub fn state(topo: &Topology) -> Value {
 
 fn describe(p: &Profile) -> String {
     if p.is_auto() {
-        return "automático".into();
+        return crate::i18n::tr("automático").into();
     }
     let mut v = vec![];
     v.push(match p.cpu.as_str() {
         "auto" => "CPU auto".to_string(),
-        "gpu" => "socket da GPU".into(),
-        "all" => "dois sockets".into(),
+        "gpu" => crate::i18n::tr("socket da GPU").into(),
+        "all" => crate::i18n::tr("dois sockets").into(),
         o => format!("socket {o}"),
     });
     if let Some(c) = p.cores {
-        v.push(format!("{c} CPUs{}", if p.smt { "" } else { " sem HT" }));
+        v.push(format!(
+            "{c} CPUs{}",
+            if p.smt {
+                ""
+            } else {
+                crate::i18n::tr(" sem HT")
+            }
+        ));
     }
     if p.gpu != "auto" {
         v.push(p.gpu.clone());
     }
     if p.exclusive {
-        v.push("exclusivo".into());
+        v.push(crate::i18n::tr("exclusivo").into());
     }
     v.join(" · ")
 }
@@ -167,23 +174,31 @@ fn describe(p: &Profile) -> String {
 fn act(body: &Value, topo: &Topology) -> Result<String, String> {
     let _ = topo;
     match body["action"].as_str().unwrap_or("") {
-        "wake" => crate::peers::wake(body["name"].as_str().ok_or("falta name")?),
+        "wake" => crate::peers::wake(body["name"].as_str().ok_or(crate::i18n::tr("falta name"))?),
         "launch" => {
-            let id = body["appid"].as_str().ok_or("falta appid")?;
+            let id = body["appid"]
+                .as_str()
+                .ok_or(crate::i18n::tr("falta appid"))?;
             if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
-                return Err("appid inválido".into());
+                return Err(crate::i18n::tr("appid inválido").into());
             }
             let name = crate::steam::installed_games()
                 .into_iter()
                 .find(|g| g.0 == id)
                 .map(|g| g.1)
-                .ok_or("jogo não instalado aqui")?;
+                .ok_or(crate::i18n::tr("jogo não instalado aqui"))?;
             spawn_quiet(&["steam", &format!("steam://rungameid/{id}")])?;
-            Ok(format!("abrindo {name} na Steam"))
+            Ok(crate::tf!(
+                "abrindo {name} na Steam",
+                "opening {name} on Steam"
+            ))
         }
         "sunshine" => sunshine_start(),
         "preset" => {
-            let key = body["key"].as_str().ok_or("falta key")?.to_string();
+            let key = body["key"]
+                .as_str()
+                .ok_or(crate::i18n::tr("falta key"))?
+                .to_string();
             let preset = body["preset"].as_str().unwrap_or("auto");
             let r = if preset == "auto" {
                 ctl::send(&Request::DeleteProfile { key, pid: None })
@@ -217,13 +232,13 @@ fn act(body: &Value, topo: &Topology) -> Result<String, String> {
             Ok(format!(
                 "{what}: {}",
                 if verb == "up" {
-                    "ligando"
+                    crate::i18n::tr("ligando")
                 } else {
-                    "desligando"
+                    crate::i18n::tr("desligando")
                 }
             ))
         }
-        o => Err(format!("ação desconhecida: {o}")),
+        o => Err(crate::tf!("ação desconhecida: {o}", "unknown action: {o}")),
     }
 }
 
@@ -311,7 +326,7 @@ fn sunshine_start() -> Result<String, String> {
             .output()
             .is_ok_and(|o| o.status.success());
         if ok {
-            return Ok("Sunshine ligado".into());
+            return Ok(crate::i18n::tr("Sunshine ligado").into());
         }
     }
     let flatpak = std::process::Command::new("flatpak")
@@ -320,13 +335,13 @@ fn sunshine_start() -> Result<String, String> {
         .is_ok_and(|o| o.status.success());
     if flatpak {
         spawn_quiet(&["flatpak", "run", "dev.lizardbyte.app.Sunshine"])?;
-        return Ok("Sunshine ligando (Flatpak)".into());
+        return Ok(crate::i18n::tr("Sunshine ligando (Flatpak)").into());
     }
     if crate::containers::which("sunshine") {
         spawn_quiet(&["sunshine"])?;
-        return Ok("Sunshine ligando".into());
+        return Ok(crate::i18n::tr("Sunshine ligando").into());
     }
-    Err("Sunshine não instalado neste PC".into())
+    Err(crate::i18n::tr("Sunshine não instalado neste PC").into())
 }
 
 fn authorized(req: &tiny_http::Request, token: &str) -> bool {
@@ -365,12 +380,16 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
     let token = token()?;
     let topo = Topology::load(cfg);
     let server = tiny_http::Server::http(format!("{bind}:{port}"))
-        .map_err(|e| anyhow::anyhow!("porta {port}: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("{}", crate::tf!("porta {port}: {e}", "port {port}: {e}")))?;
     match url(port) {
-        Some(u) => eprintln!("Painel: {u}"),
+        Some(u) => eprintln!("{}", crate::tf!("Painel: {u}", "Panel: {u}")),
         None => eprintln!(
-            "Painel na porta {port} (token em {})",
-            token_path().display()
+            "{}",
+            crate::tf!(
+                "Painel na porta {port} (token em {})",
+                "Panel on port {port} (token in {})",
+                token_path().display()
+            )
         ),
     }
     std::thread::spawn(crate::watch::run);
@@ -390,7 +409,9 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
                 bad_auth += 1;
                 if bad_auth > 10 {
                     if bad_auth == 11 {
-                        crate::log::warn("painel web: muitas tentativas com token errado");
+                        crate::log::warn(crate::i18n::tr(
+                            "painel web: muitas tentativas com token errado",
+                        ));
                     }
                     std::thread::sleep(std::time::Duration::from_secs(2));
                 }
@@ -473,7 +494,12 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
                 };
                 respond(req, code, "application/json", v.to_string())
             }
-            _ => respond(req, 404, "text/plain", "não encontrado".into()),
+            _ => respond(
+                req,
+                404,
+                "text/plain",
+                crate::i18n::tr("não encontrado").into(),
+            ),
         }
     }
     Ok(())

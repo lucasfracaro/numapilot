@@ -58,10 +58,11 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     if topo.nodes.len() >= 2 {
         add(
             "NUMA",
-            "nós",
+            crate::i18n::tr("nós"),
             Level::Ok,
-            format!(
+            crate::tf!(
                 "{} nós, {} sockets, {} CPUs",
+                "{} nodes, {} sockets, {} CPUs",
                 topo.nodes.len(),
                 sockets.len(),
                 topo.all_cpus().len()
@@ -71,13 +72,21 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     } else if sockets.len() > 1 {
         add(
             "NUMA",
-            "nós",
+            crate::i18n::tr("nós"),
             Level::Fail,
-            "2 sockets mas 1 nó NUMA".into(),
-            Some("Na BIOS: desligue \"Node Interleaving\" (deixe NUMA ativo)"),
+            crate::i18n::tr("2 sockets mas 1 nó NUMA").into(),
+            Some(crate::i18n::tr(
+                "Na BIOS: desligue \"Node Interleaving\" (deixe NUMA ativo)",
+            )),
         );
     } else {
-        add("NUMA", "nós", Level::Info, "1 nó NUMA".into(), None);
+        add(
+            "NUMA",
+            crate::i18n::tr("nós"),
+            Level::Info,
+            crate::i18n::tr("1 nó NUMA").into(),
+            None,
+        );
     }
     for w in topo.warnings() {
         add("NUMA", "aviso", Level::Warn, w, None);
@@ -85,28 +94,34 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     let bal = std::fs::read_to_string("/proc/sys/kernel/numa_balancing").unwrap_or_default();
     add(
         "NUMA",
-        "balanceamento automático do kernel",
+        crate::i18n::tr("balanceamento automático do kernel"),
         Level::Info,
         format!("numa_balancing = {}", bal.trim()),
         None,
     );
     let ctrl = std::fs::read_to_string("/sys/fs/cgroup/cgroup.controllers").unwrap_or_default();
     if ctrl.contains("cpuset") && ctrl.contains("memory") {
-        add("Sistema", "cgroups v2", Level::Ok, ctrl.trim().into(), None);
+        add(
+            crate::i18n::tr("Sistema"),
+            crate::i18n::tr("cgroups v2"),
+            Level::Ok,
+            ctrl.trim().into(),
+            None,
+        );
     } else {
         add(
-            "Sistema",
-            "cgroups v2",
+            crate::i18n::tr("Sistema"),
+            crate::i18n::tr("cgroups v2"),
             Level::Fail,
-            format!("controladores: '{}'", ctrl.trim()),
-            Some(
+            crate::tf!("controladores: '{}'", "controllers: '{}'", ctrl.trim()),
+            Some(crate::i18n::tr(
                 "O sistema precisa de cgroups v2 (padrão no CachyOS) para limites de memória e núcleos exclusivos",
-            ),
+            )),
         );
     }
     let sd = out(&["systemctl", "--version"], &[]).unwrap_or_default();
     add(
-        "Sistema",
+        crate::i18n::tr("Sistema"),
         "systemd",
         Level::Info,
         sd.lines().next().unwrap_or("?").into(),
@@ -115,29 +130,29 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     let od = crate::bootcfg::overdrive_state();
     if od.active {
         add(
-            "Sistema",
-            "OverDrive (clock/voltagem)",
+            crate::i18n::tr("Sistema"),
+            crate::i18n::tr("OverDrive (clock/voltagem)"),
             Level::Ok,
-            "ligado".into(),
+            crate::i18n::tr("ligado").into(),
             None,
         );
     } else if od.on_next_boot {
         add(
-            "Sistema",
-            "OverDrive (clock/voltagem)",
+            crate::i18n::tr("Sistema"),
+            crate::i18n::tr("OverDrive (clock/voltagem)"),
             Level::Info,
-            "liga depois de reiniciar".into(),
-            Some("Reinicie o computador"),
+            crate::i18n::tr("liga depois de reiniciar").into(),
+            Some(crate::i18n::tr("Reinicie o computador")),
         );
     } else {
         add(
-            "Sistema",
-            "OverDrive (clock/voltagem)",
+            crate::i18n::tr("Sistema"),
+            crate::i18n::tr("OverDrive (clock/voltagem)"),
             Level::Info,
-            "desligado".into(),
-            Some(
+            crate::i18n::tr("desligado").into(),
+            Some(crate::i18n::tr(
                 "Para undervolt/overclock: Placas de vídeo → \"Ativar OverDrive\" (ou sudo numapilot boot overdrive on) e reinicie",
-            ),
+            )),
         );
     }
     // ---- NVIDIA e notebook ----
@@ -148,11 +163,12 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 "NVIDIA",
                 "driver",
                 Level::Warn,
-                format!(
+                crate::tf!(
                     "carregado {l}, instalado {}",
+                    "loaded {l}, installed {}",
                     st.installed.clone().unwrap_or_default()
                 ),
-                Some("Reinicie para usar o driver instalado"),
+                Some(crate::i18n::tr("Reinicie para usar o driver instalado")),
             ),
             (Some(l), _) => add(
                 "NVIDIA",
@@ -168,19 +184,19 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 "NVIDIA",
                 "driver",
                 Level::Warn,
-                "usando o nouveau (sem desempenho para jogos)".into(),
-                Some(
+                crate::i18n::tr("usando o nouveau (sem desempenho para jogos)").into(),
+                Some(crate::i18n::tr(
                     "Placas de vídeo → Instalar driver oficial (ou sudo numapilot driver install)",
-                ),
+                )),
             ),
             (None, _) => add(
                 "NVIDIA",
                 "driver",
                 Level::Fail,
-                "driver oficial não carregado".into(),
-                Some(
+                crate::i18n::tr("driver oficial não carregado").into(),
+                Some(crate::i18n::tr(
                     "Placas de vídeo → Instalar driver oficial (ou sudo numapilot driver install)",
-                ),
+                )),
             ),
         }
         if let (Some(i), Some(a)) = (&st.installed, &st.available)
@@ -188,10 +204,12 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         {
             add(
                 "NVIDIA",
-                "atualização",
+                crate::i18n::tr("atualização"),
                 Level::Info,
-                format!("{i} → {a} disponível"),
-                Some("Placas de vídeo → Atualizar (atualiza o sistema junto)"),
+                crate::tf!("{i} → {a} disponível", "{i} → {a} available"),
+                Some(crate::i18n::tr(
+                    "Placas de vídeo → Atualizar (atualiza o sistema junto)",
+                )),
             );
         }
     }
@@ -199,11 +217,11 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         let ac = crate::notebook::on_ac();
         add(
             "Notebook",
-            "energia",
+            crate::i18n::tr("energia"),
             Level::Ok,
             match ac {
-                Some(true) => "na tomada".into(),
-                Some(false) => "na bateria".into(),
+                Some(true) => crate::i18n::tr("na tomada").into(),
+                Some(false) => crate::i18n::tr("na bateria").into(),
                 None => "?".into(),
             },
             None,
@@ -213,21 +231,23 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             if pm == "on" {
                 add(
                     "Notebook",
-                    &format!("{} dormir", g.alias),
+                    &crate::tf!("{} dormir", "{} sleep", g.alias),
                     Level::Info,
-                    "a placa dedicada nunca dorme (gasta bateria)".into(),
-                    Some("Máquina → Notebook → placa dedicada: dormir quando ninguém usa"),
+                    crate::i18n::tr("a placa dedicada nunca dorme (gasta bateria)").into(),
+                    Some(crate::i18n::tr(
+                        "Máquina → Notebook → placa dedicada: dormir quando ninguém usa",
+                    )),
                 );
             } else {
                 add(
                     "Notebook",
-                    &format!("{} dormir", g.alias),
+                    &crate::tf!("{} dormir", "{} sleep", g.alias),
                     Level::Ok,
                     crate::notebook::dgpu_state(&g.pci),
                     None,
                 );
             }
-            if !crate::notebook::dgpu_state(&g.pci).starts_with("dormindo") {
+            if !crate::notebook::dgpu_asleep(&g.pci) {
                 let mut users: Vec<String> = crate::notebook::dgpu_users(&g.pci)
                     .into_iter()
                     .map(|u| u.1)
@@ -237,10 +257,12 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 if !users.is_empty() {
                     add(
                         "Notebook",
-                        &format!("{} acordada por", g.alias),
+                        &crate::tf!("{} acordada por", "{} woken by", g.alias),
                         Level::Info,
                         users.join(", "),
-                        Some("Abra esses programas na placa integrada para a dedicada dormir"),
+                        Some(crate::i18n::tr(
+                            "Abra esses programas na placa integrada para a dedicada dormir",
+                        )),
                     );
                     for u in &users {
                         if let Some(h) = crate::notebook::holder_hint(u) {
@@ -248,7 +270,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                                 "Notebook",
                                 u,
                                 Level::Info,
-                                "mantém a NVIDIA acordada".into(),
+                                crate::i18n::tr("mantém a NVIDIA acordada").into(),
                                 Some(h),
                             );
                         }
@@ -278,13 +300,14 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                                     .find(|n| n.starts_with("card"))
                             });
                         let fix = igpu.filter(|_| kde).map(|c| {
-                            format!("echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment e entre de novo (se o número da placa mudar após atualizar, refaça)")
+                            crate::tf!("echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment e entre de novo (se o número da placa mudar após atualizar, refaça)", "echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment and log in again (if the card number changes after an update, redo it)")
                         });
                         add(
                             "Notebook",
-                            "desktop prendendo a NVIDIA",
+                            crate::i18n::tr("desktop prendendo a NVIDIA"),
                             Level::Info,
-                            "o compositor (KWin/Xwayland) abriu a placa dedicada".into(),
+                            crate::i18n::tr("o compositor (KWin/Xwayland) abriu a placa dedicada")
+                                .into(),
                             fix.as_deref(),
                         );
                     }
@@ -312,7 +335,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     "Notebook",
                     "acer_wmi predator_v4",
                     Level::Ok,
-                    "ligado: perfis de energia e ventoinhas pelo kernel (o numapilot usa)".into(),
+                    crate::i18n::tr(
+                        "ligado: perfis de energia e ventoinhas pelo kernel (o numapilot usa)",
+                    )
+                    .into(),
                     None,
                 );
             }
@@ -351,10 +377,12 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         if !rivals.is_empty() {
             add(
                 "Notebook",
-                "outros controladores rodando",
+                crate::i18n::tr("outros controladores rodando"),
                 Level::Warn,
                 rivals.join(", "),
-                Some("eles mexem nas mesmas ventoinhas/perfis: feche e tire da inicialização"),
+                Some(crate::i18n::tr(
+                    "eles mexem nas mesmas ventoinhas/perfis: feche e tire da inicialização",
+                )),
             );
         }
         if crate::util::read_trim(crate::util::sys("module/ec_sys/parameters/write_support"))
@@ -363,12 +391,15 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         {
             add(
                 "Notebook",
-                "escrita no controlador (ec_sys)",
+                crate::i18n::tr("escrita no controlador (ec_sys)"),
                 Level::Info,
-                "ligada (usada por programas tipo NitroSense que escrevem direto no EC)".into(),
-                Some(
+                crate::i18n::tr(
+                    "ligada (usada por programas tipo NitroSense que escrevem direto no EC)",
+                )
+                .into(),
+                Some(crate::i18n::tr(
                     "se não usa mais esses programas, remova ec_sys write_support=1 do /etc/modprobe.d",
-                ),
+                )),
             );
         }
         if let Some((ig, nv)) = crate::hybrid::pair(&topo) {
@@ -379,14 +410,14 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     .map(|o| o.name)
                     .collect();
                 if v.is_empty() {
-                    "nenhuma".to_string()
+                    crate::i18n::tr("nenhuma").to_string()
                 } else {
                     v.join(", ")
                 }
             };
             add(
                 "Notebook",
-                "telas",
+                crate::i18n::tr("telas"),
                 Level::Ok,
                 format!("{}: {} · {}: {}", ig.alias, scr(ig), nv.alias, scr(nv)),
                 None,
@@ -394,21 +425,23 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             let m = crate::machine::Machine::load().dgpu_mode;
             add(
                 "Notebook",
-                "modo da NVIDIA",
+                crate::i18n::tr("modo da NVIDIA"),
                 Level::Info,
                 m.as_deref()
                     .and_then(|m| crate::hybrid::MODES.iter().find(|x| x.0 == m))
-                    .map(|x| x.1.to_string())
-                    .unwrap_or_else(|| "não mexer (fica no sistema; dorme quando ninguém usa)".into()),
-                m.is_none().then_some("Máquina → Notebook → NVIDIA: Automático desliga na bateria e devolve na tomada, sem sair da sessão"),
+                    .map(|x| crate::i18n::tr(x.1).to_string())
+                    .unwrap_or_else(|| crate::i18n::tr("não mexer (fica no sistema; dorme quando ninguém usa)").into()),
+                m.is_none().then_some(crate::i18n::tr("Máquina → Notebook → NVIDIA: Automático desliga na bateria e devolve na tomada, sem sair da sessão")),
             );
             if !crate::hybrid::xwayland_wrapped() {
                 add(
                     "Notebook",
                     "Xwayland",
                     Level::Info,
-                    "pode abrir a NVIDIA à toa (programas X11)".into(),
-                    Some("sudo numapilot hybrid xwayland on (o Xwayland usa só o Mesa)"),
+                    crate::i18n::tr("pode abrir a NVIDIA à toa (programas X11)").into(),
+                    Some(crate::i18n::tr(
+                        "sudo numapilot hybrid xwayland on (o Xwayland usa só o Mesa)",
+                    )),
                 );
             }
         }
@@ -419,7 +452,11 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 "Notebook",
                 "NVIDIA",
                 Level::Ok,
-                format!("{} desligada pelo numapilot (só a integrada)", st.alias),
+                crate::tf!(
+                    "{} desligada pelo numapilot (só a integrada)",
+                    "{} turned off by numapilot (integrated only)",
+                    st.alias
+                ),
                 None,
             );
         }
@@ -428,7 +465,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 "Notebook",
                 "power-profiles-daemon",
                 Level::Ok,
-                "ligado: os modos do numapilot trocam o perfil por ele (o seletor do desktop acompanha)".into(),
+                crate::i18n::tr("ligado: os modos do numapilot trocam o perfil por ele (o seletor do desktop acompanha)").into(),
                 None,
             );
         }
@@ -439,7 +476,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                         let l = crate::ryzen::limits_from(&i);
                         add(
                             "Notebook",
-                            "limites do Ryzen",
+                            crate::i18n::tr("limites do Ryzen"),
                             Level::Ok,
                             format!(
                                 "STAPM {} W · PPT {} / {} W · {} °C",
@@ -453,18 +490,20 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     }
                     Err(e) => add(
                         "Notebook",
-                        "limites do Ryzen",
+                        crate::i18n::tr("limites do Ryzen"),
                         Level::Info,
                         e,
-                        Some("rode com sudo para ler (o ryzenadj precisa de root)"),
+                        Some(crate::i18n::tr(
+                            "rode com sudo para ler (o ryzenadj precisa de root)",
+                        )),
                     ),
                 }
             } else {
                 add(
                     "Notebook",
-                    "limites do Ryzen",
+                    crate::i18n::tr("limites do Ryzen"),
                     Level::Info,
-                    "ryzenadj não instalado".into(),
+                    crate::i18n::tr("ryzenadj não instalado").into(),
                     Some("paru -S ryzenadj"),
                 );
             }
@@ -475,7 +514,11 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     "Notebook",
                     "Acer (Linuwu-Sense)",
                     Level::Ok,
-                    format!("{} ajustes disponíveis", crate::acer::knobs().len()),
+                    crate::tf!(
+                        "{} ajustes disponíveis",
+                        "{} settings available",
+                        crate::acer::knobs().len()
+                    ),
                     None,
                 );
             } else {
@@ -483,7 +526,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     "Notebook",
                     "Acer (Linuwu-Sense)",
                     Level::Info,
-                    "módulo não carregado: sem ventoinha manual, limite de 80% e RGB".into(),
+                    crate::i18n::tr(
+                        "módulo não carregado: sem ventoinha manual, limite de 80% e RGB",
+                    )
+                    .into(),
                     Some("https://github.com/0x7375646F/Linuwu-Sense"),
                 );
             }
@@ -495,9 +541,9 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         {
             add(
                 "Notebook",
-                "limite de carga",
+                crate::i18n::tr("limite de carga"),
                 Level::Info,
-                "o notebook não permite pelo Linux".into(),
+                crate::i18n::tr("o notebook não permite pelo Linux").into(),
                 None,
             );
         }
@@ -512,8 +558,13 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 &area,
                 "kernel",
                 Level::Fail,
-                format!("{k} está na lista de kernels que quebram esta placa"),
-                Some("Instale outra versão (ex.: linux-cachyos-lts) e escolha no boot"),
+                crate::tf!(
+                    "{k} está na lista de kernels que quebram esta placa",
+                    "{k} is on the list of kernels that break this board"
+                ),
+                Some(crate::i18n::tr(
+                    "Instale outra versão (ex.: linux-cachyos-lts) e escolha no boot",
+                )),
             );
         } else if !b.bad_kernels.is_empty() {
             add(&area, "kernel", Level::Ok, k, None);
@@ -527,7 +578,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     &area,
                     "Mesa",
                     Level::Fail,
-                    format!("{m} (precisa de {min} ou mais novo)"),
+                    crate::tf!(
+                        "{m} (precisa de {min} ou mais novo)",
+                        "{m} (needs {min} or newer)"
+                    ),
                     Some("sudo pacman -Syu"),
                 ),
                 None => {}
@@ -536,24 +590,32 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         if b.id == "bc250"
             && let Some(why) = crate::boards::smu_table_mismatch(&g.pci)
         {
-            add(&area, "sensores da GPU", Level::Warn, why, None);
+            add(
+                &area,
+                crate::i18n::tr("sensores da GPU"),
+                Level::Warn,
+                why,
+                None,
+            );
         }
         if !b.governor_services.is_empty() {
             let sv = crate::boards::services(b);
             match sv.iter().find(|s| s.active) {
                 Some(s) => add(
                     &area,
-                    "governor de clock",
+                    crate::i18n::tr("governor de clock"),
                     Level::Ok,
-                    format!("{} rodando", s.name),
+                    crate::tf!("{} rodando", "{} running", s.name),
                     None,
                 ),
                 None => add(
                     &area,
-                    "governor de clock",
+                    crate::i18n::tr("governor de clock"),
                     Level::Warn,
-                    "nenhum rodando: a GPU fica com clock fixo".into(),
-                    Some("Placas de vídeo → instalar/ligar o governor"),
+                    crate::i18n::tr("nenhum rodando: a GPU fica com clock fixo").into(),
+                    Some(crate::i18n::tr(
+                        "Placas de vídeo → instalar/ligar o governor",
+                    )),
                 ),
             }
         }
@@ -562,10 +624,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             if !cmd.split_whitespace().any(|t| t == p) {
                 add(
                     &area,
-                    &format!("parâmetro {p}"),
+                    &crate::tf!("parâmetro {p}", "parameter {p}"),
                     Level::Info,
-                    "recomendado pela comunidade".into(),
-                    Some("Máquina → Parâmetros do kernel"),
+                    crate::i18n::tr("recomendado pela comunidade").into(),
+                    Some(crate::i18n::tr("Máquina → Parâmetros do kernel")),
                 );
             }
         }
@@ -576,15 +638,15 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 let efi = crate::boards::efi_core_unlock();
                 add(
                     &area,
-                    "núcleos da CPU",
+                    crate::i18n::tr("núcleos da CPU"),
                     Level::Ok,
-                    format!("{n} de {full} (desbloqueados)"),
+                    crate::tf!("{n} de {full} (desbloqueados)", "{n} of {full} (unlocked)"),
                     None,
                 );
                 if let Some(p) = crate::boards::core_unlock_persistence(n, full, efi) {
                     add(
                         &area,
-                        "desbloqueio dos núcleos",
+                        crate::i18n::tr("desbloqueio dos núcleos"),
                         Level::Info,
                         p.into(),
                         None,
@@ -593,12 +655,15 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             } else if n > 0 {
                 add(
                     &area,
-                    "núcleos da CPU",
+                    crate::i18n::tr("núcleos da CPU"),
                     Level::Info,
-                    format!("{n} de {full} ativos (de fábrica: {stock})"),
-                    Some(
-                        "Dá para desbloquear pelos programas da comunidade (Placas de vídeo → ajustes da comunidade)",
+                    crate::tf!(
+                        "{n} de {full} ativos (de fábrica: {stock})",
+                        "{n} of {full} active (factory: {stock})"
                     ),
+                    Some(crate::i18n::tr(
+                        "Dá para desbloquear pelos programas da comunidade (Placas de vídeo → ajustes da comunidade)",
+                    )),
                 );
             }
         }
@@ -607,31 +672,42 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         {
             add(
                 &area,
-                "CUs pelo kernel",
+                crate::i18n::tr("CUs pelo kernel"),
                 Level::Info,
-                format!("o kernel libera os {full} CUs no boot (amdgpu.bc250_cc_write_mode=3)"),
-                Some(
-                    "Não use o desbloqueio ao vivo (umr, bc250-cu-live-manager) junto: o driver já conta todos",
+                crate::tf!(
+                    "o kernel libera os {full} CUs no boot (amdgpu.bc250_cc_write_mode=3)",
+                    "the kernel unlocks the {full} CUs at boot (amdgpu.bc250_cc_write_mode=3)"
                 ),
+                Some(crate::i18n::tr(
+                    "Não use o desbloqueio ao vivo (umr, bc250-cu-live-manager) junto: o driver já conta todos",
+                )),
             );
         }
         if let Some((stock, full)) = b.cus {
             match crate::boards::cu_now() {
                 Some((n, src)) if n >= full => add(
                     &area,
-                    "CUs da GPU",
+                    crate::i18n::tr("CUs da GPU"),
                     Level::Ok,
-                    format!("{n} de {full} (desbloqueados; {})", src.text()),
+                    crate::tf!(
+                        "{n} de {full} (desbloqueados; {})",
+                        "{n} of {full} (unlocked; {})",
+                        src.text()
+                    ),
                     None,
                 ),
                 Some((n, src)) => add(
                     &area,
-                    "CUs da GPU",
+                    crate::i18n::tr("CUs da GPU"),
                     Level::Info,
-                    format!("{n} de {full} ({}; de fábrica: {stock})", src.text()),
-                    Some(
-                        "Desbloqueio ao vivo pelo BC250 Control Center (Placas de vídeo → ajustes da comunidade); a leitura ao vivo aparece aqui depois de abrir a página de CUs nele",
+                    crate::tf!(
+                        "{n} de {full} ({}; de fábrica: {stock})",
+                        "{n} of {full} ({}; factory: {stock})",
+                        src.text()
                     ),
+                    Some(crate::i18n::tr(
+                        "Desbloqueio ao vivo pelo BC250 Control Center (Placas de vídeo → ajustes da comunidade); a leitura ao vivo aparece aqui depois de abrir a página de CUs nele",
+                    )),
                 ),
                 None => {}
             }
@@ -639,18 +715,27 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         for a in &b.apps {
             let ok = a.installed();
             let what = if ok {
-                "instalado".to_string()
+                crate::i18n::tr("instalado").to_string()
             } else if a.recommended {
-                format!("não instalado (recomendado): {}", a.about)
+                crate::tf!(
+                    "não instalado (recomendado): {}",
+                    "not installed (recommended): {}",
+                    a.about
+                )
             } else {
-                format!("não instalado: {}", a.about)
+                crate::tf!("não instalado: {}", "not installed: {}", a.about)
             };
             let hint = if ok {
                 None
             } else if a.installable() {
-                Some("Placas de vídeo → ajustes da comunidade → Instalar".to_string())
+                Some(
+                    crate::i18n::tr("Placas de vídeo → ajustes da comunidade → Instalar")
+                        .to_string(),
+                )
             } else {
-                a.url.as_ref().map(|u| format!("instalação manual: {u}"))
+                a.url
+                    .as_ref()
+                    .map(|u| crate::tf!("instalação manual: {u}", "manual install: {u}"))
             };
             add(
                 &area,
@@ -661,11 +746,17 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             );
         }
         for n in &b.notes {
-            add(&area, "dica", Level::Info, n.clone(), None);
+            add(&area, crate::i18n::tr("dica"), Level::Info, n.clone(), None);
         }
     }
     for n in rec.cpu_notes(&crate::recipes::cpu_model()) {
-        add("Processador", "dica", Level::Info, n, None);
+        add(
+            crate::i18n::tr("Processador"),
+            crate::i18n::tr("dica"),
+            Level::Info,
+            n,
+            None,
+        );
     }
     // ---- interrupções no socket certo ----
     if topo.nodes.len() > 1 {
@@ -673,11 +764,19 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         if !devs.is_empty() {
             let desc: Vec<String> = devs
                 .iter()
-                .map(|d| format!("{} {} no socket {}", d.kind, d.pci, d.node))
+                .map(|d| {
+                    crate::tf!(
+                        "{} {} no socket {}",
+                        "{} {} on socket {}",
+                        d.kind,
+                        d.pci,
+                        d.node
+                    )
+                })
                 .collect();
             add(
-                "Interrupções",
-                "discos e rede",
+                crate::i18n::tr("Interrupções"),
+                crate::i18n::tr("discos e rede"),
                 Level::Ok,
                 desc.join(", "),
                 None,
@@ -685,11 +784,16 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         }
         if crate::irqs::irqbalance_active() {
             add(
-                "Interrupções",
+                crate::i18n::tr("Interrupções"),
                 "irqbalance",
                 Level::Info,
-                "ligado: ele espalha as interrupções e o serviço reaplica a cada 5 min".into(),
-                Some("sudo systemctl disable --now irqbalance (opcional)"),
+                crate::i18n::tr(
+                    "ligado: ele espalha as interrupções e o serviço reaplica a cada 5 min",
+                )
+                .into(),
+                Some(crate::i18n::tr(
+                    "sudo systemctl disable --now irqbalance (opcional)",
+                )),
             );
         }
     }
@@ -703,21 +807,22 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         Some(r) => {
             if !r.smartctl {
                 add(
-                    "Saúde",
-                    "discos (SMART)",
+                    crate::i18n::tr("Saúde"),
+                    crate::i18n::tr("discos (SMART)"),
                     Level::Info,
-                    "smartctl não instalado".into(),
+                    crate::i18n::tr("smartctl não instalado").into(),
                     Some("sudo pacman -S smartmontools"),
                 );
             }
             let probs = crate::health::problems(&r);
             if probs.is_empty() {
                 add(
-                    "Saúde",
-                    "geral",
+                    crate::i18n::tr("Saúde"),
+                    crate::i18n::tr("geral"),
                     Level::Ok,
-                    format!(
+                    crate::tf!(
                         "{} disco(s), {} controlador(es) de memória ECC, nenhum problema",
+                        "{} disk(s), {} ECC memory controller(s), no problems",
                         r.disks.len(),
                         r.mem.len()
                     ),
@@ -726,8 +831,8 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             }
             for (lvl, p) in probs {
                 add(
-                    "Saúde",
-                    "alerta",
+                    crate::i18n::tr("Saúde"),
+                    crate::i18n::tr("alerta"),
                     if lvl >= 2 { Level::Fail } else { Level::Warn },
                     p,
                     None,
@@ -735,10 +840,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             }
         }
         None => add(
-            "Saúde",
-            "geral",
+            crate::i18n::tr("Saúde"),
+            crate::i18n::tr("geral"),
             Level::Info,
-            "ainda sem coleta (o serviço coleta 1 min depois de iniciar)".into(),
+            crate::i18n::tr("ainda sem coleta (o serviço coleta 1 min depois de iniciar)").into(),
             Some("sudo numapilot doctor"),
         ),
     }
@@ -747,43 +852,47 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     let intel_cpu = crate::recipes::cpu_model().contains("Intel");
     if unc.is_empty() && intel_cpu {
         add(
-            "Processador",
+            crate::i18n::tr("Processador"),
             "uncore",
             Level::Info,
-            "controle indisponível".into(),
-            Some(
+            crate::i18n::tr("controle indisponível").into(),
+            Some(crate::i18n::tr(
                 "sudo modprobe intel_uncore_frequency (e echo intel_uncore_frequency | sudo tee /etc/modules-load.d/uncore.conf)",
-            ),
+            )),
         );
     } else if !unc.is_empty() {
         add(
-            "Processador",
+            crate::i18n::tr("Processador"),
             "uncore",
             Level::Ok,
-            format!("{} socket(s) controláveis", unc.len()),
+            crate::tf!(
+                "{} socket(s) controláveis",
+                "{} controllable socket(s)",
+                unc.len()
+            ),
             None,
         );
     }
     let rapl = crate::cpuctl::rapl_zones();
     let no_limits = !rapl.is_empty() && rapl.iter().all(|r| r.limit_w.is_none());
     add(
-        "Processador",
-        "potência (RAPL)",
+        crate::i18n::tr("Processador"),
+        crate::i18n::tr("potência (RAPL)"),
         if rapl.is_empty() {
             Level::Info
         } else {
             Level::Ok
         },
         if rapl.is_empty() {
-            "indisponível".into()
+            crate::i18n::tr("indisponível").into()
         } else if no_limits {
             if intel_cpu {
-                "só medição (sem limites expostos)".into()
+                crate::i18n::tr("só medição (sem limites expostos)").into()
             } else if crate::ryzen::applicable() {
-                "só medição no Ryzen; os limites vão pelo ryzenadj (Máquina → Limites do Ryzen)"
+                crate::i18n::tr("só medição no Ryzen; os limites vão pelo ryzenadj (Máquina → Limites do Ryzen)")
                     .into()
             } else {
-                "só medição no Ryzen (limites pela BIOS)".into()
+                crate::i18n::tr("só medição no Ryzen (limites pela BIOS)").into()
             }
         } else {
             rapl.iter()
@@ -801,15 +910,15 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     );
     let cs = crate::cpuctl::cstates(0);
     add(
-        "Processador",
-        "estados de economia",
+        crate::i18n::tr("Processador"),
+        crate::i18n::tr("estados de economia"),
         if cs.is_empty() {
             Level::Info
         } else {
             Level::Ok
         },
         if cs.is_empty() {
-            "cpuidle indisponível".into()
+            crate::i18n::tr("cpuidle indisponível").into()
         } else {
             cs.iter()
                 .map(|s| format!("{} {}µs", s.name, s.latency_us))
@@ -820,73 +929,74 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     );
     match crate::machine::scx_status() {
         Some((cur, _)) => add(
-            "Processador",
-            "escalonador sched_ext",
+            crate::i18n::tr("Processador"),
+            crate::i18n::tr("escalonador sched_ext"),
             Level::Ok,
             if cur.is_empty() {
-                "padrão do kernel".into()
+                crate::i18n::tr("padrão do kernel").into()
             } else {
                 cur
             },
             None,
         ),
         None => add(
-            "Processador",
-            "escalonador sched_ext",
+            crate::i18n::tr("Processador"),
+            crate::i18n::tr("escalonador sched_ext"),
             Level::Info,
-            "scx_loader não instalado".into(),
+            crate::i18n::tr("scx_loader não instalado").into(),
             Some("sudo pacman -S scx-scheds scx-tools"),
         ),
     }
     let vulns = crate::cmdline::vulnerabilities();
     let mitig: Vec<&str> = crate::cmdline::relevant_mitigations(&vulns)
         .iter()
-        .map(|m| m.title)
+        .map(|m| crate::i18n::tr(m.title))
         .collect();
     if !mitig.is_empty() {
         add(
-            "Processador",
-            "mitigações ativas",
+            crate::i18n::tr("Processador"),
+            crate::i18n::tr("mitigações ativas"),
             Level::Info,
             mitig.join(", "),
-            Some("Máquina → Mitigações do processador"),
+            Some(crate::i18n::tr("Máquina → Mitigações do processador")),
         );
     }
     match crate::cmdline::detect() {
         Some(l) => add(
-            "Sistema",
+            crate::i18n::tr("Sistema"),
             "bootloader",
             Level::Ok,
             format!("{} ({})", l.name(), l.path.display()),
             None,
         ),
         None => add(
-            "Sistema",
+            crate::i18n::tr("Sistema"),
             "bootloader",
             Level::Info,
-            "não reconhecido: parâmetros do kernel só à mão".into(),
+            crate::i18n::tr("não reconhecido: parâmetros do kernel só à mão").into(),
             None,
         ),
     }
     let bf = crate::fans::list();
     let ipmi = crate::fans::ipmi_fans();
     add(
-        "Sistema",
-        "ventoinhas da placa-mãe",
+        crate::i18n::tr("Sistema"),
+        crate::i18n::tr("ventoinhas da placa-mãe"),
         if bf.is_empty() && ipmi.is_empty() {
             Level::Info
         } else {
             Level::Ok
         },
-        format!(
+        crate::tf!(
             "{} controláveis (hwmon), {} pelo IPMI",
+            "{} controllable (hwmon), {} through IPMI",
             bf.len(),
             ipmi.len()
         ),
         if bf.is_empty() {
-            Some(
+            Some(crate::i18n::tr(
                 "sudo sensors-detect (pacote lm_sensors) diz qual driver carregar, ex.: sudo modprobe nct6775",
-            )
+            ))
         } else {
             None
         },
@@ -897,10 +1007,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         .is_empty()
     {
         add(
-            "Sistema",
+            crate::i18n::tr("Sistema"),
             "irqbalance",
             Level::Warn,
-            "rodando: pode desfazer as interrupções das GPUs".into(),
+            crate::i18n::tr("rodando: pode desfazer as interrupções das GPUs").into(),
             Some("sudo systemctl disable --now irqbalance"),
         );
     }
@@ -913,35 +1023,35 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         .is_some_and(|d| d.as_secs() < 5);
     if fresh {
         add(
-            "Serviço",
+            crate::i18n::tr("Serviço"),
             "numapilot daemon",
             Level::Ok,
-            "rodando".into(),
+            crate::i18n::tr("rodando").into(),
             None,
         );
     } else {
         add(
-            "Serviço",
+            crate::i18n::tr("Serviço"),
             "numapilot daemon",
             Level::Fail,
-            "parado".into(),
+            crate::i18n::tr("parado").into(),
             Some("sudo systemctl enable --now numapilot"),
         );
     }
     match crate::ctl::send(&crate::ctl::Request::Ping) {
         Ok(r) if r.ok => add(
-            "Serviço",
-            "socket de controle",
+            crate::i18n::tr("Serviço"),
+            crate::i18n::tr("socket de controle"),
             Level::Ok,
-            "responde".into(),
+            crate::i18n::tr("responde").into(),
             None,
         ),
         _ => add(
-            "Serviço",
-            "socket de controle",
+            crate::i18n::tr("Serviço"),
+            crate::i18n::tr("socket de controle"),
             Level::Fail,
-            "sem resposta".into(),
-            Some("Veja: journalctl -u numapilot -n 50"),
+            crate::i18n::tr("sem resposta").into(),
+            Some(crate::i18n::tr("Veja: journalctl -u numapilot -n 50")),
         ),
     }
     if let Some(st) = std::fs::read_to_string(status_path())
@@ -949,45 +1059,55 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         .and_then(|s| serde_json::from_str::<Status>(&s).ok())
     {
         add(
-            "Serviço",
-            "como root",
+            crate::i18n::tr("Serviço"),
+            crate::i18n::tr("como root"),
             if st.root { Level::Ok } else { Level::Fail },
             format!("{}", st.root),
             None,
         );
         add(
-            "Serviço",
-            "detecção instantânea",
+            crate::i18n::tr("Serviço"),
+            crate::i18n::tr("detecção instantânea"),
             if st.proc_connector {
                 Level::Ok
             } else {
                 Level::Warn
             },
             if st.proc_connector {
-                "proc connector ativo".into()
+                crate::i18n::tr("proc connector ativo").into()
             } else {
-                "só por varredura".into()
+                crate::i18n::tr("só por varredura").into()
             },
             None,
         );
         match &st.cgroup_last_error {
             Some(e) => add(
-                "Serviço",
-                "grupos de controle",
+                crate::i18n::tr("Serviço"),
+                crate::i18n::tr("grupos de controle"),
                 Level::Fail,
                 e.clone(),
-                Some("Me mande este relatório"),
+                Some(crate::i18n::tr("Me mande este relatório")),
             ),
             None => add(
-                "Serviço",
-                "grupos de controle",
+                crate::i18n::tr("Serviço"),
+                crate::i18n::tr("grupos de controle"),
                 Level::Ok,
-                format!("{} aplicados sem erro", st.cgroup_ok_count),
+                crate::tf!(
+                    "{} aplicados sem erro",
+                    "{} applied with no error",
+                    st.cgroup_ok_count
+                ),
                 None,
             ),
         }
         for e in &st.od_errors {
-            add("Serviço", "clock/voltagem", Level::Fail, e.clone(), None);
+            add(
+                crate::i18n::tr("Serviço"),
+                "clock/voltagem",
+                Level::Fail,
+                e.clone(),
+                None,
+            );
         }
     }
 
@@ -998,7 +1118,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         let a = format!("GPU {}", g.alias);
         add(
             &a,
-            "identificação",
+            crate::i18n::tr("identificação"),
             Level::Info,
             format!(
                 "{} · {} · {:?} · gfx {}",
@@ -1015,8 +1135,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 &a,
                 "socket",
                 Level::Fail,
-                "desconhecido".into(),
-                Some("Defina em [gpu_node] no /etc/numapilot.toml"),
+                crate::i18n::tr("desconhecido").into(),
+                Some(crate::i18n::tr(
+                    "Defina em [gpu_node] no /etc/numapilot.toml",
+                )),
             ),
             None => {}
         }
@@ -1025,7 +1147,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             "monitor",
             Level::Info,
             if g.display_connected {
-                "ligado nesta placa".into()
+                crate::i18n::tr("ligado nesta placa").into()
             } else {
                 "nenhum".into()
             },
@@ -1044,8 +1166,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     &a,
                     "ROCm",
                     Level::Fail,
-                    "não aparece no KFD".into(),
-                    Some("Verifique se o módulo amdgpu carregou com KFD (dmesg | grep kfd)"),
+                    crate::i18n::tr("não aparece no KFD").into(),
+                    Some(crate::i18n::tr(
+                        "Verifique se o módulo amdgpu carregou com KFD (dmesg | grep kfd)",
+                    )),
                 ),
             }
         }
@@ -1066,31 +1190,36 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             && !crate::bootcfg::overdrive_state().active;
         add(
             &a,
-            "ventoinha",
+            crate::i18n::tr("ventoinha"),
             if fan_ok { Level::Ok } else { soft },
             if s.fw_fan_curve {
-                format!(
+                crate::tf!(
                     "controlável pela curva do firmware ({} RPM)",
+                    "controllable through the firmware curve ({} RPM)",
                     s.fan_rpm.unwrap_or(0)
                 )
             } else if s.fan_controllable {
-                format!("controlável ({} RPM)", s.fan_rpm.unwrap_or(0))
+                crate::tf!(
+                    "controlável ({} RPM)",
+                    "controllable ({} RPM)",
+                    s.fan_rpm.unwrap_or(0)
+                )
             } else if laptop || g.is_integrated() {
-                "controlada pelo notebook (perfil de energia)".into()
+                crate::i18n::tr("controlada pelo notebook (perfil de energia)").into()
             } else if od_off_fan {
-                "sem controle: OverDrive desligado".into()
+                crate::i18n::tr("sem controle: OverDrive desligado").into()
             } else {
-                "sem controle pelo driver".into()
+                crate::i18n::tr("sem controle pelo driver").into()
             },
-            od_off_fan.then_some(
+            od_off_fan.then_some(crate::i18n::tr(
                 "Nas placas AMD novas (RX 7000/9000) a ventoinha é controlada pela curva do \
                  firmware, que só aparece com o OverDrive ligado: Placas de vídeo → OverDrive \
                  (precisa reiniciar)",
-            ),
+            )),
         );
         add(
             &a,
-            "limite de potência",
+            crate::i18n::tr("limite de potência"),
             if s.power_cap_max_w.is_some() || s.power_cap_w.is_some() {
                 Level::Ok
             } else {
@@ -1098,25 +1227,26 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             },
             s.power_cap_w
                 .map(|w| format!("{w:.0} W"))
-                .unwrap_or_else(|| "indisponível".into()),
+                .unwrap_or_else(|| crate::i18n::tr("indisponível").into()),
             None,
         );
         match gpuctl::read_od(&g.pci) {
             _ if g.is_nvidia() => {}
             Some(od) => add(
                 &a,
-                "clock/voltagem (OD)",
+                crate::i18n::tr("clock/voltagem (OD)"),
                 Level::Ok,
                 {
                     let mut d = od
                         .range_sclk
                         .map(|r| format!("GPU {}-{} MHz", r.0, r.1))
-                        .unwrap_or_else(|| "ligado".into());
+                        .unwrap_or_else(|| crate::i18n::tr("ligado").into());
                     if !od.curve.is_empty() {
-                        d += &format!(", curva de {} pontos", od.curve.len());
+                        d +=
+                            &crate::tf!(", curva de {} pontos", ", {}-point curve", od.curve.len());
                     }
                     if let Some((lo, _)) = od.range_vo {
-                        d += &format!(", voltagem até {lo} mV");
+                        d += &crate::tf!(", voltagem até {lo} mV", ", voltage down to {lo} mV");
                     }
                     d
                 },
@@ -1124,35 +1254,42 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             ),
             None => add(
                 &a,
-                "clock/voltagem (OD)",
+                crate::i18n::tr("clock/voltagem (OD)"),
                 Level::Info,
-                "indisponível".into(),
-                Some(
+                crate::i18n::tr("indisponível").into(),
+                Some(crate::i18n::tr(
                     "sudo numapilot boot overdrive on (ou o botão na aba Placas de vídeo) e reinicie",
-                ),
+                )),
             ),
         }
         if let Some(l) = gpuctl::pcie_link(&g.pci) {
-            let d = format!(
+            let d = crate::tf!(
                 "Gen{} x{} (máx. Gen{} x{})",
-                l.generation, l.width, l.max_gen, l.max_width
+                "Gen{} x{} (max Gen{} x{})",
+                l.generation,
+                l.width,
+                l.max_gen,
+                l.max_width
             );
             if l.width < l.max_width {
                 add(
                     &a,
-                    "link PCIe",
+                    crate::i18n::tr("link PCIe"),
                     Level::Warn,
                     d,
-                    Some(
+                    Some(crate::i18n::tr(
                         "Link mais estreito que o possível: confira o slot (alguns são x8 ou dividem linhas) e a BIOS",
-                    ),
+                    )),
                 );
             } else {
                 add(
                     &a,
-                    "link PCIe",
+                    crate::i18n::tr("link PCIe"),
                     Level::Ok,
-                    format!("{d}; a geração cai com a placa parada"),
+                    crate::tf!(
+                        "{d}; a geração cai com a placa parada",
+                        "{d}; the generation drops when the card is idle"
+                    ),
                     None,
                 );
             }
@@ -1162,17 +1299,26 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 &a,
                 "Resizable BAR",
                 Level::Ok,
-                format!("ativo ({} MB visíveis)", vis >> 20),
+                crate::tf!(
+                    "ativo ({} MB visíveis)",
+                    "active ({} MB visible)",
+                    vis >> 20
+                ),
                 None,
             ),
             Some((vis, tot)) => add(
                 &a,
                 "Resizable BAR",
                 Level::Info,
-                format!("inativo ({} de {} MB visíveis)", vis >> 20, tot >> 20),
-                Some(
-                    "Na BIOS: \"Above 4G Decoding\" e \"Resizable BAR\" (se existir). Em placas X99/C612 antigas, tente o parâmetro pci=realloc",
+                crate::tf!(
+                    "inativo ({} de {} MB visíveis)",
+                    "inactive ({} of {} MB visible)",
+                    vis >> 20,
+                    tot >> 20
                 ),
+                Some(crate::i18n::tr(
+                    "Na BIOS: \"Above 4G Decoding\" e \"Resizable BAR\" (se existir). Em placas X99/C612 antigas, tente o parâmetro pci=realloc",
+                )),
             ),
             None => {}
         }
@@ -1191,8 +1337,9 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     &a,
                     "Vulkan (DXVK/VKD3D)",
                     Level::Ok,
-                    format!(
+                    crate::tf!(
                         "só esta GPU visível: {}",
+                        "only this GPU visible: {}",
                         names[0].split('=').nth(1).unwrap_or("").trim()
                     ),
                     None,
@@ -1202,8 +1349,14 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     &a,
                     "Vulkan (DXVK/VKD3D)",
                     Level::Fail,
-                    format!("{} dispositivos visíveis", names.len()),
-                    Some("A seleção de GPU do Mesa não funcionou: me mande o relatório"),
+                    crate::tf!(
+                        "{} dispositivos visíveis",
+                        "{} devices visible",
+                        names.len()
+                    ),
+                    Some(crate::i18n::tr(
+                        "A seleção de GPU do Mesa não funcionou: me mande o relatório",
+                    )),
                 );
             }
         }
@@ -1231,39 +1384,67 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         if !groups.split_whitespace().any(|x| x == gname) {
             add(
                 "ROCm",
-                &format!("grupo {gname}"),
+                &crate::tf!("grupo {gname}", "group {gname}"),
                 if has_compute {
                     Level::Warn
                 } else {
                     Level::Info
                 },
-                "usuário fora do grupo".into(),
-                Some("sudo usermod -aG render,video $USER (e entre de novo na sessão)"),
+                crate::i18n::tr("usuário fora do grupo").into(),
+                Some(crate::i18n::tr(
+                    "sudo usermod -aG render,video $USER (e entre de novo na sessão)",
+                )),
             );
         }
     }
     if std::path::Path::new("/dev/kfd").exists() {
-        add("ROCm", "/dev/kfd", Level::Ok, "existe".into(), None);
+        add(
+            "ROCm",
+            "/dev/kfd",
+            Level::Ok,
+            crate::i18n::tr("existe").into(),
+            None,
+        );
     } else {
-        add("ROCm", "/dev/kfd", Level::Fail, "ausente".into(), None);
+        add(
+            "ROCm",
+            "/dev/kfd",
+            Level::Fail,
+            crate::i18n::tr("ausente").into(),
+            None,
+        );
     }
 
     // ---- ferramentas ----
     for (bin, why, pkg) in [
-        ("podman", "laboratório, servidor de IA", "podman"),
-        ("mangohud", "otimizador de FPS", "mangohud"),
-        ("gamescope", "gamescope por jogo", "gamescope"),
-        ("vainfo", "aba Streaming", "libva-utils"),
-        ("steam", "jogos", "steam"),
+        (
+            "podman",
+            crate::i18n::tr("laboratório, servidor de IA"),
+            "podman",
+        ),
+        ("mangohud", crate::i18n::tr("otimizador de FPS"), "mangohud"),
+        (
+            "gamescope",
+            crate::i18n::tr("gamescope por jogo"),
+            "gamescope",
+        ),
+        ("vainfo", crate::i18n::tr("aba Streaming"), "libva-utils"),
+        ("steam", crate::i18n::tr("jogos"), "steam"),
     ] {
         if which(bin) {
-            add("Ferramentas", bin, Level::Ok, "instalado".into(), None);
+            add(
+                crate::i18n::tr("Ferramentas"),
+                bin,
+                Level::Ok,
+                crate::i18n::tr("instalado").into(),
+                None,
+            );
         } else {
             add(
-                "Ferramentas",
+                crate::i18n::tr("Ferramentas"),
                 bin,
                 Level::Info,
-                format!("não instalado ({why})"),
+                crate::tf!("não instalado ({why})", "not installed ({why})"),
                 Some(&format!("sudo pacman -S {pkg}")),
             );
         }
@@ -1271,10 +1452,10 @@ pub fn run(cfg: &Config) -> Vec<Check> {
     // vulkaninfo
     if !have_vk {
         add(
-            "Ferramentas",
+            crate::i18n::tr("Ferramentas"),
             "vulkaninfo",
             Level::Info,
-            "não instalado: não deu para testar a seleção de GPU no Vulkan".into(),
+            crate::i18n::tr("não instalado: não deu para testar a seleção de GPU no Vulkan").into(),
             Some("sudo pacman -S vulkan-tools"),
         );
     }
@@ -1289,21 +1470,27 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 .count();
             add(
                 "Steam",
-                "jogos com numapilot",
+                crate::i18n::tr("jogos com numapilot"),
                 if with == games.len() && !games.is_empty() {
                     Level::Ok
                 } else {
                     Level::Info
                 },
-                format!("{with} de {} jogos instalados", games.len()),
-                Some("Interface → Programas → \"Aplicar em todos os jogos da Steam\""),
+                crate::tf!(
+                    "{with} de {} jogos instalados",
+                    "{with} of {} installed games",
+                    games.len()
+                ),
+                Some(crate::i18n::tr(
+                    "Interface → Programas → \"Aplicar em todos os jogos da Steam\"",
+                )),
             );
         }
         None => add(
             "Steam",
-            "configuração",
+            crate::i18n::tr("configuração"),
             Level::Info,
-            "Steam não encontrada".into(),
+            crate::i18n::tr("Steam não encontrada").into(),
             None,
         ),
     }
@@ -1320,8 +1507,8 @@ pub fn print(checks: &[Check]) {
         let tag = match c.level {
             Level::Ok => "[ ok ]",
             Level::Info => "[info]",
-            Level::Warn => "[aviso]",
-            Level::Fail => "[FALHA]",
+            Level::Warn => crate::i18n::tr("[aviso]"),
+            Level::Fail => crate::i18n::tr("[FALHA]"),
         };
         println!("{tag} {}: {}", c.name, c.detail);
         if let Some(f) = &c.fix
@@ -1332,13 +1519,23 @@ pub fn print(checks: &[Check]) {
     }
     let fails = checks.iter().filter(|c| c.level == Level::Fail).count();
     let warns = checks.iter().filter(|c| c.level == Level::Warn).count();
-    println!("\nResumo: {fails} falha(s), {warns} aviso(s).");
+    println!(
+        "{}",
+        crate::tf!(
+            "\nResumo: {fails} falha(s), {warns} aviso(s).",
+            "\nSummary: {fails} failure(s), {warns} warning(s)."
+        )
+    );
 }
 
 /// Relatório completo para enviar (diagnóstico + topologia + sistema).
 pub fn report(checks: &[Check]) -> String {
     let mut s = String::from("# numapilot — relatório de diagnóstico\n\n");
-    s.push_str(&format!("versão: {}\n", env!("CARGO_PKG_VERSION")));
+    s.push_str(&crate::tf!(
+        "versão: {}\n",
+        "version: {}\n",
+        env!("CARGO_PKG_VERSION")
+    ));
     for c in checks {
         s.push_str(&format!(
             "[{:?}] {} / {}: {}{}\n",
@@ -1357,7 +1554,7 @@ pub fn report(checks: &[Check]) -> String {
         ("cmdline", &["cat", "/proc/cmdline"]),
         ("lscpu", &["lscpu"]),
         ("numactl", &["numactl", "-H"]),
-        ("lspci (árvore)", &["lspci", "-tv"]),
+        (crate::i18n::tr("lspci (árvore)"), &["lspci", "-tv"]),
         (
             "lspci (GPUs)",
             &["sh", "-c", "lspci -nnk | grep -A3 -Ei 'vga|display|3d'"],
@@ -1365,7 +1562,7 @@ pub fn report(checks: &[Check]) -> String {
         ("numapilot topo", &["numapilot", "topo"]),
         ("gfx906-rocm doctor", &["gfx906-rocm", "doctor"]),
         (
-            "serviço (log)",
+            crate::i18n::tr("serviço (log)"),
             &["journalctl", "-u", "numapilot", "-n", "80", "--no-pager"],
         ),
         (
@@ -1379,7 +1576,7 @@ pub fn report(checks: &[Check]) -> String {
     ];
     for (title, argv) in sections {
         s.push_str(&format!("\n## {title}\n"));
-        s.push_str(&out(argv, &[]).unwrap_or_else(|| "(indisponível)\n".into()));
+        s.push_str(&out(argv, &[]).unwrap_or_else(|| crate::i18n::tr("(indisponível)\n").into()));
     }
     s
 }

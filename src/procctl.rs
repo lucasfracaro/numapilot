@@ -90,14 +90,16 @@ pub fn protected_reason(
     cgroup: &str,
 ) -> Option<&'static str> {
     if pid <= 1 {
-        return Some("processo do sistema");
+        return Some(crate::i18n::tr("processo do sistema"));
     }
     if exe.is_empty() {
         // threads do kernel não têm executável
-        return Some("processo do kernel");
+        return Some(crate::i18n::tr("processo do kernel"));
     }
     if uid != my_uid {
-        return Some("não é seu (é do sistema ou de outro usuário)");
+        return Some(crate::i18n::tr(
+            "não é seu (é do sistema ou de outro usuário)",
+        ));
     }
     let exe_name = exe.rsplit('/').next().unwrap_or(exe);
     // "kwin_wayland (deleted)" depois de atualizar o pacote
@@ -106,7 +108,7 @@ pub fn protected_reason(
         .iter()
         .any(|p| comm == *p || exe_name == *p || exe_name.starts_with("startplasma"))
     {
-        return Some("faz parte da sessão gráfica ou do sistema");
+        return Some(crate::i18n::tr("faz parte da sessão gráfica ou do sistema"));
     }
     let path = cgroup
         .lines()
@@ -118,7 +120,7 @@ pub fn protected_reason(
         || path.starts_with("/system.slice/")
         || path == "/init.scope"
     {
-        return Some("faz parte da sessão gráfica ou do sistema");
+        return Some(crate::i18n::tr("faz parte da sessão gráfica ou do sistema"));
     }
     None
 }
@@ -140,7 +142,7 @@ pub fn kill_blocked(pid: i32, my_uid: u32) -> Option<&'static str> {
         .unwrap_or(0);
     let cg = fs::read_to_string(format!("/proc/{pid}/cgroup")).unwrap_or_default();
     if comm.is_empty() {
-        return Some("o processo já terminou");
+        return Some(crate::i18n::tr("o processo já terminou"));
     }
     protected_reason(pid, comm.trim(), &exe, uid, my_uid, &cg)
 }

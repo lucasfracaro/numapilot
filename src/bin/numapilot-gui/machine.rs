@@ -243,13 +243,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         .selected_text(
                             v.as_deref()
                                 .and_then(|x| hybrid::MODES.iter().find(|y| y.0 == x))
-                                .map(|y| y.1)
+                                .map(|y| crate::i18n::tr(y.1))
                                 .unwrap_or(crate::i18n::tr("não mexer (dorme quando ninguém usa)")),
                         )
                         .show_ui(ui, |ui| {
                             ui.selectable_value(&mut v, None, crate::i18n::tr("não mexer (dorme quando ninguém usa)"));
                             for (k, l) in hybrid::MODES {
-                                ui.selectable_value(&mut v, Some(k.to_string()), *l);
+                                ui.selectable_value(&mut v, Some(k.to_string()), crate::i18n::tr(l));
                             }
                         });
                     if v != m.dgpu_mode {
@@ -384,7 +384,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         tri(ui, &format!("dpm{}", g.pci), &mut m.dgpu_autosuspend, crate::i18n::tr("dormir quando ninguém usa"), crate::i18n::tr("sempre ligada"));
                     });
                     ui.end_row();
-                    if !nb::dgpu_state(&g.pci).starts_with("dormindo") {
+                    if !nb::dgpu_asleep(&g.pci) {
                         if mu.dgpu_at.is_none_or(|t| t.elapsed().as_secs() >= 3) {
                             mu.dgpu_at = Some(Instant::now());
                             mu.dgpu_users = nb::dgpu_users(&g.pci);
@@ -479,7 +479,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             egui::Grid::new("acer").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
                 for (key, cur) in &knobs {
                     let Some((_, _, label, help)) = acer::KNOBS.iter().find(|k| k.0 == *key) else { continue };
-                    ui.label(*label).on_hover_text(*help);
+                    ui.label(crate::i18n::tr(label)).on_hover_text(crate::i18n::tr(help));
                     let cur = cur.clone().unwrap_or_default();
                     match *key {
                         "fan_speed" => {
@@ -564,10 +564,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.checkbox(&mut on, "");
                         ui.add_enabled_ui(on, |ui| {
                             egui::ComboBox::from_id_salt("kbfx")
-                                .selected_text(acer::EFFECTS.iter().find(|e| e.0 as u32 == mode).map(|e| e.1).unwrap_or("?"))
+                                .selected_text(acer::EFFECTS.iter().find(|e| e.0 as u32 == mode).map(|e| crate::i18n::tr(e.1)).unwrap_or("?"))
                                 .show_ui(ui, |ui| {
                                     for (k, l) in acer::EFFECTS {
-                                        ui.selectable_value(&mut mode, *k as u32, *l);
+                                        ui.selectable_value(&mut mode, *k as u32, crate::i18n::tr(l));
                                     }
                                 });
                             ui.color_edit_button_srgb(&mut rgb);
@@ -1247,9 +1247,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.end_row();
             for g in &relevant {
                 let mut on = all || g.params.iter().all(|p| mu.sel.contains(*p));
-                let r = ui.add_enabled(!all, egui::Checkbox::new(&mut on, g.title));
+                let r = ui.add_enabled(!all, egui::Checkbox::new(&mut on, crate::i18n::tr(g.title)));
                 if !g.note.is_empty() {
-                    r.clone().on_hover_text(g.note);
+                    r.clone().on_hover_text(crate::i18n::tr(g.note));
                 }
                 if r.changed() {
                     for p in g.params {
@@ -1267,8 +1267,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     .map(|(_, s)| s.split(';').next().unwrap_or(s).to_string())
                     .collect();
                 ui.label(RichText::new(st.join(" / ")).small());
-                ui.label(RichText::new(g.risk).color(if g.heavy { Color32::from_rgb(220, 80, 60) } else { ORANGE }));
-                ui.label(g.gain);
+                ui.label(RichText::new(crate::i18n::tr(g.risk)).color(if g.heavy { Color32::from_rgb(220, 80, 60) } else { ORANGE }));
+                ui.label(crate::i18n::tr(g.gain));
                 ui.end_row();
             }
         });
@@ -1288,7 +1288,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         );
         for (p, t, d) in cmdline::KNOWN {
             let mut on = mu.sel.contains(*p);
-            if ui.checkbox(&mut on, format!("{t} ({p})")).on_hover_text(*d).changed() {
+            if ui.checkbox(&mut on, format!("{} ({p})", crate::i18n::tr(t))).on_hover_text(crate::i18n::tr(d)).changed() {
                 if on {
                     mu.sel.insert(p.to_string());
                 } else {

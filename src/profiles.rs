@@ -219,35 +219,49 @@ impl Profile {
 
     pub fn validate(&self) -> Result<(), String> {
         if !["auto", "strict", "prefer", "interleave", "free"].contains(&self.memory.as_str()) {
-            return Err(format!("política de memória inválida: {}", self.memory));
+            return Err(crate::tf!(
+                "política de memória inválida: {}",
+                "invalid memory policy: {}",
+                self.memory
+            ));
         }
         if !["low", "normal", "high"].contains(&self.priority.as_str()) {
-            return Err(format!("prioridade inválida: {}", self.priority));
+            return Err(crate::tf!(
+                "prioridade inválida: {}",
+                "invalid priority: {}",
+                self.priority
+            ));
         }
         if !["auto", "3d", "compute", "vr", "video", "economia"].contains(&self.gpu_power.as_str())
         {
-            return Err(format!(
+            return Err(crate::tf!(
                 "perfil de energia da GPU inválido: {}",
+                "invalid GPU power profile: {}",
                 self.gpu_power
             ));
         }
         if self.cores == Some(0) {
-            return Err("núcleos: pelo menos 1".into());
+            return Err(crate::i18n::tr("núcleos: pelo menos 1").into());
         }
         if let Some(m) = self.mem_max_gb
             && m < 0.25
         {
-            return Err("limite de memória muito baixo (mínimo 0,25 GB)".into());
+            return Err(crate::i18n::tr("limite de memória muito baixo (mínimo 0,25 GB)").into());
         }
         if let Some(c) = self.cpu_max_pct
             && !(5.0..=6400.0).contains(&c)
         {
-            return Err("limite de processador: de 5% a 6400% (100% = um núcleo)".into());
+            return Err(
+                crate::i18n::tr("limite de processador: de 5% a 6400% (100% = um núcleo)").into(),
+            );
         }
         if let Some(l) = &self.cpu_list
             && crate::util::parse_cpulist(l).is_empty()
         {
-            return Err(format!("lista de CPUs inválida: {l}"));
+            return Err(crate::tf!(
+                "lista de CPUs inválida: {l}",
+                "invalid CPU list: {l}"
+            ));
         }
         Ok(())
     }
@@ -409,10 +423,12 @@ pub fn import_text(
     text: &str,
     gpu_aliases: &[String],
 ) -> Result<(Vec<(String, Profile)>, Vec<String>), String> {
-    let e: Exported = serde_json::from_str(text).map_err(|e| format!("arquivo inválido: {e}"))?;
+    let e: Exported = serde_json::from_str(text)
+        .map_err(|e| crate::tf!("arquivo inválido: {e}", "invalid file: {e}"))?;
     if e.formato != 1 {
-        return Err(format!(
+        return Err(crate::tf!(
             "formato {} desconhecido (atualize o numapilot)",
+            "unknown format {} (update numapilot)",
             e.formato
         ));
     }
@@ -431,7 +447,7 @@ pub fn import_text(
         }
         match p.validate() {
             Ok(()) if !k.is_empty() => ok.push((k, p)),
-            Ok(()) => bad.push("perfil sem chave".into()),
+            Ok(()) => bad.push(crate::i18n::tr("perfil sem chave").into()),
             Err(err) => bad.push(format!("{k}: {err}")),
         }
     }

@@ -57,7 +57,13 @@ pub fn init(component: &str) {
             .map(|s| s.to_string())
             .or_else(|| info.payload().downcast_ref::<String>().cloned())
             .unwrap_or_default();
-        write("ERRO", &format!("o programa caiu: {msg}{loc}"));
+        write(
+            "ERRO",
+            &crate::tf!(
+                "o programa caiu: {msg}{loc}",
+                "the program crashed: {msg}{loc}"
+            ),
+        );
         prev(info);
     }));
 }
@@ -124,7 +130,7 @@ pub fn error(msg: &str) {
 pub fn level_of(msg: &str) -> &'static str {
     // "(0 erro(s))" não é erro; "10 erro(s)" é
     let mut m = msg.to_lowercase();
-    while let Some(i) = m.find("0 erro") {
+    while let Some(i) = m.find("0 erro").or_else(|| m.find("0 error")) {
         if m[..i].ends_with(|c: char| c.is_ascii_digit()) {
             break;
         }
@@ -137,12 +143,22 @@ pub fn level_of(msg: &str) -> &'static str {
         "nao consegui",
         "caiu",
         "panic",
+        "error",
+        "failed",
+        "could not",
+        "crashed",
     ]
     .iter()
     .any(|k| m.contains(k))
     {
         "ERRO"
-    } else if m.contains("aviso") || m.contains("não aplicad") || m.contains("bloquead") {
+    } else if m.contains("aviso")
+        || m.contains("não aplicad")
+        || m.contains("bloquead")
+        || m.contains("warning")
+        || m.contains("not applied")
+        || m.contains("blocked")
+    {
         "AVISO"
     } else {
         "INFO"

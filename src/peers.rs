@@ -67,8 +67,9 @@ pub fn parse_link(link: &str) -> Option<(String, String)> {
 }
 
 pub fn add(link: &str, name: Option<&str>) -> Result<Peer, String> {
-    let (url, token) =
-        parse_link(link).ok_or("link inválido: copie o link com ?t= do painel do outro PC")?;
+    let (url, token) = parse_link(link).ok_or(crate::i18n::tr(
+        "link inválido: copie o link com ?t= do painel do outro PC",
+    ))?;
     let name = name
         .map(String::from)
         .or_else(|| {
@@ -96,7 +97,10 @@ pub fn remove(name: &str) -> Result<(), String> {
     let n = v.len();
     v.retain(|p| p.name != name);
     if v.len() == n {
-        return Err(format!("PC {name} não está na lista"));
+        return Err(crate::tf!(
+            "PC {name} não está na lista",
+            "PC {name} is not in the list"
+        ));
     }
     save(&v).map_err(|e| e.to_string())
 }
@@ -147,13 +151,16 @@ fn get(p: &Peer, path: &str, out: Option<&std::path::Path>, secs: u32) -> Result
 /// Copia os perfis de programa de outro PC (os que este não tem; com `all`, todos).
 /// Perfis de jogos da Steam (steam:APPID) valem em qualquer PC.
 pub fn pull_profiles(name: &str, all: bool) -> Result<String, String> {
-    let p = load()
-        .into_iter()
-        .find(|p| p.name == name)
-        .ok_or_else(|| format!("PC {name} não está na lista"))?;
+    let p = load().into_iter().find(|p| p.name == name).ok_or_else(|| {
+        crate::tf!(
+            "PC {name} não está na lista",
+            "PC {name} is not in the list"
+        )
+    })?;
     let body = get(&p, "/api/profiles", None, 10)?;
     let theirs: std::collections::BTreeMap<String, crate::profiles::Profile> =
-        serde_json::from_slice(&body).map_err(|e| format!("resposta inválida: {e}"))?;
+        serde_json::from_slice(&body)
+            .map_err(|e| crate::tf!("resposta inválida: {e}", "invalid response: {e}"))?;
     let mine = crate::profiles::Profiles::load();
     let mut n = 0;
     for (k, prof) in theirs {
@@ -165,12 +172,15 @@ pub fn pull_profiles(name: &str, all: bool) -> Result<String, String> {
             profile: prof,
             pid: None,
         })
-        .map_err(|e| format!("serviço numapilot: {e}"))?;
+        .map_err(|e| crate::tf!("serviço numapilot: {e}", "numapilot service: {e}"))?;
         if r.ok {
             n += 1;
         }
     }
-    Ok(format!("{n} perfil(s) copiado(s) de {name}"))
+    Ok(crate::tf!(
+        "{n} perfil(s) copiado(s) de {name}",
+        "{n} profile(s) copied from {name}"
+    ))
 }
 
 pub fn backup_dir() -> std::path::PathBuf {
@@ -230,11 +240,13 @@ fn wol_mac(s: &serde_json::Value) -> Option<String> {
 
 /// Liga o PC pela rede (precisa do MAC aprendido com ele ligado e do WoL ligado nele).
 pub fn wake(name: &str) -> Result<String, String> {
-    let p = load()
-        .into_iter()
-        .find(|p| p.name == name)
-        .ok_or_else(|| format!("PC {name} não está na lista"))?;
-    let mac = p.mac.ok_or("ainda não sei o endereço dele: ligue o Wake-on-LAN lá (Máquina → Rede) e abra este painel com ele ligado uma vez")?;
+    let p = load().into_iter().find(|p| p.name == name).ok_or_else(|| {
+        crate::tf!(
+            "PC {name} não está na lista",
+            "PC {name} is not in the list"
+        )
+    })?;
+    let mac = p.mac.ok_or(crate::i18n::tr("ainda não sei o endereço dele: ligue o Wake-on-LAN lá (Máquina → Rede) e abra este painel com ele ligado uma vez"))?;
     let ip = p
         .url
         .split("//")
@@ -242,7 +254,10 @@ pub fn wake(name: &str) -> Result<String, String> {
         .and_then(|h| h.split(':').next())
         .map(String::from);
     crate::wol::wake(&mac, ip.as_deref())?;
-    Ok(format!("pacote para ligar {name} enviado ({mac})"))
+    Ok(crate::tf!(
+        "pacote para ligar {name} enviado ({mac})",
+        "wake packet for {name} sent ({mac})"
+    ))
 }
 
 /// Resumo de cada PC para o painel: nome, link, online, GPU mais quente, uso dos processadores.

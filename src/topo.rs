@@ -411,17 +411,18 @@ impl Topology {
             .flat_map(|n| n.sockets.iter().copied())
             .collect();
         if self.nodes.len() == 1 && all_sockets.len() > 1 {
-            w.push(format!(
+            w.push(crate::tf!(
                 "{} sockets mas só 1 nó NUMA: provavelmente 'Node Interleaving' está ligado na BIOS. \
-                 Desligue-o (deixe NUMA ativo) para este programa ter efeito.",
+                 Desligue-o (deixe NUMA ativo) para este programa ter efeito.", "{} sockets but only 1 NUMA node: 'Node Interleaving' is probably enabled in the BIOS. \
+                 Turn it off (keep NUMA enabled) for this program to have any effect.",
                 all_sockets.len()
             ));
         }
         if self.nodes.len() > 1 {
             for g in &self.gpus {
                 if g.numa_node.is_none() {
-                    w.push(format!(
-                        "GPU {} ({}) sem nó NUMA informado pelo firmware. Defina em [gpu_node] no /etc/numapilot.toml.",
+                    w.push(crate::tf!(
+                        "GPU {} ({}) sem nó NUMA informado pelo firmware. Defina em [gpu_node] no /etc/numapilot.toml.", "GPU {} ({}) has no NUMA node reported by the firmware. Set it in [gpu_node] in /etc/numapilot.toml.",
                         g.alias, g.pci
                     ));
                 }

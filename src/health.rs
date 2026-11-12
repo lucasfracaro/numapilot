@@ -143,9 +143,10 @@ pub fn mem_notes(dimms: &[Dimm], node_gb: &[f64]) -> Vec<String> {
         .filter(|d| matches!((d.speed, d.configured), (Some(s), Some(c)) if c + 50 < s))
         .collect();
     if let Some(d) = slow.first() {
-        v.push(format!(
+        v.push(crate::tf!(
             "{} pente(s) rodando abaixo da velocidade deles ({} em vez de {} MT/s): o limite costuma ser do \
-             processador ou da placa (Xeon E5 v4: 2400; v3: 2133), ou o XMP/perfil não está ligado na BIOS",
+             processador ou da placa (Xeon E5 v4: 2400; v3: 2133), ou o XMP/perfil não está ligado na BIOS", "{} module(s) running below their speed ({} instead of {} MT/s): the limit usually comes from the \
+             processor or the board (Xeon E5 v4: 2400; v3: 2133), or XMP/the profile is not enabled in the BIOS",
             slow.len(),
             d.configured.unwrap_or(0),
             d.speed.unwrap_or(0)
@@ -155,14 +156,20 @@ pub fn mem_notes(dimms: &[Dimm], node_gb: &[f64]) -> Vec<String> {
     sizes.sort_unstable();
     sizes.dedup();
     if sizes.len() > 1 {
-        v.push("pentes de tamanhos diferentes: os canais podem não trabalhar em conjunto".into());
+        v.push(
+            crate::i18n::tr(
+                "pentes de tamanhos diferentes: os canais podem não trabalhar em conjunto",
+            )
+            .into(),
+        );
     }
     let mut speeds: Vec<u32> = dimms.iter().filter_map(|d| d.speed).collect();
     speeds.sort_unstable();
     speeds.dedup();
     if speeds.len() > 1 {
-        v.push(format!(
+        v.push(crate::tf!(
             "pentes de velocidades diferentes ({} MT/s): todos rodam na do mais lento",
+            "modules of different speeds ({} MT/s): all run at the slowest one's",
             speeds
                 .iter()
                 .map(|s| s.to_string())
@@ -174,15 +181,21 @@ pub fn mem_notes(dimms: &[Dimm], node_gb: &[f64]) -> Vec<String> {
         let max = node_gb.iter().cloned().fold(0.0, f64::max);
         let min = node_gb.iter().cloned().fold(f64::MAX, f64::min);
         if max > 0.0 && min < max * 0.8 {
-            v.push(format!(
+            v.push(crate::tf!(
                 "memória desequilibrada entre os processadores ({}): o socket com menos enche antes e passa a \
-                 usar memória do outro, que é mais lenta para ele",
+                 usar memória do outro, que é mais lenta para ele", "memory unbalanced between the processors ({}): the socket with less fills up first and starts \
+                 using the other's memory, which is slower for it",
                 node_gb.iter().map(|g| format!("{g:.0} GB")).collect::<Vec<_>>().join(" e ")
             ));
         }
     }
     if dimms.len() == 1 {
-        v.push("um pente só: a memória roda em canal único (metade da banda ou menos)".into());
+        v.push(
+            crate::i18n::tr(
+                "um pente só: a memória roda em canal único (metade da banda ou menos)",
+            )
+            .into(),
+        );
     }
     v
 }
@@ -253,8 +266,9 @@ fn smart(dev: &str) -> Result<Disk, String> {
         .output()
         .map_err(|e| format!("{dev}: smartctl: {e}"))?;
     let j: Value = serde_json::from_slice(&o.stdout).map_err(|e| {
-        format!(
+        crate::tf!(
             "{dev}: resposta do smartctl não é JSON ({e}): {}",
+            "{dev}: smartctl's answer is not JSON ({e}): {}",
             String::from_utf8_lossy(&o.stdout)
                 .lines()
                 .next()
@@ -266,7 +280,7 @@ fn smart(dev: &str) -> Result<Disk, String> {
             .as_array()
             .and_then(|m| m.first())
             .and_then(|m| m["string"].as_str())
-            .unwrap_or("sem dados SMART");
+            .unwrap_or(crate::i18n::tr("sem dados SMART"));
         return Err(format!("{dev}: {msg}"));
     }
     Ok(parse_smart(dev, &j))
@@ -343,7 +357,7 @@ pub fn collect(topo: &crate::topo::Topology) -> Report {
     if smartctl {
         let devs = disks();
         if devs.is_empty() {
-            disk_errors.push("nenhum disco encontrado em /sys/block".into());
+            disk_errors.push(crate::i18n::tr("nenhum disco encontrado em /sys/block").into());
         }
         for d in devs {
             match smart(&d) {
@@ -400,20 +414,28 @@ pub fn problems(r: &Report) -> Vec<(u8, String)> {
         if d.passed == Some(false) {
             v.push((
                 2,
-                format!("{n}: o próprio disco diz que vai falhar (SMART). Faça backup e troque."),
+                crate::tf!(
+                    "{n}: o próprio disco diz que vai falhar (SMART). Faça backup e troque.",
+                    "{n}: the disk itself says it is going to fail (SMART). Back up and replace it."
+                ),
             ));
         }
         if d.media_errors.unwrap_or(0) > 0 {
             v.push((
                 2,
-                format!("{n}: {} erros de mídia", d.media_errors.unwrap_or(0)),
+                crate::tf!(
+                    "{n}: {} erros de mídia",
+                    "{n}: {} media errors",
+                    d.media_errors.unwrap_or(0)
+                ),
             ));
         }
         if d.uncorrectable.unwrap_or(0) > 0 || d.pending.unwrap_or(0) > 0 {
             v.push((
                 2,
-                format!(
+                crate::tf!(
                     "{n}: setores ruins pendentes/incorrigíveis ({}/{})",
+                    "{n}: pending/uncorrectable bad sectors ({}/{})",
                     d.pending.unwrap_or(0),
                     d.uncorrectable.unwrap_or(0)
                 ),
@@ -422,8 +444,9 @@ pub fn problems(r: &Report) -> Vec<(u8, String)> {
         if d.realloc.unwrap_or(0) > 0 {
             v.push((
                 1,
-                format!(
+                crate::tf!(
                     "{n}: {} setores realocados (acompanhe se aumenta)",
+                    "{n}: {} reallocated sectors (watch whether it grows)",
                     d.realloc.unwrap_or(0)
                 ),
             ));
@@ -433,35 +456,48 @@ pub fn problems(r: &Report) -> Vec<(u8, String)> {
         {
             v.push((
                 if p >= 100 { 2 } else { 1 },
-                format!("{n}: {p}% da vida útil usada"),
+                crate::tf!("{n}: {p}% da vida útil usada", "{n}: {p}% of lifespan used"),
             ));
         }
         if let Some(s) = d.spare_pct
             && s < 20
         {
-            v.push((2, format!("{n}: só {s}% de reserva")));
+            v.push((
+                2,
+                crate::tf!("{n}: só {s}% de reserva", "{n}: only {s}% spare left"),
+            ));
         }
         if let Some(t) = d.temp_c
             && t >= 70.0
         {
-            v.push((1, format!("{n}: {t:.0} °C (quente; melhore a ventilação)")));
+            v.push((
+                1,
+                crate::tf!(
+                    "{n}: {t:.0} °C (quente; melhore a ventilação)",
+                    "{n}: {t:.0} °C (hot; improve the airflow)"
+                ),
+            ));
         }
     }
     for m in &r.mem {
         if m.ue > 0 {
             v.push((
                 2,
-                format!(
+                crate::tf!(
                     "memória {}: {} erros NÃO corrigidos (pente com defeito?)",
-                    m.name, m.ue
+                    "memory {}: {} UNcorrected errors (faulty module?)",
+                    m.name,
+                    m.ue
                 ),
             ));
         } else if m.ce > 0 {
             v.push((
                 1,
-                format!(
+                crate::tf!(
                     "memória {}: {} erros corrigidos pelo ECC (se crescer, troque o pente)",
-                    m.name, m.ce
+                    "memory {}: {} errors corrected by ECC (if it grows, replace the module)",
+                    m.name,
+                    m.ce
                 ),
             ));
         }
@@ -470,14 +506,23 @@ pub fn problems(r: &Report) -> Vec<(u8, String)> {
         if g.ue > 0 {
             v.push((
                 2,
-                format!("GPU {} ({}): {} erros não corrigidos", g.pci, g.block, g.ue),
+                crate::tf!(
+                    "GPU {} ({}): {} erros não corrigidos",
+                    "GPU {} ({}): {} uncorrected errors",
+                    g.pci,
+                    g.block,
+                    g.ue
+                ),
             ));
         } else if g.ce > 0 {
             v.push((
                 1,
-                format!(
+                crate::tf!(
                     "GPU {} ({}): {} erros corrigidos pelo ECC",
-                    g.pci, g.block, g.ce
+                    "GPU {} ({}): {} errors corrected by ECC",
+                    g.pci,
+                    g.block,
+                    g.ce
                 ),
             ));
         }
@@ -488,7 +533,11 @@ pub fn problems(r: &Report) -> Vec<(u8, String)> {
         {
             v.push((
                 1,
-                format!("bateria {}: {h:.0}% da capacidade original", b.name),
+                crate::tf!(
+                    "bateria {}: {h:.0}% da capacidade original",
+                    "battery {}: {h:.0}% of original capacity",
+                    b.name
+                ),
             ));
         }
     }

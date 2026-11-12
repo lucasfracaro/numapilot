@@ -122,9 +122,10 @@ pub fn run() {
             crate::notify::event(
                 "llm",
                 "llm-down",
-                "Servidor de IA parou",
-                &format!(
-                    "O container do llama.cpp está \"{s}\". Veja o log na aba Servidor de IA."
+                crate::i18n::tr("Servidor de IA parou"),
+                &crate::tf!(
+                    "O container do llama.cpp está \"{s}\". Veja o log na aba Servidor de IA.",
+                    "The llama.cpp container is \"{s}\". See the log in the AI server tab."
                 ),
                 4,
                 Duration::from_secs(30 * 60),
@@ -156,8 +157,8 @@ pub fn run() {
                     crate::notify::event(
                         "peers",
                         &format!("up-{name}"),
-                        &format!("{name} voltou"),
-                        &format!("{name} está ligado de novo."),
+                        &crate::tf!("{name} voltou", "{name} is back"),
+                        &crate::tf!("{name} está ligado de novo.", "{name} is on again."),
                         2,
                         Duration::from_secs(60),
                     );
@@ -169,9 +170,10 @@ pub fn run() {
                     crate::notify::event(
                         "peers",
                         &format!("down-{name}"),
-                        &format!("{name} saiu da rede"),
-                        &format!(
-                            "{name} não responde há 3 minutos (desligou, travou ou perdeu a rede)."
+                        &crate::tf!("{name} saiu da rede", "{name} left the network"),
+                        &crate::tf!(
+                            "{name} não responde há 3 minutos (desligou, travou ou perdeu a rede).",
+                            "{name} has not answered for 3 minutes (turned off, froze or lost the network)."
                         ),
                         4,
                         Duration::from_secs(3600),

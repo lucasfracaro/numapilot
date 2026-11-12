@@ -45,30 +45,50 @@ impl Source {
                 pkg,
                 aur: false,
                 version,
-            } => format!("pacote {pkg} {version} (repositório oficial)"),
+            } => crate::tf!(
+                "pacote {pkg} {version} (repositório oficial)",
+                "package {pkg} {version} (official repository)"
+            ),
             Source::Pacman {
                 pkg,
                 aur: true,
                 version,
-            } => format!("pacote {pkg} {version} (AUR ou instalado à mão)"),
+            } => crate::tf!(
+                "pacote {pkg} {version} (AUR ou instalado à mão)",
+                "package {pkg} {version} (AUR or installed by hand)"
+            ),
             Source::Flatpak { id, user } => {
-                format!("Flatpak {id}{}", if *user { " (do usuário)" } else { "" })
+                format!(
+                    "Flatpak {id}{}",
+                    if *user {
+                        crate::i18n::tr(" (do usuário)")
+                    } else {
+                        ""
+                    }
+                )
             }
-            Source::Npm { pkg } => format!("pacote global do npm: {pkg}"),
+            Source::Npm { pkg } => {
+                crate::tf!("pacote global do npm: {pkg}", "global npm package: {pkg}")
+            }
             Source::Pipx { pkg } => format!("pipx: {pkg}"),
             Source::Cargo { krate } => format!("cargo install: {krate}"),
-            Source::Numapilot { dir } => format!(
+            Source::Numapilot { dir } => crate::tf!(
                 "programa da comunidade baixado pelo numapilot ({})",
+                "community program downloaded by numapilot ({})",
                 dir.display()
             ),
             Source::Manual { paths, .. } => match paths.first() {
                 Some(p) if p.to_string_lossy().ends_with(".AppImage") => {
                     format!("AppImage: {}", p.display())
                 }
-                Some(p) => format!("arquivo instalado à mão: {}", p.display()),
-                None => "arquivo instalado à mão".into(),
+                Some(p) => crate::tf!(
+                    "arquivo instalado à mão: {}",
+                    "file installed by hand: {}",
+                    p.display()
+                ),
+                None => crate::i18n::tr("arquivo instalado à mão").into(),
             },
-            Source::Unknown => "não descobri de onde veio".into(),
+            Source::Unknown => crate::i18n::tr("não descobri de onde veio").into(),
         }
     }
 }
@@ -576,12 +596,18 @@ pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: boo
     if let Some((u, user)) = unit {
         if user {
             run(
-                format!("parar e desligar o serviço {u}"),
+                crate::tf!(
+                    "parar e desligar o serviço {u}",
+                    "stop and disable the service {u}"
+                ),
                 format!("systemctl --user disable --now {} || true", q(u)),
             );
         } else {
             run(
-                format!("parar e desligar o serviço {u} (pede a senha)"),
+                crate::tf!(
+                    "parar e desligar o serviço {u} (pede a senha)",
+                    "stop and disable the service {u} (asks for the password)"
+                ),
                 format!("sudo systemctl disable --now {} || true", q(u)),
             );
         }
@@ -594,7 +620,11 @@ pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: boo
         if f.starts_with(&h) {
             let reload = fs.contains("/systemd/user/");
             run(
-                format!("apagar o arquivo de inicialização {}", f.display()),
+                crate::tf!(
+                    "apagar o arquivo de inicialização {}",
+                    "delete the startup file {}",
+                    f.display()
+                ),
                 format!(
                     "rm -f {}{}",
                     q(&fs),
@@ -607,7 +637,11 @@ pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: boo
             );
         } else if fs.starts_with("/etc/systemd/system/") {
             run(
-                format!("apagar o serviço {} (pede a senha)", f.display()),
+                crate::tf!(
+                    "apagar o serviço {} (pede a senha)",
+                    "delete the service {} (asks for the password)",
+                    f.display()
+                ),
                 format!("sudo rm -f {}; sudo systemctl daemon-reload", q(&fs)),
             );
         }
@@ -617,22 +651,26 @@ pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: boo
     if t.exe.as_deref().is_some_and(own)
         || matches!(&t.source, Source::Manual { paths, .. } if paths.iter().any(|p| own(p)))
     {
-        blocked = Some("é o próprio numapilot: use o ./uninstall.sh".into());
+        blocked = Some(crate::i18n::tr("é o próprio numapilot: use o ./uninstall.sh").into());
     }
     match &t.source {
         Source::Pacman { pkg, .. } => {
             if essential_pkg(pkg) && blocked.is_none() {
-                blocked = Some(format!("{pkg} faz parte do sistema"));
+                blocked = Some(crate::tf!(
+                    "{pkg} faz parte do sistema",
+                    "{pkg} is part of the system"
+                ));
             }
             run(
-                format!(
-                    "remover o pacote {pkg} e as dependências que só ele usava (sudo pacman -Rns; o pacman pede confirmação)"
+                crate::tf!(
+                    "remover o pacote {pkg} e as dependências que só ele usava (sudo pacman -Rns; o pacman pede confirmação)",
+                    "remove the package {pkg} and the dependencies only it used (sudo pacman -Rns; pacman asks for confirmation)"
                 ),
                 format!("sudo pacman -Rns {}", q(pkg)),
             );
         }
         Source::Flatpak { id, user } => run(
-            format!("desinstalar o Flatpak {id}"),
+            crate::tf!("desinstalar o Flatpak {id}", "uninstall the Flatpak {id}"),
             format!(
                 "flatpak uninstall {}{}{}",
                 if *user { "--user " } else { "" },
@@ -653,8 +691,9 @@ pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: boo
             format!("cargo uninstall {}", q(krate)),
         ),
         Source::Numapilot { dir } => run(
-            format!(
+            crate::tf!(
                 "apagar {} e os comandos dele em ~/.local/bin",
+                "delete {} and its commands in ~/.local/bin",
                 dir.display()
             ),
             format!(
@@ -666,14 +705,19 @@ pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: boo
         Source::Manual { paths, root } => {
             let list: Vec<String> = paths.iter().map(|p| q(&p.to_string_lossy())).collect();
             run(
-                format!(
+                crate::tf!(
                     "apagar {}{}",
+                    "delete {}{}",
                     paths
                         .iter()
                         .map(|p| p.display().to_string())
                         .collect::<Vec<_>>()
                         .join(", "),
-                    if *root { " (pede a senha)" } else { "" }
+                    if *root {
+                        crate::i18n::tr(" (pede a senha)")
+                    } else {
+                        ""
+                    }
                 ),
                 format!(
                     "{}rm -f {}",
@@ -683,13 +727,18 @@ pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: boo
             );
         }
         Source::Unknown => run(
-            "não sei de onde o programa veio: só a inicialização é removida".into(),
+            crate::i18n::tr("não sei de onde o programa veio: só a inicialização é removida")
+                .into(),
             "true".into(),
         ),
     }
     if remove_configs && let Some(d) = &t.app_dir {
         run(
-            format!("apagar a pasta do programa {}", d.display()),
+            crate::tf!(
+                "apagar a pasta do programa {}",
+                "delete the program's folder {}",
+                d.display()
+            ),
             format!("rm -rf {}", q(&d.to_string_lossy())),
         );
     }
@@ -700,12 +749,16 @@ pub fn uninstall_plan(t: &Trace, unit: Option<(&str, bool)>, remove_configs: boo
             .filter(|c| t.app_dir.as_ref().is_none_or(|d| !c.starts_with(d)))
         {
             run(
-                format!("apagar as configurações {}", c.display()),
+                crate::tf!(
+                    "apagar as configurações {}",
+                    "delete the settings {}",
+                    c.display()
+                ),
                 format!("rm -rf {}", q(&c.to_string_lossy())),
             );
         }
     }
-    sc.push("echo; echo '==> Pronto'".into());
+    sc.push(crate::i18n::tr("echo; echo '==> Pronto'").into());
     Plan {
         steps,
         script: sc.join("\n"),

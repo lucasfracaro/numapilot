@@ -27,19 +27,25 @@ impl Limits {
     pub fn validate(&self) -> Result<(), String> {
         for (n, v) in [
             ("STAPM", self.stapm_w),
-            ("PPT rápido", self.fast_w),
-            ("PPT lento", self.slow_w),
+            (crate::i18n::tr("PPT rápido"), self.fast_w),
+            (crate::i18n::tr("PPT lento"), self.slow_w),
         ] {
             if let Some(v) = v
                 && !(5.0..=200.0).contains(&v)
             {
-                return Err(format!("{n}: {v} W fora da faixa 5-200 W"));
+                return Err(crate::tf!(
+                    "{n}: {v} W fora da faixa 5-200 W",
+                    "{n}: {v} W out of the 5-200 W range"
+                ));
             }
         }
         if let Some(t) = self.tctl_c
             && !(60.0..=105.0).contains(&t)
         {
-            return Err(format!("temperatura máxima {t} °C fora da faixa 60-105 °C"));
+            return Err(crate::tf!(
+                "temperatura máxima {t} °C fora da faixa 60-105 °C",
+                "maximum temperature {t} °C out of the 60-105 °C range"
+            ));
         }
         Ok(())
     }
@@ -116,8 +122,9 @@ pub fn info() -> Result<BTreeMap<String, f64>, String> {
     let m = parse_info(&String::from_utf8_lossy(&o.stdout));
     if m.is_empty() {
         let err = String::from_utf8_lossy(&o.stderr);
-        return Err(format!(
+        return Err(crate::tf!(
             "ryzenadj -i não leu nada: {}",
+            "ryzenadj -i read nothing: {}",
             err.lines().next_back().unwrap_or("")
         ));
     }
@@ -158,8 +165,9 @@ pub fn apply(l: &Limits) -> Result<(), String> {
         String::from_utf8_lossy(&o.stderr)
     );
     if !o.status.success() || out.contains("not supported") || out.contains("Failed") {
-        return Err(format!(
+        return Err(crate::tf!(
             "ryzenadj recusou: {}",
+            "ryzenadj refused: {}",
             out.lines().rfind(|l| !l.trim().is_empty()).unwrap_or("?")
         ));
     }

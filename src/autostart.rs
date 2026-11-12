@@ -253,7 +253,7 @@ fn dropin(svc: &str) -> PathBuf {
 pub fn apply(topo: &Topology) -> Result<Vec<String>, String> {
     let env = igpu_env(topo);
     if env.is_empty() {
-        return Err("só para notebook com placa integrada + NVIDIA".into());
+        return Err(crate::i18n::tr("só para notebook com placa integrada + NVIDIA").into());
     }
     let pre = prefix(&env);
     let mut changed = vec![];

@@ -25,6 +25,7 @@ pub mod gputest;
 pub mod health;
 pub mod history;
 pub mod hybrid;
+pub mod i18n;
 pub mod iostat;
 pub mod irqs;
 pub mod labcfg;

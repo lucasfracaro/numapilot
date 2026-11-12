@@ -98,6 +98,6 @@ pub fn command() -> Result<Vec<String>, String> {
                 d.display().to_string().replace('\'', "")
             ),
         ]),
-        How::Unknown => Err("não sei de onde o numapilot foi instalado: rode o install.sh de novo pela pasta do código".into()),
+        How::Unknown => Err(crate::i18n::tr("não sei de onde o numapilot foi instalado: rode o install.sh de novo pela pasta do código").into()),
     }
 }

@@ -91,7 +91,7 @@ pub fn set_turbo(on: bool) -> Result<(), String> {
     if b.exists() {
         return w(b, if on { "1" } else { "0" });
     }
-    Err("este sistema não expõe o controle do turbo".into())
+    Err(crate::i18n::tr("este sistema não expõe o controle do turbo").into())
 }
 
 // ---------------- frequência / governor / EPB ----------------
@@ -322,7 +322,9 @@ pub fn set_uncore(package: u32, min_khz: u64, max_khz: u64) -> Result<(), String
     let u = uncores()
         .into_iter()
         .find(|u| u.package == package)
-        .ok_or("uncore indisponível (modprobe intel_uncore_frequency)")?;
+        .ok_or(crate::i18n::tr(
+            "uncore indisponível (modprobe intel_uncore_frequency)",
+        ))?;
     if min_khz > u.max_khz {
         w(u.dir.join("max_freq_khz"), &max_khz.to_string())?;
         w(u.dir.join("min_freq_khz"), &min_khz.to_string())
@@ -337,7 +339,7 @@ pub fn reset_uncore(package: u32) -> Result<(), String> {
     let u = uncores()
         .into_iter()
         .find(|u| u.package == package)
-        .ok_or("uncore indisponível")?;
+        .ok_or(crate::i18n::tr("uncore indisponível"))?;
     if u.init_max_khz == 0 {
         return Ok(());
     }
@@ -393,9 +395,9 @@ pub fn set_rapl_limit(package: u32, watts: f64) -> Result<(), String> {
     let z = rapl_zones()
         .into_iter()
         .find(|r| r.package == package)
-        .ok_or("RAPL indisponível neste socket")?;
+        .ok_or(crate::i18n::tr("RAPL indisponível neste socket"))?;
     if watts < 20.0 {
-        return Err("limite muito baixo (mínimo 20 W)".into());
+        return Err(crate::i18n::tr("limite muito baixo (mínimo 20 W)").into());
     }
     w(
         z.dir.join("constraint_0_power_limit_uw"),
@@ -408,9 +410,9 @@ pub fn set_rapl_limit2(package: u32, watts: f64) -> Result<(), String> {
     let z = rapl_zones()
         .into_iter()
         .find(|r| r.package == package)
-        .ok_or("RAPL indisponível neste socket")?;
+        .ok_or(crate::i18n::tr("RAPL indisponível neste socket"))?;
     if watts < 20.0 {
-        return Err("limite muito baixo (mínimo 20 W)".into());
+        return Err(crate::i18n::tr("limite muito baixo (mínimo 20 W)").into());
     }
     w(
         z.dir.join("constraint_1_power_limit_uw"),

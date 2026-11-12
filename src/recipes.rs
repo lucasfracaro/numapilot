@@ -170,8 +170,9 @@ impl CommunityApp {
         if let Some(setup) = &self.setup {
             sc.push(format!("cd {d} && {setup}"));
         }
-        sc.push(format!(
+        sc.push(crate::tf!(
             "echo; echo \"Pronto: {}\"",
+            "echo; echo \"Done: {}\"",
             self.name.replace('"', "")
         ));
         Some(vec!["sh".into(), "-c".into(), sc.join("\n")])
@@ -371,12 +372,15 @@ pub fn update(url: &str) -> Result<u32, String> {
         .output()
         .map_err(|e| e.to_string())?;
     if !o.status.success() {
-        return Err(format!("não consegui baixar {url}"));
+        return Err(crate::tf!(
+            "não consegui baixar {url}",
+            "could not download {url}"
+        ));
     }
     let s = String::from_utf8_lossy(&o.stdout).to_string();
     let r = parse(&s)?;
     if r.board.is_empty() && r.arch.is_empty() {
-        return Err("arquivo de receitas vazio".into());
+        return Err(crate::i18n::tr("arquivo de receitas vazio").into());
     }
     std::fs::create_dir_all(crate::learned::state_dir()).map_err(|e| e.to_string())?;
     std::fs::write(override_path(), s).map_err(|e| e.to_string())?;

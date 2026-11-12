@@ -114,14 +114,14 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
     let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
     let virt = cpuinfo.contains(" vmx") || cpuinfo.contains(" svm");
     add(
-        "virtualização da CPU",
+        crate::i18n::tr("virtualização da CPU"),
         virt,
         if virt {
-            "VT-x/AMD-V ligado".into()
+            crate::i18n::tr("VT-x/AMD-V ligado").into()
         } else {
-            "desligada".into()
+            crate::i18n::tr("desligada").into()
         },
-        Some("ligue VT-x / SVM na BIOS"),
+        Some(crate::i18n::tr("ligue VT-x / SVM na BIOS")),
     );
     let groups = std::fs::read_dir(sys("kernel/iommu_groups"))
         .map(|r| r.count())
@@ -131,14 +131,16 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
         "IOMMU",
         groups > 0,
         if groups > 0 {
-            format!("{groups} grupos")
+            crate::tf!("{groups} grupos", "{groups} groups")
         } else {
-            "desligado".into()
+            crate::i18n::tr("desligado").into()
         },
         Some(if intel {
-            "ligue VT-d na BIOS; numapilot vm prepare adiciona intel_iommu=on iommu=pt"
+            crate::i18n::tr(
+                "ligue VT-d na BIOS; numapilot vm prepare adiciona intel_iommu=on iommu=pt",
+            )
         } else {
-            "ligue IOMMU/AMD-Vi na BIOS"
+            crate::i18n::tr("ligue IOMMU/AMD-Vi na BIOS")
         }),
     );
     let qemu = has("qemu-system-x86_64");
@@ -162,7 +164,7 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
         Some("sudo pacman -S virt-install"),
     );
     add(
-        "virt-manager (janela da VM)",
+        crate::i18n::tr("virt-manager (janela da VM)"),
         has("virt-manager"),
         String::new(),
         Some("sudo pacman -S virt-manager"),
@@ -175,13 +177,13 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
     .iter()
     .any(|p| Path::new(p).exists());
     add(
-        "UEFI da VM (OVMF)",
+        crate::i18n::tr("UEFI da VM (OVMF)"),
         ovmf,
         String::new(),
         Some("sudo pacman -S edk2-ovmf"),
     );
     add(
-        "TPM da VM (Windows 11)",
+        crate::i18n::tr("TPM da VM (Windows 11)"),
         has("swtpm"),
         String::new(),
         Some("sudo pacman -S swtpm"),
@@ -192,10 +194,12 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
             .any(|g| g == "libvirt")
     });
     add(
-        "você no grupo libvirt",
+        crate::i18n::tr("você no grupo libvirt"),
         in_group,
         String::new(),
-        Some("sudo usermod -aG libvirt $USER (e entre de novo)"),
+        Some(crate::i18n::tr(
+            "sudo usermod -aG libvirt $USER (e entre de novo)",
+        )),
     );
     if let Some(g) = gpu {
         let fns = functions(&g.pci);
@@ -206,13 +210,14 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
                     .filter(|d| !fns.contains(d) && !class(d).starts_with("0x0604"))
                     .collect();
                 add(
-                    &format!("{} isolada no IOMMU", g.alias),
+                    &crate::tf!("{} isolada no IOMMU", "{} isolated in the IOMMU", g.alias),
                     extra.is_empty(),
                     if extra.is_empty() {
-                        format!("grupo só com {}", fns.join(", "))
+                        crate::tf!("grupo só com {}", "group with only {}", fns.join(", "))
                     } else {
-                        format!(
+                        crate::tf!(
                             "divide o grupo com {}",
+                            "shares the group with {}",
                             extra
                                 .iter()
                                 .map(|s| s.as_str())
@@ -220,15 +225,15 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
                                 .join(", ")
                         )
                     },
-                    Some(
+                    Some(crate::i18n::tr(
                         "troque a placa de slot (os ligados direto na CPU costumam ficar isolados)",
-                    ),
+                    )),
                 );
             }
             None => add(
-                &format!("{} no IOMMU", g.alias),
+                &crate::tf!("{} no IOMMU", "{} in the IOMMU", g.alias),
                 false,
-                "sem grupo (IOMMU desligado?)".into(),
+                crate::i18n::tr("sem grupo (IOMMU desligado?)").into(),
                 None,
             ),
         }
@@ -237,19 +242,29 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
             .and_then(|p| p.file_name().map(|f| f.to_string_lossy().to_string()))
             .unwrap_or_default();
         add(
-            &format!("{} presa no vfio-pci", g.alias),
+            &crate::tf!("{} presa no vfio-pci", "{} bound to vfio-pci", g.alias),
             drv == "vfio-pci",
-            format!(
+            crate::tf!(
                 "driver agora: {}",
+                "driver now: {}",
                 if drv.is_empty() { "nenhum" } else { &drv }
             ),
-            Some(&format!("sudo numapilot vm prepare {} e reinicie", g.alias)),
+            Some(&crate::tf!(
+                "sudo numapilot vm prepare {} e reinicie",
+                "sudo numapilot vm prepare {} and reboot",
+                g.alias
+            )),
         );
         if g.display_connected {
             add(
-                &format!("{} sem monitor do Linux", g.alias),
+                &crate::tf!(
+                    "{} sem monitor do Linux",
+                    "{} without the Linux monitor",
+                    g.alias
+                ),
                 false,
-                "o monitor do Linux está nela; ligue-o em outra placa antes".into(),
+                crate::i18n::tr("o monitor do Linux está nela; ligue-o em outra placa antes")
+                    .into(),
                 None,
             );
         }
@@ -259,12 +274,15 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
             .filter(|o| o.vendor == g.vendor && o.device == g.device)
             .count();
         add(
-            "modelo único",
+            crate::i18n::tr("modelo único"),
             same == 1,
             if same == 1 {
                 String::new()
             } else {
-                format!("{same} placas com o mesmo modelo: todas iriam para o vfio")
+                crate::tf!(
+                    "{same} placas com o mesmo modelo: todas iriam para o vfio",
+                    "{same} cards of the same model: all would go to vfio"
+                )
             },
             None,
         );
@@ -273,7 +291,7 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
             add(
                 "vendor-reset",
                 vr,
-                "este modelo não reinicia sozinho depois de desligar a VM".into(),
+                crate::i18n::tr("este modelo não reinicia sozinho depois de desligar a VM").into(),
                 Some(
                     "paru -S vendor-reset-dkms-git && echo vendor-reset | sudo tee /etc/modules-load.d/vendor-reset.conf",
                 ),
@@ -286,7 +304,7 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
 /// Prende a placa no vfio-pci no boot. Precisa de root e reinício.
 pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
-        return Err("precisa de root (sudo)".into());
+        return Err(crate::i18n::tr("precisa de root (sudo)").into());
     }
     if topo
         .gpus
@@ -295,10 +313,13 @@ pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<()
         .count()
         > 1
     {
-        return Err("há outra placa com o mesmo modelo: as duas iriam para o vfio".into());
+        return Err(crate::i18n::tr(
+            "há outra placa com o mesmo modelo: as duas iriam para o vfio",
+        )
+        .into());
     }
     if topo.gpus.len() < 2 {
-        return Err("é a única placa de vídeo: o Linux ficaria sem imagem".into());
+        return Err(crate::i18n::tr("é a única placa de vídeo: o Linux ficaria sem imagem").into());
     }
     let fns = functions(&g.pci);
     let idlist: Vec<String> = fns.iter().filter_map(|f| ids(f)).collect();
@@ -311,8 +332,9 @@ pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<()
         idlist.join(",")
     );
     std::fs::write(vfio_conf(), text).map_err(|e| format!("{}: {e}", vfio_conf().display()))?;
-    log(&format!(
+    log(&crate::tf!(
         "Gravado {} (ids {})",
+        "Wrote {} (ids {})",
         vfio_conf().display(),
         idlist.join(",")
     ));
@@ -323,7 +345,10 @@ pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<()
             "MODULES+=(vfio_pci vfio vfio_iommu_type1)\n",
         )
         .map_err(|e| e.to_string())?;
-        log(&format!("Gravado {MKINITCPIO_CONF}"));
+        log(&crate::tf!(
+            "Gravado {MKINITCPIO_CONF}",
+            "Wrote {MKINITCPIO_CONF}"
+        ));
     }
     if has("dracut") {
         let _ = std::fs::create_dir_all("/etc/dracut.conf.d");
@@ -332,7 +357,7 @@ pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<()
             "force_drivers+=\" vfio_pci vfio vfio_iommu_type1 \"\n",
         )
         .map_err(|e| e.to_string())?;
-        log(&format!("Gravado {DRACUT_CONF}"));
+        log(&crate::tf!("Gravado {DRACUT_CONF}", "Wrote {DRACUT_CONF}"));
     }
     let intel = std::fs::read_to_string("/proc/cpuinfo")
         .unwrap_or_default()
@@ -350,14 +375,16 @@ pub fn prepare(topo: &Topology, g: &Gpu, log: &mut dyn FnMut(&str)) -> Result<()
         crate::cmdline::apply(&missing, &[], log)?;
     }
     crate::bootcfg::regenerate(log)?;
-    log("Pronto. Reinicie: a placa vai aparecer com o driver vfio-pci (numapilot vm check).");
+    log(crate::i18n::tr(
+        "Pronto. Reinicie: a placa vai aparecer com o driver vfio-pci (numapilot vm check).",
+    ));
     Ok(())
 }
 
 /// Devolve a placa ao Linux.
 pub fn unprepare(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
-        return Err("precisa de root (sudo)".into());
+        return Err(crate::i18n::tr("precisa de root (sudo)").into());
     }
     for f in [
         vfio_conf(),
@@ -366,11 +393,13 @@ pub fn unprepare(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     ] {
         if f.exists() {
             std::fs::remove_file(&f).map_err(|e| format!("{}: {e}", f.display()))?;
-            log(&format!("Removido {}", f.display()));
+            log(&crate::tf!("Removido {}", "Removed {}", f.display()));
         }
     }
     crate::bootcfg::regenerate(log)?;
-    log("Pronto. Reinicie para a placa voltar ao Linux.");
+    log(crate::i18n::tr(
+        "Pronto. Reinicie para a placa voltar ao Linux.",
+    ));
     Ok(())
 }
 
@@ -438,14 +467,18 @@ pub fn virt_install_args(topo: &Topology, g: &Gpu, vm: &NewVm) -> Vec<String> {
 
 pub fn create(topo: &Topology, g: &Gpu, vm: &NewVm) -> Result<(), String> {
     if !vm.iso.is_file() {
-        return Err(format!("ISO não encontrada: {}", vm.iso.display()));
+        return Err(crate::tf!(
+            "ISO não encontrada: {}",
+            "ISO not found: {}",
+            vm.iso.display()
+        ));
     }
     if !vm
         .name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
-        return Err("nome da VM: letras, números, - e _".into());
+        return Err(crate::i18n::tr("nome da VM: letras, números, - e _").into());
     }
     let a = virt_install_args(topo, g, vm);
     let st = Command::new("virt-install")
@@ -455,7 +488,10 @@ pub fn create(topo: &Topology, g: &Gpu, vm: &NewVm) -> Result<(), String> {
     if st.success() {
         Ok(())
     } else {
-        Err(format!("virt-install terminou com erro ({st})"))
+        Err(crate::tf!(
+            "virt-install terminou com erro ({st})",
+            "virt-install finished with an error ({st})"
+        ))
     }
 }
 

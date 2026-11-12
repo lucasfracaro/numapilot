@@ -33,15 +33,15 @@ impl Service {
     /// "rodando", "parado", "com falha"...
     pub fn state_text(&self) -> &'static str {
         match (self.active.as_str(), self.sub.as_str()) {
-            ("active", "running") => "rodando",
-            ("active", "exited") => "terminou (ok)",
-            ("active", "waiting") | ("active", "listening") => "esperando",
-            ("active", _) => "ativo",
-            ("activating", _) => "iniciando",
-            ("deactivating", _) => "parando",
-            ("reloading", _) => "recarregando",
-            ("failed", _) => "com falha",
-            _ => "parado",
+            ("active", "running") => crate::i18n::tr("rodando"),
+            ("active", "exited") => crate::i18n::tr("terminou (ok)"),
+            ("active", "waiting") | ("active", "listening") => crate::i18n::tr("esperando"),
+            ("active", _) => crate::i18n::tr("ativo"),
+            ("activating", _) => crate::i18n::tr("iniciando"),
+            ("deactivating", _) => crate::i18n::tr("parando"),
+            ("reloading", _) => crate::i18n::tr("recarregando"),
+            ("failed", _) => crate::i18n::tr("com falha"),
+            _ => crate::i18n::tr("parado"),
         }
     }
     /// Abre no boot/login?
@@ -173,8 +173,9 @@ pub fn list(user: bool) -> Vec<Service> {
         if s.description.is_empty() {
             s.description = s.unit.trim_end_matches(".service").to_string();
         }
-        s.protected = crate::startup::essential_unit(&s.unit)
-            .then_some("essencial para o sistema, a rede ou o login");
+        s.protected = crate::startup::essential_unit(&s.unit).then_some(crate::i18n::tr(
+            "essencial para o sistema, a rede ou o login",
+        ));
     }
     // programas abertos pelo desktop viram unidades temporárias (app-...@hash.service): são
     // programas, não serviços (estão na aba Programas)
@@ -203,9 +204,9 @@ impl Verb {
     }
     pub fn text(self) -> &'static str {
         match self {
-            Verb::Start => "Iniciar",
-            Verb::Stop => "Parar",
-            Verb::Restart => "Reiniciar",
+            Verb::Start => crate::i18n::tr("Iniciar"),
+            Verb::Stop => crate::i18n::tr("Parar"),
+            Verb::Restart => crate::i18n::tr("Reiniciar"),
         }
     }
 }
@@ -227,7 +228,12 @@ pub fn action_command(s: &Service, v: Verb) -> Result<Vec<String>, String> {
     }
     c.push(v.word().into());
     c.push(s.unit.clone());
-    crate::log::info(&format!("serviço {}: {}", s.id(), v.word()));
+    crate::log::info(&crate::tf!(
+        "serviço {}: {}",
+        "service {}: {}",
+        s.id(),
+        v.word()
+    ));
     Ok(c)
 }
 
@@ -273,9 +279,12 @@ pub fn unit_logs(unit: &str, user: bool, lines: u32) -> String {
             if t.trim().is_empty() || t.contains("-- No entries --") {
                 let e = String::from_utf8_lossy(&o.stderr).trim().to_string();
                 if e.is_empty() {
-                    "(nada no log)".into()
+                    crate::i18n::tr("(nada no log)").into()
                 } else {
-                    format!("(sem acesso ao log: {e}; entre no grupo wheel ou systemd-journal)")
+                    crate::tf!(
+                        "(sem acesso ao log: {e}; entre no grupo wheel ou systemd-journal)",
+                        "(no access to the log: {e}; join the wheel or systemd-journal group)"
+                    )
                 }
             } else {
                 t

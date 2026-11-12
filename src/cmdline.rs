@@ -402,25 +402,33 @@ pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Re
                 c.is_whitespace() || c == '"' || c == '\'' || c == '\\' || c == '$' || c == '`'
             })
         {
-            return Err(format!("parâmetro inválido: {p:?}"));
+            return Err(crate::tf!(
+                "parâmetro inválido: {p:?}",
+                "invalid parameter: {p:?}"
+            ));
         }
     }
     if !crate::util::is_root() {
-        return Err("precisa de root (use sudo, ou o botão da interface pede a senha)".into());
+        return Err(crate::i18n::tr(
+            "precisa de root (use sudo, ou o botão da interface pede a senha)",
+        )
+        .into());
     }
-    let l = detect()
-        .ok_or("não reconheci o bootloader (Limine, systemd-boot/sdboot-manage, GRUB ou rEFInd)")?;
+    let l = detect().ok_or(crate::i18n::tr(
+        "não reconheci o bootloader (Limine, systemd-boot/sdboot-manage, GRUB ou rEFInd)",
+    ))?;
     let text =
         std::fs::read_to_string(&l.path).map_err(|e| format!("{}: {e}", l.path.display()))?;
     let (new, first) = rewrite(l.kind, &text, &|cur| edit_params(cur, add, remove));
     if first.is_none() {
-        return Err(format!(
+        return Err(crate::tf!(
             "não achei a linha dos parâmetros em {}",
+            "could not find the parameters line in {}",
             l.path.display()
         ));
     }
     if new == text {
-        log("Nada a mudar.");
+        log(crate::i18n::tr("Nada a mudar."));
         return Ok(());
     }
     let ts = crate::history::now();
@@ -436,17 +444,26 @@ pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Re
         .unwrap();
     std::fs::write(&bak, &text).map_err(|e| format!("backup: {e}"))?;
     std::fs::write(&l.path, &new).map_err(|e| format!("{}: {e}", l.path.display()))?;
-    log(&format!(
+    log(&crate::tf!(
         "{} ({}): backup em {}",
+        "{} ({}): backup in {}",
         l.name(),
         l.path.display(),
         bak.display()
     ));
     let (_, after) = rewrite(l.kind, &new, &|s| s.to_string());
-    log(&format!("Parâmetros: {}", after.unwrap_or_default()));
+    log(&crate::tf!(
+        "Parâmetros: {}",
+        "Parameters: {}",
+        after.unwrap_or_default()
+    ));
     if let Some(cmd) = l.regen() {
         if crate::containers::which(cmd[0]) {
-            log(&format!("Regravando as entradas: {}", cmd.join(" ")));
+            log(&crate::tf!(
+                "Regravando as entradas: {}",
+                "Rewriting the entries: {}",
+                cmd.join(" ")
+            ));
             let st = std::process::Command::new(cmd[0])
                 .args(&cmd[1..])
                 .status()
@@ -454,19 +471,21 @@ pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Re
             if !st.success() {
                 // Volta o arquivo para não deixar meio aplicado.
                 let _ = std::fs::write(&l.path, &text);
-                return Err(format!(
+                return Err(crate::tf!(
                     "{} falhou ({st}); arquivo original restaurado",
+                    "{} failed ({st}); original file restored",
                     cmd[0]
                 ));
             }
         } else {
-            log(&format!(
+            log(&crate::tf!(
                 "Aviso: {} não encontrado; rode o equivalente para regravar o boot.",
+                "Warning: {} not found; run the equivalent to rewrite the boot entries.",
                 cmd[0]
             ));
         }
     }
-    log("Pronto. Reinicie para valer.");
+    log(crate::i18n::tr("Pronto. Reinicie para valer."));
     Ok(())
 }
 

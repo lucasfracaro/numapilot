@@ -2,9 +2,10 @@
 
 ## Ainda não lançado
 
-- **Interface em inglês completa** (Configurações → Idioma): todas as abas, botões, dicas, a
-  janela Ajustar… e o roteiro da aba Testes. Continuam em português as mensagens que vêm do
-  serviço e da linha de comando (diagnóstico, autoteste, erros do serviço).
+- **Inglês em tudo** (Configurações → Idioma, ou `NUMAPILOT_LANG=en`): a interface inteira, as
+  mensagens do serviço e a linha de comando (doctor, autoteste, erros, avisos no celular). O
+  serviço responde no idioma de quem pede. Sem escolha, vale o idioma do sistema. Continuam em
+  português o `--help`, o painel web, os registros internos do serviço e a documentação.
 - **Latência do cache por núcleo** (`numapilot bench-cores` e botão "Medir núcleos" no Mapa):
   mede o acesso ao cache L3 a partir de cada núcleo e, quando a diferença é maior que o ruído da
   medição, a escolha de núcleos (perfis com número de núcleos e o turbo máximo) passa a preferir

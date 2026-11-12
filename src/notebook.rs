@@ -113,10 +113,10 @@ pub fn set_charge_limit(pct: u8) -> Result<(), String> {
     let bats = battery_info();
     let with: Vec<&Battery> = bats.iter().filter(|b| b.charge_limit.is_some()).collect();
     if with.is_empty() {
-        return Err("este notebook não permite limitar a carga pelo Linux".into());
+        return Err(crate::i18n::tr("este notebook não permite limitar a carga pelo Linux").into());
     }
     if !(20..=100).contains(&pct) {
-        return Err("limite de carga entre 20% e 100%".into());
+        return Err(crate::i18n::tr("limite de carga entre 20% e 100%").into());
     }
     for b in with {
         let p = b.dir.join("charge_control_end_threshold");
@@ -183,7 +183,10 @@ pub fn ppd_profile_for(p: &str) -> &'static str {
 
 pub fn set_platform_profile(p: &str) -> Result<(), String> {
     if !platform_profiles().iter().any(|c| c == p) {
-        return Err(format!("perfil {p} não existe neste notebook"));
+        return Err(crate::tf!(
+            "perfil {p} não existe neste notebook",
+            "profile {p} does not exist on this laptop"
+        ));
     }
     // Com o power-profiles-daemon ligado, troca por ele: o seletor de energia do desktop fica
     // igual e ele não desfaz a troca. Depois acerta o perfil exato (ex.: quiet em vez de low-power).
@@ -200,7 +203,7 @@ pub fn set_platform_profile(p: &str) -> Result<(), String> {
         return fs::write(legacy, p).map_err(|e| e.to_string());
     }
     // só a interface nova: escreve em cada fornecedor que aceita esse perfil
-    let mut last = Err("nenhum fornecedor de perfil de energia".to_string());
+    let mut last = Err(crate::i18n::tr("nenhum fornecedor de perfil de energia").to_string());
     for (_, d) in profile_handlers() {
         if read_trim(d.join("choices")).is_some_and(|c| c.split_whitespace().any(|x| x == p)) {
             last = fs::write(d.join("profile"), p).map_err(|e| e.to_string());
@@ -215,18 +218,23 @@ pub fn acer_diagnose() -> Vec<String> {
     let loaded = |m: &str| std::path::Path::new(&format!("/sys/module/{m}")).exists();
     let acer = loaded("acer_wmi");
     let linuwu = loaded("linuwu_sense");
-    v.push(format!(
+    v.push(crate::tf!(
         "módulos: acer_wmi {} · linuwu_sense {} · amd_pmf {}",
-        if acer { "carregado" } else { "não carregado" },
-        if linuwu {
-            "carregado"
+        "modules: acer_wmi {} · linuwu_sense {} · amd_pmf {}",
+        if acer {
+            crate::i18n::tr("carregado")
         } else {
-            "não carregado"
+            crate::i18n::tr("não carregado")
+        },
+        if linuwu {
+            crate::i18n::tr("carregado")
+        } else {
+            crate::i18n::tr("não carregado")
         },
         if loaded("amd_pmf") {
-            "carregado"
+            crate::i18n::tr("carregado")
         } else {
-            "não carregado"
+            crate::i18n::tr("não carregado")
         }
     ));
     if let Some(p) = read_trim("/sys/module/acer_wmi/parameters/predator_v4") {
@@ -234,10 +242,14 @@ pub fn acer_diagnose() -> Vec<String> {
     }
     let h = profile_handlers();
     v.push(if h.is_empty() {
-        "nenhum fornecedor de perfil de energia (/sys/class/platform-profile vazio)".into()
+        crate::i18n::tr(
+            "nenhum fornecedor de perfil de energia (/sys/class/platform-profile vazio)",
+        )
+        .into()
     } else {
-        format!(
+        crate::tf!(
             "perfil de energia por: {}",
+            "power profile from: {}",
             h.iter()
                 .map(|(n, _)| n.as_str())
                 .collect::<Vec<_>>()
@@ -264,7 +276,7 @@ pub fn acer_diagnose() -> Vec<String> {
             .filter(|l| l.to_lowercase().contains("linuwu"))
             .collect();
         if lines.is_empty() {
-            v.push("Linuwu-Sense não aparece no dkms status".into());
+            v.push(crate::i18n::tr("Linuwu-Sense não aparece no dkms status").into());
         } else {
             for l in &lines {
                 v.push(format!("dkms: {l}"));
@@ -273,17 +285,18 @@ pub fn acer_diagnose() -> Vec<String> {
                 .iter()
                 .any(|l| l.contains(&kernel) && l.contains("installed"))
             {
-                v.push(format!(
+                v.push(crate::tf!(
                     "o Linuwu-Sense não está compilado para o kernel em uso ({kernel}): \
-                     sudo dkms autoinstall e reinicie (ou veja se o projeto já suporta este kernel)"
+                     sudo dkms autoinstall e reinicie (ou veja se o projeto já suporta este kernel)", "Linuwu-Sense is not built for the running kernel ({kernel}): \
+                     sudo dkms autoinstall and reboot (or check whether the project already supports this kernel)"
                 ));
             }
         }
     }
     if !acer && !linuwu {
         v.push(
-            "sem acer_wmi nem linuwu_sense carregados: o notebook fica sem perfil de energia e sem \
-             controles da Acer"
+            crate::i18n::tr("sem acer_wmi nem linuwu_sense carregados: o notebook fica sem perfil de energia e sem \
+             controles da Acer")
                 .into(),
         );
     }
@@ -319,20 +332,27 @@ pub fn set_runtime_pm(pci: &str, auto: bool) -> Result<(), String> {
 }
 
 /// "dormindo (D3cold)", "ligada"...
+/// A placa está dormindo? (`dgpu_state` responde no idioma em uso)
+pub fn dgpu_asleep(pci: &str) -> bool {
+    let s = dgpu_state(pci);
+    s.starts_with("dormindo") || s.starts_with("asleep")
+}
+
 pub fn dgpu_state(pci: &str) -> String {
     let rs =
         read_trim(sys(&format!("bus/pci/devices/{pci}/power/runtime_status"))).unwrap_or_default();
     let ps = read_trim(sys(&format!("bus/pci/devices/{pci}/power_state"))).unwrap_or_default();
     match rs.as_str() {
-        "suspended" => format!(
+        "suspended" => crate::tf!(
             "dormindo{}",
+            "asleep{}",
             if ps.is_empty() {
                 String::new()
             } else {
                 format!(" ({ps})")
             }
         ),
-        "active" => "ligada".into(),
+        "active" => crate::i18n::tr("ligada").into(),
         "" => "?".into(),
         o => o.into(),
     }
@@ -367,7 +387,7 @@ pub fn set_nvidia_powerd(on: bool) -> Result<(), String> {
     if st.success() {
         Ok(())
     } else {
-        Err("systemctl falhou".into())
+        Err(crate::i18n::tr("systemctl falhou").into())
     }
 }
 
@@ -474,16 +494,18 @@ pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
 /// Dica para os programas que costumam prender a NVIDIA do notebook.
 pub fn holder_hint(name: &str) -> Option<&'static str> {
     match name {
-        "lact" | "lactd" => Some(
+        "lact" | "lactd" => Some(crate::i18n::tr(
             "LACT: o serviço dele lê a NVIDIA o tempo todo (NVML). Se o numapilot já faz o que você usa nele: sudo systemctl disable --now lactd",
-        ),
-        "sunshine" => Some(
+        )),
+        "sunshine" => Some(crate::i18n::tr(
             "Sunshine: codifica na NVIDIA (NVENC). Escolha VA-API na aba Streaming (usa a 680M) ou tire o Sunshine da inicialização",
-        ),
-        "Xwayland" => Some("Xwayland: sudo numapilot hybrid xwayland on e entre de novo na sessão"),
-        "nvidia-powerd" | "nvidia-persistenced" => {
-            Some("serviço da NVIDIA: o numapilot para e liga junto com a placa")
-        }
+        )),
+        "Xwayland" => Some(crate::i18n::tr(
+            "Xwayland: sudo numapilot hybrid xwayland on e entre de novo na sessão",
+        )),
+        "nvidia-powerd" | "nvidia-persistenced" => Some(crate::i18n::tr(
+            "serviço da NVIDIA: o numapilot para e liga junto com a placa",
+        )),
         _ => None,
     }
 }

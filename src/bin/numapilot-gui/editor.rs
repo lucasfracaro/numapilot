@@ -119,7 +119,7 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
     let cur = upscale::MODES
         .iter()
         .find(|m| m.0 == u.mode)
-        .map(|m| m.1)
+        .map(|m| crate::i18n::tr(m.1))
         .unwrap_or(crate::i18n::tr("Nenhum"));
     egui::ComboBox::from_id_salt("ed-up")
         .selected_text(cur)
@@ -127,6 +127,7 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         .show_ui(ui, |ui| {
             for (k, l, d) in upscale::MODES {
                 let ok = *k == "nenhum" || sug.contains(k);
+                let l = crate::i18n::tr(l);
                 let label = if ok {
                     l.to_string()
                 } else {
@@ -136,7 +137,7 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                     )
                 };
                 ui.selectable_value(&mut u.mode, k.to_string(), label)
-                    .on_hover_text(*d);
+                    .on_hover_text(crate::i18n::tr(d));
             }
         });
     if u.mode != "nenhum" {
@@ -145,7 +146,7 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 upscale::MODES
                     .iter()
                     .find(|m| m.0 == u.mode)
-                    .map(|m| m.2)
+                    .map(|m| crate::i18n::tr(m.2))
                     .unwrap_or(""),
             )
             .small()

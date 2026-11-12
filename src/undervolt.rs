@@ -77,7 +77,7 @@ pub fn method(g: &Gpu, base: &GpuControl, clock: Option<u32>) -> Result<Method, 
             limit: 300,
         });
     }
-    let od = gpuctl::read_od(&g.pci).ok_or("OverDrive desligado: ligue em Configurações → Opções de boot (amdgpu.ppfeaturemask) e reinicie")?;
+    let od = gpuctl::read_od(&g.pci).ok_or(crate::i18n::tr("OverDrive desligado: ligue em Configurações → Opções de boot (amdgpu.ppfeaturemask) e reinicie"))?;
     if let Some((lo, _)) = od.range_vo {
         return Ok(Method::AmdOffset {
             limit: lo.max(-200),
@@ -101,7 +101,10 @@ pub fn method(g: &Gpu, base: &GpuControl, clock: Option<u32>) -> Result<Method, 
             min_mv,
         });
     }
-    Err("esta placa não expõe voltagem (nem curva nem deslocamento) no pp_od_clk_voltage".into())
+    Err(crate::i18n::tr(
+        "esta placa não expõe voltagem (nem curva nem deslocamento) no pp_od_clk_voltage",
+    )
+    .into())
 }
 
 /// O ajuste do passo `n` (0 = ponto de partida).
@@ -173,17 +176,20 @@ pub fn control_at(base: &GpuControl, m: &Method, n: i32, step: i32) -> Option<Gp
 
 pub fn describe(c: &GpuControl, m: &Method) -> String {
     match m {
-        Method::NvOffset { .. } => format!(
+        Method::NvOffset { .. } => crate::tf!(
             "clock até {} MHz, curva {:+} MHz",
+            "clock up to {} MHz, curve {:+} MHz",
             c.clock_max_mhz.unwrap_or(0),
             c.nv_gpc_offset_mhz.unwrap_or(0)
         ),
-        Method::AmdOffset { .. } => format!(
+        Method::AmdOffset { .. } => crate::tf!(
             "voltagem {:+} mV",
+            "voltage {:+} mV",
             c.od.as_ref().and_then(|o| o.voltage_offset_mv).unwrap_or(0)
         ),
-        Method::AmdCurve { mhz, .. } => format!(
+        Method::AmdCurve { mhz, .. } => crate::tf!(
             "{mhz} MHz a {} mV",
+            "{mhz} MHz at {} mV",
             c.od.as_ref()
                 .and_then(|o| o.curve.last())
                 .map(|p| p.1)
@@ -293,13 +299,18 @@ fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Ve
     let env = stress_env(g, topo);
     let cands = stress_cmds();
     if cands.is_empty() {
-        return Err("instale o vkmark ou o glmark2 (sudo pacman -S vkmark glmark2)".into());
+        return Err(crate::i18n::tr(
+            "instale o vkmark ou o glmark2 (sudo pacman -S vkmark glmark2)",
+        )
+        .into());
     }
-    out("  escolhendo o programa de carga que mais puxa a placa (8 s cada):");
+    out(crate::i18n::tr(
+        "  escolhendo o programa de carga que mais puxa a placa (8 s cada):",
+    ));
     let mut best: Option<(u64, Vec<String>)> = None;
     for c in cands {
         if STOP.load(Ordering::SeqCst) {
-            return Err("interrompido: nada foi mudado".into());
+            return Err(crate::i18n::tr("interrompido: nada foi mudado").into());
         }
         let Ok(mut ch) = Command::new(&c[0])
             .args(&c[1..])
@@ -331,11 +342,16 @@ fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Ve
         let _ = ch.kill();
         let _ = ch.wait();
         if !ok {
-            out(&format!("    {}: caiu ao abrir", c.join(" ")));
+            out(&crate::tf!(
+                "    {}: caiu ao abrir",
+                "    {}: crashed on start",
+                c.join(" ")
+            ));
             continue;
         }
-        out(&format!(
+        out(&crate::tf!(
             "    {}: {util}% de uso{}",
+            "    {}: {util}% usage{}",
             c.join(" "),
             clock.map(|c| format!(", {c:.0} MHz")).unwrap_or_default()
         ));
@@ -349,17 +365,23 @@ fn pick_stress(g: &Gpu, topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<Ve
     }
     let Some((util, c)) = best else {
         return Err(
-            "nenhum programa de carga roda nesta placa (vkmark e glmark2 caíram ao abrir): nada foi mudado"
+            crate::i18n::tr("nenhum programa de carga roda nesta placa (vkmark e glmark2 caíram ao abrir): nada foi mudado")
                 .into(),
         );
     };
     if util < 80 {
-        return Err(format!(
+        return Err(crate::tf!(
             "o programa de carga mais pesado só usou {util}% da placa: assim o teste não prova nada \
-             (a placa fica em clock baixo, onde o ajuste não faz diferença). Nada foi mudado."
+             (a placa fica em clock baixo, onde o ajuste não faz diferença). Nada foi mudado.",
+            "the heaviest load program only used {util}% of the card: the test proves nothing that way \
+             (the card stays at a low clock, where the tweak makes no difference). Nothing was changed."
         ));
     }
-    out(&format!("  teste de carga: {}", c.join(" ")));
+    out(&crate::tf!(
+        "  teste de carga: {}",
+        "  load test: {}",
+        c.join(" ")
+    ));
     Ok(c)
 }
 
@@ -376,7 +398,8 @@ impl StepStats {
         [
             self.clock_mhz.map(|v| format!("{v:.0} MHz")),
             self.power_w.map(|v| format!("{v:.0} W")),
-            self.util_pct.map(|v| format!("{v:.0}% de uso")),
+            self.util_pct
+                .map(|v| crate::tf!("{v:.0}% de uso", "{v:.0}% usage")),
         ]
         .into_iter()
         .flatten()
@@ -422,7 +445,7 @@ fn stress(
     let res = loop {
         std::thread::sleep(Duration::from_millis(500));
         if STOP.load(Ordering::SeqCst) {
-            break Err("interrompido".into());
+            break Err(crate::i18n::tr("interrompido").into());
         }
         if let Ok(Some(st)) = ch.try_wait() {
             // terminou a rodada normalmente: começa outra
@@ -436,15 +459,19 @@ fn stress(
             {
                 // caiu sem a placa reclamar no kernel: pode ser o programa; dá mais uma chance
                 crashes += 1;
-                out(&format!(
-                    "    o programa de teste caiu ({st}) sem erro da placa; tentando de novo"
+                out(&crate::tf!(
+                    "    o programa de teste caiu ({st}) sem erro da placa; tentando de novo",
+                    "    the test program crashed ({st}) with no card error; trying again"
                 ));
                 ch = match spawn() {
                     Ok(c) => c,
                     Err(e) => break Err(e),
                 };
             } else {
-                break Err(format!("o teste de carga caiu ({st})"));
+                break Err(crate::tf!(
+                    "o teste de carga caiu ({st})",
+                    "the load test crashed ({st})"
+                ));
             }
         }
         let el = t0.elapsed().as_secs();
@@ -464,7 +491,8 @@ fn stress(
                     .unwrap_or_default(),
                 s.power_w.map(|p| format!("{p:.0} W")).unwrap_or_default(),
                 ck.map(|c| format!("{c:.0} MHz")).unwrap_or_default(),
-                u.map(|u| format!("{u}% uso")).unwrap_or_default()
+                u.map(|u| crate::tf!("{u}% uso", "{u}% usage"))
+                    .unwrap_or_default()
             ));
         }
         let errs = gpu_errors(&kernel_log_since(since), &g.pci, g.is_nvidia());
@@ -496,7 +524,7 @@ fn set(pci: &str, c: &GpuControl, trial: bool) -> Result<String, String> {
         control: c.clone(),
         trial,
     })
-    .map_err(|e| format!("serviço numapilot: {e}"))?;
+    .map_err(|e| crate::tf!("serviço numapilot: {e}", "numapilot service: {e}"))?;
     if r.ok { Ok(r.message) } else { Err(r.message) }
 }
 
@@ -520,16 +548,22 @@ pub fn run(
         _ => 10,
     });
     let cmd = pick_stress(g, topo, out)?;
-    out(&format!(
+    out(&crate::tf!(
         "{}: undervolt automático, {} s por passo",
-        g.alias, opts.secs
+        "{}: automatic undervolt, {} s per step",
+        g.alias,
+        opts.secs
     ));
     if let Method::NvOffset { clock_max, .. } = m {
-        out(&format!(
+        out(&crate::tf!(
             "  Na NVIDIA o Linux não deixa escolher a voltagem: o clock fica travado em até {clock_max} MHz \
              e a curva sobe a cada passo, então o mesmo clock roda com voltagem menor. Compare os passos: \
              menos watts no mesmo clock ou, se a placa está no limite de potência, mais clock nos mesmos watts. \
-             A temperatura sobe com o tempo de carga (a placa vai esquentando); compare depois de alguns passos."
+             A temperatura sobe com o tempo de carga (a placa vai esquentando); compare depois de alguns passos.",
+            "  On NVIDIA, Linux does not let you choose the voltage: the clock stays locked at up to {clock_max} MHz \
+             and the curve goes up at each step, so the same clock runs at a lower voltage. Compare the steps: \
+             fewer watts at the same clock or, if the card is at its power limit, more clock at the same watts. \
+             Temperature rises with load time (the card keeps warming up); compare after a few steps."
         ));
     }
     let mut first: Option<StepStats> = None;
@@ -540,22 +574,29 @@ pub fn run(
     // Passo 0: o ponto de partida também precisa aguentar (na NVIDIA, já com o clock travado).
     loop {
         let Some(c) = control_at(&base, &m, n, step) else {
-            out("  chegou ao limite seguro: parando aqui");
+            out(crate::i18n::tr("  chegou ao limite seguro: parando aqui"));
             break;
         };
-        out(&format!("  passo {n}: {}", describe(&c, &m)));
+        out(&crate::tf!(
+            "  passo {n}: {}",
+            "  step {n}: {}",
+            describe(&c, &m)
+        ));
         if let Err(e) = set(&g.pci, &c, true) {
             let _ = set(&g.pci, &good, true);
             if n == 0 {
                 let _ = set(&g.pci, &base, false);
                 return Err(e);
             }
-            out(&format!("  a placa recusou: {e}"));
+            out(&crate::tf!(
+                "  a placa recusou: {e}",
+                "  the card refused: {e}"
+            ));
             break;
         }
         match stress(g, topo, &cmd, opts.secs, out) {
             Ok(st) => {
-                out(&format!("    passou ({})", st.line()));
+                out(&crate::tf!("    passou ({})", "    passed ({})", st.line()));
                 if first.is_none() {
                     first = Some(st.clone());
                 }
@@ -566,18 +607,20 @@ pub fn run(
             }
             Err(_) if STOP.load(Ordering::SeqCst) => {
                 let _ = set(&g.pci, &base, false);
-                return Err("interrompido: voltei ao que era antes".into());
+                return Err(crate::i18n::tr("interrompido: voltei ao que era antes").into());
             }
             Err(e) => {
-                out(&format!("    falhou: {e}"));
+                out(&crate::tf!("    falhou: {e}", "    failed: {e}"));
                 if n == 0 {
                     let _ = set(&g.pci, &base, false);
                     return Err(if e.starts_with("kernel:") {
-                        "nem o ponto de partida aguentou (a placa deu erro no kernel): nada foi mudado".into()
+                        crate::i18n::tr("nem o ponto de partida aguentou (a placa deu erro no kernel): nada foi mudado").into()
                     } else {
-                        format!(
+                        crate::tf!(
                             "o programa de teste ({}) caiu já no ponto de partida, sem erro da placa no kernel: \
                              o problema parece ser o programa, não a placa. Nada foi mudado.",
+                            "the test program ({}) crashed at the starting point already, with no card error in the kernel: \
+                             the problem seems to be the program, not the card. Nothing was changed.",
                             cmd[0]
                         )
                     });
@@ -592,34 +635,49 @@ pub fn run(
     if keep == 0 && ok_steps == 0 {
         final_c = good.clone();
     }
-    out(&format!(
+    out(&crate::tf!(
         "  com {} passo(s) de margem: {}",
+        "  with {} step(s) of margin: {}",
         opts.margin,
         describe(&final_c, &m)
     ));
     set(&g.pci, &final_c, true)?;
-    out(&format!("  confirmação: {} s", opts.secs * 2));
+    out(&crate::tf!(
+        "  confirmação: {} s",
+        "  confirmation: {} s",
+        opts.secs * 2
+    ));
     if let Err(e) = stress(g, topo, &cmd, opts.secs * 2, out) {
         let _ = set(&g.pci, &base, false);
         if STOP.load(Ordering::SeqCst) {
-            return Err("interrompido: voltei ao que era antes".into());
+            return Err(crate::i18n::tr("interrompido: voltei ao que era antes").into());
         }
-        return Err(format!(
-            "a confirmação falhou ({e}): voltei ao que era antes"
+        return Err(crate::tf!(
+            "a confirmação falhou ({e}): voltei ao que era antes",
+            "the confirmation failed ({e}): went back to what it was before"
         ));
     }
     let msg = set(&g.pci, &final_c, false)?;
-    out(&format!("  gravado: {msg}"));
+    out(&crate::tf!("  gravado: {msg}", "  saved: {msg}"));
     if let (Some(a), Some(b)) = (&first, &last_ok) {
-        out(&format!("  sem ajuste:      {}", a.line()));
-        out(&format!("  último que passou: {}", b.line()));
+        out(&crate::tf!(
+            "  sem ajuste:      {}",
+            "  untuned:         {}",
+            a.line()
+        ));
+        out(&crate::tf!(
+            "  último que passou: {}",
+            "  last that passed:  {}",
+            b.line()
+        ));
     }
     crate::notify::event(
         "jobs",
         &format!("uv-{}", g.pci),
-        &format!("Undervolt de {} pronto", g.alias),
-        &format!(
+        &crate::tf!("Undervolt de {} pronto", "Undervolt of {} done", g.alias),
+        &crate::tf!(
             "{} ({} passo(s) estáveis)",
+            "{} ({} stable step(s))",
             describe(&final_c, &m),
             ok_steps
         ),

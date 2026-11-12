@@ -174,8 +174,9 @@ pub fn run(
         let lat_cpu = firsts.first().copied().unwrap_or(node.cpus[0]);
         let bw_cpus: Vec<usize> = firsts.iter().copied().take(threads.max(1)).collect();
         for (j, &mn) in nodes.iter().enumerate() {
-            progress(&format!(
-                "CPUs do socket {cn} lendo a memória do socket {mn}..."
+            progress(&crate::tf!(
+                "CPUs do socket {cn} lendo a memória do socket {mn}...",
+                "CPUs of socket {cn} reading the memory of socket {mn}..."
             ));
             r.latency_ns[i][j] = latency(lat_cpu, mn, size_mb);
             r.bandwidth_gbs[i][j] = bandwidth(&bw_cpus, mn, (size_mb / 2).max(16));
@@ -187,7 +188,11 @@ pub fn run(
 pub fn print(r: &BenchResult) {
     let head: Vec<String> = r.nodes.iter().map(|n| format!("mem {n:>2}")).collect();
     println!(
-        "\nLatência (ns por acesso)      linhas = CPUs do socket, colunas = memória do socket"
+        "{}",
+        crate::tf!(
+            "\nLatência (ns por acesso)      linhas = CPUs do socket, colunas = memória do socket",
+            "\nLatency (ns per access)      rows = socket's CPUs, columns = socket's memory"
+        )
     );
     println!("          {}", head.join("  "));
     for (i, n) in r.nodes.iter().enumerate() {
@@ -197,7 +202,14 @@ pub fn print(r: &BenchResult) {
             .collect();
         println!("CPU {n:>2}    {}", row.join("  "));
     }
-    println!("\nBanda de leitura (GB/s, {} threads)", r.threads);
+    println!(
+        "{}",
+        crate::tf!(
+            "\nBanda de leitura (GB/s, {} threads)",
+            "\nRead bandwidth (GB/s, {} threads)",
+            r.threads
+        )
+    );
     println!("          {}", head.join("  "));
     for (i, n) in r.nodes.iter().enumerate() {
         let row: Vec<String> = r.bandwidth_gbs[i]
@@ -211,8 +223,12 @@ pub fn print(r: &BenchResult) {
         let remote = r.latency_ns[0][1];
         if local.is_finite() && remote.is_finite() && local > 0.0 {
             println!(
-                "\nAcessar a memória do outro socket custa {:.0}% a mais de latência.",
-                (remote / local - 1.0) * 100.0
+                "{}",
+                crate::tf!(
+                    "\nAcessar a memória do outro socket custa {:.0}% a mais de latência.",
+                    "\nAccessing the other socket's memory costs {:.0}% more latency.",
+                    (remote / local - 1.0) * 100.0
+                )
             );
         }
     }

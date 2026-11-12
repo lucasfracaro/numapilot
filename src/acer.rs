@@ -109,16 +109,19 @@ pub fn validate(key: &str, v: &str) -> Result<(), String> {
     let nums = |n: usize, max: &[u32]| -> Result<(), String> {
         let p: Vec<&str> = v.split(',').collect();
         if p.len() != n {
-            return Err(format!("{key}: esperava {n} números separados por vírgula"));
+            return Err(crate::tf!(
+                "{key}: esperava {n} números separados por vírgula",
+                "{key}: expected {n} comma-separated numbers"
+            ));
         }
         for (i, x) in p.iter().enumerate() {
-            let x: u32 = x
-                .trim()
-                .parse()
-                .map_err(|_| format!("{key}: '{x}' não é número"))?;
+            let x: u32 = x.trim().parse().map_err(|_| {
+                crate::tf!("{key}: '{x}' não é número", "{key}: '{x}' is not a number")
+            })?;
             if x > max[i.min(max.len() - 1)] {
-                return Err(format!(
+                return Err(crate::tf!(
                     "{key}: {x} acima do máximo {}",
+                    "{key}: {x} above the maximum {}",
                     max[i.min(max.len() - 1)]
                 ));
             }
@@ -156,14 +159,21 @@ pub fn validate(key: &str, v: &str) -> Result<(), String> {
                 Err("kb_zones: use RRGGBB,RRGGBB,RRGGBB,RRGGBB,brilho".into())
             }
         }
-        _ => Err(format!("ajuste desconhecido: {key}")),
+        _ => Err(crate::tf!(
+            "ajuste desconhecido: {key}",
+            "unknown setting: {key}"
+        )),
     }
 }
 
 pub fn set(key: &str, v: &str) -> Result<(), String> {
     validate(key, v)?;
-    let p = path_for(key)
-        .ok_or_else(|| format!("{key}: o módulo linuwu_sense não expõe isso neste notebook"))?;
+    let p = path_for(key).ok_or_else(|| {
+        crate::tf!(
+            "{key}: o módulo linuwu_sense não expõe isso neste notebook",
+            "{key}: the linuwu_sense module does not expose this on this laptop"
+        )
+    })?;
     std::fs::write(&p, v).map_err(|e| format!("{}: {e}", p.display()))
 }
 

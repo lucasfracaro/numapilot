@@ -53,8 +53,9 @@ impl Report {
         self.count(St::Falhou)
     }
     pub fn summary(&self) -> String {
-        format!(
+        crate::tf!(
             "{} testes: {} OK, {} avisos, {} falharam, {} pulados",
+            "{} tests: {} OK, {} warnings, {} failed, {} skipped",
             self.itens.len(),
             self.count(St::Ok),
             self.count(St::Aviso),
@@ -149,25 +150,28 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         out,
         group: String::new(),
     };
-    (r.out)(&format!(
+    (r.out)(&crate::tf!(
         "numapilot {} — autoteste em {} ({})",
+        "numapilot {} — self-test on {} ({})",
         env!("CARGO_PKG_VERSION"),
         hostname(),
         crate::log::now()
     ));
-    (r.out)("Só lê: nada é mudado nesta máquina.");
+    (r.out)(crate::i18n::tr("Só lê: nada é mudado nesta máquina."));
 
     // ---------------------------------------------------------------- sistema
-    r.group("Sistema");
-    r.t("Versão", || {
+    r.group(crate::i18n::tr("Sistema"));
+    r.t(crate::i18n::tr("Versão"), || {
         let exe = std::env::current_exe()
             .map(|p| p.display().to_string())
             .unwrap_or_default();
         let how = match crate::selfupdate::how() {
-            crate::selfupdate::How::Package(p) => format!("pacote {p}"),
-            crate::selfupdate::How::Source(d) => format!("código em {}", d.display()),
+            crate::selfupdate::How::Package(p) => crate::tf!("pacote {p}", "package {p}"),
+            crate::selfupdate::How::Source(d) => {
+                crate::tf!("código em {}", "code in {}", d.display())
+            }
             crate::selfupdate::How::Unknown => {
-                "instalado pelo install.sh (sem repositório git)".to_string()
+                crate::i18n::tr("instalado pelo install.sh (sem repositório git)").to_string()
             }
         };
         (
@@ -175,7 +179,7 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             format!("{} · {exe} · {how}", env!("CARGO_PKG_VERSION")),
         )
     });
-    r.t("Kernel e sistema", || {
+    r.t(crate::i18n::tr("Kernel e sistema"), || {
         let os = read("/etc/os-release")
             .unwrap_or_default()
             .lines()
@@ -194,10 +198,13 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         )
     });
     let topo = Topology::load(cfg);
-    r.t("Topologia", || {
+    r.t(crate::i18n::tr("Topologia"), || {
         let cpus = topo.all_cpus().len();
         if topo.nodes.is_empty() || cpus == 0 {
-            return (St::Falhou, "não achei sockets/núcleos em /sys".into());
+            return (
+                St::Falhou,
+                crate::i18n::tr("não achei sockets/núcleos em /sys").into(),
+            );
         }
         let gpus: Vec<String> = topo
             .gpus
@@ -214,12 +221,15 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             ),
         )
     });
-    r.t("Uso da CPU", || {
+    r.t(crate::i18n::tr("Uso da CPU"), || {
         let a = crate::procfs::cpu_times();
         std::thread::sleep(Duration::from_millis(300));
         let b = crate::procfs::cpu_times();
         if a.is_empty() || a.len() != b.len() {
-            return (St::Falhou, "não consegui ler /proc/stat".into());
+            return (
+                St::Falhou,
+                crate::i18n::tr("não consegui ler /proc/stat").into(),
+            );
         }
         let (mut busy, mut tot) = (0u64, 0u64);
         for (x, y) in a.iter().zip(&b) {
@@ -228,25 +238,30 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         }
         (
             St::Ok,
-            format!(
+            crate::tf!(
                 "{} threads lidos, {:.0}% em uso agora",
+                "{} threads read, {:.0}% in use now",
                 a.len(),
                 busy as f64 * 100.0 / tot.max(1) as f64
             ),
         )
     });
-    r.t("Memória", || {
+    r.t(crate::i18n::tr("Memória"), || {
         let t = meminfo("MemTotal:");
         let a = meminfo("MemAvailable:");
         if t == 0 {
-            return (St::Falhou, "não consegui ler /proc/meminfo".into());
+            return (
+                St::Falhou,
+                crate::i18n::tr("não consegui ler /proc/meminfo").into(),
+            );
         }
         let per_node: Vec<String> = topo
             .nodes
             .iter()
             .map(|n| {
-                format!(
+                crate::tf!(
                     "socket {}: {:.1} de {:.0} GB em uso",
+                    "socket {}: {:.1} of {:.0} GB in use",
                     n.id,
                     n.mem_used_kb() as f64 / 1048576.0,
                     n.mem_total_kb as f64 / 1048576.0
@@ -255,20 +270,21 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             .collect();
         (
             St::Ok,
-            format!(
+            crate::tf!(
                 "{:.1} de {:.0} GB em uso (sem contar o cache)\n{}",
+                "{:.1} of {:.0} GB in use (not counting the cache)\n{}",
                 (t - a) as f64 / 1048576.0,
                 t as f64 / 1048576.0,
                 per_node.join("\n")
             ),
         )
     });
-    r.t("Temperatura do processador", || {
+    r.t(crate::i18n::tr("Temperatura do processador"), || {
         let t = crate::cpuctl::package_temps();
         if t.is_empty() {
             (
                 St::Aviso,
-                "nenhum sensor (k10temp/zenpower/coretemp) encontrado".into(),
+                crate::i18n::tr("nenhum sensor (k10temp/zenpower/coretemp) encontrado").into(),
             )
         } else {
             let v: Vec<String> = t
@@ -278,20 +294,20 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             (St::Ok, v.join(", "))
         }
     });
-    r.t("Frequência do processador", || {
+    r.t(crate::i18n::tr("Frequência do processador"), || {
         let b = "/sys/devices/system/cpu/cpu0/cpufreq";
         let Some(gov) = read(&format!("{b}/scaling_governor")) else {
             let mhz = crate::cpuctl::cur_mhz_all();
             if let Some(max) = mhz.values().max() {
                 return (
                     St::Ok,
-                    format!(
-                        "{:.2} GHz agora (máx. entre os núcleos, pelo /proc/cpuinfo) · sem cpufreq: só leitura, o firmware não expõe controle (BC-250: use o bc250_smu_oc)",
+                    crate::tf!(
+                        "{:.2} GHz agora (máx. entre os núcleos, pelo /proc/cpuinfo) · sem cpufreq: só leitura, o firmware não expõe controle (BC-250: use o bc250_smu_oc)", "{:.2} GHz now (max among the cores, from /proc/cpuinfo) · no cpufreq: read-only, the firmware exposes no control (BC-250: use bc250_smu_oc)",
                         *max as f64 / 1000.0
                     ),
                 );
             }
-            return (St::Aviso, "sem cpufreq (VM ou driver ausente)".into());
+            return (St::Aviso, crate::i18n::tr("sem cpufreq (VM ou driver ausente)").into());
         };
         let drv = read(&format!("{b}/scaling_driver")).unwrap_or_default();
         let cur = read(&format!("{b}/scaling_cur_freq"))
@@ -301,30 +317,35 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         let epp = read(&format!("{b}/energy_performance_preference"))
             .map(|e| format!(" · EPP {e}"))
             .unwrap_or_default();
-        (St::Ok, format!("{drv} · governador {gov} · {cur}{epp}"))
+        (St::Ok, crate::tf!("{drv} · governador {gov} · {cur}{epp}", "{drv} · governor {gov} · {cur}{epp}"))
     });
 
     // ---------------------------------------------------------------- serviço
-    r.group("Serviço");
-    r.t("Serviço numapilot", || {
+    r.group(crate::i18n::tr("Serviço"));
+    r.t(crate::i18n::tr("Serviço numapilot"), || {
         match sh(&["systemctl", "is-active", "numapilot"], 10) {
-            Some((true, _)) => (St::Ok, "ativo".into()),
+            Some((true, _)) => (St::Ok, crate::i18n::tr("ativo").into()),
             Some((_, o)) => (
                 St::Falhou,
-                format!(
+                crate::tf!(
                     "{} — ative com: sudo systemctl enable --now numapilot",
+                    "{} — enable it with: sudo systemctl enable --now numapilot",
                     o.trim()
                 ),
             ),
-            None => (St::Pulou, "sem systemctl".into()),
+            None => (St::Pulou, crate::i18n::tr("sem systemctl").into()),
         }
     });
-    r.t("Conversa com o serviço", || {
+    r.t(crate::i18n::tr("Conversa com o serviço"), || {
         let t0 = Instant::now();
         match crate::ctl::send(&crate::ctl::Request::Ping) {
             Ok(_) => (
                 St::Ok,
-                format!("respondeu em {} ms", t0.elapsed().as_millis()),
+                crate::tf!(
+                    "respondeu em {} ms",
+                    "answered in {} ms",
+                    t0.elapsed().as_millis()
+                ),
             ),
             Err(e) => (
                 St::Falhou,
@@ -332,12 +353,12 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             ),
         }
     });
-    r.t("Registro do serviço", || {
+    r.t(crate::i18n::tr("Registro do serviço"), || {
         let p = std::path::Path::new("/var/log/numapilot/daemon.log");
         if !p.exists() {
             return (
                 St::Pulou,
-                "ainda não existe (o serviço desta versão ainda não rodou)".into(),
+                crate::i18n::tr("ainda não existe (o serviço desta versão ainda não rodou)").into(),
             );
         }
         let t = crate::log::tail(p, 400);
@@ -346,14 +367,19 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         if errs.is_empty() {
             (
                 St::Ok,
-                format!("{} linhas recentes, {warns} avisos, nenhum erro", t.len()),
+                crate::tf!(
+                    "{} linhas recentes, {warns} avisos, nenhum erro",
+                    "{} recent lines, {warns} warnings, no errors",
+                    t.len()
+                ),
             )
         } else {
             let last: Vec<String> = errs.iter().rev().take(5).map(|s| s.to_string()).collect();
             (
                 St::Aviso,
-                format!(
+                crate::tf!(
                     "{} erros e {warns} avisos nas últimas {} linhas; os mais recentes:\n{}",
+                    "{} errors and {warns} warnings in the last {} lines; the most recent:\n{}",
                     errs.len(),
                     t.len(),
                     last.join("\n")
@@ -361,57 +387,60 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             )
         }
     });
-    r.t("Erros do serviço no journal", || {
-        match sh(
-            &[
-                "journalctl",
-                "-u",
-                "numapilot",
-                "-b",
-                "-p",
-                "err",
-                "--no-pager",
-                "-q",
-                "-o",
-                "cat",
-            ],
-            15,
-        ) {
-            Some((_, o)) => {
-                let lines: Vec<&str> = o.lines().filter(|l| !l.trim().is_empty()).collect();
-                if lines.is_empty() {
-                    (St::Ok, "nenhum neste boot".into())
-                } else {
-                    (
-                        St::Aviso,
-                        format!(
-                            "{} neste boot; os últimos:\n{}",
-                            lines.len(),
-                            lines
-                                .iter()
-                                .rev()
-                                .take(5)
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                        ),
-                    )
-                }
+    r.t(crate::i18n::tr("Erros do serviço no journal"), || match sh(
+        &[
+            "journalctl",
+            "-u",
+            "numapilot",
+            "-b",
+            "-p",
+            "err",
+            "--no-pager",
+            "-q",
+            "-o",
+            "cat",
+        ],
+        15,
+    ) {
+        Some((_, o)) => {
+            let lines: Vec<&str> = o.lines().filter(|l| !l.trim().is_empty()).collect();
+            if lines.is_empty() {
+                (St::Ok, crate::i18n::tr("nenhum neste boot").into())
+            } else {
+                (
+                    St::Aviso,
+                    crate::tf!(
+                        "{} neste boot; os últimos:\n{}",
+                        "{} in this boot; the latest:\n{}",
+                        lines.len(),
+                        lines
+                            .iter()
+                            .rev()
+                            .take(5)
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    ),
+                )
             }
-            None => (St::Pulou, "sem journalctl".into()),
         }
+        None => (St::Pulou, crate::i18n::tr("sem journalctl").into()),
     });
-    r.t("Painel web e /metrics", || {
+    r.t(crate::i18n::tr("Painel web e /metrics"), || {
         let active = sh(&["systemctl", "--user", "is-active", "numapilot-web"], 10)
             .is_some_and(|(ok, _)| ok);
         if !active {
             return (
                 St::Pulou,
-                "painel não está ligado (Configurações → painel no celular)".into(),
+                crate::i18n::tr("painel não está ligado (Configurações → painel no celular)")
+                    .into(),
             );
         }
         let Ok(tok) = crate::web::token() else {
-            return (St::Aviso, "painel ligado, mas sem token".into());
+            return (
+                St::Aviso,
+                crate::i18n::tr("painel ligado, mas sem token").into(),
+            );
         };
         let url = format!(
             "http://127.0.0.1:{}/metrics?t={}",
@@ -421,46 +450,55 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         match sh(&["curl", "-s", "--noproxy", "*", "-m", "8", &url], 10) {
             Some((true, o)) if o.contains("numapilot_") => (
                 St::Ok,
-                format!(
+                crate::tf!(
                     "respondeu ({} métricas)",
+                    "answered ({} metrics)",
                     o.lines().filter(|l| !l.starts_with('#')).count()
                 ),
             ),
             Some((_, o)) => (
                 St::Falhou,
-                format!("não respondeu direito: {}", o.lines().next().unwrap_or("")),
+                crate::tf!(
+                    "não respondeu direito: {}",
+                    "did not answer properly: {}",
+                    o.lines().next().unwrap_or("")
+                ),
             ),
-            None => (St::Pulou, "sem curl".into()),
+            None => (St::Pulou, crate::i18n::tr("sem curl").into()),
         }
     });
 
     // ---------------------------------------------------------------- configuração
-    r.group("Configuração");
-    r.t("Configuração principal", || {
-        (St::Ok, format!("{} regras", cfg.rules.len()))
+    r.group(crate::i18n::tr("Configuração"));
+    r.t(crate::i18n::tr("Configuração principal"), || {
+        (St::Ok, crate::tf!("{} regras", "{} rules", cfg.rules.len()))
     });
-    r.t("Máquina (modo, energia, notebook)", || {
-        let m = crate::machine::Machine::load();
-        match m.validate() {
-            Ok(()) => (
-                St::Ok,
-                format!(
-                    "modo {} · {} horários{}",
-                    m.mode,
-                    m.schedule.len(),
-                    m.dgpu_mode
-                        .as_ref()
-                        .map(|d| format!(" · NVIDIA: {d}"))
-                        .unwrap_or_default()
+    r.t(
+        crate::i18n::tr("Máquina (modo, energia, notebook)"),
+        || {
+            let m = crate::machine::Machine::load();
+            match m.validate() {
+                Ok(()) => (
+                    St::Ok,
+                    crate::tf!(
+                        "modo {} · {} horários{}",
+                        "mode {} · {} schedules{}",
+                        m.mode,
+                        m.schedule.len(),
+                        m.dgpu_mode
+                            .as_ref()
+                            .map(|d| format!(" · NVIDIA: {d}"))
+                            .unwrap_or_default()
+                    ),
                 ),
-            ),
-            Err(e) => (
-                St::Falhou,
-                format!("{}: {e}", crate::machine::Machine::path().display()),
-            ),
-        }
-    });
-    r.t("Escolhas salvas", || {
+                Err(e) => (
+                    St::Falhou,
+                    format!("{}: {e}", crate::machine::Machine::path().display()),
+                ),
+            }
+        },
+    );
+    r.t(crate::i18n::tr("Escolhas salvas"), || {
         let p = crate::profiles::Profiles::load();
         let bad: Vec<String> = p
             .map
@@ -468,28 +506,48 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             .filter_map(|(k, v)| v.validate().err().map(|e| format!("{k}: {e}")))
             .collect();
         if bad.is_empty() {
-            (St::Ok, format!("{} programas", p.map.len()))
+            (
+                St::Ok,
+                crate::tf!("{} programas", "{} programs", p.map.len()),
+            )
         } else {
             (
                 St::Falhou,
-                format!("{} inválidas:\n{}", bad.len(), bad.join("\n")),
+                crate::tf!(
+                    "{} inválidas:\n{}",
+                    "{} invalid:\n{}",
+                    bad.len(),
+                    bad.join("\n")
+                ),
             )
         }
     });
-    r.t("Outros PCs e avisos", || {
+    r.t(crate::i18n::tr("Outros PCs e avisos"), || {
         let peers = crate::peers::load();
         let n = crate::notify::Notify::load();
         let nt = if n.enabled {
             match n.validate() {
-                Ok(()) => "avisos no celular ligados".to_string(),
-                Err(e) => return (St::Falhou, format!("avisos no celular: {e}")),
+                Ok(()) => crate::i18n::tr("avisos no celular ligados").to_string(),
+                Err(e) => {
+                    return (
+                        St::Falhou,
+                        crate::tf!("avisos no celular: {e}", "phone notifications: {e}"),
+                    );
+                }
             }
         } else {
-            "avisos no celular desligados".into()
+            crate::i18n::tr("avisos no celular desligados").into()
         };
-        (St::Ok, format!("{} PCs ligados · {nt}", peers.len()))
+        (
+            St::Ok,
+            crate::tf!(
+                "{} PCs ligados · {nt}",
+                "{} PCs connected · {nt}",
+                peers.len()
+            ),
+        )
     });
-    r.t("Receitas e placas especiais", || {
+    r.t(crate::i18n::tr("Receitas e placas especiais"), || {
         let rc = crate::recipes::load();
         let boards: Vec<String> = rc
             .boards(&topo)
@@ -499,17 +557,19 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         (
             St::Ok,
             if boards.is_empty() {
-                "nenhuma placa especial".into()
+                crate::i18n::tr("nenhuma placa especial").into()
             } else {
-                format!("placa especial: {}", boards.join(", "))
+                crate::tf!("placa especial: {}", "special board: {}", boards.join(", "))
             },
         )
     });
 
     // ---------------------------------------------------------------- GPUs
-    r.group("Placas de vídeo");
+    r.group(crate::i18n::tr("Placas de vídeo"));
     if topo.gpus.is_empty() {
-        r.t("GPUs", || (St::Aviso, "nenhuma GPU encontrada".into()));
+        r.t("GPUs", || {
+            (St::Aviso, crate::i18n::tr("nenhuma GPU encontrada").into())
+        });
     }
     let vk = if which("vulkaninfo") {
         sh(&["vulkaninfo", "--summary"], 30).map(|(_, o)| o.to_lowercase())
@@ -518,7 +578,7 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
     };
     for g in topo.gpus.clone() {
         let a = g.alias.clone();
-        r.t(&format!("{a}: sensores"), || {
+        r.t(&crate::tf!("{a}: sensores", "{a}: sensors"), || {
             let s = crate::gpuctl::read_sensors(&g.pci);
             let mut v = vec![];
             if let Some(t) = s.junction_c.or(s.edge_c) {
@@ -528,7 +588,7 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                 v.push(format!("{w:.0} W"));
             }
             if let Some(f) = s.fan_rpm {
-                v.push(format!("ventoinha {f} RPM"));
+                v.push(crate::tf!("ventoinha {f} RPM", "fan {f} RPM"));
             }
             if s.edge_c.is_none()
                 && s.junction_c.is_none()
@@ -547,79 +607,96 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             if g.is_nvidia() && crate::nvctl::asleep(&g.pci) {
                 return (
                     St::Ok,
-                    "dormindo (economia de energia): sensores não lidos para não acordar".into(),
+                    crate::i18n::tr("dormindo (economia de energia): sensores não lidos para não acordar").into(),
                 );
             }
             if v.is_empty() && crate::gpuctl::hwmon_dir(&g.pci).is_some() {
                 (
                     St::Aviso,
-                    "o firmware manda valores impossíveis (ex.: 0 °C, mais de 1000 W): ignorados"
+                    crate::i18n::tr("o firmware manda valores impossíveis (ex.: 0 °C, mais de 1000 W): ignorados")
                         .into(),
                 )
             } else if v.is_empty() {
                 (
                     St::Falhou,
-                    "não consegui ler temperatura nem potência".into(),
+                    crate::i18n::tr("não consegui ler temperatura nem potência").into(),
                 )
             } else {
                 (St::Ok, v.join(" · "))
             }
         });
-        r.t(&format!("{a}: uso e memória"), || {
-            let b = g.busy_percent();
-            let m = g.vram_used_total();
-            if b.is_none() && m.is_none() {
-                return (St::Aviso, "uso e VRAM não disponíveis".into());
-            }
-            (
-                St::Ok,
-                format!(
-                    "{}{}",
-                    b.map(|b| format!("{b}% de uso")).unwrap_or_default(),
-                    m.map(|(u, t)| format!(
-                        " · VRAM {:.1}/{:.1} GB",
-                        u as f64 / 1073741824.0,
-                        t as f64 / 1073741824.0
-                    ))
-                    .unwrap_or_default()
-                ),
-            )
-        });
-        r.t(&format!("{a}: acesso para programas"), || {
-            let Some(rn) = g.render.clone() else {
-                return (St::Pulou, "sem nó de render".into());
-            };
-            let p = format!("/dev/dri/{rn}");
-            match std::fs::OpenOptions::new().read(true).write(true).open(&p) {
-                Ok(_) => (St::Ok, format!("{p} abre")),
-                Err(e) => (
-                    St::Falhou,
-                    format!("{p}: {e} (seu usuário precisa estar nos grupos render e video)"),
-                ),
-            }
-        });
-        r.t(&format!("{a}: controle"), || {
+        r.t(
+            &crate::tf!("{a}: uso e memória", "{a}: usage and memory"),
+            || {
+                let b = g.busy_percent();
+                let m = g.vram_used_total();
+                if b.is_none() && m.is_none() {
+                    return (
+                        St::Aviso,
+                        crate::i18n::tr("uso e VRAM não disponíveis").into(),
+                    );
+                }
+                (
+                    St::Ok,
+                    format!(
+                        "{}{}",
+                        b.map(|b| crate::tf!("{b}% de uso", "{b}% usage"))
+                            .unwrap_or_default(),
+                        m.map(|(u, t)| format!(
+                            " · VRAM {:.1}/{:.1} GB",
+                            u as f64 / 1073741824.0,
+                            t as f64 / 1073741824.0
+                        ))
+                        .unwrap_or_default()
+                    ),
+                )
+            },
+        );
+        r.t(
+            &crate::tf!("{a}: acesso para programas", "{a}: access for programs"),
+            || {
+                let Some(rn) = g.render.clone() else {
+                    return (St::Pulou, crate::i18n::tr("sem nó de render").into());
+                };
+                let p = format!("/dev/dri/{rn}");
+                match std::fs::OpenOptions::new().read(true).write(true).open(&p) {
+                    Ok(_) => (St::Ok, crate::tf!("{p} abre", "{p} opens")),
+                    Err(e) => (
+                        St::Falhou,
+                        crate::tf!(
+                            "{p}: {e} (seu usuário precisa estar nos grupos render e video)",
+                            "{p}: {e} (your user must be in the render and video groups)"
+                        ),
+                    ),
+                }
+            },
+        );
+        r.t(&crate::tf!("{a}: controle", "{a}: control"), || {
             if g.is_nvidia() {
                 match crate::nvctl::get(&g.pci) {
                     Some(n) => {
                         let nv = crate::nvml::offsets(&g.pci)
-                            .map(|_| " · NVML ok (deslocamento de clock)")
-                            .unwrap_or(" · NVML indisponível (sem deslocamento de clock)");
+                            .map(|_| crate::i18n::tr(" · NVML ok (deslocamento de clock)"))
+                            .unwrap_or(crate::i18n::tr(
+                                " · NVML indisponível (sem deslocamento de clock)",
+                            ));
                         (
                             St::Ok,
                             format!(
                                 "nvidia-smi ok · driver {}{nv}{}",
                                 crate::nvctl::driver_version().unwrap_or_default(),
                                 n.power_limit_w
-                                    .map(|w| format!(" · limite {w:.0} W"))
+                                    .map(|w| crate::tf!(" · limite {w:.0} W", " · limit {w:.0} W"))
                                     .unwrap_or_default()
                             ),
                         )
                     }
-                    None if crate::nvctl::asleep(&g.pci) => (St::Ok, "dormindo".into()),
+                    None if crate::nvctl::asleep(&g.pci) => {
+                        (St::Ok, crate::i18n::tr("dormindo").into())
+                    }
                     None => (
                         St::Falhou,
-                        "nvidia-smi não respondeu para esta placa".into(),
+                        crate::i18n::tr("nvidia-smi não respondeu para esta placa").into(),
                     ),
                 }
             } else {
@@ -634,11 +711,11 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                     format!(
                         "{}{}",
                         if od {
-                            "clock/voltagem disponíveis (OverDrive ligado)"
+                            crate::i18n::tr("clock/voltagem disponíveis (OverDrive ligado)")
                         } else {
-                            "clock/voltagem indisponíveis (OverDrive desligado)"
+                            crate::i18n::tr("clock/voltagem indisponíveis (OverDrive desligado)")
                         },
-                        pl.map(|w| format!(" · limite {w:.0} W"))
+                        pl.map(|w| crate::tf!(" · limite {w:.0} W", " · limit {w:.0} W"))
                             .unwrap_or_default()
                     ),
                 )
@@ -648,43 +725,52 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             let Some(vk) = &vk else {
                 return (
                     St::Pulou,
-                    "vulkaninfo não instalado (pacote vulkan-tools)".into(),
+                    crate::i18n::tr("vulkaninfo não instalado (pacote vulkan-tools)").into(),
                 );
             };
             if g.is_nvidia() && crate::nvctl::asleep(&g.pci) {
-                return (St::Pulou, "dormindo".into());
+                return (St::Pulou, crate::i18n::tr("dormindo").into());
             }
             let id = format!("0x{:04x}", g.device);
             if vk.contains(&id) {
-                (St::Ok, format!("aparece no Vulkan ({id})"))
+                (
+                    St::Ok,
+                    crate::tf!("aparece no Vulkan ({id})", "shows up in Vulkan ({id})"),
+                )
             } else {
-                (St::Aviso, format!("não aparece no vulkaninfo ({id})"))
+                (
+                    St::Aviso,
+                    crate::tf!(
+                        "não aparece no vulkaninfo ({id})",
+                        "does not show up in vulkaninfo ({id})"
+                    ),
+                )
             }
         });
     }
 
-    r.group("Saúde do hardware");
-    r.t("Coleta do serviço", || {
+    r.group(crate::i18n::tr("Saúde do hardware"));
+    r.t(crate::i18n::tr("Coleta do serviço"), || {
         let Some(h) = crate::health::load() else {
             // logo depois do boot (ou de reiniciar o serviço) ainda não deu tempo: não é defeito
             if let Some(s) = service_uptime_secs().filter(|&s| s < 180) {
                 return (
                     St::Pulou,
-                    format!(
-                        "o serviço iniciou há {s} s e coleta 1 min depois: rode o autoteste de novo daqui a pouco"
+                    crate::tf!(
+                        "o serviço iniciou há {s} s e coleta 1 min depois: rode o autoteste de novo daqui a pouco", "the service started {s} s ago and collects 1 min later: run the self-test again in a moment"
                     ),
                 );
             }
             return (
                 St::Aviso,
-                "ainda não coletado (o serviço coleta 1 min depois de iniciar)".into(),
+                crate::i18n::tr("ainda não coletado (o serviço coleta 1 min depois de iniciar)").into(),
             );
         };
         let age = crate::history::now().saturating_sub(h.time) / 60;
         let mut lines = vec![];
         for d in &h.disks {
-            lines.push(format!(
-                "disco {} {}: SMART {}{}",
+            lines.push(crate::tf!(
+                "disco {} {}: SMART {}{}", "disk {} {}: SMART {}{}",
                 d.dev,
                 d.model,
                 match d.passed {
@@ -698,14 +784,14 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             ));
         }
         for e in &h.disk_errors {
-            lines.push(format!("disco não lido: {e}"));
+            lines.push(crate::tf!("disco não lido: {e}", "disk not read: {e}"));
         }
         for b in &h.batteries {
-            lines.push(format!(
-                "bateria {}: {}",
+            lines.push(crate::tf!(
+                "bateria {}: {}", "battery {}: {}",
                 b.name,
                 b.health_pct
-                    .map(|p| format!("{p:.0}% da original"))
+                    .map(|p| crate::tf!("{p:.0}% da original", "{p:.0}% of original"))
                     .unwrap_or_default()
             ));
         }
@@ -716,13 +802,13 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         };
         (
             st,
-            format!(
-                "coletado há {age} min · {} disco(s){}\n{}",
+            crate::tf!(
+                "coletado há {age} min · {} disco(s){}\n{}", "collected {age} min ago · {} disk(s){}\n{}",
                 h.disks.len(),
                 if h.smartctl {
                     ""
                 } else {
-                    " (smartctl não encontrado pelo serviço)"
+                    crate::i18n::tr(" (smartctl não encontrado pelo serviço)")
                 },
                 lines.join("\n")
             ),
@@ -732,35 +818,40 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
     // ---------------------------------------------------------------- notebook
     if crate::notebook::is_laptop() {
         r.group("Notebook");
-        r.t("Bateria e tomada", || {
+        r.t(crate::i18n::tr("Bateria e tomada"), || {
             let b = crate::notebook::battery_info();
             let ac = match crate::notebook::on_ac() {
-                Some(true) => "na tomada",
-                Some(false) => "na bateria",
-                None => "tomada desconhecida",
+                Some(true) => crate::i18n::tr("na tomada"),
+                Some(false) => crate::i18n::tr("na bateria"),
+                None => crate::i18n::tr("tomada desconhecida"),
             };
-            (St::Ok, format!("{ac} · {} bateria(s)", b.len()))
+            (
+                St::Ok,
+                crate::tf!("{ac} · {} bateria(s)", "{ac} · {} battery(ies)", b.len()),
+            )
         });
         r.t(
-            "Perfil de energia",
+            crate::i18n::tr("Perfil de energia"),
             || match crate::notebook::platform_profile() {
                 Some(p) => (
                     St::Ok,
-                    format!(
+                    crate::tf!(
                         "{p} (opções: {})",
+                        "{p} (options: {})",
                         crate::notebook::platform_profiles().join(", ")
                     ),
                 ),
                 None => (
                     St::Aviso,
-                    format!(
+                    crate::tf!(
                         "nenhum perfil de energia disponível\n{}",
+                        "no power profile available\n{}",
                         crate::notebook::acer_diagnose().join("\n")
                     ),
                 ),
             },
         );
-        r.t("NVIDIA híbrida", || {
+        r.t(crate::i18n::tr("NVIDIA híbrida"), || {
             let p = crate::learned::run_dir().join("dgpu.json");
             match std::fs::read_to_string(&p) {
                 Ok(t) => match serde_json::from_str::<crate::hybrid::State>(&t) {
@@ -770,32 +861,36 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                         } else {
                             St::Ok
                         },
-                        format!(
+                        crate::tf!(
                             "modo {} · {} · {}{}",
+                            "mode {} · {} · {}{}",
                             s.mode,
                             if s.removed {
-                                "desligada (tirada)"
+                                crate::i18n::tr("desligada (tirada)")
                             } else {
-                                "presente"
+                                crate::i18n::tr("presente")
                             },
                             if s.blocked_by.is_empty() {
-                                "nada segurando".to_string()
+                                crate::i18n::tr("nada segurando").to_string()
                             } else {
-                                format!("segurada por {}", s.blocked_by.join(", "))
+                                crate::tf!("segurada por {}", "held by {}", s.blocked_by.join(", "))
                             },
                             s.last_error
-                                .map(|e| format!("\núltimo erro: {e}"))
+                                .map(|e| crate::tf!("\núltimo erro: {e}", "\nlast error: {e}"))
                                 .unwrap_or_default()
                         ),
                     ),
                     Err(e) => (St::Falhou, format!("{}: {e}", p.display())),
                 },
-                Err(_) => (St::Pulou, "sem NVIDIA híbrida ou serviço parado".into()),
+                Err(_) => (
+                    St::Pulou,
+                    crate::i18n::tr("sem NVIDIA híbrida ou serviço parado").into(),
+                ),
             }
         });
         r.t("Acer", || {
             if !crate::acer::is_acer() {
-                return (St::Pulou, "não é Acer".into());
+                return (St::Pulou, crate::i18n::tr("não é Acer").into());
             }
             let k = crate::acer::knobs();
             let have: Vec<String> = k
@@ -805,8 +900,9 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             if have.is_empty() {
                 (
                     St::Aviso,
-                    format!(
+                    crate::tf!(
                         "nenhum controle Acer (predator_v4/Linuwu-Sense) disponível\n{}",
+                        "no Acer control (predator_v4/Linuwu-Sense) available\n{}",
                         crate::notebook::acer_diagnose().join("\n")
                     ),
                 )
@@ -814,18 +910,24 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                 (St::Ok, have.join(" · "))
             }
         });
-        r.t("Limites do Ryzen (ryzenadj)", || {
+        r.t(crate::i18n::tr("Limites do Ryzen (ryzenadj)"), || {
             if !crate::ryzen::available() {
                 return (
                     St::Pulou,
-                    "ryzenadj não instalado ou não é Ryzen de notebook".into(),
+                    crate::i18n::tr("ryzenadj não instalado ou não é Ryzen de notebook").into(),
                 );
             }
             if unsafe { libc::geteuid() } != 0 {
-                return (St::Pulou, "precisa de root para ler (o serviço lê)".into());
+                return (
+                    St::Pulou,
+                    crate::i18n::tr("precisa de root para ler (o serviço lê)").into(),
+                );
             }
             match crate::ryzen::info() {
-                Ok(m) => (St::Ok, format!("{} valores lidos", m.len())),
+                Ok(m) => (
+                    St::Ok,
+                    crate::tf!("{} valores lidos", "{} values read", m.len()),
+                ),
                 Err(e) => (St::Falhou, e),
             }
         });
@@ -839,13 +941,13 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
         .map(|(b, _)| b.name.clone())
         .collect();
     if !boards.is_empty() {
-        r.group("Placa especial");
+        r.group(crate::i18n::tr("Placa especial"));
         let full_cores = rc
             .boards(&topo)
             .iter()
             .find_map(|(b, _)| b.cores)
             .map(|c| c.1);
-        r.t("Núcleos ativos", || {
+        r.t(crate::i18n::tr("Núcleos ativos"), || {
             let n = crate::boards::active_cores();
             let efi = crate::boards::efi_core_unlock();
             let keep = full_cores
@@ -854,44 +956,56 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                 .unwrap_or_default();
             (
                 St::Ok,
-                format!(
+                crate::tf!(
                     "{n} núcleos físicos online ({} threads){keep}",
+                    "{n} physical cores online ({} threads){keep}",
                     std::thread::available_parallelism().map_or(0, |n| n.get())
                 ),
             )
         });
-        r.t("CUs da GPU", || match crate::boards::cu_now() {
-            Some((c, crate::boards::CuSource::Kernel)) => (
-                St::Ok,
-                format!("{c} CUs ativas (liberadas pelo kernel: bc250_cc_write_mode=3)"),
-            ),
-            Some((c, src)) => (St::Ok, format!("{c} CUs ativas ({})", src.text())),
-            None => (
-                St::Aviso,
-                "não achei active_cu_number no log do kernel nem no KFD".into(),
-            ),
-        });
-        r.t("Memória da GPU (TTM)", || {
+        r.t(
+            crate::i18n::tr("CUs da GPU"),
+            || match crate::boards::cu_now() {
+                Some((c, crate::boards::CuSource::Kernel)) => (
+                    St::Ok,
+                    crate::tf!(
+                        "{c} CUs ativas (liberadas pelo kernel: bc250_cc_write_mode=3)",
+                        "{c} CUs active (unlocked by the kernel: bc250_cc_write_mode=3)"
+                    ),
+                ),
+                Some((c, src)) => (
+                    St::Ok,
+                    crate::tf!("{c} CUs ativas ({})", "{c} CUs active ({})", src.text()),
+                ),
+                None => (
+                    St::Aviso,
+                    crate::i18n::tr("não achei active_cu_number no log do kernel nem no KFD")
+                        .into(),
+                ),
+            },
+        );
+        r.t(crate::i18n::tr("Memória da GPU (TTM)"), || {
             let now = crate::bootcfg::ttm_now();
             let saved = crate::bootcfg::saved_ttm();
             let gib = |p: u64| p as f64 * 4096.0 / 1073741824.0;
             (
                 St::Ok,
-                format!(
+                crate::tf!(
                     "agora {} · salvo {}",
+                    "now {} · saved {}",
                     now.map(|p| format!("{:.1} GiB", gib(p)))
-                        .unwrap_or("padrão".into()),
+                        .unwrap_or(crate::i18n::tr("padrão").into()),
                     saved
                         .map(|p| format!("{:.1} GiB", gib(p)))
-                        .unwrap_or("nada".into())
+                        .unwrap_or(crate::i18n::tr("nada").into())
                 ),
             )
         });
     }
 
     // ---------------------------------------------------------------- diagnóstico
-    r.group("Diagnóstico (numapilot doctor)");
-    r.t("Verificações do doctor", || {
+    r.group(crate::i18n::tr("Diagnóstico (numapilot doctor)"));
+    r.t(crate::i18n::tr("Verificações do doctor"), || {
         let checks = crate::doctor::run(cfg);
         use crate::doctor::Level;
         let fails: Vec<String> = checks
@@ -904,16 +1018,21 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             .filter(|c| c.level == Level::Warn)
             .map(|c| format!("[{}] {}: {}", c.area, c.name, c.detail))
             .collect();
-        let head = format!(
+        let head = crate::tf!(
             "{} verificações: {} problemas, {} avisos",
+            "{} checks: {} problems, {} warnings",
             checks.len(),
             fails.len(),
             warns.len()
         );
         let body = fails
             .iter()
-            .map(|s| format!("problema: {s}"))
-            .chain(warns.iter().map(|s| format!("aviso: {s}")))
+            .map(|s| crate::tf!("problema: {s}", "problem: {s}"))
+            .chain(
+                warns
+                    .iter()
+                    .map(|s| crate::tf!("aviso: {s}", "warning: {s}")),
+            )
             .collect::<Vec<_>>()
             .join("\n");
         let st = if !fails.is_empty() {
@@ -932,17 +1051,17 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             },
         )
     });
-    r.t("Programas auxiliares", || {
+    r.t(crate::i18n::tr("Programas auxiliares"), || {
         let tools = [
-            ("vkmark", "undervolt automático"),
-            ("glmark2", "undervolt automático"),
-            ("vulkaninfo", "teste do Vulkan"),
-            ("smartctl", "saúde dos discos"),
-            ("ethtool", "ligar pela rede"),
+            ("vkmark", crate::i18n::tr("undervolt automático")),
+            ("glmark2", crate::i18n::tr("undervolt automático")),
+            ("vulkaninfo", crate::i18n::tr("teste do Vulkan")),
+            ("smartctl", crate::i18n::tr("saúde dos discos")),
+            ("ethtool", crate::i18n::tr("ligar pela rede")),
             ("sunshine", "streaming"),
-            ("podman", "laboratório"),
-            ("llama-server", "servidor de IA"),
-            ("ryzenadj", "limites do Ryzen"),
+            ("podman", crate::i18n::tr("laboratório")),
+            ("llama-server", crate::i18n::tr("servidor de IA")),
+            ("ryzenadj", crate::i18n::tr("limites do Ryzen")),
             ("nvidia-smi", "NVIDIA"),
         ];
         let have: Vec<&str> = tools.iter().filter(|t| which(t.0)).map(|t| t.0).collect();
@@ -953,8 +1072,9 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             .collect();
         (
             St::Ok,
-            format!(
+            crate::tf!(
                 "instalados: {}\nfaltando (só importa se for usar): {}",
+                "installed: {}\nmissing (only matters if you will use it): {}",
                 have.join(", "),
                 if miss.is_empty() {
                     "nenhum".into()
@@ -967,7 +1087,7 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
 
     // ---------------------------------------------------------------- comandos
     if cli {
-        r.group("Comandos (só leitura)");
+        r.group(crate::i18n::tr("Comandos (só leitura)"));
         let exe = std::env::current_exe()
             .map(|p| {
                 let s = p.to_string_lossy().to_string();
@@ -1016,7 +1136,7 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                             t0.elapsed().as_millis(),
                             o.lines()
                                 .find(|l| !l.trim().is_empty())
-                                .unwrap_or("(sem saída)")
+                                .unwrap_or(crate::i18n::tr("(sem saída)"))
                                 .chars()
                                 .take(110)
                                 .collect::<String>()
@@ -1024,8 +1144,9 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                     ),
                     Some((false, o)) => (
                         St::Falhou,
-                        format!(
+                        crate::tf!(
                             "saiu com erro:\n{}",
+                            "exited with an error:\n{}",
                             o.lines()
                                 .rev()
                                 .take(6)
@@ -1036,7 +1157,7 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                                 .join("\n")
                         ),
                     ),
-                    None => (St::Falhou, "não consegui rodar".into()),
+                    None => (St::Falhou, crate::i18n::tr("não consegui rodar").into()),
                 }
             });
         }

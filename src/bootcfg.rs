@@ -158,11 +158,11 @@ fn write_conf(text: &str, empty: bool, log: &mut dyn FnMut(&str)) -> Result<bool
     let path = conf_path();
     let old = std::fs::read_to_string(&path).ok();
     if old.as_deref() == Some(text) {
-        log("Nada mudou no arquivo.");
+        log(crate::i18n::tr("Nada mudou no arquivo."));
         return Ok(false);
     }
     if empty && old.is_none() {
-        log("Já estava desligado.");
+        log(crate::i18n::tr("Já estava desligado."));
         return Ok(false);
     }
     if let Some(o) = &old {
@@ -170,13 +170,13 @@ fn write_conf(text: &str, empty: bool, log: &mut dyn FnMut(&str)) -> Result<bool
     }
     if empty {
         std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        log(&format!("Removido {}", path.display()));
+        log(&crate::tf!("Removido {}", "Removed {}", path.display()));
     } else {
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
         }
         std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
-        log(&format!("Gravado {}", path.display()));
+        log(&crate::tf!("Gravado {}", "Wrote {}", path.display()));
     }
     Ok(true)
 }
@@ -185,13 +185,17 @@ fn write_conf(text: &str, empty: bool, log: &mut dyn FnMut(&str)) -> Result<bool
 /// aplicar já. None = volta ao padrão do kernel (metade da RAM).
 pub fn set_gpu_memory(gib: Option<f64>, log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
-        return Err("precisa de root (use sudo, ou o botão da interface pede a senha)".into());
+        return Err(crate::i18n::tr(
+            "precisa de root (use sudo, ou o botão da interface pede a senha)",
+        )
+        .into());
     }
     let total = mem_total_gib();
     let pages = match gib {
         Some(g) if g < 1.0 || (total > 0.0 && g > total - 1.0) => {
-            return Err(format!(
+            return Err(crate::tf!(
                 "valor fora da faixa: 1 a {:.0} GiB (deixe ao menos 1 GiB para o sistema)",
+                "value out of range: 1 to {:.0} GiB (leave at least 1 GiB for the system)",
                 (total - 1.0).max(1.0)
             ));
         }
@@ -207,11 +211,13 @@ pub fn set_gpu_memory(gib: Option<f64>, log: &mut dyn FnMut(&str)) -> Result<(),
                 crate::util::sys(&format!("module/ttm/parameters/{f}")),
                 p.to_string(),
             ) {
-                Ok(()) => log(&format!(
-                    "ttm {f}={p} aplicado agora (vale para os próximos programas)"
+                Ok(()) => log(&crate::tf!(
+                    "ttm {f}={p} aplicado agora (vale para os próximos programas)",
+                    "ttm {f}={p} applied now (applies to the next programs)"
                 )),
-                Err(e) => log(&format!(
-                    "ttm {f}: não deu para aplicar agora ({e}); vale depois de reiniciar"
+                Err(e) => log(&crate::tf!(
+                    "ttm {f}: não deu para aplicar agora ({e}); vale depois de reiniciar",
+                    "ttm {f}: could not apply now ({e}); applies after a reboot"
                 )),
             }
         }
@@ -219,7 +225,9 @@ pub fn set_gpu_memory(gib: Option<f64>, log: &mut dyn FnMut(&str)) -> Result<(),
     if changed {
         regenerate(log)?;
     }
-    log("Pronto. Atualizações do kernel mantêm a opção.");
+    log(crate::i18n::tr(
+        "Pronto. Atualizações do kernel mantêm a opção.",
+    ));
     Ok(())
 }
 
@@ -241,12 +249,16 @@ pub fn initramfs_tool() -> Option<Vec<&'static str>> {
 
 pub fn regenerate(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     let Some(cmd) = initramfs_tool() else {
-        log(
+        log(crate::i18n::tr(
             "Nenhuma ferramenta de initramfs encontrada; o arquivo vale quando o módulo carregar do disco.",
-        );
+        ));
         return Ok(());
     };
-    log(&format!("Refazendo a imagem de boot: {}", cmd.join(" ")));
+    log(&crate::tf!(
+        "Refazendo a imagem de boot: {}",
+        "Rebuilding the boot image: {}",
+        cmd.join(" ")
+    ));
     let st = std::process::Command::new(cmd[0])
         .args(&cmd[1..])
         .status()
@@ -254,18 +266,26 @@ pub fn regenerate(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if st.success() {
         Ok(())
     } else {
-        Err(format!("{} terminou com erro ({st})", cmd[0]))
+        Err(crate::tf!(
+            "{} terminou com erro ({st})",
+            "{} finished with an error ({st})",
+            cmd[0]
+        ))
     }
 }
 
 /// Liga/desliga o OverDrive no boot. Precisa de root.
 pub fn set_overdrive(on: bool, log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
-        return Err("precisa de root (use sudo, ou o botão da interface pede a senha)".into());
+        return Err(crate::i18n::tr(
+            "precisa de root (use sudo, ou o botão da interface pede a senha)",
+        )
+        .into());
     }
     if let Some(m) = cmdline_mask() {
-        log(&format!(
-            "Aviso: a linha do kernel já define amdgpu.ppfeaturemask=0x{m:x}, e ela tem prioridade sobre este arquivo."
+        log(&crate::tf!(
+            "Aviso: a linha do kernel já define amdgpu.ppfeaturemask=0x{m:x}, e ela tem prioridade sobre este arquivo.",
+            "Warning: the kernel command line already sets amdgpu.ppfeaturemask=0x{m:x}, and it takes priority over this file."
         ));
     }
     let new = if on {
@@ -284,7 +304,9 @@ pub fn set_overdrive(on: bool, log: &mut dyn FnMut(&str)) -> Result<(), String> 
         log(&format!("ppfeaturemask=0x{m:x}"));
     }
     regenerate(log)?;
-    log("Pronto. Reinicie o computador para valer. Atualizações do kernel mantêm a opção.");
+    log(crate::i18n::tr(
+        "Pronto. Reinicie o computador para valer. Atualizações do kernel mantêm a opção.",
+    ));
     Ok(())
 }
 

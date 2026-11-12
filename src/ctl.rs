@@ -101,10 +101,16 @@ impl Response {
 }
 
 pub fn send(req: &Request) -> Result<Response> {
-    let mut s = UnixStream::connect(sock_path())
-        .context("daemon não está rodando (systemctl status numapilot)")?;
+    let mut s = UnixStream::connect(sock_path()).context(crate::i18n::tr(
+        "daemon não está rodando (systemctl status numapilot)",
+    ))?;
     s.set_read_timeout(Some(Duration::from_secs(5)))?;
-    let mut line = serde_json::to_string(req)?;
+    // o serviço responde no idioma de quem pede
+    let mut v = serde_json::to_value(req)?;
+    if let Some(o) = v.as_object_mut() {
+        o.insert("lang".into(), crate::i18n::code().into());
+    }
+    let mut line = serde_json::to_string(&v)?;
     line.push('\n');
     s.write_all(line.as_bytes())?;
     let mut r = String::new();

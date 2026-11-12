@@ -18,8 +18,8 @@ pub enum Branch {
 impl Branch {
     pub fn label(&self) -> &'static str {
         match self {
-            Branch::Open => "atual (módulos abertos da NVIDIA)",
-            Branch::Legacy580 => "580xx (última série para Maxwell/Pascal/Volta)",
+            Branch::Open => crate::i18n::tr("atual (módulos abertos da NVIDIA)"),
+            Branch::Legacy580 => crate::i18n::tr("580xx (última série para Maxwell/Pascal/Volta)"),
         }
     }
 }
@@ -192,7 +192,11 @@ fn run(cmd: &[&str], log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if st.success() {
         Ok(())
     } else {
-        Err(format!("{} terminou com erro ({st})", cmd[0]))
+        Err(crate::tf!(
+            "{} terminou com erro ({st})",
+            "{} finished with an error ({st})",
+            cmd[0]
+        ))
     }
 }
 
@@ -206,33 +210,46 @@ fn repo_has(p: &str) -> bool {
 /// Instala o driver certo. Precisa de root.
 pub fn install(topo: &crate::topo::Topology, log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
-        return Err("precisa de root (o botão da interface pede a senha)".into());
+        return Err(crate::i18n::tr("precisa de root (o botão da interface pede a senha)").into());
     }
     let st = status(topo);
-    let branch = st.branch.ok_or("nenhuma placa NVIDIA encontrada")?;
-    log(&format!(
+    let branch = st
+        .branch
+        .ok_or(crate::i18n::tr("nenhuma placa NVIDIA encontrada"))?;
+    log(&crate::tf!(
         "Placa(s): {}",
+        "Card(s): {}",
         st.gpus
             .iter()
             .map(|g| g.1.clone())
             .collect::<Vec<_>>()
             .join(", ")
     ));
-    log(&format!("Driver indicado: {}", branch.label()));
+    log(&crate::tf!(
+        "Driver indicado: {}",
+        "Recommended driver: {}",
+        branch.label()
+    ));
     // Sistema em dia primeiro (no Arch, instalar contra uma base desatualizada quebra).
     run(&["pacman", "-Syu", "--noconfirm"], log)?;
     if st.chwd && branch == Branch::Open {
         // A ferramenta do próprio CachyOS escolhe e configura o perfil para o hardware.
-        log("Usando o chwd (detecção de hardware do CachyOS).");
+        log(crate::i18n::tr(
+            "Usando o chwd (detecção de hardware do CachyOS).",
+        ));
         if run(&["chwd", "-a", "-f"], log).is_ok() {
-            log("Pronto. Reinicie o computador para carregar o driver novo.");
+            log(crate::i18n::tr(
+                "Pronto. Reinicie o computador para carregar o driver novo.",
+            ));
             return Ok(());
         }
-        log("O chwd falhou; instalando os pacotes diretamente.");
+        log(crate::i18n::tr(
+            "O chwd falhou; instalando os pacotes diretamente.",
+        ));
     }
     let pk = packages(&branch, &kernels(), crate::notebook::is_laptop(), &repo_has);
     if pk.is_empty() {
-        return Err("não achei os pacotes do driver nos repositórios".into());
+        return Err(crate::i18n::tr("não achei os pacotes do driver nos repositórios").into());
     }
     let mut cmd: Vec<&str> = vec!["pacman", "-S", "--needed", "--noconfirm"];
     cmd.extend(pk.iter().map(String::as_str));
@@ -274,20 +291,24 @@ pub fn install(topo: &crate::topo::Topology, log: &mut dyn FnMut(&str)) -> Resul
         run(&c, log)?;
     }
     run(&cmd, log)?;
-    log("Pronto. Reinicie o computador para carregar o driver novo.");
+    log(crate::i18n::tr(
+        "Pronto. Reinicie o computador para carregar o driver novo.",
+    ));
     Ok(())
 }
 
 /// Atualiza o driver junto com o sistema. Precisa de root.
 pub fn update(log: &mut dyn FnMut(&str)) -> Result<(), String> {
     if !crate::util::is_root() {
-        return Err("precisa de root (o botão da interface pede a senha)".into());
+        return Err(crate::i18n::tr("precisa de root (o botão da interface pede a senha)").into());
     }
-    log(
+    log(crate::i18n::tr(
         "No Arch/CachyOS o driver é atualizado junto com o sistema (atualizar só ele quebraria as dependências).",
-    );
+    ));
     run(&["pacman", "-Syu", "--noconfirm"], log)?;
-    log("Pronto. Se a versão do driver mudou, reinicie.");
+    log(crate::i18n::tr(
+        "Pronto. Se a versão do driver mudou, reinicie.",
+    ));
     Ok(())
 }
 

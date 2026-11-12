@@ -194,13 +194,13 @@ pub fn create(out: Option<&Path>) -> Result<PathBuf, String> {
         .arg(&tmp)
         .arg(".")
         .status()
-        .map_err(|e| format!("tar: {e}"))?;
+        .map_err(|e| crate::tf!("tar: {e}", "tar: {e}"))?;
     let _ = std::fs::remove_dir_all(&tmp);
     if !st.success() {
-        return Err("tar falhou".into());
+        return Err(crate::i18n::tr("tar falhou").into());
     }
     if n == 0 && m.kernel_params.is_empty() {
-        return Err("não há nenhuma configuração para guardar ainda".into());
+        return Err(crate::i18n::tr("não há nenhuma configuração para guardar ainda").into());
     }
     Ok(dest)
 }
@@ -241,21 +241,31 @@ pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Resu
         .arg("-C")
         .arg(&tmp)
         .status()
-        .map_err(|e| format!("tar: {e}"))?;
+        .map_err(|e| crate::tf!("tar: {e}", "tar: {e}"))?;
     if !st.success() {
-        return Err("não consegui abrir o arquivo de backup".into());
+        return Err(crate::i18n::tr("não consegui abrir o arquivo de backup").into());
     }
     let m: Manifest = std::fs::read_to_string(tmp.join("manifesto.json"))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .ok_or("arquivo sem manifesto: não é um backup do numapilot")?;
-    log(&format!("Backup da versão {} ({})", m.version, m.hostname));
+        .ok_or(crate::i18n::tr(
+            "arquivo sem manifesto: não é um backup do numapilot",
+        ))?;
+    log(&crate::tf!(
+        "Backup da versão {} ({})",
+        "Backup from version {} ({})",
+        m.version,
+        m.hostname
+    ));
     // sistema
     let sys = tmp.join("sistema");
     let mut modprobe = false;
     if sys.is_dir() {
         if !crate::util::is_root() && std::env::var_os("NUMAPILOT_BACKUP_ROOT").is_none() {
-            return Err("para restaurar as configurações do sistema, rode com sudo".into());
+            return Err(crate::i18n::tr(
+                "para restaurar as configurações do sistema, rode com sudo",
+            )
+            .into());
         }
         let mut stack = vec![sys.clone()];
         while let Some(d) = stack.pop() {
@@ -291,25 +301,36 @@ pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Resu
                 chown_one(&h.join(rel), uid, gid);
             }
         }
-        log(&format!("  configurações do usuário em {}", h.display()));
+        log(&crate::tf!(
+            "  configurações do usuário em {}",
+            "  user settings in {}",
+            h.display()
+        ));
     }
     let _ = std::fs::remove_dir_all(&tmp);
     if modprobe && apply_boot {
-        log("Opção do OverDrive restaurada: refazendo a imagem de boot.");
+        log(crate::i18n::tr(
+            "Opção do OverDrive restaurada: refazendo a imagem de boot.",
+        ));
         crate::bootcfg::regenerate(log)?;
     }
     if !m.kernel_params.is_empty() {
         if apply_boot {
-            log(&format!(
+            log(&crate::tf!(
                 "Parâmetros do kernel do backup: {}",
+                "Kernel parameters from the backup: {}",
                 m.kernel_params.join(" ")
             ));
             if let Err(e) = crate::cmdline::apply(&m.kernel_params, &[], log) {
-                log(&format!("Aviso: parâmetros do kernel não aplicados: {e}"));
+                log(&crate::tf!(
+                    "Aviso: parâmetros do kernel não aplicados: {e}",
+                    "Warning: kernel parameters not applied: {e}"
+                ));
             }
         } else {
-            log(&format!(
+            log(&crate::tf!(
                 "Parâmetros do kernel no backup (não aplicados): {}",
+                "Kernel parameters in the backup (not applied): {}",
                 m.kernel_params.join(" ")
             ));
         }
@@ -320,12 +341,13 @@ pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Resu
                 .args(["--user", "-M", &format!("{u}@"), "enable", "--now", unit])
                 .status()
                 .is_ok_and(|s| s.success());
-            log(&format!(
+            log(&crate::tf!(
                 "  serviço do usuário {unit}: {}",
+                "  user service {unit}: {}",
                 if ok {
-                    "ligado"
+                    crate::i18n::tr("ligado")
                 } else {
-                    "ligue com systemctl --user enable --now"
+                    crate::i18n::tr("ligue com systemctl --user enable --now")
                 }
             ));
         }
@@ -333,7 +355,9 @@ pub fn restore(file: &Path, apply_boot: bool, log: &mut dyn FnMut(&str)) -> Resu
     let _ = Command::new("systemctl")
         .args(["try-restart", "numapilot.service"])
         .status();
-    log("Restauração concluída. Se o backup tinha OverDrive ou parâmetros do kernel, reinicie.");
+    log(crate::i18n::tr(
+        "Restauração concluída. Se o backup tinha OverDrive ou parâmetros do kernel, reinicie.",
+    ));
     Ok(())
 }
 

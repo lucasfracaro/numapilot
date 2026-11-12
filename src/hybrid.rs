@@ -203,12 +203,16 @@ pub fn set_xwayland_wrapper(on: bool) -> Result<(), String> {
         return Ok(());
     }
     if p.exists() && !xwayland_wrapped() {
-        return Err(format!("{} já existe e não é do numapilot", p.display()));
+        return Err(crate::tf!(
+            "{} já existe e não é do numapilot",
+            "{} already exists and is not numapilot's",
+            p.display()
+        ));
     }
     let real = ["/usr/bin/Xwayland", "/usr/lib/xorg/Xwayland"]
         .into_iter()
         .find(|r| std::path::Path::new(r).exists())
-        .ok_or("Xwayland não encontrado em /usr/bin")?;
+        .ok_or(crate::i18n::tr("Xwayland não encontrado em /usr/bin"))?;
     let body = format!(
         "#!/bin/sh\n# numapilot: o Xwayland usa só o EGL do Mesa e não prende a NVIDIA do notebook\n\
          # (jogos X11 escolhidos para a NVIDIA continuam indo para ela). Para tirar: numapilot hybrid xwayland off\n\

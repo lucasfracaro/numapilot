@@ -2,10 +2,6 @@
 //! em `i18n_en.rs`; texto com valores: `tf!("texto {}", "text {}", valor)`. O que não tem tradução
 //! aparece em português (as mensagens que vêm do serviço e da linha de comando, por exemplo).
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
-static ENGLISH: AtomicBool = AtomicBool::new(false);
-
 #[path = "i18n_en.rs"]
 mod en;
 
@@ -21,41 +17,17 @@ macro_rules! tf {
     };
 }
 
-fn file() -> std::path::PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| crate::jobs::home().join(".config"))
-        .join("numapilot/lang")
-}
-
-/// Carrega o idioma salvo; sem escolha, inglês só se o sistema não estiver em português.
+/// Carrega o idioma (escolha salva ou idioma do sistema; a biblioteca decide).
 pub fn init() {
-    let saved = std::fs::read_to_string(file()).unwrap_or_default();
-    let en = match saved.trim() {
-        "en" => true,
-        "pt" => false,
-        _ => {
-            let l = std::env::var("LC_ALL")
-                .or_else(|_| std::env::var("LC_MESSAGES"))
-                .or_else(|_| std::env::var("LANG"))
-                .unwrap_or_default();
-            !(l.is_empty() || l.starts_with("pt") || l == "C" || l.starts_with("C."))
-        }
-    };
-    ENGLISH.store(en, Ordering::Relaxed);
+    let _ = english();
 }
 
 pub fn english() -> bool {
-    ENGLISH.load(Ordering::Relaxed)
+    numapilot::i18n::english()
 }
 
 pub fn set_english(en: bool) {
-    ENGLISH.store(en, Ordering::Relaxed);
-    let f = file();
-    if let Some(d) = f.parent() {
-        let _ = std::fs::create_dir_all(d);
-    }
-    let _ = std::fs::write(f, if en { "en" } else { "pt" });
+    numapilot::i18n::save_user_choice(en);
 }
 
 /// Texto no idioma escolhido (o próprio texto se não houver tradução).
@@ -68,7 +40,8 @@ pub fn tr(s: &'static str) -> &'static str {
     MAP.get_or_init(|| en::EN.iter().copied().collect())
         .get(s)
         .copied()
-        .unwrap_or(s)
+        // textos que vêm das tabelas da biblioteca (mitigações, modos, ajustes da Acer…)
+        .unwrap_or_else(|| numapilot::i18n::tr(s))
 }
 
 #[cfg(test)]

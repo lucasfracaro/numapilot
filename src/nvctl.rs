@@ -164,7 +164,8 @@ fn index_of(pci: &str) -> Result<u32, String> {
         .find(|g| g.pci == pci)
         .map(|g| g.index)
         .ok_or_else(|| {
-            "placa NVIDIA não encontrada pelo nvidia-smi (driver carregado?)".to_string()
+            crate::i18n::tr("placa NVIDIA não encontrada pelo nvidia-smi (driver carregado?)")
+                .to_string()
         })
 }
 
@@ -179,8 +180,9 @@ fn run(args: &[String]) -> Result<(), String> {
     let text = String::from_utf8_lossy(&o.stdout).to_string() + &String::from_utf8_lossy(&o.stderr);
     // o nvidia-smi sai com sucesso mesmo quando não muda nada ("... is not supported ...")
     if o.status.success() && text.to_lowercase().contains("not supported") {
-        return Err(format!(
+        return Err(crate::tf!(
             "esta placa não deixa mudar isso (o fabricante trava): {}",
+            "this card does not allow changing this (the vendor locks it): {}",
             text.lines()
                 .find(|l| l.to_lowercase().contains("not supported"))
                 .unwrap_or("")
@@ -197,10 +199,10 @@ fn run(args: &[String]) -> Result<(), String> {
 
 /// Limite de potência (None = padrão da placa). Notebooks costumam travar esse valor.
 pub fn set_power_limit(pci: &str, watts: Option<f64>) -> Result<f64, String> {
-    let g = get(pci).ok_or("placa dormindo ou sem driver")?;
+    let g = get(pci).ok_or(crate::i18n::tr("placa dormindo ou sem driver"))?;
     let target = watts
         .or(g.power_default_w)
-        .ok_or("a placa não informa o limite padrão")?;
+        .ok_or(crate::i18n::tr("a placa não informa o limite padrão"))?;
     let v = target.clamp(
         g.power_min_w.unwrap_or(0.0),
         g.power_max_w.unwrap_or(target),
