@@ -97,7 +97,7 @@ pub fn sunshine_info() -> Sunshine {
 /// Codecs que a GPU consegue codificar (para streaming), via `vainfo`.
 pub fn vaapi_encoders(render: &str) -> String {
     if !containers::which("vainfo") {
-        return crate::i18n::tr("instale libva-utils para verificar").into();
+        return crate::i18n::tr("install libva-utils to check").into();
     }
     let out = std::process::Command::new("vainfo")
         .args([
@@ -119,7 +119,7 @@ pub fn vaapi_encoders(render: &str) -> String {
         }
     }
     if c.is_empty() {
-        crate::i18n::tr("sem codificação de vídeo").into()
+        crate::i18n::tr("no video encoding").into()
     } else {
         c.join(", ")
     }

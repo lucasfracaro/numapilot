@@ -167,8 +167,8 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
     let c16 = p.min(16);
     v.push(mk(
         crate::tf!(
-            "{c16} núcleos sem HT (socket da GPU)",
-            "{c16} cores without HT (GPU's socket)"
+            "{c16} cores without HT (GPU's socket)",
+            "{c16} núcleos sem HT (socket da GPU)"
         ),
         "gpu",
         Some(c16),
@@ -177,7 +177,7 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
     ));
     if p > 8 {
         v.push(mk(
-            crate::i18n::tr("8 núcleos sem HT (socket da GPU)").into(),
+            crate::i18n::tr("8 cores without HT (GPU's socket)").into(),
             "gpu",
             Some(8),
             false,
@@ -186,8 +186,8 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
     }
     v.push(mk(
         crate::tf!(
-            "{} núcleos com HT ({} threads)",
             "{} cores with HT ({} threads)",
+            "{} núcleos com HT ({} threads)",
             c16.min(8),
             c16.min(8) * 2
         ),
@@ -199,8 +199,8 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
     if p > 16 {
         v.push(mk(
             crate::tf!(
-                "socket da GPU inteiro sem HT ({p} núcleos)",
-                "GPU's whole socket without HT ({p} cores)"
+                "GPU's whole socket without HT ({p} cores)",
+                "socket da GPU inteiro sem HT ({p} núcleos)"
             ),
             "gpu",
             None,
@@ -210,7 +210,7 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
     }
     if topo.nodes.len() > 1 {
         let mut w = mk(
-            crate::i18n::tr("os dois sockets sem HT (comparação)").into(),
+            crate::i18n::tr("both sockets without HT (comparison)").into(),
             "all",
             Some(32.min(p * topo.nodes.len())),
             false,
@@ -227,8 +227,8 @@ pub fn variants(topo: &Topology, base: &Profile) -> Vec<Variant> {
             }
             let mut x = mk(
                 crate::tf!(
-                    "{c16} núcleos sem HT na {}",
                     "{c16} cores without HT on the {}",
+                    "{c16} núcleos sem HT na {}",
                     g.alias
                 ),
                 "gpu",

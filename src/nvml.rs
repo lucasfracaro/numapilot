@@ -41,16 +41,16 @@ fn lib() -> Result<&'static Lib, String> {
         let h = unsafe { libc::dlopen(c.as_ptr(), libc::RTLD_NOW) };
         if h.is_null() {
             return Err(crate::tf!(
-                "{name} não encontrada (driver da NVIDIA instalado?)",
-                "{name} not found (NVIDIA driver installed?)"
+                "{name} not found (NVIDIA driver installed?)",
+                "{name} não encontrada (driver da NVIDIA instalado?)"
             ));
         }
         let l = Lib {
-            init: sym(h, "nvmlInit_v2").ok_or(crate::i18n::tr("nvmlInit_v2 ausente"))?,
-            shutdown: sym(h, "nvmlShutdown").ok_or(crate::i18n::tr("nvmlShutdown ausente"))?,
+            init: sym(h, "nvmlInit_v2").ok_or(crate::i18n::tr("nvmlInit_v2 missing"))?,
+            shutdown: sym(h, "nvmlShutdown").ok_or(crate::i18n::tr("nvmlShutdown missing"))?,
             by_pci: sym(h, "nvmlDeviceGetHandleByPciBusId_v2")
-                .ok_or(crate::i18n::tr("nvmlDeviceGetHandleByPciBusId_v2 ausente"))?,
-            err: sym(h, "nvmlErrorString").ok_or(crate::i18n::tr("nvmlErrorString ausente"))?,
+                .ok_or(crate::i18n::tr("nvmlDeviceGetHandleByPciBusId_v2 missing"))?,
+            err: sym(h, "nvmlErrorString").ok_or(crate::i18n::tr("nvmlErrorString missing"))?,
             get_gpc: sym(h, "nvmlDeviceGetGpcClkVfOffset"),
             set_gpc: sym(h, "nvmlDeviceSetGpcClkVfOffset"),
             get_mem: sym(h, "nvmlDeviceGetMemClkVfOffset"),
@@ -67,15 +67,15 @@ fn lib() -> Result<&'static Lib, String> {
 fn errstr(l: &Lib, r: Ret) -> String {
     let p = unsafe { (l.err)(r) };
     if p.is_null() {
-        return crate::tf!("erro {r}", "error {r}");
+        return crate::tf!("error {r}", "erro {r}");
     }
     let s = unsafe { CStr::from_ptr(p) }.to_string_lossy().to_string();
     match r {
         3 => crate::tf!(
-            "{s} (este modelo/driver não deixa mudar o deslocamento)",
-            "{s} (this model/driver does not allow changing the offset)"
+            "{s} (this model/driver does not allow changing the offset)",
+            "{s} (este modelo/driver não deixa mudar o deslocamento)"
         ),
-        4 => crate::tf!("{s} (precisa de root)", "{s} (needs root)"),
+        4 => crate::tf!("{s} (needs root)", "{s} (precisa de root)"),
         _ => s,
     }
 }
@@ -145,7 +145,7 @@ pub fn set_gpc_offset(pci: &str, mhz: i32) -> Result<(), String> {
     let s = session()?;
     let l = s.0;
     let f = l.set_gpc.ok_or(crate::i18n::tr(
-        "este driver não tem nvmlDeviceSetGpcClkVfOffset",
+        "this driver has no nvmlDeviceSetGpcClkVfOffset",
     ))?;
     check(l, unsafe { f(dev(l, pci)?, mhz as c_int) })
 }
@@ -155,7 +155,7 @@ pub fn set_mem_offset(pci: &str, mhz: i32) -> Result<(), String> {
     let s = session()?;
     let l = s.0;
     let f = l.set_mem.ok_or(crate::i18n::tr(
-        "este driver não tem nvmlDeviceSetMemClkVfOffset",
+        "this driver has no nvmlDeviceSetMemClkVfOffset",
     ))?;
     check(l, unsafe { f(dev(l, pci)?, mhz as c_int) })
 }

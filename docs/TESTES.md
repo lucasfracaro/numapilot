@@ -2,7 +2,7 @@
 
 ## Antes de tudo: autoteste, aba Testes e registros (qualquer PC)
 
-1. `numapilot autoteste`: passa por todas as partes nesta máquina **só lendo** (sistema,
+1. `numapilot selftest`: passa por todas as partes nesta máquina **só lendo** (sistema,
    serviço, configuração, cada placa, notebook, placa especial, doctor e cada comando de
    leitura) e grava `~/numapilot-autoteste-MAQUINA-DATA.txt`. Sai com código 2 se algo falhou.
    `--rapido` pula os comandos; `--json` para scripts.

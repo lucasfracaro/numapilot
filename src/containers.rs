@@ -158,7 +158,7 @@ pub fn parse_list(engine: &str, out: &str, lab: &str, llm: &str) -> Vec<Containe
 }
 
 pub fn list(lab: &str, llm: &str) -> Result<Vec<Container>, String> {
-    let eng = engine().ok_or(crate::i18n::tr("podman/docker não instalado"))?;
+    let eng = engine().ok_or(crate::i18n::tr("podman/docker not installed"))?;
     let args: &[&str] = if eng.ends_with("podman") {
         &["ps", "-a", "--format", "json"]
     } else {
@@ -170,7 +170,7 @@ pub fn list(lab: &str, llm: &str) -> Result<Vec<Container>, String> {
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {
-        return Err(crate::tf!("{eng} ps falhou", "{eng} ps failed"));
+        return Err(crate::tf!("{eng} ps failed", "{eng} ps falhou"));
     }
     Ok(parse_list(
         &eng,
@@ -249,13 +249,13 @@ pub fn parse_apps(out: &str) -> Apps {
 pub fn inspect_apps(c: &Container) -> Apps {
     let Some(eng) = engine() else {
         return Apps {
-            error: Some(crate::i18n::tr("sem podman/docker").into()),
+            error: Some(crate::i18n::tr("no podman/docker").into()),
             ..Default::default()
         };
     };
     if !c.running {
         return Apps {
-            error: Some(crate::i18n::tr("ligue o container para ver os apps").into()),
+            error: Some(crate::i18n::tr("turn the container on to see the apps").into()),
             ..Default::default()
         };
     }

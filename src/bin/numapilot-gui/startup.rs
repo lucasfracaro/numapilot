@@ -117,16 +117,44 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
 
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(RichText::new(crate::tf!("{on} itens abrem quando o sistema liga", "{on} items start when the system boots")).size(20.0).strong());
-            ui.label(RichText::new(crate::i18n::tr("Desligar só vale para o próximo login ou boot: o que está aberto continua aberto.")).weak());
+            ui.label(
+                RichText::new(crate::tf!(
+                    "{on} items start when the system boots",
+                    "{on} itens abrem quando o sistema liga"
+                ))
+                .size(20.0)
+                .strong(),
+            );
+            ui.label(
+                RichText::new(crate::i18n::tr(
+                    "Turning off only applies to the next login or boot: what is open stays open.",
+                ))
+                .weak(),
+            );
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.menu_button(RichText::new(crate::i18n::tr("+ Adicionar")).strong(), |ui| {
+            ui.menu_button(RichText::new(crate::i18n::tr("+ Add")).strong(), |ui| {
                 for (m, t, h) in [
-                    (AddMode::Installed, crate::i18n::tr("Programa instalado…"), crate::i18n::tr("Procura nos programas do menu")),
-                    (AddMode::Running, crate::i18n::tr("Programa aberto agora…"), crate::i18n::tr("Um dos programas da aba Programas")),
-                    (AddMode::File, crate::i18n::tr("Arquivo (AppImage, script .sh, binário)…"), crate::i18n::tr("Escolhe o arquivo")),
-                    (AddMode::Command, crate::i18n::tr("Comando…"), crate::i18n::tr("Qualquer linha de comando")),
+                    (
+                        AddMode::Installed,
+                        crate::i18n::tr("Installed program…"),
+                        crate::i18n::tr("Searches the menu programs"),
+                    ),
+                    (
+                        AddMode::Running,
+                        crate::i18n::tr("Program open now…"),
+                        crate::i18n::tr("One of the programs in the Programs tab"),
+                    ),
+                    (
+                        AddMode::File,
+                        crate::i18n::tr("File (AppImage, .sh script, binary)…"),
+                        crate::i18n::tr("Picks the file"),
+                    ),
+                    (
+                        AddMode::Command,
+                        crate::i18n::tr("Command…"),
+                        crate::i18n::tr("Any command line"),
+                    ),
                 ] {
                     if ui.button(t).on_hover_text(h).clicked() {
                         app.startup.add = Some(m);
@@ -140,10 +168,14 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
             });
-            if ui.button(crate::i18n::tr("Atualizar")).clicked() {
+            if ui.button(crate::i18n::tr("Update")).clicked() {
                 app.startup.invalidate();
             }
-            ui.add(egui::TextEdit::singleline(&mut app.startup.filter).hint_text(crate::i18n::tr("🔍 Buscar")).desired_width(160.0));
+            ui.add(
+                egui::TextEdit::singleline(&mut app.startup.filter)
+                    .hint_text(crate::i18n::tr("🔍 Search"))
+                    .desired_width(160.0),
+            );
         });
     });
     ui.add_space(6.0);
@@ -167,7 +199,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
             let closed = app.startup.closed[gi];
             let n_on = list.iter().filter(|i| i.enabled).count();
             let head = egui::Button::new(
-                RichText::new(crate::tf!("{} {}  ({n_on} de {} ligados) · {}", "{} {}  ({n_on} of {} enabled) · {}", if closed { "⏵" } else { "⏷" }, g.title(), list.len(), g.about()))
+                RichText::new(crate::tf!("{} {}  ({n_on} of {} enabled) · {}", "{} {}  ({n_on} de {} ligados) · {}", if closed { "⏵" } else { "⏷" }, g.title(), list.len(), g.about()))
                     .strong(),
             )
             .fill(p.accent.gamma_multiply(0.18))
@@ -190,8 +222,8 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                         let mut v = it.enabled;
                         let resp = ui.add_enabled(it.protected.is_none() || !it.enabled, egui::Checkbox::new(&mut v, ""));
                         let resp = match it.protected {
-                            Some(why) => resp.on_disabled_hover_text(crate::tf!("Não pode ser desligado: {why}", "Cannot be turned off: {why}")),
-                            None => resp.on_hover_text(if it.enabled { crate::i18n::tr("Desligar no próximo login/boot") } else { crate::i18n::tr("Ligar no próximo login/boot") }),
+                            Some(why) => resp.on_disabled_hover_text(crate::tf!("Cannot be turned off: {why}", "Não pode ser desligado: {why}")),
+                            None => resp.on_hover_text(if it.enabled { crate::i18n::tr("Turn off at the next login/boot") } else { crate::i18n::tr("Turn on at the next login/boot") }),
                         };
                         if resp.changed() {
                             change = Some((it.clone(), v));
@@ -209,11 +241,11 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                         // agora + ações
                         ui.horizontal(|ui| {
                             let now = if it.id.ends_with(".timer") {
-                                if it.running { crate::i18n::tr("agendado").to_string() } else { String::new() }
+                                if it.running { crate::i18n::tr("scheduled").to_string() } else { String::new() }
                             } else {
                                 match (it.running, it.mem) {
-                                    (true, Some(m)) if m >= 1048576 => crate::tf!("rodando · {}", "running · {}", fmt_bytes(m)),
-                                    (true, _) => crate::i18n::tr("rodando").to_string(),
+                                    (true, Some(m)) if m >= 1048576 => crate::tf!("running · {}", "rodando · {}", fmt_bytes(m)),
+                                    (true, _) => crate::i18n::tr("running").to_string(),
                                     _ => String::new(),
                                 }
                             };
@@ -221,20 +253,20 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 ui.label(RichText::new(now).small().color(p.ok));
                             }
                             if it.id != "kde:session"
-                                && ui.small_button(crate::i18n::tr("Detalhes")).on_hover_text(crate::i18n::tr("De onde vem: arquivo, programa, pacote, pastas")).clicked()
+                                && ui.small_button(crate::i18n::tr("Details")).on_hover_text(crate::i18n::tr("Where it comes from: file, program, package, folders")).clicked()
                             {
                                 details = Some(it.clone());
                             }
                             if it.removable
-                                && ui.small_button(crate::i18n::tr("Remover")).on_hover_text(crate::i18n::tr("Apaga este atalho de inicialização (não desinstala o programa)")).clicked()
+                                && ui.small_button(crate::i18n::tr("Remove")).on_hover_text(crate::i18n::tr("Deletes this startup shortcut (does not uninstall the program)")).clicked()
                             {
                                 remove = Some(it.clone());
                             }
                             if it.protected.is_none()
                                 && it.id != "kde:session"
                                 && ui
-                                    .small_button(crate::i18n::tr("Desinstalar…"))
-                                    .on_hover_text(crate::i18n::tr("Remove o programa do jeito certo para a origem dele (pacote, Flatpak, npm, pipx, arquivo...)"))
+                                    .small_button(crate::i18n::tr("Uninstall…"))
+                                    .on_hover_text(crate::i18n::tr("Removes the program the right way for its source (package, Flatpak, npm, pipx, file...)"))
                                     .clicked()
                             {
                                 uninstall = Some(it.clone());
@@ -251,23 +283,23 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         match startup::set_enabled(&it, v) {
             Ok(Action::Done) => {
                 numapilot::log::info(&format!(
-                    "inicialização: {} {}",
+                    "startup: {} {}",
                     it.id,
                     if v {
-                        crate::i18n::tr("ligado")
+                        crate::i18n::tr("on")
                     } else {
-                        crate::i18n::tr("desligado")
+                        crate::i18n::tr("off")
                     }
                 ));
                 app.toast(
                     crate::tf!(
-                        "{}: {} no próximo login",
                         "{}: {} at the next login",
+                        "{}: {} no próximo login",
                         it.name,
                         if v {
-                            crate::i18n::tr("liga")
+                            crate::i18n::tr("turns on")
                         } else {
-                            crate::i18n::tr("não abre mais")
+                            crate::i18n::tr("no longer starts")
                         }
                     ),
                     true,
@@ -278,9 +310,9 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                     format!(
                         "{} {}",
                         if v {
-                            crate::i18n::tr("Ligar")
+                            crate::i18n::tr("Turn on")
                         } else {
-                            crate::i18n::tr("Desligar")
+                            crate::i18n::tr("Turn off")
                         },
                         it.name
                     ),
@@ -295,8 +327,8 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         match startup::remove(&it) {
             Ok(()) => app.toast(
                 crate::tf!(
-                    "{} removido da inicialização",
                     "{} removed from startup",
+                    "{} removido da inicialização",
                     it.name
                 ),
                 true,
@@ -336,7 +368,7 @@ fn path_row(ui: &mut egui::Ui, label: &str, p: &std::path::Path) {
         } else {
             p.parent().map(|d| d.to_path_buf()).unwrap_or_default()
         };
-        if ui.small_button(crate::i18n::tr("Abrir pasta")).clicked() {
+        if ui.small_button(crate::i18n::tr("Open folder")).clicked() {
             let _ = crate::jobs::open_url(&dir.to_string_lossy());
         }
     });
@@ -351,8 +383,8 @@ fn details_window(app: &mut App, ctx: &egui::Context) {
     let mut goto: Option<i32> = None;
     let mut uninstall = false;
     egui::Window::new(crate::tf!(
-        "De onde vem: {}",
         "Where it comes from: {}",
+        "De onde vem: {}",
         it.name
     ))
     .open(&mut open)
@@ -364,13 +396,13 @@ fn details_window(app: &mut App, ctx: &egui::Context) {
             .spacing([12.0, 6.0])
             .show(ui, |ui| {
                 if let Some(f) = &t.file {
-                    path_row(ui, crate::i18n::tr("Abre por"), f);
+                    path_row(ui, crate::i18n::tr("Started by"), f);
                     if let Some(p) = &t.file_pkg {
                         ui.label("");
                         ui.label(
                             RichText::new(crate::tf!(
-                                "arquivo do pacote {p}",
-                                "file from package {p}"
+                                "file from package {p}",
+                                "arquivo do pacote {p}"
                             ))
                             .small()
                             .weak(),
@@ -378,52 +410,54 @@ fn details_window(app: &mut App, ctx: &egui::Context) {
                         ui.end_row();
                     }
                 }
-                ui.label(RichText::new(crate::i18n::tr("Comando")).strong());
+                ui.label(RichText::new(crate::i18n::tr("Command")).strong());
                 ui.label(RichText::new(&it.exec).monospace().small());
                 ui.end_row();
                 if let Some(e) = &t.exe {
-                    path_row(ui, crate::i18n::tr("Programa"), e);
+                    path_row(ui, crate::i18n::tr("Program"), e);
                 }
-                ui.label(RichText::new(crate::i18n::tr("Origem")).strong());
+                ui.label(RichText::new(crate::i18n::tr("Source")).strong());
                 ui.label(t.source.text());
                 ui.end_row();
                 if let Some(d) = &t.description {
-                    ui.label(RichText::new(crate::i18n::tr("Descrição")).strong());
+                    ui.label(RichText::new(crate::i18n::tr("Description")).strong());
                     ui.label(d);
                     ui.end_row();
                 }
                 if let Some(sz) = t.size.filter(|s| *s > 0) {
-                    ui.label(RichText::new(crate::i18n::tr("Tamanho")).strong());
+                    ui.label(RichText::new(crate::i18n::tr("Size")).strong());
                     ui.label(fmt_bytes(sz));
                     ui.end_row();
                 }
                 if let Some(d) = &t.app_dir {
-                    path_row(ui, crate::i18n::tr("Pasta do programa"), d);
+                    path_row(ui, crate::i18n::tr("Program folder"), d);
                 }
                 for c in &t.configs {
-                    path_row(ui, crate::i18n::tr("Configurações"), c);
+                    path_row(ui, crate::i18n::tr("Settings"), c);
                 }
-                ui.label(RichText::new(crate::i18n::tr("Agora")).strong());
+                ui.label(RichText::new(crate::i18n::tr("Now")).strong());
                 ui.label(match (it.running, it.pids.first()) {
-                    (true, Some(p)) => crate::tf!("rodando (PID {p})", "running (PID {p})"),
-                    (true, None) => crate::i18n::tr("rodando").into(),
-                    _ => crate::i18n::tr("não está rodando").into(),
+                    (true, Some(p)) => crate::tf!("running (PID {p})", "rodando (PID {p})"),
+                    (true, None) => crate::i18n::tr("running").into(),
+                    _ => crate::i18n::tr("not running").into(),
                 });
                 ui.end_row();
             });
         ui.horizontal(|ui| {
             if let Some(p) = it.pids.first()
-                && ui.button(crate::i18n::tr("Ver na aba Programas")).clicked()
+                && ui
+                    .button(crate::i18n::tr("View in the Programs tab"))
+                    .clicked()
             {
                 goto = Some(*p);
             }
-            if it.protected.is_none() && ui.button(crate::i18n::tr("Desinstalar…")).clicked() {
+            if it.protected.is_none() && ui.button(crate::i18n::tr("Uninstall…")).clicked() {
                 uninstall = true;
             }
         });
         if let Some(l) = &log {
             ui.separator();
-            ui.label(RichText::new(crate::i18n::tr("Últimas linhas do log")).strong());
+            ui.label(RichText::new(crate::i18n::tr("Last log lines")).strong());
             egui::ScrollArea::both()
                 .max_height(200.0)
                 .stick_to_bottom(true)
@@ -457,19 +491,19 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
     let mut open = true;
     let mut go = false;
     let plan = origin::uninstall_plan(&t, unit_of(&it), configs);
-    egui::Window::new(crate::tf!("Desinstalar {}", "Uninstall {}", it.name))
+    egui::Window::new(crate::tf!("Uninstall {}", "Desinstalar {}", it.name))
         .open(&mut open)
         .collapsible(false)
         .default_width(600.0)
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx, |ui| {
-            ui.label(crate::tf!("Origem: {}", "Source: {}", t.source.text()));
+            ui.label(crate::tf!("Source: {}", "Origem: {}", t.source.text()));
             ui.add_space(4.0);
             if let Some(why) = &plan.blocked {
                 ui.label(
                     RichText::new(crate::tf!(
-                        "Não dá para desinstalar por aqui: {why}",
-                        "Cannot be uninstalled from here: {why}"
+                        "Cannot be uninstalled from here: {why}",
+                        "Não dá para desinstalar por aqui: {why}"
                     ))
                     .color(p.err),
                 );
@@ -477,7 +511,7 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
             }
             ui.label(
                 RichText::new(crate::i18n::tr(
-                    "Vai fazer, num terminal (o que pede senha pede lá):",
+                    "It will run, in a terminal (whatever needs the password asks there):",
                 ))
                 .strong(),
             );
@@ -495,8 +529,8 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
                     ui.add_space(4.0);
                     ui.label(
                         RichText::new(crate::tf!(
-                            "{} pacotes saem (o programa e o que só ele usava):",
                             "{} packages go away (the program and what only it used):",
+                            "{} pacotes saem (o programa e o que só ele usava):",
                             prev.len()
                         ))
                         .strong(),
@@ -515,7 +549,7 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
                 ui.add_space(4.0);
                 ui.checkbox(
                     &mut configs,
-                    crate::i18n::tr("Apagar também as configurações e a pasta do programa"),
+                    crate::i18n::tr("Also delete the settings and the program's folder"),
                 );
                 // sempre à vista: exatamente o que essa opção apaga
                 for c in t.app_dir.iter().chain(t.configs.iter()) {
@@ -529,7 +563,7 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
                     });
                 }
             }
-            ui.collapsing(crate::i18n::tr("Comandos exatos"), |ui| {
+            ui.collapsing(crate::i18n::tr("Exact commands"), |ui| {
                 egui::ScrollArea::vertical()
                     .max_height(160.0)
                     .id_salt("rm-script")
@@ -540,7 +574,7 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
             if it.running {
                 ui.label(
                     RichText::new(crate::i18n::tr(
-                        "O programa está aberto: ele vai ser encerrado antes.",
+                        "The program is open: it will be closed first.",
                     ))
                     .small()
                     .color(p.warn),
@@ -549,12 +583,12 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 if ui
-                    .button(RichText::new(crate::i18n::tr("Desinstalar")).color(p.err))
+                    .button(RichText::new(crate::i18n::tr("Uninstall")).color(p.err))
                     .clicked()
                 {
                     go = true;
                 }
-                if ui.button(crate::i18n::tr("Cancelar")).clicked() {
+                if ui.button(crate::i18n::tr("Cancel")).clicked() {
                     go = false;
                     configs = false;
                     app.startup.uninstall = None;
@@ -564,7 +598,7 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
     if go {
         let (_, refused) = numapilot::procctl::terminate(&it.pids, app.my_uid, false);
         if let Some(r) = refused {
-            numapilot::log::info(&format!("desinstalar {}: não encerrei {r}", it.name));
+            numapilot::log::info(&format!("uninstall {}: did not close {r}", it.name));
         }
         let plan = origin::uninstall_plan(&t, unit_of(&it), configs);
         numapilot::log::info(&format!(
@@ -577,8 +611,8 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
         match crate::jobs::in_terminal(&["sh".into(), "-c".into(), plan.script]) {
             Ok(()) => app.toast(
                 crate::tf!(
-                    "Desinstalando {} no terminal",
                     "Uninstalling {} in the terminal",
+                    "Desinstalando {} no terminal",
                     it.name
                 ),
                 true,
@@ -600,10 +634,10 @@ fn add_window(app: &mut App, ctx: &egui::Context) {
     let mut open = true;
     let mut done: Option<Result<std::path::PathBuf, String>> = None;
     let title = match mode {
-        AddMode::Installed => crate::i18n::tr("Abrir no login: programa instalado"),
-        AddMode::Running => crate::i18n::tr("Abrir no login: programa aberto agora"),
-        AddMode::File => crate::i18n::tr("Abrir no login: arquivo"),
-        AddMode::Command => crate::i18n::tr("Abrir no login: comando"),
+        AddMode::Installed => crate::i18n::tr("Open at login: installed program"),
+        AddMode::Running => crate::i18n::tr("Open at login: program open now"),
+        AddMode::File => crate::i18n::tr("Open at login: file"),
+        AddMode::Command => crate::i18n::tr("Open at login: command"),
     };
     egui::Window::new(title)
         .open(&mut open)
@@ -613,7 +647,7 @@ fn add_window(app: &mut App, ctx: &egui::Context) {
             let s = &mut app.startup;
             match mode {
                 AddMode::Installed => {
-                    ui.add(egui::TextEdit::singleline(&mut s.query).hint_text(crate::i18n::tr("🔍 nome do programa (Steam, ZapZap...)")).desired_width(f32::INFINITY));
+                    ui.add(egui::TextEdit::singleline(&mut s.query).hint_text(crate::i18n::tr("🔍 program name (Steam, ZapZap...)")).desired_width(f32::INFINITY));
                     if s.found_for.as_deref() != Some(s.query.as_str()) {
                         s.found = startup::search_apps(&s.query);
                         s.found_for = Some(s.query.clone());
@@ -621,7 +655,7 @@ fn add_window(app: &mut App, ctx: &egui::Context) {
                     egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
                         for (n, path) in s.found.iter().take(200) {
                             ui.horizontal(|ui| {
-                                if ui.button(crate::i18n::tr("Adicionar")).clicked() {
+                                if ui.button(crate::i18n::tr("Add")).clicked() {
                                     done = Some(startup::add_desktop(path, s.delay));
                                 }
                                 ui.label(n);
@@ -631,11 +665,11 @@ fn add_window(app: &mut App, ctx: &egui::Context) {
                     });
                 }
                 AddMode::Running => {
-                    ui.label(RichText::new(crate::i18n::tr("Programas seus abertos agora (os mesmos da aba Programas):")).weak());
+                    ui.label(RichText::new(crate::i18n::tr("Your programs open now (the same as in the Programs tab):")).weak());
                     egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
                         for g in app.groups.iter().filter(|g| g.uid == app.my_uid) {
                             ui.horizontal(|ui| {
-                                if ui.button(crate::i18n::tr("Adicionar")).clicked() {
+                                if ui.button(crate::i18n::tr("Add")).clicked() {
                                     done = Some(startup::add_running(g.main_pid, &g.label));
                                 }
                                 ui.label(&g.label);
@@ -646,30 +680,30 @@ fn add_window(app: &mut App, ctx: &egui::Context) {
                 }
                 AddMode::File => {
                     ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(&mut s.path).hint_text(crate::i18n::tr("/caminho/do/programa.AppImage ou script.sh")).desired_width(360.0));
-                        if ui.button(crate::i18n::tr("Escolher…")).clicked()
+                        ui.add(egui::TextEdit::singleline(&mut s.path).hint_text(crate::i18n::tr("/path/to/program.AppImage or script.sh")).desired_width(360.0));
+                        if ui.button(crate::i18n::tr("Choose…")).clicked()
                             && let Some(f) = pick_file()
                         {
                             s.path = f;
                         }
                     });
-                    ui.label(RichText::new(crate::i18n::tr("Se não for executável: o script roda pelo sh; AppImage e binário ficam executáveis.")).small().weak());
-                    if ui.add_enabled(!s.path.trim().is_empty(), egui::Button::new(crate::i18n::tr("Adicionar"))).clicked() {
+                    ui.label(RichText::new(crate::i18n::tr("If it is not executable: the script runs through sh; AppImage and binary are made executable.")).small().weak());
+                    if ui.add_enabled(!s.path.trim().is_empty(), egui::Button::new(crate::i18n::tr("Add"))).clicked() {
                         let path = s.path.trim().trim_start_matches("file://").to_string();
                         done = Some(startup::add_file(std::path::Path::new(&path), s.delay));
                     }
                 }
                 AddMode::Command => {
                     egui::Grid::new("add-cmd").num_columns(2).show(ui, |ui| {
-                        ui.label(crate::i18n::tr("Nome"));
+                        ui.label(crate::i18n::tr("Name"));
                         ui.add(egui::TextEdit::singleline(&mut s.name).hint_text("Hermes agent").desired_width(360.0));
                         ui.end_row();
-                        ui.label(crate::i18n::tr("Comando"));
+                        ui.label(crate::i18n::tr("Command"));
                         ui.add(egui::TextEdit::singleline(&mut s.command).hint_text("hermes-agent --serve").desired_width(360.0));
                         ui.end_row();
                     });
-                    ui.label(RichText::new(crate::i18n::tr("Para IA nas GPUs do servidor, use numapilot run: numapilot run --gpu compute -- llama-server -m modelo.gguf")).small().weak());
-                    if ui.add_enabled(!s.name.trim().is_empty() && !s.command.trim().is_empty(), egui::Button::new(crate::i18n::tr("Adicionar"))).clicked() {
+                    ui.label(RichText::new(crate::i18n::tr("For AI on the server's GPUs, use numapilot run: numapilot run --gpu compute -- llama-server -m modelo.gguf")).small().weak());
+                    if ui.add_enabled(!s.name.trim().is_empty() && !s.command.trim().is_empty(), egui::Button::new(crate::i18n::tr("Add"))).clicked() {
                         done = Some(startup::add_command(s.name.trim(), s.command.trim(), s.delay));
                     }
                 }
@@ -677,17 +711,17 @@ fn add_window(app: &mut App, ctx: &egui::Context) {
             if mode != AddMode::Running {
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.label(crate::i18n::tr("Esperar antes de abrir:"));
+                    ui.label(crate::i18n::tr("Wait before opening:"));
                     ui.add(egui::DragValue::new(&mut s.delay).range(0..=600).suffix(" s"));
-                    ui.label(RichText::new(crate::i18n::tr("(útil para deixar a rede ou outro programa subir antes)")).small().weak());
+                    ui.label(RichText::new(crate::i18n::tr("(useful to let the network or another program come up first)")).small().weak());
                 });
             }
         });
     if let Some(r) = done {
         match r {
             Ok(p) => {
-                numapilot::log::info(&format!("inicialização: adicionado {}", p.display()));
-                app.toast(crate::i18n::tr("Adicionado: abre no próximo login"), true);
+                numapilot::log::info(&format!("startup: added {}", p.display()));
+                app.toast(crate::i18n::tr("Added: opens at the next login"), true);
                 app.startup.add = None;
             }
             Err(e) => app.toast(e, false),

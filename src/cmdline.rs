@@ -64,43 +64,43 @@ pub fn detect() -> Option<Loader> {
 pub const KNOWN: &[(&str, &str, &str)] = &[
     (
         "pci=realloc",
-        "Realocar as janelas PCI",
-        "Pode liberar o Resizable BAR e a VRAM inteira visível em placas X99/C612. Em algumas placas impede o boot: se acontecer, edite a entrada no menu do boot e tire o parâmetro.",
+        "Reallocate the PCI windows",
+        "May free up Resizable BAR and the whole VRAM visible on X99/C612 boards. On some boards it prevents booting: if that happens, edit the entry in the boot menu and remove the parameter.",
     ),
     (
         "intel_iommu=on",
-        "IOMMU da Intel",
-        "Necessário para passar uma GPU para uma máquina virtual (VFIO).",
+        "Intel IOMMU",
+        "Needed to pass a GPU to a virtual machine (VFIO).",
     ),
     (
         "iommu=pt",
-        "IOMMU em passthrough",
-        "Com o IOMMU ligado, evita o custo de tradução no DMA das placas que ficam no Linux.",
+        "IOMMU in passthrough",
+        "With the IOMMU on, avoids the DMA translation cost for the cards that stay on Linux.",
     ),
     (
         "amd_iommu=off",
-        "Desligar o IOMMU da AMD",
-        "Recomendado na BC-250 (o IOMMU dela causa travamentos). Impede passar placas para máquinas virtuais.",
+        "Turn off the AMD IOMMU",
+        "Recommended on the BC-250 (its IOMMU causes freezes). Prevents passing cards to virtual machines.",
     ),
     (
         "nowatchdog",
-        "Sem watchdog",
-        "Menos interrupções periódicas (o CachyOS já costuma usar).",
+        "No watchdog",
+        "Fewer periodic interrupts (CachyOS usually has it already).",
     ),
     (
         "pcie_aspm=off",
-        "Sem economia no PCIe (ASPM)",
-        "Evita quedas e latência ao acordar o link das placas; consome um pouco mais.",
+        "No PCIe power saving (ASPM)",
+        "Avoids drops and latency when waking the cards' link; uses a bit more power.",
     ),
     (
         "intel_idle.max_cstate=1",
-        "Limitar os estados de economia sempre",
-        "Menor latência o tempo todo, mas mais calor e consumo parado. O numapilot já faz isso só enquanto um jogo roda.",
+        "Always limit the idle states",
+        "Lower latency all the time, but more heat and idle power. numapilot already does this only while a game runs.",
     ),
     (
         "amdgpu.dcdebugmask=0x10",
-        "Sem Panel Self Refresh (AMD)",
-        "Corrige telas externas (USB-C/MST) piscando quando o mouse está na tela do notebook. Gasta um pouco mais de bateria.",
+        "No Panel Self Refresh (AMD)",
+        "Fixes external displays (USB-C/MST) flickering when the mouse is on the laptop screen. Uses a bit more battery.",
     ),
 ];
 
@@ -124,40 +124,40 @@ pub const MITIGATIONS: &[Mitigation] = &[
         title: "Meltdown (PTI)",
         vulns: &["meltdown"],
         params: &["pti=off"],
-        risk: "alto",
-        gain: "alto em disco, rede e chamadas ao sistema; médio em jogos",
-        note: "Um programa pode ler a memória do kernel.",
+        risk: "high",
+        gain: "high in disk, network and system calls; medium in games",
+        note: "A program can read the kernel's memory.",
         heavy: true,
     },
     Mitigation {
         title: "Spectre v1",
         vulns: &["spectre_v1"],
         params: &["nospectre_v1"],
-        risk: "alto",
-        gain: "baixo",
-        note: "Barato de manter; quase não vale desligar.",
+        risk: "high",
+        gain: "low",
+        note: "Cheap to keep; hardly worth turning off.",
         heavy: true,
     },
     Mitigation {
         title: "Spectre v2 / BHI",
         vulns: &["spectre_v2"],
         params: &["spectre_v2=off", "spectre_v2_user=off", "spectre_bhi=off"],
-        risk: "alto",
-        gain: "médio (retpoline/IBRS em cada chamada indireta)",
-        note: "Ataques entre programas e contra o kernel, inclusive por JavaScript.",
+        risk: "high",
+        gain: "medium (retpoline/IBRS on every indirect call)",
+        note: "Attacks between programs and against the kernel, including through JavaScript.",
         heavy: true,
     },
     Mitigation {
         title: "Spectre v4 (SSB)",
         vulns: &["spec_store_bypass"],
         params: &["spec_store_bypass_disable=off"],
-        risk: "médio",
-        gain: "baixo (por padrão só vale para programas em sandbox)",
+        risk: "medium",
+        gain: "low (by default it only applies to sandboxed programs)",
         note: "",
         heavy: true,
     },
     Mitigation {
-        title: "Limpeza de buffers: MDS, TAA, MMIO, RFDS",
+        title: "Buffer clearing: MDS, TAA, MMIO, RFDS",
         vulns: &[
             "mds",
             "tsx_async_abort",
@@ -170,17 +170,17 @@ pub const MITIGATIONS: &[Mitigation] = &[
             "mmio_stale_data=off",
             "reg_file_data_sampling=off",
         ],
-        risk: "médio",
-        gain: "médio a alto (limpeza a cada troca de contexto)",
-        note: "As quatro usam a mesma limpeza (VERW): só há ganho desligando todas juntas.",
+        risk: "medium",
+        gain: "medium to high (clearing on every context switch)",
+        note: "All four use the same clearing (VERW): there is only a gain by turning them all off together.",
         heavy: false,
     },
     Mitigation {
         title: "L1TF (Foreshadow)",
         vulns: &["l1tf"],
         params: &["l1tf=off"],
-        risk: "baixo fora de máquinas virtuais",
-        gain: "baixo fora de VMs",
+        risk: "low outside virtual machines",
+        gain: "low outside VMs",
         note: "",
         heavy: false,
     },
@@ -188,8 +188,8 @@ pub const MITIGATIONS: &[Mitigation] = &[
         title: "Retbleed",
         vulns: &["retbleed"],
         params: &["retbleed=off"],
-        risk: "médio",
-        gain: "alto quando a mitigação usa IBRS",
+        risk: "medium",
+        gain: "high when the mitigation uses IBRS",
         note: "",
         heavy: false,
     },
@@ -197,8 +197,8 @@ pub const MITIGATIONS: &[Mitigation] = &[
         title: "Downfall (GDS)",
         vulns: &["gather_data_sampling"],
         params: &["gather_data_sampling=off"],
-        risk: "médio",
-        gain: "alto em código com AVX (compressão, IA na CPU)",
+        risk: "medium",
+        gain: "high in AVX code (compression, AI on the CPU)",
         note: "",
         heavy: false,
     },
@@ -206,8 +206,8 @@ pub const MITIGATIONS: &[Mitigation] = &[
         title: "SRBDS",
         vulns: &["srbds"],
         params: &["srbds=off"],
-        risk: "baixo",
-        gain: "baixo (RDRAND mais rápido)",
+        risk: "low",
+        gain: "low (faster RDRAND)",
         note: "",
         heavy: false,
     },
@@ -215,26 +215,26 @@ pub const MITIGATIONS: &[Mitigation] = &[
         title: "ITS (Indirect Target Selection)",
         vulns: &["indirect_target_selection"],
         params: &["indirect_target_selection=off"],
-        risk: "médio",
-        gain: "baixo a médio",
+        risk: "medium",
+        gain: "low to medium",
         note: "",
         heavy: false,
     },
     Mitigation {
-        title: "Só para máquinas virtuais (iTLB multihit, VMScape)",
+        title: "Only for virtual machines (iTLB multihit, VMScape)",
         vulns: &["itlb_multihit", "vmscape"],
         params: &["kvm.nx_huge_pages=off", "vmscape=off"],
-        risk: "baixo sem VMs de terceiros",
-        gain: "só em VMs",
+        risk: "low without third-party VMs",
+        gain: "only in VMs",
         note: "",
         heavy: false,
     },
     Mitigation {
-        title: "AMD: SRSO e TSA",
+        title: "AMD: SRSO and TSA",
         vulns: &["spec_rstack_overflow", "tsa"],
         params: &["spec_rstack_overflow=off", "tsa=off"],
-        risk: "médio",
-        gain: "médio",
+        risk: "medium",
+        gain: "medium",
         note: "",
         heavy: false,
     },
@@ -403,32 +403,32 @@ pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Re
             })
         {
             return Err(crate::tf!(
-                "parâmetro inválido: {p:?}",
-                "invalid parameter: {p:?}"
+                "invalid parameter: {p:?}",
+                "parâmetro inválido: {p:?}"
             ));
         }
     }
     if !crate::util::is_root() {
         return Err(crate::i18n::tr(
-            "precisa de root (use sudo, ou o botão da interface pede a senha)",
+            "needs root (use sudo, or the interface button asks for the password)",
         )
         .into());
     }
     let l = detect().ok_or(crate::i18n::tr(
-        "não reconheci o bootloader (Limine, systemd-boot/sdboot-manage, GRUB ou rEFInd)",
+        "bootloader not recognized (Limine, systemd-boot/sdboot-manage, GRUB or rEFInd)",
     ))?;
     let text =
         std::fs::read_to_string(&l.path).map_err(|e| format!("{}: {e}", l.path.display()))?;
     let (new, first) = rewrite(l.kind, &text, &|cur| edit_params(cur, add, remove));
     if first.is_none() {
         return Err(crate::tf!(
-            "não achei a linha dos parâmetros em {}",
             "could not find the parameters line in {}",
+            "não achei a linha dos parâmetros em {}",
             l.path.display()
         ));
     }
     if new == text {
-        log(crate::i18n::tr("Nada a mudar."));
+        log(crate::i18n::tr("Nothing to change."));
         return Ok(());
     }
     let ts = crate::history::now();
@@ -445,23 +445,23 @@ pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Re
     std::fs::write(&bak, &text).map_err(|e| format!("backup: {e}"))?;
     std::fs::write(&l.path, &new).map_err(|e| format!("{}: {e}", l.path.display()))?;
     log(&crate::tf!(
-        "{} ({}): backup em {}",
         "{} ({}): backup in {}",
+        "{} ({}): backup em {}",
         l.name(),
         l.path.display(),
         bak.display()
     ));
     let (_, after) = rewrite(l.kind, &new, &|s| s.to_string());
     log(&crate::tf!(
-        "Parâmetros: {}",
         "Parameters: {}",
+        "Parâmetros: {}",
         after.unwrap_or_default()
     ));
     if let Some(cmd) = l.regen() {
         if crate::containers::which(cmd[0]) {
             log(&crate::tf!(
-                "Regravando as entradas: {}",
                 "Rewriting the entries: {}",
+                "Regravando as entradas: {}",
                 cmd.join(" ")
             ));
             let st = std::process::Command::new(cmd[0])
@@ -472,20 +472,20 @@ pub fn apply(add: &[String], remove: &[String], log: &mut dyn FnMut(&str)) -> Re
                 // Volta o arquivo para não deixar meio aplicado.
                 let _ = std::fs::write(&l.path, &text);
                 return Err(crate::tf!(
-                    "{} falhou ({st}); arquivo original restaurado",
                     "{} failed ({st}); original file restored",
+                    "{} falhou ({st}); arquivo original restaurado",
                     cmd[0]
                 ));
             }
         } else {
             log(&crate::tf!(
-                "Aviso: {} não encontrado; rode o equivalente para regravar o boot.",
                 "Warning: {} not found; run the equivalent to rewrite the boot entries.",
+                "Aviso: {} não encontrado; rode o equivalente para regravar o boot.",
                 cmd[0]
             ));
         }
     }
-    log(crate::i18n::tr("Pronto. Reinicie para valer."));
+    log(crate::i18n::tr("Done. Reboot to apply."));
     Ok(())
 }
 

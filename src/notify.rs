@@ -67,7 +67,7 @@ impl Notify {
             return Ok(());
         }
         if !(self.server.starts_with("https://") || self.server.starts_with("http://")) {
-            return Err(crate::i18n::tr("servidor deve começar com https://").into());
+            return Err(crate::i18n::tr("server must start with https://").into());
         }
         if self.topic.len() < 6
             || !self
@@ -75,7 +75,7 @@ impl Notify {
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
-            return Err(crate::i18n::tr("tópico: pelo menos 6 letras, números, - ou _").into());
+            return Err(crate::i18n::tr("topic: at least 6 letters, numbers, - or _").into());
         }
         Ok(())
     }
@@ -88,7 +88,7 @@ impl Notify {
     /// Manda já (sem cooldown). prio: 1 mínima .. 5 urgente.
     pub fn send_now(&self, title: &str, body: &str, prio: u8, tags: &[&str]) -> Result<(), String> {
         if self.topic.is_empty() {
-            return Err(crate::i18n::tr("sem tópico configurado").into());
+            return Err(crate::i18n::tr("no topic configured").into());
         }
         let host = std::fs::read_to_string("/etc/hostname")
             .unwrap_or_default()
@@ -161,7 +161,7 @@ pub fn event(kind: &str, key: &str, title: &str, body: &str, prio: u8, cooldown:
     };
     std::thread::spawn(move || {
         if let Err(e) = n.send_now(&title, &body, prio, tags) {
-            crate::nlog!("aviso não enviado: {e}");
+            crate::nlog!("notification not sent: {e}");
         }
     });
 }

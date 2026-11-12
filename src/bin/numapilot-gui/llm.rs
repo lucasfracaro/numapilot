@@ -29,22 +29,25 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     }
 
     ui.horizontal(|ui| {
-        ui.heading(crate::i18n::tr("Servidor de IA (llama.cpp)"));
+        ui.heading(crate::i18n::tr("AI server (llama.cpp)"));
         let (t, c) = match state {
-            None => ("parado", Color32::GRAY),
+            None => (crate::t2!("stopped", "parado"), Color32::GRAY),
             Some(false) => (
-                crate::i18n::tr("carregando o modelo..."),
+                crate::i18n::tr("loading the model..."),
                 Color32::from_rgb(230, 160, 40),
             ),
-            Some(true) => ("pronto", Color32::from_rgb(90, 180, 110)),
+            Some(true) => (
+                crate::t2!("ready", "pronto"),
+                Color32::from_rgb(90, 180, 110),
+            ),
         };
         ui.label(RichText::new(t).color(c));
     });
     ui.label(
-        RichText::new(
-            crate::i18n::tr("Roda modelos .gguf nas MI50 com uma API compatível com a da OpenAI (serve para Open WebUI, \
-             Continue, scripts...). Cada GPU usa os processadores e a memória do próprio socket."),
-        )
+        RichText::new(crate::i18n::tr(
+            "Runs .gguf models on the MI50s with an OpenAI-compatible API (works with Open WebUI, \
+             Continue, scripts...). Each GPU uses the processors and memory of its own socket.",
+        ))
         .weak(),
     );
     ui.separator();
@@ -53,7 +56,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         .num_columns(2)
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
-            ui.label(crate::i18n::tr("Pasta dos modelos"));
+            ui.label(crate::i18n::tr("Models folder"));
             ui.horizontal(|ui| {
                 let mut d = cfg.values.get("LLM_MODELS").cloned().unwrap_or_default();
                 if ui
@@ -63,21 +66,21 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     cfg.set("LLM_MODELS", &d);
                     app.models = None;
                 }
-                if ui.small_button(crate::i18n::tr("abrir")).clicked() {
+                if ui.small_button(crate::i18n::tr("open")).clicked() {
                     let _ = std::fs::create_dir_all(&models_dir);
                     let _ = open_url(&models_dir.to_string_lossy());
                 }
-                if ui.small_button(crate::i18n::tr("recarregar")).clicked() {
+                if ui.small_button(crate::i18n::tr("reload")).clicked() {
                     app.models = None;
                 }
             });
             ui.end_row();
 
-            ui.label(crate::i18n::tr("Modelo"));
+            ui.label(crate::i18n::tr("Model"));
             let models = app.models.clone().unwrap_or_default();
             let cur = cfg.get("LLM_MODEL");
             let shown = if cur.is_empty() {
-                crate::i18n::tr("(escolha)").to_string()
+                crate::i18n::tr("(choose)").to_string()
             } else {
                 cur.clone()
             };
@@ -87,8 +90,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 .show_ui(ui, |ui| {
                     if models.is_empty() {
                         ui.label(crate::tf!(
-                            "nenhum .gguf em {}",
                             "no .gguf in {}",
+                            "nenhum .gguf em {}",
                             models_dir.display()
                         ));
                     }
@@ -108,18 +111,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 });
             ui.end_row();
 
-            ui.label(crate::i18n::tr("Placas"));
+            ui.label(crate::i18n::tr("Cards"));
             let mut gpu = cfg.get("LLM_GPU");
             let mut opts: Vec<(String, String)> = vec![(
                 "compute:all".into(),
-                crate::i18n::tr("As duas MI50 (modelo dividido)").into(),
+                crate::i18n::tr("Both MI50s (split model)").into(),
             )];
             for g in app.topo.gpus.iter().filter(|g| g.role == GpuRole::Compute) {
                 opts.push((
                     g.alias.clone(),
                     crate::tf!(
-                        "Só a {} (socket {})",
                         "Only the {} (socket {})",
+                        "Só a {} (socket {})",
                         g.alias,
                         g.numa_node.map(|n| n.to_string()).unwrap_or("?".into())
                     ),
@@ -143,7 +146,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
             ui.end_row();
 
-            ui.label(crate::i18n::tr("Contexto (tokens)"));
+            ui.label(crate::i18n::tr("Context (tokens)"));
             let mut ctx: u32 = cfg.get("LLM_CTX").parse().unwrap_or(16384);
             if ui
                 .add(
@@ -157,7 +160,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
             ui.end_row();
 
-            ui.label(crate::i18n::tr("Porta"));
+            ui.label(crate::i18n::tr("Port"));
             let mut port: u16 = cfg.get("LLM_PORT").parse().unwrap_or(8080);
             if ui
                 .add(egui::DragValue::new(&mut port).range(1024..=65535))
@@ -167,13 +170,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
             ui.end_row();
 
-            ui.label(crate::i18n::tr("Argumentos extras"));
+            ui.label(crate::i18n::tr("Extra arguments"));
             let mut a = cfg.get("LLM_ARGS");
             if ui
                 .add(
                     egui::TextEdit::singleline(&mut a)
                         .desired_width(420.0)
-                        .hint_text(crate::i18n::tr("ex.: --flash-attn on -ctk q8_0 -ctv q8_0")),
+                        .hint_text(crate::i18n::tr("e.g. --flash-attn on -ctk q8_0 -ctv q8_0")),
                 )
                 .changed()
             {
@@ -200,8 +203,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             let one = t.lines().any(|l| l == "LLM_TUNED_ONE=1");
             ui.label(
                 RichText::new(crate::tf!(
-                    "Otimizado: {}{args} ({res})",
                     "Optimized: {}{args} ({res})",
+                    "Otimizado: {}{args} ({res})",
                     if one { "1 GPU, " } else { "" }
                 ))
                 .color(Color32::from_rgb(110, 190, 120)),
@@ -214,20 +217,20 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         let has_model = !cfg.get("LLM_MODEL").is_empty();
         if state.is_none() {
             if ui
-                .add_enabled(has_model, egui::Button::new(crate::i18n::tr("Iniciar")))
+                .add_enabled(has_model, egui::Button::new(crate::i18n::tr("Start")))
                 .clicked()
             {
                 save(app, &cfg);
-                app.start_job(crate::i18n::tr("Iniciando o servidor de IA"), gfx(&["llm", "up"]));
+                app.start_job(crate::i18n::tr("Starting the AI server"), gfx(&["llm", "up"]));
             }
         } else {
-            if ui.button(crate::i18n::tr("Parar")).clicked() {
-                app.start_job(crate::i18n::tr("Parando o servidor de IA"), gfx(&["llm", "down"]));
+            if ui.button(crate::i18n::tr("Stop")).clicked() {
+                app.start_job(crate::i18n::tr("Stopping the AI server"), gfx(&["llm", "down"]));
             }
-            if ui.button(crate::i18n::tr("Reiniciar com estes ajustes")).clicked() {
+            if ui.button(crate::i18n::tr("Restart with these settings")).clicked() {
                 save(app, &cfg);
                 app.start_job(
-                    crate::i18n::tr("Reiniciando o servidor de IA"),
+                    crate::i18n::tr("Restarting the AI server"),
                     vec![
                         "sh".into(),
                         "-c".into(),
@@ -236,15 +239,15 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 );
             }
         }
-        if ui.button(crate::i18n::tr("Salvar ajustes")).clicked() {
+        if ui.button(crate::i18n::tr("Save settings")).clicked() {
             save(app, &cfg);
         }
-        if ui.button(crate::i18n::tr("Atualizar llama.cpp")).clicked() {
-            app.start_job(crate::i18n::tr("Atualizando o llama.cpp"), gfx(&["llm", "update"]));
+        if ui.button(crate::i18n::tr("Update llama.cpp")).clicked() {
+            app.start_job(crate::i18n::tr("Updating llama.cpp"), gfx(&["llm", "update"]));
         }
         if ui
-            .add_enabled(has_model && state.is_none(), egui::Button::new(crate::i18n::tr("Otimizar (tokens/s)")))
-            .on_hover_text(crate::i18n::tr("Testa 1 ou todas as GPUs, divisão por camadas ou linhas, flash attention e cache q8_0 com o modelo escolhido e grava a combinação mais rápida. Com o servidor parado; leva alguns minutos."))
+            .add_enabled(has_model && state.is_none(), egui::Button::new(crate::i18n::tr("Optimize (tokens/s)")))
+            .on_hover_text(crate::i18n::tr("Tests 1 or all GPUs, layer or row split, flash attention and q8_0 cache with the chosen model and saves the fastest combination. With the server stopped; takes a few minutes."))
             .clicked()
         {
             save(app, &cfg);
@@ -257,11 +260,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
         let eng = numapilot::containers::engine().unwrap_or_else(|| "podman".into());
         if ui
-            .add_enabled(state.is_some(), egui::Button::new(crate::i18n::tr("Ver log")))
+            .add_enabled(state.is_some(), egui::Button::new(crate::i18n::tr("View log")))
             .clicked()
         {
             app.start_job(
-                crate::i18n::tr("Log do servidor de IA"),
+                crate::i18n::tr("AI server log"),
                 vec![
                     eng,
                     "logs".into(),
@@ -275,12 +278,12 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     ui.add_space(6.0);
     ui.add_enabled_ui(state == Some(true), |ui| {
         ui.horizontal(|ui| {
-            if ui.button(crate::i18n::tr("Abrir chat")).clicked() {
+            if ui.button(crate::i18n::tr("Open chat")).clicked() {
                 let _ = open_url(&format!("http://127.0.0.1:{port}"));
             }
             let api = format!("http://127.0.0.1:{port}/v1");
             ui.label(RichText::new(format!("API: {api}")).monospace());
-            if ui.small_button(crate::i18n::tr("copiar")).clicked() {
+            if ui.small_button(crate::i18n::tr("copy")).clicked() {
                 ui.ctx().copy_text(api);
             }
         });
@@ -290,9 +293,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
 fn save(app: &mut App, cfg: &LabSettings) {
     match cfg.save_keys(KEYS) {
-        Ok(()) => app.toast(crate::i18n::tr("Ajustes do servidor de IA salvos"), true),
+        Ok(()) => app.toast(crate::i18n::tr("AI server settings saved"), true),
         Err(e) => app.toast(
-            crate::tf!("Não consegui salvar: {e}", "Could not save: {e}"),
+            crate::tf!("Could not save: {e}", "Não consegui salvar: {e}"),
             false,
         ),
     }

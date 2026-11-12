@@ -37,7 +37,7 @@ fn open_window() {
                 "numapilot".into(),
                 "-i".into(),
                 "dialog-error".into(),
-                crate::i18n::tr("Não consegui abrir o numapilot").into(),
+                crate::i18n::tr("Could not open numapilot").into(),
                 format!("{exe}: {e}"),
             ]);
         }
@@ -83,18 +83,18 @@ impl Tray for NumaTray {
     }
     fn menu(&self) -> Vec<MenuItem<Self>> {
         vec![
-            item(crate::i18n::tr("Abrir numapilot"), |_| open_window()),
+            item(crate::i18n::tr("Open numapilot"), |_| open_window()),
             MenuItem::Separator,
             SubMenu {
-                label: crate::i18n::tr("Laboratório").into(),
+                label: crate::i18n::tr("Lab").into(),
                 submenu: vec![
                     item("JupyterLab", |_| {
                         let _ = open_url(&jupyter_url(&LabSettings::load()));
                     }),
-                    item(crate::i18n::tr("VS Code (navegador)"), |_| {
+                    item(crate::i18n::tr("VS Code (browser)"), |_| {
                         let _ = open_url(&code_url(&LabSettings::load()));
                     }),
-                    item(crate::i18n::tr("VS Code (app do PC)"), |_| {
+                    item(crate::i18n::tr("VS Code (PC app)"), |_| {
                         let _ = open_code_app(&LabSettings::load());
                     }),
                     item("PyCharm", |_| run(&["lab", "pycharm"])),
@@ -102,32 +102,32 @@ impl Tray for NumaTray {
                         let _ = open_terminal(&LabSettings::load().get("LAB_NAME"));
                     }),
                     MenuItem::Separator,
-                    item(crate::i18n::tr("Ligar"), |_| run(&["lab", "up"])),
-                    item(crate::i18n::tr("Desligar"), |_| run(&["lab", "down"])),
+                    item(crate::i18n::tr("Turn on"), |_| run(&["lab", "up"])),
+                    item(crate::i18n::tr("Turn off"), |_| run(&["lab", "down"])),
                 ],
                 ..Default::default()
             }
             .into(),
             SubMenu {
-                label: crate::i18n::tr("Servidor de IA").into(),
+                label: crate::i18n::tr("AI server").into(),
                 submenu: vec![
-                    item(crate::i18n::tr("Abrir chat"), |_| {
+                    item(crate::i18n::tr("Open chat"), |_| {
                         let _ = open_url(&format!(
                             "http://127.0.0.1:{}",
                             LabSettings::load().get("LLM_PORT")
                         ));
                     }),
-                    item(crate::i18n::tr("Iniciar"), |_| run(&["llm", "up"])),
-                    item(crate::i18n::tr("Parar"), |_| run(&["llm", "down"])),
+                    item(crate::i18n::tr("Start"), |_| run(&["llm", "up"])),
+                    item(crate::i18n::tr("Stop"), |_| run(&["llm", "down"])),
                 ],
                 ..Default::default()
             }
             .into(),
-            item(crate::i18n::tr("Painel do Sunshine"), |_| {
+            item(crate::i18n::tr("Sunshine panel"), |_| {
                 let _ = open_url("https://localhost:47990");
             }),
             MenuItem::Separator,
-            item(crate::i18n::tr("Sair do ícone"), |_| std::process::exit(0)),
+            item(crate::i18n::tr("Quit the icon"), |_| std::process::exit(0)),
         ]
     }
 }
@@ -155,10 +155,10 @@ impl Alerts {
                         "numapilot".into(),
                         "-i".into(),
                         "video-display".into(),
-                        crate::tf!("{} ainda ligada", "{} still on", st.alias),
+                        crate::tf!("{} still on", "{} ainda ligada", st.alias),
                         crate::tf!(
-                            "Não desliguei a NVIDIA porque está em uso por: {}.",
                             "The NVIDIA was not turned off because it is in use by: {}.",
+                            "Não desliguei a NVIDIA porque está em uso por: {}.",
                             st.blocked_by.join(", ")
                         ),
                     ]);
@@ -179,8 +179,8 @@ impl Alerts {
             if *n >= 3 && !recent {
                 self.last.insert(g.pci.clone(), std::time::Instant::now());
                 let body = crate::tf!(
-                    "{} está a {t:.0} °C (ventoinha {}). Confira a ventilação ou reduza o limite de potência.",
                     "{} is at {t:.0} °C (fan {}). Check the airflow or lower the power limit.",
+                    "{} está a {t:.0} °C (ventoinha {}). Confira a ventilação ou reduza o limite de potência.",
                     g.alias,
                     s.fan_pct
                         .map(|p| format!("{p:.0}%"))
@@ -194,7 +194,7 @@ impl Alerts {
                     "numapilot".into(),
                     "-i".into(),
                     "dialog-warning".into(),
-                    crate::tf!("GPU quente: {}", "Hot GPU: {}", g.alias),
+                    crate::tf!("Hot GPU: {}", "GPU quente: {}", g.alias),
                     body,
                 ]);
             }
@@ -234,7 +234,7 @@ pub fn main_loop() -> Result<(), String> {
     let handle = NumaTray { tip, hot }
         .assume_sni_available(true)
         .spawn()
-        .map_err(|e| crate::tf!("bandeja indisponível: {e}", "tray unavailable: {e}"))?;
+        .map_err(|e| crate::tf!("tray unavailable: {e}", "bandeja indisponível: {e}"))?;
     let mut alerts = Alerts::default();
     loop {
         std::thread::sleep(Duration::from_secs(5));
@@ -247,8 +247,8 @@ pub fn main_loop() -> Result<(), String> {
                 .arg("--tray")
                 .exec();
             return Err(crate::tf!(
-                "não consegui reabrir o ícone atualizado: {e}",
-                "could not reopen the updated icon: {e}"
+                "could not reopen the updated icon: {e}",
+                "não consegui reabrir o ícone atualizado: {e}"
             ));
         }
         alerts.check(&topo);

@@ -39,17 +39,17 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         Err(_) => (false, false, None),
     };
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.heading(crate::i18n::tr("Geral"));
+        ui.heading(crate::i18n::tr("General"));
         ui.horizontal(|ui| {
-            ui.label(crate::i18n::tr("Serviço numapilot:"));
+            ui.label(crate::i18n::tr("numapilot service:"));
             if daemon_ok {
-                ui.label(RichText::new(crate::i18n::tr("rodando")).color(Color32::from_rgb(90, 180, 110)));
+                ui.label(RichText::new(crate::i18n::tr("running")).color(Color32::from_rgb(90, 180, 110)));
             } else {
-                ui.label(RichText::new(crate::i18n::tr("parado — sudo systemctl enable --now numapilot")).color(Color32::from_rgb(220, 80, 60)));
+                ui.label(RichText::new(crate::i18n::tr("stopped — sudo systemctl enable --now numapilot")).color(Color32::from_rgb(220, 80, 60)));
             }
         });
         let mut tray = autostart_path().exists();
-        if ui.checkbox(&mut tray, crate::i18n::tr("Ícone na bandeja ao iniciar a sessão (atalhos para o laboratório, IA e esta janela)")).changed() {
+        if ui.checkbox(&mut tray, crate::i18n::tr("Tray icon when the session starts (shortcuts to the lab, AI and this window)")).changed() {
             match set_autostart(tray) {
                 Ok(()) => {
                     if tray {
@@ -58,31 +58,31 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             "--tray".into(),
                         ]);
                     }
-                    app.toast(if tray { crate::i18n::tr("Ícone na bandeja ativado") } else { crate::i18n::tr("Ícone na bandeja não abre mais sozinho") }, true);
+                    app.toast(if tray { crate::i18n::tr("Tray icon enabled") } else { crate::i18n::tr("Tray icon no longer starts by itself") }, true);
                 }
                 Err(e) => app.toast(e.to_string(), false),
             }
         }
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Idioma"));
+        ui.heading(crate::i18n::tr("Language"));
         ui.horizontal(|ui| {
-            let en = crate::i18n::english();
+            let en = !crate::i18n::portuguese();
             if ui.selectable_label(!en, "Português").clicked() {
-                crate::i18n::set_english(false);
+                crate::i18n::set_portuguese(true);
             }
             if ui
                 .selectable_label(en, "English")
                 .on_hover_text("The interface is in English; messages that come from the service and the command line are still in Portuguese.")
                 .clicked()
             {
-                crate::i18n::set_english(true);
+                crate::i18n::set_portuguese(false);
             }
         });
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Abas do menu"));
+        ui.heading(crate::i18n::tr("Menu tabs"));
         ui.label(
-            RichText::new(crate::i18n::tr("Desmarque o que você não usa neste PC para o menu ficar mais curto. Nada é desligado: é só o menu."))
+            RichText::new(crate::i18n::tr("Uncheck what you do not use on this PC to make the menu shorter. Nothing is turned off: it is only the menu."))
                 .small()
                 .weak(),
         );
@@ -105,14 +105,14 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         });
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Atualizações"));
+        ui.heading(crate::i18n::tr("Updates"));
         let mut on = auto;
         if ui
-            .checkbox(&mut on, crate::i18n::tr("Verificar toda semana (laboratório, llama.cpp e ROCm)"))
+            .checkbox(&mut on, crate::i18n::tr("Check every week (lab, llama.cpp and ROCm)"))
             .changed()
         {
             app.start_job(
-                crate::i18n::tr("Atualização semanal"),
+                crate::i18n::tr("Weekly update"),
                 gfx(&["autoupdate", if on { "enable" } else { "disable" }]),
             );
         }
@@ -120,7 +120,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             let ok = l["ok"].as_bool().unwrap_or(false);
             ui.label(
                 RichText::new(crate::tf!(
-                    "Última: {} — {}", "Last: {} — {}",
+                    "Last: {} — {}", "Última: {} — {}",
                     l["time"].as_str().unwrap_or("?"),
                     l["summary"].as_str().unwrap_or("").replace(';', ", ")
                 ))
@@ -132,7 +132,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         selfupdate_ui(app, ui);
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Painel no celular"));
+        ui.heading(crate::i18n::tr("Phone panel"));
         web_ui(app, ui);
 
         peers_ui(app, ui);
@@ -142,16 +142,16 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         vm_ui(app, ui);
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Opções de boot"));
+        ui.heading(crate::i18n::tr("Boot options"));
         let od = numapilot::bootcfg::overdrive_state();
         ui.horizontal(|ui| {
             let mut on = od.on_next_boot;
             if ui
-                .add_enabled(!od.from_cmdline, egui::Checkbox::new(&mut on, crate::i18n::tr("OverDrive das placas AMD (undervolt/overclock)")))
+                .add_enabled(!od.from_cmdline, egui::Checkbox::new(&mut on, crate::i18n::tr("OverDrive of the AMD cards (undervolt/overclock)")))
                 .changed()
             {
                 app.start_job(
-                    if on { crate::i18n::tr("Ativando o OverDrive") } else { crate::i18n::tr("Desativando o OverDrive") },
+                    if on { crate::i18n::tr("Enabling OverDrive") } else { crate::i18n::tr("Disabling OverDrive") },
                     vec![
                         "pkexec".into(),
                         crate::jobs::sibling_abs("numapilot"),
@@ -162,38 +162,38 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 );
             }
             let txt = match (od.active, od.on_next_boot) {
-                (true, true) => crate::i18n::tr("ligado").to_string(),
-                (false, true) => crate::i18n::tr("liga ao reiniciar").into(),
-                (true, false) => crate::i18n::tr("desliga ao reiniciar").into(),
-                (false, false) => crate::i18n::tr("desligado").into(),
+                (true, true) => crate::i18n::tr("on").to_string(),
+                (false, true) => crate::i18n::tr("turns on after reboot").into(),
+                (true, false) => crate::i18n::tr("turns off after reboot").into(),
+                (false, false) => crate::i18n::tr("off").into(),
             };
             ui.label(RichText::new(txt).weak());
         });
         if od.from_cmdline {
-            ui.label(RichText::new(crate::i18n::tr("Definido na linha do kernel (amdgpu.ppfeaturemask): mude no bootloader ou remova de lá para controlar por aqui.")).small().weak());
+            ui.label(RichText::new(crate::i18n::tr("Set on the kernel command line (amdgpu.ppfeaturemask): change it in the bootloader or remove it there to control it from here.")).small().weak());
         }
         ui.label(
-            RichText::new(crate::i18n::tr("Fica em /etc/modprobe.d/numapilot.conf e a imagem de boot é refeita: vale para qualquer kernel, inclusive depois de atualizar. Pede a senha."))
+            RichText::new(crate::i18n::tr("Lives in /etc/modprobe.d/numapilot.conf and the boot image is rebuilt: works for any kernel, even after updates. Asks for the password."))
                 .small()
                 .weak(),
         );
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Diagnóstico"));
-        ui.label(crate::i18n::tr("Testa cada parte no seu hardware (NUMA, cgroups, seleção de GPU no Vulkan, ROCm, ventoinhas, OverDrive, ReBAR, Steam) e diz o que corrigir."));
+        ui.heading(crate::i18n::tr("Diagnosis"));
+        ui.label(crate::i18n::tr("Tests each part on your hardware (NUMA, cgroups, Vulkan GPU selection, ROCm, fans, OverDrive, ReBAR, Steam) and says what to fix."));
         ui.horizontal(|ui| {
-            if ui.button(crate::i18n::tr("Verificar tudo")).clicked() {
-                app.start_job(crate::i18n::tr("Diagnóstico"), vec![crate::jobs::sibling("numapilot"), "doctor".into()]);
+            if ui.button(crate::i18n::tr("Check everything")).clicked() {
+                app.start_job(crate::i18n::tr("Diagnosis"), vec![crate::jobs::sibling("numapilot"), "doctor".into()]);
             }
             if ui
-                .button(crate::i18n::tr("Fazer backup das configurações"))
-                .on_hover_text(crate::i18n::tr("Salva ~/numapilot-backup-DATA.tar.gz com perfis, ajustes da máquina, ventoinhas, GPUs, laboratório e parâmetros do kernel. Guarde fora do disco do sistema; para restaurar: ./install.sh --restore ARQUIVO"))
+                .button(crate::i18n::tr("Back up the settings"))
+                .on_hover_text(crate::i18n::tr("Saves ~/numapilot-backup-DATA.tar.gz with profiles, machine settings, fans, GPUs, lab and kernel parameters. Keep it off the system disk; to restore: ./install.sh --restore FILE"))
                 .clicked()
             {
-                app.start_job(crate::i18n::tr("Backup das configurações"), vec![crate::jobs::sibling("numapilot"), "backup".into()]);
+                app.start_job(crate::t2!("Settings backup", "Backup das configurações"), vec![crate::jobs::sibling("numapilot"), "backup".into()]);
             }
-            if ui.button(crate::i18n::tr("Gerar relatório para enviar")).on_hover_text(crate::i18n::tr("Salva ~/numapilot-relatorio.txt com o diagnóstico e as informações do sistema")).clicked() {
-                app.start_job(crate::i18n::tr("Relatório de diagnóstico"), vec![crate::jobs::sibling("numapilot"), "doctor".into(), "--report".into()]);
+            if ui.button(crate::i18n::tr("Generate report to send")).on_hover_text(crate::i18n::tr("Saves ~/numapilot-relatorio.txt with the diagnosis and system information")).clicked() {
+                app.start_job(crate::i18n::tr("Diagnosis report"), vec![crate::jobs::sibling("numapilot"), "doctor".into(), "--report".into()]);
             }
         });
 
@@ -201,7 +201,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.heading("Hardware");
         for n in &app.topo.nodes {
             ui.label(crate::tf!(
-                "Socket {} — {} threads ({} núcleos físicos), RAM {:.0} GB, CPUs {}", "Socket {} — {} threads ({} physical cores), RAM {:.0} GB, CPUs {}",
+                "Socket {} — {} threads ({} physical cores), RAM {:.0} GB, CPUs {}", "Socket {} — {} threads ({} núcleos físicos), RAM {:.0} GB, CPUs {}",
                 n.id,
                 n.cpus.len(),
                 n.physical_cores,
@@ -211,9 +211,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
         for g in &app.topo.gpus {
             let role = match g.role {
-                GpuRole::Display => crate::i18n::tr("vídeo (monitor ligado)"),
-                GpuRole::Compute if g.display_connected => crate::i18n::tr("computação + monitor ligado nela"),
-                GpuRole::Compute => crate::i18n::tr("computação; também roda jogos via PRIME"),
+                GpuRole::Display => crate::i18n::tr("video (monitor connected)"),
+                GpuRole::Compute if g.display_connected => crate::i18n::tr("compute + monitor connected to it"),
+                GpuRole::Compute => crate::i18n::tr("compute; also runs games through PRIME"),
                 GpuRole::Other => "outra",
             };
             ui.label(format!(
@@ -226,13 +226,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ));
         }
         for w in app.topo.warnings() {
-            ui.label(RichText::new(crate::tf!("Aviso: {w}", "Warning: {w}")).color(Color32::from_rgb(230, 160, 40)));
+            ui.label(RichText::new(crate::tf!("Warning: {w}", "Aviso: {w}")).color(Color32::from_rgb(230, 160, 40)));
         }
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Dicas"));
-        ui.label(crate::i18n::tr("• Jogo numa MI50: escolha \"MI50 — jogo/gráfico\" na aba Programas."));
-        ui.label(crate::i18n::tr("• Lossless Scaling (lsfg-vk): o oficial gera os quadros na mesma GPU do jogo."));
-        ui.label(crate::i18n::tr("• Configurações avançadas: /etc/numapilot.toml (regras) e /etc/gfx906-rocm.conf (laboratório/ROCm)."));
+        ui.heading(crate::i18n::tr("Tips"));
+        ui.label(crate::i18n::tr("• Game on an MI50: choose \"MI50 — game/graphics\" in the Programs tab."));
+        ui.label(crate::i18n::tr("• Lossless Scaling (lsfg-vk): the official one generates the frames on the same GPU as the game."));
+        ui.label(crate::i18n::tr("• Advanced settings: /etc/numapilot.toml (rules) and /etc/gfx906-rocm.conf (lab/ROCm)."));
     });
 }
 
@@ -263,9 +263,9 @@ fn qr(ui: &mut egui::Ui, text: &str) {
 
 fn notify_ui(app: &mut App, ui: &mut egui::Ui) {
     use numapilot::notify::Notify;
-    ui.label(RichText::new(crate::i18n::tr("Avisos no celular")).strong());
+    ui.label(RichText::new(crate::i18n::tr("Phone notifications")).strong());
     ui.label(
-        RichText::new(crate::i18n::tr("Pelo app ntfy (Android/iOS, grátis): GPU quente, disco falhando, servidor de IA caiu, PC saiu da rede, undervolt pronto. Instale o ntfy e assine o tópico (ou leia o QR code)."))
+        RichText::new(crate::i18n::tr("Through the ntfy app (Android/iOS, free): hot GPU, failing disk, AI server down, PC off the network, undervolt done. Install ntfy and subscribe to the topic (or scan the QR code)."))
             .small()
             .weak(),
     );
@@ -277,18 +277,18 @@ fn notify_ui(app: &mut App, ui: &mut egui::Ui) {
         }
         n
     });
-    ui.checkbox(&mut n.enabled, crate::i18n::tr("Ligado"));
+    ui.checkbox(&mut n.enabled, crate::i18n::tr("On"));
     egui::Grid::new("ntfy")
         .num_columns(2)
         .spacing([12.0, 4.0])
         .show(ui, |ui| {
-            ui.label(crate::i18n::tr("Servidor"));
+            ui.label(crate::i18n::tr("Server"));
             ui.add(egui::TextEdit::singleline(&mut n.server).desired_width(260.0));
             ui.end_row();
-            ui.label(crate::i18n::tr("Tópico"));
+            ui.label(crate::i18n::tr("Topic"));
             ui.add(egui::TextEdit::singleline(&mut n.topic).desired_width(260.0));
             ui.end_row();
-            ui.label(crate::i18n::tr("Token (opcional)"));
+            ui.label(crate::i18n::tr("Token (optional)"));
             let mut t = n.token.clone().unwrap_or_default();
             ui.add(
                 egui::TextEdit::singleline(&mut t)
@@ -299,39 +299,39 @@ fn notify_ui(app: &mut App, ui: &mut egui::Ui) {
             ui.end_row();
         });
     ui.horizontal_wrapped(|ui| {
-        ui.checkbox(&mut n.gpu_hot, crate::i18n::tr("GPU quente"));
+        ui.checkbox(&mut n.gpu_hot, crate::i18n::tr("Hot GPU"));
         ui.add_enabled(
             n.gpu_hot,
             egui::DragValue::new(&mut n.gpu_hot_c)
                 .range(70.0..=105.0)
                 .suffix(" °C"),
         );
-        ui.checkbox(&mut n.health, crate::i18n::tr("discos/memória/bateria"));
-        ui.checkbox(&mut n.llm, crate::i18n::tr("servidor de IA"));
-        ui.checkbox(&mut n.peers, crate::i18n::tr("outros PCs"));
-        ui.checkbox(&mut n.jobs, crate::i18n::tr("tarefas prontas"));
+        ui.checkbox(&mut n.health, crate::i18n::tr("disks/memory/battery"));
+        ui.checkbox(&mut n.llm, crate::t2!("AI server", "servidor de IA"));
+        ui.checkbox(&mut n.peers, crate::i18n::tr("other PCs"));
+        ui.checkbox(&mut n.jobs, crate::i18n::tr("finished tasks"));
     });
     let n = n.clone();
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(n != saved, egui::Button::new(crate::i18n::tr("Salvar")))
+            .add_enabled(n != saved, egui::Button::new(crate::i18n::tr("Save")))
             .clicked()
         {
             app.send(numapilot::ctl::Request::SetNotify { notify: n.clone() });
         }
-        if ui.button(crate::i18n::tr("Mandar teste")).clicked() {
+        if ui.button(crate::i18n::tr("Send test")).clicked() {
             match n.send_now(
-                crate::i18n::tr("Teste do numapilot"),
-                crate::i18n::tr("Se chegou, os avisos estão funcionando."),
+                crate::i18n::tr("numapilot test"),
+                crate::i18n::tr("If this arrived, notifications are working."),
                 3,
                 &["white_check_mark"],
             ) {
-                Ok(()) => app.toast(crate::i18n::tr("Aviso de teste enviado"), true),
+                Ok(()) => app.toast(crate::i18n::tr("Test notification sent"), true),
                 Err(e) => app.toast(e, false),
             }
         }
         if ui
-            .small_button(crate::i18n::tr("abrir no navegador"))
+            .small_button(crate::i18n::tr("open in the browser"))
             .clicked()
         {
             let _ = crate::jobs::open_url(&n.subscribe_url());
@@ -340,15 +340,15 @@ fn notify_ui(app: &mut App, ui: &mut egui::Ui) {
     if !n.topic.is_empty() {
         ui.horizontal(|ui| {
             qr(ui, &n.subscribe_url());
-            ui.label(RichText::new(crate::tf!("Assine no app: {}\nOs avisos de IA e de outros PCs precisam do painel no celular ligado.", "Subscribe in the app: {}\nAI and other-PC notifications need the phone panel turned on.", n.subscribe_url())).small().weak());
+            ui.label(RichText::new(crate::tf!("Subscribe in the app: {}\nAI and other-PC notifications need the phone panel turned on.", "Assine no app: {}\nOs avisos de IA e de outros PCs precisam do painel no celular ligado.", n.subscribe_url())).small().weak());
         });
     }
 }
 
 fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
-    ui.label(RichText::new(crate::i18n::tr("Meus outros PCs")).strong());
+    ui.label(RichText::new(crate::i18n::tr("My other PCs")).strong());
     ui.label(
-        RichText::new(crate::i18n::tr("Cole o link do painel de outro PC (Configurações → Painel no celular, lá nele): o painel deste mostra todos juntos."))
+        RichText::new(crate::i18n::tr("Paste the link of another PC's panel (Settings → Phone panel, on that PC): this one's panel shows them all together."))
             .small()
             .weak(),
     );
@@ -357,13 +357,13 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(&p.name);
             ui.label(RichText::new(&p.url).small().weak());
-            if ui.small_button(crate::i18n::tr("abrir")).clicked() {
+            if ui.small_button(crate::i18n::tr("open")).clicked() {
                 let _ = crate::jobs::open_url(&p.link());
             }
             if p.mac.is_some()
                 && ui
-                    .small_button(crate::i18n::tr("ligar"))
-                    .on_hover_text(crate::i18n::tr("Manda o pacote do Wake-on-LAN"))
+                    .small_button(crate::i18n::tr("turn on"))
+                    .on_hover_text(crate::i18n::tr("Sends the Wake-on-LAN packet"))
                     .clicked()
             {
                 match numapilot::peers::wake(&p.name) {
@@ -372,9 +372,9 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
             if ui
-                .small_button(crate::i18n::tr("copiar perfis"))
+                .small_button(crate::i18n::tr("copy profiles"))
                 .on_hover_text(crate::i18n::tr(
-                    "Traz os perfis de programa (Ajustar…) que este PC ainda não tem",
+                    "Brings in the program profiles (Adjust…) this PC does not have yet",
                 ))
                 .clicked()
             {
@@ -383,7 +383,7 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
                     Err(e) => app.toast(e, false),
                 }
             }
-            if ui.small_button(crate::i18n::tr("remover")).clicked() {
+            if ui.small_button(crate::i18n::tr("remove")).clicked() {
                 let _ = numapilot::peers::remove(&p.name);
             }
         });
@@ -391,11 +391,11 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
     if !peers.is_empty() {
         ui.horizontal(|ui| {
             if ui
-                .button(crate::i18n::tr("Backup de todos agora"))
-                .on_hover_text(crate::i18n::tr("Guarda as configurações de cada PC ligado em ~/numapilot-backups (o painel no celular faz isso sozinho uma vez por dia)"))
+                .button(crate::i18n::tr("Back up all now"))
+                .on_hover_text(crate::i18n::tr("Stores the settings of each PC that is on in ~/numapilot-backups (the phone panel does this by itself once a day)"))
                 .clicked()
             {
-                app.start_job(crate::i18n::tr("Backup dos PCs"), vec![crate::jobs::sibling_abs("numapilot"), "peers".into(), "backup".into()]);
+                app.start_job(crate::i18n::tr("PC backup"), vec![crate::jobs::sibling_abs("numapilot"), "peers".into(), "backup".into()]);
             }
         });
     }
@@ -407,15 +407,15 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
         );
         ui.add(
             egui::TextEdit::singleline(&mut app.peer_name)
-                .hint_text(crate::i18n::tr("nome (ex.: BC-250)"))
+                .hint_text(crate::i18n::tr("name (e.g. BC-250)"))
                 .desired_width(140.0),
         );
-        if ui.button(crate::i18n::tr("Adicionar")).clicked() {
+        if ui.button(crate::i18n::tr("Add")).clicked() {
             let name = app.peer_name.trim().to_string();
             match numapilot::peers::add(&app.peer_link, (!name.is_empty()).then_some(name.as_str()))
             {
                 Ok(p) => {
-                    app.toast(crate::tf!("{} adicionado", "{} added", p.name), true);
+                    app.toast(crate::tf!("{} added", "{} adicionado", p.name), true);
                     app.peer_link.clear();
                     app.peer_name.clear();
                 }
@@ -432,16 +432,16 @@ fn selfupdate_ui(app: &mut App, ui: &mut egui::Ui) {
         let how = selfupdate::how();
         ui.label(
             RichText::new(match &how {
-                How::Package(p) => crate::tf!("pacote {p}", "package {p}"),
-                How::Source(d) => crate::tf!("código em {}", "code in {}", d.display()),
-                How::Unknown => crate::i18n::tr("origem desconhecida").into(),
+                How::Package(p) => crate::tf!("package {p}", "pacote {p}"),
+                How::Source(d) => crate::tf!("code in {}", "código em {}", d.display()),
+                How::Unknown => crate::i18n::tr("unknown source").into(),
             })
             .small()
             .weak(),
         );
         if ui
-            .add_enabled(how != How::Unknown, egui::Button::new(crate::i18n::tr("Atualizar o numapilot")))
-            .on_hover_text(crate::i18n::tr("Baixa a versão nova, recompila e reinstala num terminal (pede a senha). Depois, reabra a interface."))
+            .add_enabled(how != How::Unknown, egui::Button::new(crate::i18n::tr("Update numapilot")))
+            .on_hover_text(crate::i18n::tr("Downloads the new version, rebuilds and reinstalls in a terminal (asks for the password). Then reopen the interface."))
             .clicked()
         {
             match selfupdate::command() {
@@ -463,18 +463,18 @@ fn web_ui(app: &mut App, ui: &mut egui::Ui) {
                 == "active";
         app.web_checked = Some(std::time::Instant::now());
     }
-    ui.label(crate::i18n::tr("Veja temperaturas e uso, troque o perfil de um programa e ligue o laboratório/servidor de IA pelo celular (mesma rede)."));
+    ui.label(crate::i18n::tr("See temperatures and usage, switch a program's profile and turn on the lab/AI server from the phone (same network)."));
     let mut on = app.web_active;
     if ui
         .checkbox(
             &mut on,
-            crate::i18n::tr("Ligar o painel (inicia junto com a sessão)"),
+            crate::i18n::tr("Turn on the panel (starts with the session)"),
         )
         .changed()
     {
         let verb = if on { "enable" } else { "disable" };
         app.start_job(
-            crate::i18n::tr("Painel no celular"),
+            crate::i18n::tr("Phone panel"),
             vec![
                 "systemctl".into(),
                 "--user".into(),
@@ -491,13 +491,13 @@ fn web_ui(app: &mut App, ui: &mut egui::Ui) {
                 ui.horizontal(|ui| {
                     qr(ui, &u);
                     ui.vertical(|ui| {
-                        ui.label(crate::i18n::tr("Aponte a câmera do celular ou abra:"));
+                        ui.label(crate::i18n::tr("Point the phone camera or open:"));
                         ui.monospace(&u);
-                        if ui.button(crate::i18n::tr("Copiar link")).clicked() {
+                        if ui.button(crate::i18n::tr("Copy link")).clicked() {
                             ui.ctx().copy_text(u.clone());
                         }
                         ui.label(
-                            RichText::new(crate::i18n::tr("O link tem a senha de acesso; não compartilhe. Fora de casa, use uma VPN (ex.: Tailscale)."))
+                            RichText::new(crate::i18n::tr("The link contains the access password; do not share it. Away from home, use a VPN (e.g. Tailscale)."))
                                 .small()
                                 .weak(),
                         );
@@ -505,7 +505,7 @@ fn web_ui(app: &mut App, ui: &mut egui::Ui) {
                 });
             }
             None => {
-                ui.label(crate::i18n::tr("Sem rede local detectada."));
+                ui.label(crate::i18n::tr("No local network detected."));
             }
         }
     }
@@ -520,34 +520,34 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
         .unwrap_or_default();
     let mut cfg = LabSettings::load();
     ui.horizontal(|ui| {
-        ui.label(crate::i18n::tr("Quando houver versão nova:"));
+        ui.label(crate::i18n::tr("When there is a new version:"));
         let mut mode = cfg.get("UPDATE_MODE");
         let before = mode.clone();
         ui.radio_value(
             &mut mode,
             "auto".to_string(),
-            crate::i18n::tr("instalar se passar na validação"),
+            crate::i18n::tr("install if it passes validation"),
         );
         ui.radio_value(
             &mut mode,
             "aviso".to_string(),
-            crate::i18n::tr("só me avisar"),
+            crate::i18n::tr("just notify me"),
         );
         if mode != before {
             cfg.set("UPDATE_MODE", &mode);
             match cfg.save_keys(&["UPDATE_MODE"]) {
-                Ok(()) => app.toast(crate::i18n::tr("Preferência de atualização salva"), true),
+                Ok(()) => app.toast(crate::i18n::tr("Update preference saved"), true),
                 Err(e) => app.toast(e.to_string(), false),
             }
         }
     });
     ui.label(
         RichText::new(crate::tf!(
-            "Antes de trocar, cada versão nova roda num container à parte e precisa: dar o mesmo resultado da CPU em cada MI50 \
-             (matrizes e convolução), ler e escrever metade da VRAM sem erro, copiar entre as placas e não ficar mais de {}% \
-             mais lenta que a atual (o llama.cpp é medido em tokens/s). Se falhar, fica a versão atual e a nova não é tentada de novo.", "Before switching, each new version runs in a separate container and must: give the same result as the CPU on each MI50 \
+            "Before switching, each new version runs in a separate container and must: give the same result as the CPU on each MI50 \
              (matrices and convolution), read and write half the VRAM with no error, copy between the cards and not be more than {}% \
-             slower than the current one (llama.cpp is measured in tokens/s). If it fails, the current version stays and the new one is not tried again.",
+             slower than the current one (llama.cpp is measured in tokens/s). If it fails, the current version stays and the new one is not tried again.", "Antes de trocar, cada versão nova roda num container à parte e precisa: dar o mesmo resultado da CPU em cada MI50 \
+             (matrizes e convolução), ler e escrever metade da VRAM sem erro, copiar entre as placas e não ficar mais de {}% \
+             mais lenta que a atual (o llama.cpp é medido em tokens/s). Se falhar, fica a versão atual e a nova não é tentada de novo.",
             cfg.get("REGRESS_PCT")
         ))
         .small()
@@ -555,27 +555,27 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
     );
     if let Some(st) = avail["stack"].as_str() {
         let txt = match st {
-            "gfx906" => crate::i18n::tr("MI50 com ROCm da comunidade"),
-            "rocm" => crate::i18n::tr("ROCm oficial da AMD"),
+            "gfx906" => crate::i18n::tr("MI50 with community ROCm"),
+            "rocm" => crate::i18n::tr("AMD's official ROCm"),
             "cuda" => "NVIDIA (CUDA)",
             "vulkan" => crate::i18n::tr(
-                "Vulkan (GPUs sem ROCm: o laboratório usa a CPU e o servidor de IA usa a GPU pelo Vulkan)",
+                "Vulkan (GPUs without ROCm: the lab uses the CPU and the AI server uses the GPU through Vulkan)",
             ),
             o => o,
         };
         ui.label(
             RichText::new(crate::tf!(
-                "Pilha de computação deste PC: {txt}",
-                "This PC's compute stack: {txt}"
+                "This PC's compute stack: {txt}",
+                "Pilha de computação deste PC: {txt}"
             ))
             .small(),
         );
     }
     let comps = [
-        ("lab", crate::i18n::tr("Laboratório (PyTorch)")),
-        ("llm", crate::i18n::tr("Servidor de IA (llama.cpp)")),
-        ("image", crate::i18n::tr("Imagem ROCm")),
-        ("rocm", crate::i18n::tr("ROCm nativo")),
+        ("lab", crate::i18n::tr("Lab (PyTorch)")),
+        ("llm", crate::i18n::tr("AI server (llama.cpp)")),
+        ("image", crate::i18n::tr("ROCm image")),
+        ("rocm", crate::i18n::tr("Native ROCm")),
     ];
     egui::Grid::new("upd")
         .striped(true)
@@ -584,9 +584,9 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
         .show(ui, |ui| {
             for h in [
                 "",
-                crate::i18n::tr("Em uso"),
-                crate::i18n::tr("Disponível"),
-                crate::i18n::tr("Travar"),
+                crate::i18n::tr("In use"),
+                crate::i18n::tr("Available"),
+                crate::i18n::tr("Pin"),
             ] {
                 ui.label(RichText::new(h).strong());
             }
@@ -609,12 +609,12 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
                 ui.label(&cur);
                 if new != cur {
                     ui.label(
-                        RichText::new(crate::tf!("{new} (nova)", "{new} (new)"))
+                        RichText::new(crate::tf!("{new} (new)", "{new} (nova)"))
                             .color(Color32::from_rgb(230, 160, 40)),
                     );
                 } else {
                     ui.label(
-                        RichText::new(crate::i18n::tr("em dia"))
+                        RichText::new(crate::i18n::tr("up to date"))
                             .color(Color32::from_rgb(90, 180, 110)),
                     );
                 }
@@ -623,7 +623,7 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
                 if ui
                     .checkbox(&mut held, "")
                     .on_hover_text(crate::i18n::tr(
-                        "Mantém a versão atual mesmo com atualização automática",
+                        "Keeps the current version even with automatic updates",
                     ))
                     .changed()
                 {
@@ -638,12 +638,12 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
             }
         });
     if avail.is_null() {
-        ui.label(RichText::new(crate::i18n::tr("Ainda não verificado.")).weak());
+        ui.label(RichText::new(crate::i18n::tr("Not checked yet.")).weak());
     } else if let Some(t) = avail["time"].as_str() {
         ui.label(
             RichText::new(crate::tf!(
-                "Verificado em {}",
                 "Checked on {}",
+                "Verificado em {}",
                 t.get(..16).unwrap_or(t).replace('T', " ")
             ))
             .small()
@@ -651,34 +651,32 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
         );
     }
     ui.horizontal(|ui| {
-        if ui.button(crate::i18n::tr("Verificar agora")).clicked() {
-            app.start_job(crate::i18n::tr("Procurando versões novas"), gfx(&["check"]));
+        if ui.button(crate::i18n::tr("Check now")).clicked() {
+            app.start_job(crate::i18n::tr("Looking for new versions"), gfx(&["check"]));
         }
         if ui
-            .button(crate::i18n::tr("Atualizar agora (com validação)"))
+            .button(crate::i18n::tr("Update now (with validation)"))
             .clicked()
         {
             app.start_job(
-                crate::i18n::tr("Atualizando com validação"),
+                crate::i18n::tr("Updating with validation"),
                 gfx(&["update-all"]),
             );
         }
         if ui
-            .button(crate::i18n::tr("Validar as versões atuais"))
+            .button(crate::i18n::tr("Validate the current versions"))
             .on_hover_text(crate::i18n::tr(
-                "Roda os testes nas GPUs e grava o desempenho de agora como referência",
+                "Runs the tests on the GPUs and saves the current performance as the reference",
             ))
             .clicked()
         {
             app.start_job(
-                crate::i18n::tr("Validando as versões atuais"),
+                crate::i18n::tr("Validating the current versions"),
                 gfx(&["validate"]),
             );
         }
         if let Some(u) = avail["releases"].as_str()
-            && ui
-                .button(crate::i18n::tr("Novidades da comunidade"))
-                .clicked()
+            && ui.button(crate::i18n::tr("Community news")).clicked()
         {
             let _ = crate::jobs::open_url(u);
         }
@@ -692,17 +690,17 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
         .filter_map(|l| serde_json::from_str(l).ok())
         .collect();
     if !rows.is_empty() {
-        ui.collapsing(crate::i18n::tr("Histórico das atualizações"), |ui| {
+        ui.collapsing(crate::i18n::tr("Update history"), |ui| {
             egui::Grid::new("updh")
                 .striped(true)
                 .num_columns(5)
                 .show(ui, |ui| {
                     for h in [
-                        crate::i18n::tr("Data"),
-                        crate::i18n::tr("O quê"),
-                        crate::i18n::tr("Versão"),
-                        crate::i18n::tr("Resultado"),
-                        crate::i18n::tr("Desempenho"),
+                        crate::i18n::tr("Date"),
+                        crate::i18n::tr("What"),
+                        crate::i18n::tr("Version"),
+                        crate::i18n::tr("Result"),
+                        crate::i18n::tr("Performance"),
                     ] {
                         ui.label(RichText::new(h).strong());
                     }
@@ -760,11 +758,11 @@ pub struct VmUi {
 }
 
 fn vm_ui(app: &mut App, ui: &mut egui::Ui) {
-    egui::CollapsingHeader::new(RichText::new(crate::i18n::tr("Máquina virtual Windows (jogos com anti-cheat)")).strong())
+    egui::CollapsingHeader::new(RichText::new(crate::i18n::tr("Windows virtual machine (games with anti-cheat)")).strong())
         .id_salt("vm")
         .show(ui, |ui| {
             ui.label(
-                RichText::new(crate::i18n::tr("Uma placa de vídeo fica só para o Windows numa VM (VFIO). O Linux continua na outra. Alguns anti-cheats (ex.: Vanguard) recusam VM: confira o jogo antes."))
+                RichText::new(crate::i18n::tr("One graphics card is reserved for Windows in a VM (VFIO). Linux stays on the other. Some anti-cheats (e.g. Vanguard) refuse VMs: check the game first."))
                     .small()
                     .weak(),
             );
@@ -774,15 +772,15 @@ fn vm_ui(app: &mut App, ui: &mut egui::Ui) {
                 (v.mem, v.cpus, v.disk, v.name) = (16, 8, 120, "windows".into());
             }
             ui.horizontal(|ui| {
-                ui.label(crate::i18n::tr("Placa da VM:"));
+                ui.label(crate::i18n::tr("VM card:"));
                 egui::ComboBox::from_id_salt("vmgpu")
-                    .selected_text(if v.gpu.is_empty() { crate::i18n::tr("escolha").to_string() } else { v.gpu.clone() })
+                    .selected_text(if v.gpu.is_empty() { crate::i18n::tr("choose").to_string() } else { v.gpu.clone() })
                     .show_ui(ui, |ui| {
                         for g in &gpus {
                             ui.selectable_value(&mut v.gpu, g.alias.clone(), format!("{} ({})", g.alias, g.name));
                         }
                     });
-                if ui.button(crate::i18n::tr("Conferir")).clicked() {
+                if ui.button(crate::i18n::tr("Check")).clicked() {
                     let g = gpus.iter().find(|g| g.alias == v.gpu);
                     v.checks = numapilot::vm::check(&app.topo, g);
                 }
@@ -791,7 +789,7 @@ fn vm_ui(app: &mut App, ui: &mut egui::Ui) {
                 ui.label(
                     RichText::new(format!(
                         "{} {}{}",
-                        if c.ok { "ok   " } else { crate::i18n::tr("falta") },
+                        if c.ok { "ok   " } else { crate::i18n::tr("missing") },
                         c.name,
                         if c.detail.is_empty() { String::new() } else { format!(": {}", c.detail) }
                     ))
@@ -808,37 +806,37 @@ fn vm_ui(app: &mut App, ui: &mut egui::Ui) {
             let mut term: Option<Vec<String>> = None;
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(!gsel.is_empty(), egui::Button::new(crate::i18n::tr("Preparar a placa")))
-                    .on_hover_text(crate::i18n::tr("Prende a placa no vfio-pci no boot, liga o IOMMU e refaz a imagem de boot (pede a senha). Reinicie depois."))
+                    .add_enabled(!gsel.is_empty(), egui::Button::new(crate::i18n::tr("Prepare the card")))
+                    .on_hover_text(crate::i18n::tr("Binds the card to vfio-pci at boot, enables the IOMMU and rebuilds the boot image (asks for the password). Reboot afterwards."))
                     .clicked()
                 {
-                    job = Some((crate::i18n::tr("Preparando a VM").into(), vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "vm".into(), "prepare".into(), gsel.clone()]));
+                    job = Some((crate::i18n::tr("Preparing the VM").into(), vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "vm".into(), "prepare".into(), gsel.clone()]));
                 }
-                if ui.button(crate::i18n::tr("Devolver ao Linux")).clicked() {
-                    job = Some((crate::i18n::tr("Devolvendo a placa").into(), vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "vm".into(), "unprepare".into()]));
+                if ui.button(crate::i18n::tr("Give back to Linux")).clicked() {
+                    job = Some((crate::i18n::tr("Giving the card back").into(), vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "vm".into(), "unprepare".into()]));
                 }
-                if numapilot::containers::which("virt-manager") && ui.button(crate::i18n::tr("Abrir virt-manager")).clicked() {
+                if numapilot::containers::which("virt-manager") && ui.button(crate::i18n::tr("Open virt-manager")).clicked() {
                     let _ = crate::jobs::spawn_detached(&["virt-manager".into()]);
                 }
             });
             egui::Grid::new("vmnew").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
-                ui.label(crate::i18n::tr("Nome"));
+                ui.label(crate::i18n::tr("Name"));
                 ui.add(egui::TextEdit::singleline(&mut v.name).desired_width(160.0));
                 ui.end_row();
-                ui.label(crate::i18n::tr("ISO do Windows"));
+                ui.label(crate::i18n::tr("Windows ISO"));
                 ui.add(egui::TextEdit::singleline(&mut v.iso).hint_text("/home/.../Win11.iso").desired_width(320.0));
                 ui.end_row();
-                ui.label(crate::i18n::tr("Memória / núcleos / disco"));
+                ui.label(crate::i18n::tr("Memory / cores / disk"));
                 ui.horizontal(|ui| {
                     ui.add(egui::DragValue::new(&mut v.mem).range(4..=256).suffix(" GB"));
-                    ui.add(egui::DragValue::new(&mut v.cpus).range(2..=64).suffix(crate::i18n::tr(" núcleos")));
+                    ui.add(egui::DragValue::new(&mut v.cpus).range(2..=64).suffix(crate::i18n::tr(" cores")));
                     ui.add(egui::DragValue::new(&mut v.disk).range(64..=2000).suffix(" GB"));
                 });
                 ui.end_row();
             });
             if ui
-                .add_enabled(!gsel.is_empty() && !v.iso.is_empty(), egui::Button::new(crate::i18n::tr("Criar a VM")))
-                .on_hover_text(crate::i18n::tr("UEFI, TPM, núcleos e memória do socket da placa; depois instale o Windows pelo virt-manager"))
+                .add_enabled(!gsel.is_empty() && !v.iso.is_empty(), egui::Button::new(crate::i18n::tr("Create the VM")))
+                .on_hover_text(crate::i18n::tr("UEFI, TPM, cores and memory from the card's socket; then install Windows through virt-manager"))
                 .clicked()
             {
                 term = Some(vec![

@@ -124,15 +124,15 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
         .collect();
     let cpus: Vec<usize> = groups.iter().flatten().copied().collect();
     if cpus.len() < 2 {
-        return Err(crate::i18n::tr("só há um núcleo: nada a comparar").into());
+        return Err(crate::i18n::tr("there is only one core: nothing to compare").into());
     }
     let bytes = test_bytes(cache_bytes(cpus[0], 2), cache_bytes(cpus[0], 3));
     let lines = bytes / 64;
     let buf = make_cycle(lines);
     let steps = (lines * 6).max(400_000);
     out(&crate::tf!(
-        "Medindo {} núcleos, {} rodadas, bloco de {} MB (cabe no cache L3)…",
         "Measuring {} cores, {} rounds, {} MB block (fits in the L3 cache)…",
+        "Medindo {} núcleos, {} rodadas, bloco de {} MB (cabe no cache L3)…",
         cpus.len(),
         ROUNDS,
         bytes >> 20
@@ -149,8 +149,8 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
             rounds.entry(c).or_default().push(chase(&buf, steps));
         }
         out(&crate::tf!(
-            "  rodada {} de {ROUNDS}",
             "  round {} of {ROUNDS}",
+            "  rodada {} de {ROUNDS}",
             r + 1
         ));
     }
@@ -158,10 +158,9 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
         let _ = crate::procfs::set_affinity(0, &b);
     }
     if rounds.len() < 2 {
-        return Err(crate::i18n::tr(
-            "não consegui prender o teste nos núcleos (sched_setaffinity)",
-        )
-        .into());
+        return Err(
+            crate::i18n::tr("could not pin the test to the cores (sched_setaffinity)").into(),
+        );
     }
     Ok(judge(&rounds, &groups))
 }

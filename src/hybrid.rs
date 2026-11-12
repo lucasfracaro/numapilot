@@ -21,12 +21,9 @@ use std::path::PathBuf;
 pub const MESA_EGL: &str = "/usr/share/glvnd/egl_vendor.d/50_mesa.json";
 pub const NVIDIA_EGL: &str = "/usr/share/glvnd/egl_vendor.d/10_nvidia.json";
 pub const MODES: &[(&str, &str)] = &[
-    (
-        "auto",
-        "Automático (tomada: disponível, bateria: desligada)",
-    ),
-    ("hibrido", "Sempre disponível"),
-    ("integrada", "Desligada (só a integrada)"),
+    ("auto", "Automatic (AC power: available, battery: off)"),
+    ("hibrido", "Always available"),
+    ("integrada", "Off (integrated only)"),
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -204,18 +201,18 @@ pub fn set_xwayland_wrapper(on: bool) -> Result<(), String> {
     }
     if p.exists() && !xwayland_wrapped() {
         return Err(crate::tf!(
-            "{} já existe e não é do numapilot",
             "{} already exists and is not numapilot's",
+            "{} já existe e não é do numapilot",
             p.display()
         ));
     }
     let real = ["/usr/bin/Xwayland", "/usr/lib/xorg/Xwayland"]
         .into_iter()
         .find(|r| std::path::Path::new(r).exists())
-        .ok_or(crate::i18n::tr("Xwayland não encontrado em /usr/bin"))?;
+        .ok_or(crate::i18n::tr("Xwayland not found in /usr/bin"))?;
     let body = format!(
-        "#!/bin/sh\n# numapilot: o Xwayland usa só o EGL do Mesa e não prende a NVIDIA do notebook\n\
-         # (jogos X11 escolhidos para a NVIDIA continuam indo para ela). Para tirar: numapilot hybrid xwayland off\n\
+        "#!/bin/sh\n# numapilot: Xwayland uses only Mesa's EGL and does not hold the laptop's NVIDIA\n\
+         # (X11 games set to the NVIDIA still go to it). To remove: numapilot hybrid xwayland off\n\
          [ -f {MESA_EGL} ] && export __EGL_VENDOR_LIBRARY_FILENAMES={MESA_EGL}\nexec {real} \"$@\"\n"
     );
     if let Some(d) = p.parent() {

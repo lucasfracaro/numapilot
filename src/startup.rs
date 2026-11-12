@@ -29,21 +29,21 @@ pub enum Group {
 impl Group {
     pub fn title(self) -> &'static str {
         match self {
-            Group::Login => crate::i18n::tr("Programas no login"),
-            Group::UserService => crate::i18n::tr("Serviços do usuário"),
-            Group::SystemService => crate::i18n::tr("Serviços do sistema (boot)"),
-            Group::Session => crate::i18n::tr("Componentes da sessão"),
+            Group::Login => crate::i18n::tr("Login programs"),
+            Group::UserService => crate::i18n::tr("User services"),
+            Group::SystemService => crate::i18n::tr("System services (boot)"),
+            Group::Session => crate::i18n::tr("Session components"),
         }
     }
     pub fn about(self) -> &'static str {
         match self {
-            Group::Login => crate::i18n::tr("abrem quando você entra na sessão"),
-            Group::UserService => crate::i18n::tr("rodam em segundo plano a partir do login"),
+            Group::Login => crate::i18n::tr("start when you log in"),
+            Group::UserService => crate::i18n::tr("run in the background from login"),
             Group::SystemService => {
-                crate::i18n::tr("rodam desde o boot, antes do login; mudar pede a senha")
+                crate::i18n::tr("run from boot, before login; changing them asks for the password")
             }
             Group::Session => {
-                crate::i18n::tr("partes do desktop; as essenciais não podem ser desligadas")
+                crate::i18n::tr("parts of the desktop; the essential ones cannot be turned off")
             }
         }
     }
@@ -224,9 +224,9 @@ fn xdg_items(desktops: &[String], procs: &Procs) -> Vec<Item> {
             } else if sys.is_some() {
                 "pacote"
             } else {
-                crate::i18n::tr("você")
+                crate::i18n::tr("you")
             },
-            protected: essential.then_some(crate::i18n::tr("essencial para a sessão gráfica")),
+            protected: essential.then_some(crate::i18n::tr("essential for the graphical session")),
             removable: sys.is_none(),
             running: !pids.is_empty(),
             mem,
@@ -314,11 +314,11 @@ fn kde_item() -> Option<Item> {
     Some(Item {
         id: "kde:session".into(),
         group: Group::Login,
-        name: crate::i18n::tr("Reabrir o que estava aberto (KDE)").into(),
+        name: crate::i18n::tr("Reopen what was open (KDE)").into(),
         detail: if apps.is_empty() {
-            crate::i18n::tr("nada salvo no último logout").into()
+            crate::i18n::tr("nothing saved at the last logout").into()
         } else {
-            crate::tf!("último logout: {}", "last logout: {}", apps.join(", "))
+            crate::tf!("last logout: {}", "último logout: {}", apps.join(", "))
         },
         enabled: on,
         origin: "sistema",
@@ -545,7 +545,7 @@ fn unit_items(user: bool) -> Vec<Item> {
                     Group::SystemService
                 },
                 name: if timer {
-                    crate::tf!("{desc} (agendado)", "{desc} (scheduled)")
+                    crate::tf!("{desc} (scheduled)", "{desc} (agendado)")
                 } else if desc.is_empty() {
                     id.clone()
                 } else {
@@ -558,12 +558,12 @@ fn unit_items(user: bool) -> Vec<Item> {
                 },
                 enabled: state.starts_with("enabled"),
                 origin: if mine {
-                    crate::i18n::tr("você")
+                    crate::i18n::tr("you")
                 } else {
                     "pacote"
                 },
                 protected: essential.then_some(crate::i18n::tr(
-                    "essencial para o sistema, a rede ou o login",
+                    "essential for the system, the network or login",
                 )),
                 removable: false,
                 running: m.get("ActiveState").is_some_and(|s| s == "active"),
@@ -734,7 +734,7 @@ pub fn set_enabled(item: &Item, on: bool) -> Result<Action, String> {
             st == "disabled" || st == "masked"
         };
         if !ok {
-            return Err(crate::tf!("{}: continua {st}", "{}: still {st}", item.name));
+            return Err(crate::tf!("{}: still {st}", "{}: continua {st}", item.name));
         }
         remember(&item.id, !on);
         return Ok(Action::Done);
@@ -749,8 +749,8 @@ pub fn set_enabled(item: &Item, on: bool) -> Result<Action, String> {
         ]));
     }
     Err(crate::tf!(
-        "não sei mudar {}",
         "I do not know how to change {}",
+        "não sei mudar {}",
         item.id
     ))
 }
@@ -759,8 +759,8 @@ pub fn set_enabled(item: &Item, on: bool) -> Result<Action, String> {
 pub fn remove(item: &Item) -> Result<(), String> {
     let Some(file) = item.id.strip_prefix("xdg:").filter(|_| item.removable) else {
         return Err(crate::tf!(
-            "{} só pode ser desligado, não apagado",
             "{} can only be turned off, not deleted",
+            "{} só pode ser desligado, não apagado",
             item.name
         ));
     };
@@ -816,7 +816,7 @@ pub fn desktop_text(name: &str, exec: &str, delay_s: u32) -> String {
 /// Adiciona um comando qualquer. Devolve o arquivo criado.
 pub fn add_command(name: &str, exec: &str, delay_s: u32) -> Result<PathBuf, String> {
     if exec.trim().is_empty() {
-        return Err(crate::i18n::tr("comando vazio").into());
+        return Err(crate::i18n::tr("empty command").into());
     }
     let dir = user_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -837,8 +837,8 @@ pub fn add_file(path: &Path, delay_s: u32) -> Result<PathBuf, String> {
     let md = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if !md.is_file() {
         return Err(crate::tf!(
-            "{} não é um arquivo",
             "{} is not a file",
+            "{} não é um arquivo",
             path.display()
         ));
     }
@@ -855,8 +855,8 @@ pub fn add_file(path: &Path, delay_s: u32) -> Result<PathBuf, String> {
         perm.set_mode(perm.mode() | 0o755);
         std::fs::set_permissions(&p, perm).map_err(|e| {
             crate::tf!(
-                "não consegui tornar executável: {e}",
-                "could not make it executable: {e}"
+                "could not make it executable: {e}",
+                "não consegui tornar executável: {e}"
             )
         })?;
         exec_quote(&ps)
@@ -873,7 +873,7 @@ pub fn add_desktop(app: &Path, delay_s: u32) -> Result<PathBuf, String> {
     let text = std::fs::read_to_string(app).map_err(|e| format!("{}: {e}", app.display()))?;
     let file = app
         .file_name()
-        .ok_or(crate::i18n::tr("atalho sem nome"))?
+        .ok_or(crate::i18n::tr("shortcut without a name"))?
         .to_string_lossy()
         .to_string();
     let dest = user_dir().join(&file);
@@ -933,8 +933,8 @@ pub fn add_running(pid: i32, label: &str) -> Result<PathBuf, String> {
         .collect();
     if args.is_empty() {
         return Err(crate::tf!(
-            "não consegui ler a linha de comando de {label}",
-            "could not read the command line of {label}"
+            "could not read the command line of {label}",
+            "não consegui ler a linha de comando de {label}"
         ));
     }
     add_command(label, &args.join(" "), 0)

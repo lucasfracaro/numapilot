@@ -58,25 +58,25 @@ impl Editor {
 const MEM_OPTS: &[(&str, &str, &str)] = &[
     (
         "auto",
-        "Automático",
-        "o numapilot decide (normalmente: memória do socket dos núcleos)",
+        "Automatic",
+        "numapilot decides (normally: memory of the cores' socket)",
     ),
     (
         "strict",
-        "Só do socket (estrito)",
-        "menor latência; se a memória do socket encher, o programa sofre",
+        "Socket only (strict)",
+        "lowest latency; if the socket's memory fills up, the program suffers",
     ),
     (
         "prefer",
-        "Preferir a local",
-        "usa a do outro socket só quando faltar",
+        "Prefer local",
+        "uses the other socket's only when it runs out",
     ),
     (
         "interleave",
-        "Intercalar entre sockets",
-        "mais banda total; bom para render/IA na CPU (vale ao reabrir)",
+        "Interleave across sockets",
+        "more total bandwidth; good for rendering/AI on the CPU (applies on reopen)",
     ),
-    ("free", "Livre", "não move a memória"),
+    ("free", "Free", "does not move the memory"),
 ];
 
 fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
@@ -99,8 +99,8 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
     if let (Some(g), Some(a)) = (gpu.as_ref(), gpu.as_ref().and_then(|g| rec.arch_for(g))) {
         ui.label(
             RichText::new(crate::tf!(
-                "Na {} ({}), funcionam: {}",
                 "On the {} ({}), these work: {}",
+                "Na {} ({}), funcionam: {}",
                 g.alias,
                 a.family,
                 sug.join(", ")
@@ -120,7 +120,7 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         .iter()
         .find(|m| m.0 == u.mode)
         .map(|m| crate::i18n::tr(m.1))
-        .unwrap_or(crate::i18n::tr("Nenhum"));
+        .unwrap_or(crate::i18n::tr("None"));
     egui::ComboBox::from_id_salt("ed-up")
         .selected_text(cur)
         .width(240.0)
@@ -132,8 +132,8 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                     l.to_string()
                 } else {
                     crate::tf!(
-                        "{l} (não indicado para esta placa)",
-                        "{l} (not recommended for this card)"
+                        "{l} (not recommended for this card)",
+                        "{l} (não indicado para esta placa)"
                     )
                 };
                 ui.selectable_value(&mut u.mode, k.to_string(), label)
@@ -153,20 +153,26 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             .weak(),
         );
         if u.mode != "optiscaler" {
-            ui.label(RichText::new(crate::i18n::tr("Precisa do proton-cachyos ou do GE-Proton como ferramenta de compatibilidade do jogo.")).small().weak());
+            ui.label(
+                RichText::new(crate::i18n::tr(
+                    "Needs proton-cachyos or GE-Proton as the game's compatibility tool.",
+                ))
+                .small()
+                .weak(),
+            );
         }
         ui.horizontal(|ui| {
-            ui.checkbox(&mut u.indicator, crate::i18n::tr("mostrar a marca do FSR 4/DLSS (para conferir)"));
+            ui.checkbox(&mut u.indicator, crate::i18n::tr("show the FSR 4/DLSS watermark (to check)"));
             if u.mode == "optiscaler" {
-                ui.checkbox(&mut u.int8, crate::i18n::tr("forçar FSR 4 INT8 (experimental)"))
-                    .on_hover_text(crate::i18n::tr("Para placas sem FSR 4 oficial (RDNA 2/3.5, Intel, NVIDIA). Placas sem INT8 não ganham FSR 4."));
+                ui.checkbox(&mut u.int8, crate::i18n::tr("force FSR 4 INT8 (experimental)"))
+                    .on_hover_text(crate::i18n::tr("For cards without official FSR 4 (RDNA 2/3.5, Intel, NVIDIA). Cards without INT8 do not get FSR 4."));
             }
         });
     }
     if u.mode == "optiscaler" {
         ui.label(
             RichText::new(crate::i18n::tr(
-                "Não use o OptiScaler em jogos online: o anti-cheat pode banir.",
+                "Do not use OptiScaler in online games: the anti-cheat may ban you.",
             ))
             .small()
             .color(Color32::from_rgb(230, 120, 60)),
@@ -176,11 +182,11 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             ui.horizontal(|ui| {
                 match dir.as_ref().and_then(|d| upscale::installed(d)) {
                     Some(i) => {
-                        ui.label(RichText::new(crate::tf!("OptiScaler {} instalado", "OptiScaler {} installed", i.version)).color(Color32::from_rgb(110, 190, 120)));
-                        if ui.button(crate::i18n::tr("Remover do jogo")).clicked() {
+                        ui.label(RichText::new(crate::tf!("OptiScaler {} installed", "OptiScaler {} instalado", i.version)).color(Color32::from_rgb(110, 190, 120)));
+                        if ui.button(crate::i18n::tr("Remove from the game")).clicked() {
                             app.start_job("OptiScaler", vec![crate::jobs::sibling("numapilot"), "upscale".into(), "remove".into(), id.into()]);
                         }
-                        if ui.button(crate::i18n::tr("Reinstalar (versão nova)")).clicked() {
+                        if ui.button(crate::i18n::tr("Reinstall (new version)")).clicked() {
                             let mut v = vec![crate::jobs::sibling("numapilot"), "upscale".into(), "install".into(), id.into()];
                             if u.int8 {
                                 v.push("--int8".into());
@@ -189,7 +195,7 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                         }
                     }
                     None if dir.is_some() => {
-                        if ui.button(RichText::new(crate::i18n::tr("Instalar no jogo")).strong()).on_hover_text(crate::i18n::tr("Baixa a versão estável mais nova e copia para a pasta do executável, guardando o que for do jogo")).clicked() {
+                        if ui.button(RichText::new(crate::i18n::tr("Install in the game")).strong()).on_hover_text(crate::i18n::tr("Downloads the newest stable version and copies it to the executable's folder, keeping what belongs to the game")).clicked() {
                             let mut v = vec![crate::jobs::sibling("numapilot"), "upscale".into(), "install".into(), id.into()];
                             if u.int8 {
                                 v.push("--int8".into());
@@ -198,19 +204,19 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                         }
                     }
                     None => {
-                        ui.label(RichText::new(crate::i18n::tr("Pasta do jogo não encontrada nas bibliotecas da Steam.")).weak());
+                        ui.label(RichText::new(crate::i18n::tr("Game folder not found in the Steam libraries.")).weak());
                     }
                 }
             });
             if let Some(d) = dir {
                 ui.label(
-                    RichText::new(crate::tf!("Pasta: {}", "Folder: {}", d.display()))
+                    RichText::new(crate::tf!("Folder: {}", "Pasta: {}", d.display()))
                         .small()
                         .weak(),
                 );
             }
         } else {
-            ui.label(RichText::new(crate::i18n::tr("Para instalar pela interface, abra o jogo pela Steam com o numapilot (o perfil fica ligado ao appid).")).small().weak());
+            ui.label(RichText::new(crate::i18n::tr("To install from the interface, open the game through Steam with numapilot (the profile is tied to the appid).")).small().weak());
         }
     }
     let new = if u.mode == "nenhum" && !u.indicator {
@@ -226,7 +232,7 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
 fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
     use numapilot::tuner::{self, Tuner};
     let mut t = Tuner::load();
-    ui.label(RichText::new(crate::i18n::tr("Otimizar FPS")).strong());
+    ui.label(RichText::new(crate::i18n::tr("Optimize FPS")).strong());
     let steam_id = ed.key.strip_prefix("steam:").map(String::from);
     let mut save = false;
     let mut apply_best = None;
@@ -234,20 +240,21 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         None => {
             ui.label(
                 RichText::new(
-                    crate::i18n::tr("Testa algumas configurações (núcleos, HT, socket, placa), uma a cada vez que você abre o jogo, \
-                     mede com o MangoHud (FPS médio e 1% low) e mostra a melhor."),
+                    crate::i18n::tr("Tests a few settings (cores, HT, socket, card), one each time you open the game, \
+                     measures with MangoHud (average FPS and 1% low) and shows the best."),
                 )
                 .weak(),
             );
             if !app.has_mangohud {
                 ui.label(
-                    RichText::new(crate::i18n::tr(
-                        "Precisa do MangoHud: sudo pacman -S mangohud",
-                    ))
-                    .color(Color32::from_rgb(230, 160, 40)),
+                    RichText::new(crate::i18n::tr("Needs MangoHud: sudo pacman -S mangohud"))
+                        .color(Color32::from_rgb(230, 160, 40)),
                 );
             }
-            if ui.button(crate::i18n::tr("Começar a otimização")).clicked() {
+            if ui
+                .button(crate::i18n::tr("Start the optimization"))
+                .clicked()
+            {
                 let v = tuner::variants(&app.topo, &ed.p);
                 t.start(&ed.key, &ed.label, v);
                 save = true;
@@ -262,8 +269,8 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 .show(ui, |ui| {
                     for h in [
                         "",
-                        crate::i18n::tr("Configuração"),
-                        crate::i18n::tr("FPS médio"),
+                        crate::i18n::tr("Setting"),
+                        crate::i18n::tr("Average FPS"),
                         "1% low",
                     ] {
                         ui.label(RichText::new(h).strong());
@@ -271,9 +278,9 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                     ui.end_row();
                     for (i, v) in s.variants.iter().enumerate() {
                         ui.label(if best == Some(i) {
-                            crate::i18n::tr("melhor")
+                            crate::i18n::tr("best")
                         } else if i == s.next {
-                            crate::i18n::tr("próximo")
+                            crate::i18n::tr("next")
                         } else {
                             ""
                         });
@@ -293,19 +300,19 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 });
             if let Some(v) = s.current() {
                 ui.label(crate::tf!(
-                    "Próximo teste ({}/{}): {}. Abra o jogo, vá para uma cena pesada e jogue uns {} s; depois feche.", "Next test ({}/{}): {}. Open the game, go to a heavy scene and play for about {} s; then close it.",
+                    "Next test ({}/{}): {}. Open the game, go to a heavy scene and play for about {} s; then close it.", "Próximo teste ({}/{}): {}. Abra o jogo, vá para uma cena pesada e jogue uns {} s; depois feche.",
                     s.next + 1,
                     s.variants.len(),
                     v.label,
                     s.seconds + 10
                 ));
             } else {
-                ui.label(RichText::new(crate::i18n::tr("Todos os testes terminaram.")).strong());
+                ui.label(RichText::new(crate::i18n::tr("All tests finished.")).strong());
             }
             ui.horizontal(|ui| {
                 if let Some(id) = &steam_id
                     && !s.done()
-                    && ui.button(crate::i18n::tr("Abrir o jogo")).clicked()
+                    && ui.button(crate::i18n::tr("Open the game")).clicked()
                 {
                     let _ = crate::jobs::spawn_detached(&[
                         "xdg-open".into(),
@@ -314,17 +321,17 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 }
                 if let Some(b) = best
                     && ui
-                        .button(RichText::new(crate::i18n::tr("Usar a melhor")).strong())
+                        .button(RichText::new(crate::i18n::tr("Use the best")).strong())
                         .clicked()
                 {
                     apply_best = Some(s.variants[b].profile.clone());
                 }
-                if ui.button(crate::i18n::tr("Recomeçar")).clicked() {
+                if ui.button(crate::i18n::tr("Start over")).clicked() {
                     let v = tuner::variants(&app.topo, &ed.p);
                     t.start(&ed.key, &ed.label, v);
                     save = true;
                 }
-                if ui.button(crate::i18n::tr("Cancelar")).clicked() {
+                if ui.button(crate::i18n::tr("Cancel")).clicked() {
                     t.sessions.remove(&ed.key);
                     save = true;
                 }
@@ -332,7 +339,7 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             if steam_id.is_none() {
                 ui.label(
                     RichText::new(crate::i18n::tr(
-                        "Abra pelo atalho do menu (numapilot run) para o teste valer.",
+                        "Open it from the menu shortcut (numapilot run) for the test to count.",
                     ))
                     .small()
                     .weak(),
@@ -341,7 +348,7 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         }
     }
     if save && let Err(e) = t.save() {
-        app.toast(crate::tf!("otimizador: {e}", "optimizer: {e}"), false);
+        app.toast(crate::tf!("optimizer: {e}", "otimizador: {e}"), false);
     }
     if let Some(mut p) = apply_best {
         p.label = ed.label.clone();
@@ -362,7 +369,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let mut open = true;
     let mut apply = false;
     let mut fix = false;
-    egui::Window::new(crate::tf!("Ajustar: {}", "Adjust: {}", ed.label))
+    egui::Window::new(crate::tf!("Adjust: {}", "Ajustar: {}", ed.label))
         .id(egui::Id::unique("numapilot-editor"))
         .open(&mut open)
         .default_size([820.0, 640.0])
@@ -377,11 +384,11 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 let local_nodes = app.topo.nodes_of(&cur);
                 let local: u64 = ed.mem.iter().enumerate().filter(|(n, _)| local_nodes.contains(n)).map(|(_, v)| *v).sum();
                 ui.label(crate::tf!(
-                    "Agora: {} CPUs ({}) · memória {:.1} GB{}", "Now: {} CPUs ({}) · memory {:.1} GB{}",
+                    "Now: {} CPUs ({}) · memory {:.1} GB{}", "Agora: {} CPUs ({}) · memória {:.1} GB{}",
                     cur.len(),
-                    if ed.current_cpus.is_empty() { crate::i18n::tr("todos").to_string() } else { ed.current_cpus.clone() },
+                    if ed.current_cpus.is_empty() { crate::i18n::tr("all").to_string() } else { ed.current_cpus.clone() },
                     tot as f64 / 1024.0,
-                    if tot > 0 { crate::tf!(", {:.0}% no socket dos núcleos", ", {:.0}% on the cores' socket", local as f64 * 100.0 / tot as f64) } else { String::new() }
+                    if tot > 0 { crate::tf!(", {:.0}% on the cores' socket", ", {:.0}% no socket dos núcleos", local as f64 * 100.0 / tot as f64) } else { String::new() }
                 ));
                 ui.add_space(4.0);
 
@@ -409,7 +416,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             let m = s.minutes % 60;
                             ui.label(
                                 RichText::new(crate::tf!(
-                                    "Uso registrado ({}{m} min): em média {:.1} núcleos, pico {:.1}; memória no pico {}", "Recorded usage ({}{m} min): {:.1} cores on average, peak {:.1}; memory at peak {}",
+                                    "Recorded usage ({}{m} min): {:.1} cores on average, peak {:.1}; memory at peak {}", "Uso registrado ({}{m} min): em média {:.1} núcleos, pico {:.1}; memória no pico {}",
                                     if h > 0 { format!("{h} h ") } else { String::new() },
                                     s.avg,
                                     s.peak,
@@ -417,22 +424,22 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                 ))
                                 .small(),
                             )
-                            .on_hover_text(crate::i18n::tr("Das últimas 6 horas em que o programa esteve aberto, um ponto por minuto. Use para escolher o limite de memória e de processador com folga sobre o pico."));
+                            .on_hover_text(crate::i18n::tr("From the last 6 hours the program was open, one point per minute. Use it to pick the memory and processor limits with headroom over the peak."));
                         });
                         ui.add_space(4.0);
                     }
                 }
                 // Perfis prontos
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new(crate::i18n::tr("Perfis prontos:")).strong());
+                    ui.label(RichText::new(crate::i18n::tr("Ready-made profiles:")).strong());
                     for (id, name, tip) in [
-                        ("jogo", crate::i18n::tr("Jogo"), crate::i18n::tr("socket da GPU, 16 núcleos físicos, memória só local, prioridade alta, núcleos reservados, o jogo enxerga só esses núcleos")),
-                        ("ia", crate::i18n::tr("IA"), crate::i18n::tr("socket da GPU de computação, memória preferindo a local")),
-                        ("render", crate::i18n::tr("Renderização"), crate::i18n::tr("os 2 sockets, memória intercalada (banda máxima)")),
-                        ("turbo", crate::i18n::tr("Turbo máximo"), crate::i18n::tr("4 núcleos físicos sozinhos num processador: o resto do sistema vai para o outro socket e o clock sobe ao degrau mais alto do turbo (precisa de 2 processadores; confira em Mapa → Turbo)")),
-                        ("video", crate::i18n::tr("Edição de vídeo"), crate::i18n::tr("o socket da GPU inteiro, com os dois threads de cada núcleo, memória preferindo a local")),
-                        ("fundo", crate::i18n::tr("Segundo plano"), crate::i18n::tr("no máximo um núcleo de processador e prioridade baixa: para launchers, sincronizadores e afins")),
-                        ("silencioso", crate::i18n::tr("Silencioso"), crate::i18n::tr("4 núcleos e prioridade baixa: não atrapalha o resto")),
+                        ("jogo", crate::i18n::tr("Game"), crate::i18n::tr("GPU's socket, 16 physical cores, local memory only, high priority, reserved cores, the game sees only those cores")),
+                        ("ia", crate::i18n::tr("AI"), crate::i18n::tr("compute GPU's socket, memory preferring local")),
+                        ("render", crate::i18n::tr("Rendering"), crate::i18n::tr("both sockets, interleaved memory (maximum bandwidth)")),
+                        ("turbo", crate::i18n::tr("Maximum turbo"), crate::i18n::tr("4 physical cores alone on one processor: the rest of the system moves to the other socket and the clock rises to the highest turbo step (needs 2 processors; check Map → Turbo)")),
+                        ("video", crate::i18n::tr("Video editing"), crate::i18n::tr("the GPU's whole socket, with both threads of each core, memory preferring local")),
+                        ("fundo", crate::i18n::tr("Background"), crate::i18n::tr("at most one processor core and low priority: for launchers, sync tools and the like")),
+                        ("silencioso", crate::i18n::tr("Quiet"), crate::i18n::tr("4 cores and low priority: stays out of the way")),
                     ] {
                         if ui.button(name).on_hover_text(tip).clicked() {
                             ed.p = Profile::preset(id, &ed.p);
@@ -440,7 +447,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             ed.pick.clear();
                         }
                     }
-                    if ui.button(crate::i18n::tr("Tudo automático")).clicked() {
+                    if ui.button(crate::i18n::tr("All automatic")).clicked() {
                         ed.p = Profile { label: ed.label.clone(), ..Default::default() };
                         ed.picking = false;
                         ed.pick.clear();
@@ -449,7 +456,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 ui.separator();
 
                 egui::Grid::new("ed").num_columns(2).spacing([14.0, 10.0]).show(ui, |ui| {
-                    ui.label(RichText::new(crate::i18n::tr("Processadores")).strong());
+                    ui.label(RichText::new(crate::i18n::tr("Processors")).strong());
                     let txt = app.cpu_opts.iter().find(|(v, _)| *v == ed.p.cpu).map(|(_, t)| t.clone()).unwrap_or(ed.p.cpu.clone());
                     ui.add_enabled_ui(!ed.picking, |ui| {
                         egui::ComboBox::from_id_salt("ed-cpu").selected_text(txt).width(240.0).show_ui(ui, |ui| {
@@ -460,28 +467,28 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     });
                     ui.end_row();
 
-                    ui.label(RichText::new(crate::i18n::tr("Núcleos")).strong());
+                    ui.label(RichText::new(crate::i18n::tr("Cores")).strong());
                     ui.vertical(|ui| {
                         ui.add_enabled_ui(!ed.picking, |ui| {
                             ui.horizontal(|ui| {
                                 let mut lim = ed.p.cores.is_some();
-                                if ui.checkbox(&mut lim, crate::i18n::tr("limitar a")).changed() {
+                                if ui.checkbox(&mut lim, crate::i18n::tr("limit to")).changed() {
                                     ed.p.cores = if lim { Some(16) } else { None };
                                 }
                                 if let Some(c) = ed.p.cores.as_mut() {
                                     ui.add(egui::Slider::new(c, 1..=app.topo.all_cpus().len()).suffix(" CPUs"));
                                 }
                             });
-                            ui.checkbox(&mut ed.p.smt, crate::i18n::tr("usar hyper-threading (2 threads por núcleo)"))
-                                .on_hover_text(crate::i18n::tr("Desligado: 1 thread por núcleo físico. Em jogos costuma dar mais FPS e menos travadas."));
+                            ui.checkbox(&mut ed.p.smt, crate::i18n::tr("use hyper-threading (2 threads per core)"))
+                                .on_hover_text(crate::i18n::tr("Off: 1 thread per physical core. In games it usually gives more FPS and less stutter."));
                         });
                         ui.horizontal(|ui| {
-                            if ui.checkbox(&mut ed.picking, crate::i18n::tr("escolher os núcleos no mapa")).changed() && ed.picking && ed.pick.is_empty() {
+                            if ui.checkbox(&mut ed.picking, crate::i18n::tr("pick the cores on the map")).changed() && ed.picking && ed.pick.is_empty() {
                                 ed.pick.extend(cur.iter().copied());
                             }
                             if ed.picking {
-                                ui.label(RichText::new(crate::tf!("{} CPUs selecionados", "{} CPUs selected", ed.pick.len())).weak());
-                                if ui.small_button(crate::i18n::tr("limpar")).clicked() {
+                                ui.label(RichText::new(crate::tf!("{} CPUs selected", "{} CPUs selecionados", ed.pick.len())).weak());
+                                if ui.small_button(crate::i18n::tr("clear")).clicked() {
                                     ed.pick.clear();
                                 }
                             }
@@ -489,15 +496,15 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     });
                     ui.end_row();
 
-                    ui.label(RichText::new(crate::i18n::tr("O programa enxerga")).strong());
-                    ui.checkbox(&mut ed.p.limit_visible, crate::i18n::tr("só os núcleos liberados"))
+                    ui.label(RichText::new(crate::i18n::tr("The program sees")).strong());
+                    ui.checkbox(&mut ed.p.limit_visible, crate::i18n::tr("only the allowed cores"))
                         .on_hover_text(
-                            crate::i18n::tr("Jogos do Proton/Wine (WINE_CPU_TOPOLOGY), OpenMP, MKL, OpenBLAS, .NET, Java, Go...\n\
-                             Evita jogos e o Easy Anti-Cheat recusarem abrir por ver núcleos demais. Vale ao abrir."),
+                            crate::i18n::tr("Proton/Wine games (WINE_CPU_TOPOLOGY), OpenMP, MKL, OpenBLAS, .NET, Java, Go...\n\
+                             Keeps games and Easy Anti-Cheat from refusing to start for seeing too many cores. Applies on start."),
                         );
                     ui.end_row();
 
-                    ui.label(RichText::new(crate::i18n::tr("Memória")).strong());
+                    ui.label(RichText::new(crate::i18n::tr("Memory")).strong());
                     let multi = app.topo.nodes.len() > 1;
                     ui.vertical(|ui| {
                         // Com um processador só, não há memória "do outro socket".
@@ -509,7 +516,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         }
                         if !multi {
                             ui.label(
-                                RichText::new(crate::i18n::tr("Este PC tem um processador só: toda a memória já é a mais próxima dele (as opções de memória local aparecem nos PCs com 2 processadores)."))
+                                RichText::new(crate::i18n::tr("This PC has a single processor: all memory is already the closest to it (the local memory options show up on PCs with 2 processors)."))
                                     .small()
                                     .weak(),
                             );
@@ -517,8 +524,8 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         ui.horizontal(|ui| {
                             let mut lim = ed.p.mem_max_gb.is_some();
                             if ui
-                                .checkbox(&mut lim, crate::i18n::tr("Limitar a memória do programa a"))
-                                .on_hover_text(crate::i18n::tr("Passou do limite, o sistema tira memória dele (vai para o swap) em vez de travar o PC todo."))
+                                .checkbox(&mut lim, crate::i18n::tr("Limit the program's memory to"))
+                                .on_hover_text(crate::i18n::tr("Past the limit, the system takes memory away from it (to swap) instead of freezing the whole PC."))
                                 .changed()
                             {
                                 ed.p.mem_max_gb = if lim { Some(16.0) } else { None };
@@ -534,18 +541,18 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                 ui.add(egui::Slider::new(g, 0.5..=max_gb).suffix(" GB").step_by(0.5));
                             }
                             if now > 0 {
-                                ui.label(RichText::new(crate::tf!("agora usa {}", "now using {}", crate::fmt_bytes(now))).small().weak());
+                                ui.label(RichText::new(crate::tf!("now using {}", "agora usa {}", crate::fmt_bytes(now))).small().weak());
                             }
                         });
                     });
                     ui.end_row();
 
-                    ui.label(RichText::new(crate::i18n::tr("Limite de processador")).strong());
+                    ui.label(RichText::new(crate::i18n::tr("Processor limit")).strong());
                     ui.horizontal(|ui| {
                         let mut lim = ed.p.cpu_max_pct.is_some();
                         if ui
-                            .checkbox(&mut lim, crate::i18n::tr("Usar no máximo"))
-                            .on_hover_text(crate::i18n::tr("Teto de uso somando todos os núcleos: 50% = meio núcleo, 200% = dois núcleos. Bom para programas de fundo."))
+                            .checkbox(&mut lim, crate::i18n::tr("Use at most"))
+                            .on_hover_text(crate::i18n::tr("Usage cap adding up all cores: 50% = half a core, 200% = two cores. Good for background programs."))
                             .changed()
                         {
                             ed.p.cpu_max_pct = lim.then_some(100.0);
@@ -557,35 +564,35 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                     .suffix("%")
                                     .fixed_decimals(0),
                             );
-                            ui.label(RichText::new(crate::tf!("= {:.1} núcleo(s)", "= {:.1} core(s)", *c / 100.0)).small().weak());
+                            ui.label(RichText::new(crate::tf!("= {:.1} core(s)", "= {:.1} núcleo(s)", *c / 100.0)).small().weak());
                         }
                     });
                     ui.end_row();
 
-                    ui.label(RichText::new(crate::i18n::tr("Prioridade")).strong());
+                    ui.label(RichText::new(crate::i18n::tr("Priority")).strong());
                     ui.horizontal(|ui| {
-                        ui.radio_value(&mut ed.p.priority, "low".to_string(), crate::i18n::tr("baixa"));
+                        ui.radio_value(&mut ed.p.priority, "low".to_string(), crate::i18n::tr("low"));
                         ui.radio_value(&mut ed.p.priority, "normal".to_string(), "normal");
-                        ui.radio_value(&mut ed.p.priority, "high".to_string(), crate::i18n::tr("alta"));
+                        ui.radio_value(&mut ed.p.priority, "high".to_string(), crate::i18n::tr("high"));
                         ui.separator();
-                        ui.checkbox(&mut ed.p.exclusive, crate::i18n::tr("núcleos exclusivos"))
-                            .on_hover_text(crate::i18n::tr("Enquanto ele roda, o resto do sistema não usa esses núcleos."));
+                        ui.checkbox(&mut ed.p.exclusive, crate::i18n::tr("exclusive cores"))
+                            .on_hover_text(crate::i18n::tr("While it runs, the rest of the system does not use these cores."));
                         if multi {
-                            ui.checkbox(&mut ed.p.turbo_max, crate::i18n::tr("turbo máximo")).on_hover_text(
-                                crate::i18n::tr("Enquanto ele roda, o resto do sistema sai do processador inteiro onde ele está. \
-                                 Com os outros núcleos dormindo, o clock dos núcleos dele sobe mais (veja a tabela em Mapa → Turbo). \
-                                 Funciona melhor com poucos núcleos (2 a 8) e os estados de economia profundos ligados."),
+                            ui.checkbox(&mut ed.p.turbo_max, crate::i18n::tr("maximum turbo")).on_hover_text(
+                                crate::i18n::tr("While it runs, the rest of the system leaves the whole processor it is on. \
+                                 With the other cores asleep, its cores clock higher (see the table in Map → Turbo). \
+                                 Works best with few cores (2 to 8) and the deep idle states enabled."),
                             );
                         }
-                        ui.checkbox(&mut ed.p.low_latency, crate::i18n::tr("baixa latência")).on_hover_text(
-                            crate::i18n::tr("Enquanto ele roda: os núcleos dele não entram nos estados de economia profundos e o uncore do socket \
-                             fica no máximo (menos travadinhas). Ajuste em Máquina → Latência em jogos."),
+                        ui.checkbox(&mut ed.p.low_latency, crate::i18n::tr("low latency")).on_hover_text(
+                            crate::i18n::tr("While it runs: its cores do not enter the deep idle states and the socket's uncore \
+                             stays at maximum (less micro-stutter). Tune it in Machine → Gaming latency."),
                         );
                     });
                     ui.end_row();
 
                     if multi && ed.p.turbo_max {
-                        ui.label(RichText::new(crate::i18n::tr("Núcleos no turbo")).strong());
+                        ui.label(RichText::new(crate::i18n::tr("Cores at turbo")).strong());
                         ui.vertical(|ui| {
                             let per_socket = app
                                 .topo
@@ -612,7 +619,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                     if ui
                                         .selectable_label(sel, format!("{n}{}", ghz(n)))
                                         .on_hover_text(crate::tf!(
-                                            "{n} núcleos físicos (sem dividir núcleo) sozinhos no processador", "{n} physical cores (no core sharing) alone on the processor"
+                                            "{n} physical cores (no core sharing) alone on the processor", "{n} núcleos físicos (sem dividir núcleo) sozinhos no processador"
                                         ))
                                         .clicked()
                                     {
@@ -627,17 +634,17 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             let mut ht = ed.p.smt;
                             let label = match phys {
                                 Some(n) => crate::tf!(
-                                    "usar os dois threads de cada núcleo ({n} núcleos, {} threads)", "use both threads of each core ({n} cores, {} threads)",
+                                    "use both threads of each core ({n} cores, {} threads)", "usar os dois threads de cada núcleo ({n} núcleos, {} threads)",
                                     if ht { n * 2 } else { n }
                                 ),
-                                None => crate::i18n::tr("usar os dois threads de cada núcleo").to_string(),
+                                None => crate::i18n::tr("use both threads of each core").to_string(),
                             };
                             if ui
                                 .checkbox(&mut ht, label)
                                 .on_hover_text(
-                                    crate::i18n::tr("O turbo conta núcleos acordados, não threads: o clock máximo é o mesmo com ou sem. \
-                                     Desmarcado, cada thread do programa tem um núcleo inteiro (melhor para a maioria dos jogos). \
-                                     Marcado, rende mais em programas que usam todos os threads (compilação, renderização)."),
+                                    crate::i18n::tr("Turbo counts awake cores, not threads: the maximum clock is the same either way. \
+                                     Unchecked, each program thread gets a whole core (better for most games). \
+                                     Checked, it does better in programs that use every thread (compiling, rendering)."),
                                 )
                                 .changed()
                             {
@@ -650,12 +657,12 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             ui.label(
                                 RichText::new(if table.is_some() {
                                     crate::tf!(
-                                        "Clock máximo com esse número de núcleos acordados (todos os {per_socket} ligados{all}). \
-                                         Jogos que usam muitos núcleos rendem mais com 6 ou 8 do que com 4.", "Maximum clock with this many cores awake (all {per_socket} awake{all}). \
-                                         Games that use many cores do better with 6 or 8 than with 4."
+                                        "Maximum clock with this many cores awake (all {per_socket} awake{all}). \
+                                         Games that use many cores do better with 6 or 8 than with 4.", "Clock máximo com esse número de núcleos acordados (todos os {per_socket} ligados{all}). \
+                                         Jogos que usam muitos núcleos rendem mais com 6 ou 8 do que com 4."
                                     )
                                 } else {
-                                    crate::i18n::tr("Quanto menos núcleos, mais alto o clock. A tabela deste processador aparece com o serviço rodando (só Intel).").to_string()
+                                    crate::i18n::tr("The fewer cores, the higher the clock. This processor's table shows up with the service running (Intel only).").to_string()
                                 })
                                 .small()
                                 .weak(),
@@ -664,9 +671,9 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         ui.end_row();
                     }
 
-                    ui.label(RichText::new(crate::i18n::tr("Modo da máquina")).strong())
-                        .on_hover_text(crate::i18n::tr("Enquanto o programa está aberto a máquina fica neste modo (aba Máquina) e volta ao anterior quando ele fecha."));
-                    let modes = [(None, crate::i18n::tr("não trocar")), (Some("jogo"), crate::i18n::tr("Jogo")), (Some("ia"), crate::i18n::tr("IA")), (Some("silencioso"), crate::i18n::tr("Silencioso"))];
+                    ui.label(RichText::new(crate::i18n::tr("Machine mode")).strong())
+                        .on_hover_text(crate::i18n::tr("While the program is open the machine stays in this mode (Machine tab) and goes back to the previous one when it closes."));
+                    let modes = [(None, crate::i18n::tr("do not switch")), (Some("jogo"), crate::i18n::tr("Game")), (Some("ia"), crate::i18n::tr("AI")), (Some("silencioso"), crate::i18n::tr("Quiet"))];
                     let cur = modes.iter().find(|m| m.0 == ed.p.machine_mode.as_deref()).map(|m| m.1).unwrap_or("?");
                     egui::ComboBox::from_id_salt("ed-mmode").selected_text(cur).show_ui(ui, |ui| {
                         for (k, l) in modes {
@@ -675,7 +682,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     });
                     ui.end_row();
 
-                    ui.label(RichText::new(crate::i18n::tr("Placa de vídeo")).strong());
+                    ui.label(RichText::new(crate::i18n::tr("Graphics card")).strong());
                     ui.vertical(|ui| {
                         let cur = (ed.p.gpu.clone(), ed.p.usage.clone());
                         let mut sel = cur.clone();
@@ -695,14 +702,14 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             ed.p.usage = sel.1;
                         }
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(crate::i18n::tr("Perfil de energia da placa:")).small());
+                            ui.label(RichText::new(crate::i18n::tr("Card power profile:")).small());
                             let names = [
-                                ("auto", crate::i18n::tr("não mexer")),
-                                ("3d", crate::i18n::tr("3D tela cheia (jogo)")),
-                                ("compute", crate::i18n::tr("computação (IA/ROCm)")),
+                                ("auto", crate::i18n::tr("leave as is")),
+                                ("3d", crate::i18n::tr("3D fullscreen (game)")),
+                                ("compute", crate::i18n::tr("compute (AI/ROCm)")),
                                 ("vr", "VR"),
-                                ("video", crate::i18n::tr("vídeo")),
-                                (crate::i18n::tr("economia"), crate::i18n::tr("economia")),
+                                ("video", crate::i18n::tr("video")),
+                                (crate::i18n::tr("power saving"), crate::i18n::tr("power saving")),
                             ];
                             let cur = names.iter().find(|n| n.0 == ed.p.gpu_power).map(|n| n.1).unwrap_or("?");
                             egui::ComboBox::from_id_salt("ed-gpow").selected_text(cur).show_ui(ui, |ui| {
@@ -713,8 +720,8 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         });
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("Lossless Scaling:").small());
-                            egui::ComboBox::from_id_salt("ed-fg").selected_text(if ed.p.fg_gpu == "same" { crate::i18n::tr("mesma GPU").to_string() } else { ed.p.fg_gpu.clone() }).show_ui(ui, |ui| {
-                                ui.selectable_value(&mut ed.p.fg_gpu, "same".to_string(), crate::i18n::tr("mesma GPU do jogo"));
+                            egui::ComboBox::from_id_salt("ed-fg").selected_text(if ed.p.fg_gpu == "same" { crate::i18n::tr("same GPU").to_string() } else { ed.p.fg_gpu.clone() }).show_ui(ui, |ui| {
+                                ui.selectable_value(&mut ed.p.fg_gpu, "same".to_string(), crate::i18n::tr("same GPU as the game"));
                                 for g in &app.topo.gpus {
                                     ui.selectable_value(&mut ed.p.fg_gpu, g.alias.clone(), format!("{} (dual GPU, fork)", g.alias));
                                 }
@@ -726,7 +733,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
 
                 if ed.picking {
                     ui.separator();
-                    ui.label(RichText::new(crate::i18n::tr("Clique num núcleo para usar os 2 threads; botão direito = só 1 thread.")).weak());
+                    ui.label(RichText::new(crate::i18n::tr("Click a core to use both threads; right-click = only 1 thread.")).weak());
                     let who = BTreeMap::new();
                     core_map(ui, &app.topo, &app.cpu_loads, Some(&mut ed.pick), &who);
                     ed.p.cpu_list = if ed.pick.is_empty() { None } else { Some(format_cpulist(&ed.pick.iter().copied().collect::<Vec<_>>())) };
@@ -738,9 +745,9 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 ui.separator();
                 let mut gs_on = ed.p.gamescope.is_some();
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut gs_on, RichText::new(crate::i18n::tr("Abrir dentro do gamescope")).strong());
+                    ui.checkbox(&mut gs_on, RichText::new(crate::i18n::tr("Open inside gamescope")).strong());
                     if !app.has_gamescope {
-                        ui.label(RichText::new(crate::i18n::tr("(não instalado: sudo pacman -S gamescope)")).small().color(Color32::from_rgb(230, 160, 40)));
+                        ui.label(RichText::new(crate::i18n::tr("(not installed: sudo pacman -S gamescope)")).small().color(Color32::from_rgb(230, 160, 40)));
                     }
                 });
                 if gs_on != ed.p.gamescope.is_some() {
@@ -755,33 +762,33 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         *v = on.then_some(x);
                     };
                     egui::Grid::new("ed-gs").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
-                        ui.label(crate::i18n::tr("Resolução do jogo"));
+                        ui.label(crate::i18n::tr("Game resolution"));
                         ui.horizontal(|ui| {
                             opt_num(ui, &mut g.render_w, 1920, 7680);
                             ui.label("x");
                             opt_num(ui, &mut g.render_h, 1080, 4320);
-                            ui.label(RichText::new(crate::i18n::tr("desmarcado = a da tela")).small().weak());
+                            ui.label(RichText::new(crate::i18n::tr("unchecked = the display's")).small().weak());
                         });
                         ui.end_row();
-                        ui.label(crate::i18n::tr("Resolução de saída"));
+                        ui.label(crate::i18n::tr("Output resolution"));
                         ui.horizontal(|ui| {
                             opt_num(ui, &mut g.out_w, 2560, 7680);
                             ui.label("x");
                             opt_num(ui, &mut g.out_h, 1440, 4320);
                         });
                         ui.end_row();
-                        ui.label(crate::i18n::tr("Limite de FPS"));
+                        ui.label(crate::i18n::tr("FPS limit"));
                         ui.horizontal(|ui| opt_num(ui, &mut g.fps_limit, 60, 1000));
                         ui.end_row();
                         ui.label("");
                         ui.horizontal(|ui| {
-                            ui.checkbox(&mut g.fullscreen, crate::i18n::tr("Tela cheia"));
-                            ui.checkbox(&mut g.fsr, crate::i18n::tr("Ampliar com FSR"));
+                            ui.checkbox(&mut g.fullscreen, crate::i18n::tr("Fullscreen"));
+                            ui.checkbox(&mut g.fsr, crate::i18n::tr("Upscale with FSR"));
                         });
                         ui.end_row();
                     });
                     ui.label(
-                        RichText::new(crate::i18n::tr("O gamescope usa a mesma placa escolhida acima. Bom para rodar o jogo em resolução menor e ampliar com FSR, ou travar o FPS."))
+                        RichText::new(crate::i18n::tr("gamescope uses the same card chosen above. Good for running the game at a lower resolution and upscaling with FSR, or capping the FPS."))
                             .small()
                             .weak(),
                     );
@@ -804,39 +811,39 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 match decide_launch(&app.cfg, &app.topo, &Learned::default(), &profs, &app.loads, &inp) {
                     Ok(d) => {
                         ui.label(RichText::new(crate::tf!(
-                            "Vai usar {} CPUs ({}) no(s) socket(s) {:?} · GPU {} · memória {}", "Will use {} CPUs ({}) on socket(s) {:?} · GPU {} · memory {}",
+                            "Will use {} CPUs ({}) on socket(s) {:?} · GPU {} · memory {}", "Vai usar {} CPUs ({}) no(s) socket(s) {:?} · GPU {} · memória {}",
                             d.cpus.len(),
                             format_cpulist(&d.cpus),
                             d.nodes,
-                            d.gpus.first().map(|g| g.alias.as_str()).unwrap_or(crate::i18n::tr("nenhuma")),
+                            d.gpus.first().map(|g| g.alias.as_str()).unwrap_or(crate::i18n::tr("none")),
                             match d.mem {
-                                numapilot::config::MemSpec::Bind => crate::i18n::tr("só do socket"),
+                                numapilot::config::MemSpec::Bind => crate::i18n::tr("socket only"),
                                 numapilot::config::MemSpec::Interleave => "intercalada",
                                 numapilot::config::MemSpec::Local => "local",
                             }
                         )).strong());
                         for w in game_warnings(&app.topo, &d) {
-                            ui.label(RichText::new(crate::tf!("Atenção: {w}", "Warning: {w}")).color(Color32::from_rgb(230, 160, 40)));
+                            ui.label(RichText::new(crate::tf!("Warning: {w}", "Atenção: {w}")).color(Color32::from_rgb(230, 160, 40)));
                         }
                     }
                     Err(e) => {
-                        ui.label(RichText::new(crate::tf!("Combinação inválida: {e}", "Invalid combination: {e}")).color(Color32::from_rgb(220, 80, 60)));
+                        ui.label(RichText::new(crate::tf!("Invalid combination: {e}", "Combinação inválida: {e}")).color(Color32::from_rgb(220, 80, 60)));
                     }
                 }
                 ui.label(
                     RichText::new(
-                        crate::i18n::tr("Valem na hora: processadores, núcleos, memória (exceto intercalar), limite, prioridade e exclusivo. \
-                         Valem ao reabrir: placa de vídeo, intercalar e o que o programa enxerga."),
+                        crate::i18n::tr("Apply right away: processors, cores, memory (except interleave), limit, priority and exclusive. \
+                         Apply on reopen: graphics card, interleave and what the program sees."),
                     )
                     .small()
                     .weak(),
                 );
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new(crate::i18n::tr("Aplicar")).strong()).clicked() {
+                    if ui.button(RichText::new(crate::i18n::tr("Apply")).strong()).clicked() {
                         apply = true;
                     }
-                    if ui.button(crate::i18n::tr("Trazer a memória para o socket certo")).clicked() {
+                    if ui.button(crate::i18n::tr("Bring the memory to the right socket")).clicked() {
                         fix = true;
                     }
                 });

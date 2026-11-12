@@ -253,7 +253,7 @@ fn dropin(svc: &str) -> PathBuf {
 pub fn apply(topo: &Topology) -> Result<Vec<String>, String> {
     let env = igpu_env(topo);
     if env.is_empty() {
-        return Err(crate::i18n::tr("só para notebook com placa integrada + NVIDIA").into());
+        return Err(crate::i18n::tr("only for laptops with an integrated card + NVIDIA").into());
     }
     let pre = prefix(&env);
     let mut changed = vec![];
@@ -311,7 +311,7 @@ pub fn apply(topo: &Topology) -> Result<Vec<String>, String> {
         changed.push(e.name);
     }
     let body = format!(
-        "# numapilot: este serviço usa só a placa integrada (a NVIDIA pode dormir)\n[Service]\n{}",
+        "# numapilot: this service uses only the integrated card (the NVIDIA can sleep)\n[Service]\n{}",
         env.iter()
             .map(|(k, v)| format!("Environment={k}={v}\n"))
             .collect::<String>()

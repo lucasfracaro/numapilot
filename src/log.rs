@@ -58,10 +58,10 @@ pub fn init(component: &str) {
             .or_else(|| info.payload().downcast_ref::<String>().cloned())
             .unwrap_or_default();
         write(
-            "ERRO",
+            "ERROR",
             &crate::tf!(
-                "o programa caiu: {msg}{loc}",
-                "the program crashed: {msg}{loc}"
+                "the program crashed: {msg}{loc}",
+                "o programa caiu: {msg}{loc}"
             ),
         );
         prev(info);
@@ -119,11 +119,11 @@ pub fn info(msg: &str) {
 }
 
 pub fn warn(msg: &str) {
-    write("AVISO", msg);
+    write("WARN", msg);
 }
 
 pub fn error(msg: &str) {
-    write("ERRO", msg);
+    write("ERROR", msg);
 }
 
 /// Nível pelo texto da mensagem: as do serviço não dizem o nível, mas dizem "não consegui"…
@@ -151,7 +151,7 @@ pub fn level_of(msg: &str) -> &'static str {
     .iter()
     .any(|k| m.contains(k))
     {
-        "ERRO"
+        "ERROR"
     } else if m.contains("aviso")
         || m.contains("não aplicad")
         || m.contains("bloquead")
@@ -159,7 +159,7 @@ pub fn level_of(msg: &str) -> &'static str {
         || m.contains("not applied")
         || m.contains("blocked")
     {
-        "AVISO"
+        "WARN"
     } else {
         "INFO"
     }
@@ -217,15 +217,13 @@ mod tests {
 
     #[test]
     fn levels() {
-        assert_eq!(level_of("GPU x: não consegui limitar"), "ERRO");
-        assert_eq!(level_of("curva da ventoinha não aplicada: x"), "AVISO");
-        assert_eq!(level_of("modo da máquina: jogo"), "INFO");
-        assert_eq!(
-            level_of("modo da máquina: personalizado (0 erro(s))"),
-            "INFO"
-        );
-        assert_eq!(level_of("modo da máquina: jogo com 2 erro(s): x"), "ERRO");
-        assert_eq!(level_of("aplicado (10 erro(s))"), "ERRO");
+        assert_eq!(level_of("GPU x: could not limit the power"), "ERROR");
+        assert_eq!(level_of("GPU x: não consegui limitar"), "ERROR");
+        assert_eq!(level_of("fan curve not applied: x"), "WARN");
+        assert_eq!(level_of("machine mode: game"), "INFO");
+        assert_eq!(level_of("machine mode: custom (0 error(s))"), "INFO");
+        assert_eq!(level_of("machine mode: game with 2 error(s): x"), "ERROR");
+        assert_eq!(level_of("applied (10 error(s))"), "ERROR");
     }
 
     #[test]

@@ -68,7 +68,7 @@ pub fn parse_link(link: &str) -> Option<(String, String)> {
 
 pub fn add(link: &str, name: Option<&str>) -> Result<Peer, String> {
     let (url, token) = parse_link(link).ok_or(crate::i18n::tr(
-        "link inválido: copie o link com ?t= do painel do outro PC",
+        "invalid link: copy the link with ?t= from the other PC's panel",
     ))?;
     let name = name
         .map(String::from)
@@ -98,8 +98,8 @@ pub fn remove(name: &str) -> Result<(), String> {
     v.retain(|p| p.name != name);
     if v.len() == n {
         return Err(crate::tf!(
-            "PC {name} não está na lista",
-            "PC {name} is not in the list"
+            "PC {name} is not in the list",
+            "PC {name} não está na lista"
         ));
     }
     save(&v).map_err(|e| e.to_string())
@@ -153,14 +153,14 @@ fn get(p: &Peer, path: &str, out: Option<&std::path::Path>, secs: u32) -> Result
 pub fn pull_profiles(name: &str, all: bool) -> Result<String, String> {
     let p = load().into_iter().find(|p| p.name == name).ok_or_else(|| {
         crate::tf!(
-            "PC {name} não está na lista",
-            "PC {name} is not in the list"
+            "PC {name} is not in the list",
+            "PC {name} não está na lista"
         )
     })?;
     let body = get(&p, "/api/profiles", None, 10)?;
     let theirs: std::collections::BTreeMap<String, crate::profiles::Profile> =
         serde_json::from_slice(&body)
-            .map_err(|e| crate::tf!("resposta inválida: {e}", "invalid response: {e}"))?;
+            .map_err(|e| crate::tf!("invalid response: {e}", "resposta inválida: {e}"))?;
     let mine = crate::profiles::Profiles::load();
     let mut n = 0;
     for (k, prof) in theirs {
@@ -172,14 +172,14 @@ pub fn pull_profiles(name: &str, all: bool) -> Result<String, String> {
             profile: prof,
             pid: None,
         })
-        .map_err(|e| crate::tf!("serviço numapilot: {e}", "numapilot service: {e}"))?;
+        .map_err(|e| crate::tf!("numapilot service: {e}", "serviço numapilot: {e}"))?;
         if r.ok {
             n += 1;
         }
     }
     Ok(crate::tf!(
-        "{n} perfil(s) copiado(s) de {name}",
-        "{n} profile(s) copied from {name}"
+        "{n} profile(s) copied from {name}",
+        "{n} perfil(s) copiado(s) de {name}"
     ))
 }
 
@@ -242,11 +242,11 @@ fn wol_mac(s: &serde_json::Value) -> Option<String> {
 pub fn wake(name: &str) -> Result<String, String> {
     let p = load().into_iter().find(|p| p.name == name).ok_or_else(|| {
         crate::tf!(
-            "PC {name} não está na lista",
-            "PC {name} is not in the list"
+            "PC {name} is not in the list",
+            "PC {name} não está na lista"
         )
     })?;
-    let mac = p.mac.ok_or(crate::i18n::tr("ainda não sei o endereço dele: ligue o Wake-on-LAN lá (Máquina → Rede) e abra este painel com ele ligado uma vez"))?;
+    let mac = p.mac.ok_or(crate::i18n::tr("I do not know its address yet: enable Wake-on-LAN there (Machine → Network) and open this panel once with it on"))?;
     let ip = p
         .url
         .split("//")
@@ -255,8 +255,8 @@ pub fn wake(name: &str) -> Result<String, String> {
         .map(String::from);
     crate::wol::wake(&mac, ip.as_deref())?;
     Ok(crate::tf!(
-        "pacote para ligar {name} enviado ({mac})",
-        "wake packet for {name} sent ({mac})"
+        "wake packet for {name} sent ({mac})",
+        "pacote para ligar {name} enviado ({mac})"
     ))
 }
 

@@ -164,24 +164,26 @@ pub fn governor_apply(
     log: &mut dyn FnMut(&str),
 ) -> Result<(), String> {
     if !crate::util::is_root() {
-        return Err(crate::i18n::tr("precisa de root (o botão da interface pede a senha)").into());
+        return Err(
+            crate::i18n::tr("needs root (the interface button asks for the password)").into(),
+        );
     }
-    let dest = governor_config(b).ok_or(crate::i18n::tr("nenhum governor instalado"))?;
+    let dest = governor_config(b).ok_or(crate::i18n::tr("no governor installed"))?;
     let text = std::fs::read_to_string(new_file).map_err(|e| e.to_string())?;
     toml::from_str::<toml::Table>(&text)
-        .map_err(|e| crate::tf!("configuração inválida: {e}", "invalid configuration: {e}"))?;
+        .map_err(|e| crate::tf!("invalid configuration: {e}", "configuração inválida: {e}"))?;
     let bak = format!("{dest}.numapilot-bak-{}", crate::history::now());
     std::fs::copy(&dest, &bak).map_err(|e| format!("backup: {e}"))?;
     std::fs::write(&dest, text).map_err(|e| e.to_string())?;
     log(&crate::tf!(
-        "Gravado {dest} (backup em {bak})",
-        "Wrote {dest} (backup in {bak})"
+        "Wrote {dest} (backup in {bak})",
+        "Gravado {dest} (backup em {bak})"
     ));
     let svc = services(b)
         .into_iter()
         .find(|s| s.active || s.enabled)
         .map(|s| s.name)
-        .ok_or(crate::i18n::tr("nenhum serviço de governor ligado"))?;
+        .ok_or(crate::i18n::tr("no governor service enabled"))?;
     let ok = Command::new("systemctl")
         .args(["restart", &format!("{svc}.service")])
         .status()
@@ -189,11 +191,11 @@ pub fn governor_apply(
     if !ok {
         std::fs::copy(&bak, &dest).ok();
         return Err(crate::tf!(
-            "{svc} não reiniciou com a configuração nova: voltei a anterior",
-            "{svc} did not restart with the new configuration: the previous one was restored"
+            "{svc} did not restart with the new configuration: the previous one was restored",
+            "{svc} não reiniciou com a configuração nova: voltei a anterior"
         ));
     }
-    log(&crate::tf!("{svc} reiniciado", "{svc} restarted"));
+    log(&crate::tf!("{svc} restarted", "{svc} reiniciado"));
     Ok(())
 }
 

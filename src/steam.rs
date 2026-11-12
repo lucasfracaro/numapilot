@@ -350,10 +350,9 @@ pub fn steam_running() -> bool {
 /// Retorna quantos jogos mudaram.
 pub fn apply_all(path: &Path, games: &[(String, String)], enable: bool) -> Result<usize, String> {
     if steam_running() {
-        return Err(crate::i18n::tr(
-            "Feche a Steam primeiro (ela regrava essa configuração ao sair).",
-        )
-        .into());
+        return Err(
+            crate::i18n::tr("Close Steam first (it rewrites this configuration on exit).").into(),
+        );
     }
     let s = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let ts = crate::history::now();

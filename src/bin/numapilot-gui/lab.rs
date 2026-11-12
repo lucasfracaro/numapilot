@@ -35,7 +35,7 @@ pub fn ensure_ssh_config(st: &LabSettings) -> std::io::Result<bool> {
     }
     std::fs::create_dir_all(home().join(".ssh"))?;
     let block = format!(
-        "\n# adicionado pelo numapilot (laboratório das MI50)\nHost gfx906-lab\n    HostName 127.0.0.1\n    Port {}\n    User root\n    StrictHostKeyChecking accept-new\n",
+        "\n# added by numapilot (MI50 lab)\nHost gfx906-lab\n    HostName 127.0.0.1\n    Port {}\n    User root\n    StrictHostKeyChecking accept-new\n",
         st.get("LAB_PORT_SSH")
     );
     std::fs::write(&p, cur + &block)?;
@@ -48,7 +48,7 @@ pub fn open_code_app(st: &LabSettings) -> Result<(), String> {
     let bin = ["code", "codium", "code-oss"]
         .into_iter()
         .find(|b| containers::which(b))
-        .ok_or(crate::i18n::tr("VS Code não está instalado no PC"))?;
+        .ok_or(crate::i18n::tr("VS Code is not installed on the PC"))?;
     ensure_ssh_config(st).map_err(|e| e.to_string())?;
     spawn_detached(&[
         bin.into(),
@@ -60,7 +60,7 @@ pub fn open_code_app(st: &LabSettings) -> Result<(), String> {
 }
 
 pub fn open_terminal(container: &str) -> Result<(), String> {
-    let eng = containers::engine().ok_or(crate::i18n::tr("sem podman/docker"))?;
+    let eng = containers::engine().ok_or(crate::i18n::tr("no podman/docker"))?;
     let inner = vec![
         eng,
         "exec".to_string(),
@@ -80,7 +80,7 @@ pub fn open_terminal(container: &str) -> Result<(), String> {
         vec!["xterm".into(), "-e".into()]
     } else {
         return Err(crate::i18n::tr(
-            "nenhum terminal encontrado (konsole, gnome-terminal, kitty, alacritty, xterm)",
+            "no terminal found (konsole, gnome-terminal, kitty, alacritty, xterm)",
         )
         .into());
     };
@@ -97,9 +97,9 @@ pub fn gfx(args: &[&str]) -> Vec<String> {
 
 fn status_badge(ui: &mut egui::Ui, running: bool) {
     let (t, c) = if running {
-        (crate::i18n::tr("rodando"), Color32::from_rgb(90, 180, 110))
+        (crate::i18n::tr("running"), Color32::from_rgb(90, 180, 110))
     } else {
-        ("parado", Color32::GRAY)
+        (crate::t2!("stopped", "parado"), Color32::GRAY)
     };
     ui.label(RichText::new(t).color(c));
 }
@@ -115,12 +115,12 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         Some(Err(e)) => {
             ui.label(
                 RichText::new(crate::tf!(
-                    "Containers indisponíveis: {e}",
-                    "Containers unavailable: {e}"
+                    "Containers unavailable: {e}",
+                    "Containers indisponíveis: {e}"
                 ))
                 .color(Color32::from_rgb(220, 80, 60)),
             );
-            ui.label(crate::i18n::tr("Instale o podman:  sudo pacman -S podman"));
+            ui.label(crate::i18n::tr("Install podman:  sudo pacman -S podman"));
             vec![]
         }
         None => {
@@ -136,56 +136,56 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                ui.heading(crate::i18n::tr("Laboratório de dados e IA"));
+                ui.heading(crate::i18n::tr("Data and AI lab"));
                 status_badge(ui, lab_running);
                 if let Some(c) = &lab {
                     ui.label(RichText::new(&c.image).weak().small());
                 } else {
-                    ui.label(RichText::new(crate::i18n::tr("ainda não criado")).weak());
+                    ui.label(RichText::new(crate::i18n::tr("not created yet")).weak());
                 }
             });
-            ui.label(RichText::new(crate::i18n::tr("PyTorch nas MI50 + pandas, scikit-learn, transformers... Seus arquivos ficam em ~/lab.")).weak());
+            ui.label(RichText::new(crate::i18n::tr("PyTorch on the MI50s + pandas, scikit-learn, transformers... Your files stay in ~/lab.")).weak());
             ui.horizontal_wrapped(|ui| {
                 if lab_running {
-                    if ui.button(crate::i18n::tr("Desligar")).clicked() {
-                        app.start_job(crate::i18n::tr("Desligando o laboratório"), gfx(&["lab", "down"]));
+                    if ui.button(crate::i18n::tr("Turn off")).clicked() {
+                        app.start_job(crate::i18n::tr("Turning the lab off"), gfx(&["lab", "down"]));
                     }
-                } else if ui.button(if lab.is_some() { crate::i18n::tr("Ligar") } else { crate::i18n::tr("Criar e ligar (demora na 1ª vez)") }).clicked() {
-                    app.start_job(crate::i18n::tr("Ligando o laboratório"), gfx(&["lab", "up"]));
+                } else if ui.button(if lab.is_some() { crate::i18n::tr("Turn on") } else { crate::i18n::tr("Create and turn on (slow the 1st time)") }).clicked() {
+                    app.start_job(crate::i18n::tr("Turning the lab on"), gfx(&["lab", "up"]));
                 }
-                if ui.add_enabled(lab_running, egui::Button::new(crate::i18n::tr("Testar GPUs"))).clicked() {
-                    app.start_job(crate::i18n::tr("Teste das GPUs no laboratório"), gfx(&["lab", "test"]));
+                if ui.add_enabled(lab_running, egui::Button::new(crate::i18n::tr("Test GPUs"))).clicked() {
+                    app.start_job(crate::i18n::tr("GPU test in the lab"), gfx(&["lab", "test"]));
                 }
-                if ui.button(crate::i18n::tr("Atualizar")).on_hover_text(crate::i18n::tr("Base nova do PyTorch/ROCm; testa nas GPUs e volta sozinho se falhar")).clicked() {
-                    app.start_job(crate::i18n::tr("Atualizando o laboratório"), gfx(&["lab", "update"]));
+                if ui.button(crate::i18n::tr("Update")).on_hover_text(crate::i18n::tr("New PyTorch/ROCm base; tests on the GPUs and reverts by itself if it fails")).clicked() {
+                    app.start_job(crate::i18n::tr("Updating the lab"), gfx(&["lab", "update"]));
                 }
-                if ui.button(crate::i18n::tr("Atualizar pacotes Python")).clicked() {
-                    app.start_job(crate::i18n::tr("Reconstruindo o laboratório"), gfx(&["lab", "update", "--force"]));
+                if ui.button(crate::i18n::tr("Update Python packages")).clicked() {
+                    app.start_job(crate::i18n::tr("Rebuilding the lab"), gfx(&["lab", "update", "--force"]));
                 }
-                if ui.button(crate::i18n::tr("Voltar versão")).clicked() {
-                    app.start_job(crate::i18n::tr("Voltando para a imagem anterior"), gfx(&["lab", "rollback"]));
+                if ui.button(crate::i18n::tr("Roll back version")).clicked() {
+                    app.start_job(crate::i18n::tr("Rolling back to the previous image"), gfx(&["lab", "rollback"]));
                 }
             });
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new(crate::i18n::tr("Abrir:")).strong());
+                ui.label(RichText::new(crate::i18n::tr("Open:")).strong());
                 ui.add_enabled_ui(lab_running, |ui| {
                     if ui.button("JupyterLab").clicked() {
                         let _ = open_url(&jupyter_url(&st));
                     }
-                    if ui.button(crate::i18n::tr("VS Code (navegador)")).on_hover_text(crate::tf!("senha: {}", "password: {}", st.token())).clicked() {
+                    if ui.button(crate::i18n::tr("VS Code (browser)")).on_hover_text(crate::tf!("password: {}", "senha: {}", st.token())).clicked() {
                         ui.ctx().copy_text(st.token());
                         let _ = open_url(&code_url(&st));
-                        app.toast(crate::i18n::tr("Senha do VS Code copiada (cole na tela de login)"), true);
+                        app.toast(crate::i18n::tr("VS Code password copied (paste it on the login screen)"), true);
                     }
-                    if ui.button(crate::i18n::tr("VS Code (app do PC)")).on_hover_text(crate::i18n::tr("Precisa da extensão Remote - SSH")).clicked() {
+                    if ui.button(crate::i18n::tr("VS Code (PC app)")).on_hover_text(crate::i18n::tr("Needs the Remote - SSH extension")).clicked() {
                         match open_code_app(&st) {
-                            Ok(()) => app.toast(crate::i18n::tr("Abrindo o VS Code conectado ao laboratório"), true),
+                            Ok(()) => app.toast(crate::i18n::tr("Opening VS Code connected to the lab"), true),
                             Err(e) => app.toast(e, false),
                         }
                     }
-                    if ui.button("PyCharm").on_hover_text(crate::i18n::tr("Precisa de LAB_PYCHARM=1 na imagem (Configurações do laboratório)")).clicked() {
-                        app.start_job(crate::i18n::tr("Abrindo o PyCharm"), gfx(&["lab", "pycharm"]));
+                    if ui.button("PyCharm").on_hover_text(crate::i18n::tr("Needs LAB_PYCHARM=1 in the image (Lab settings)")).clicked() {
+                        app.start_job(crate::i18n::tr("Opening PyCharm"), gfx(&["lab", "pycharm"]));
                     }
                     if ui.button("Terminal").clicked()
                         && let Err(e) = open_terminal(&st.get("LAB_NAME"))
@@ -193,14 +193,14 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         app.toast(e, false);
                     }
                 });
-                if ui.button(crate::i18n::tr("Pasta ~/lab")).clicked() {
+                if ui.button(crate::i18n::tr("~/lab folder")).clicked() {
                     let _ = open_url(&home().join("lab").to_string_lossy());
                 }
             });
             if lab_running {
                 ui.label(
                     RichText::new(crate::tf!(
-                        "SSH: ssh gfx906-lab (porta {}) · interpretador: /usr/bin/python3", "SSH: ssh gfx906-lab (port {}) · interpreter: /usr/bin/python3",
+                        "SSH: ssh gfx906-lab (port {}) · interpreter: /usr/bin/python3", "SSH: ssh gfx906-lab (porta {}) · interpretador: /usr/bin/python3",
                         st.get("LAB_PORT_SSH")
                     ))
                     .small()
@@ -213,10 +213,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         // ---- containers ----
         ui.horizontal(|ui| {
             ui.heading("Containers");
-            ui.label(RichText::new(crate::i18n::tr("clique em \"Ver apps\" para listar o que está instalado em cada um")).weak());
+            ui.label(RichText::new(crate::i18n::tr("click \"View apps\" to list what is installed in each one")).weak());
         });
         if containers.is_empty() && matches!(list, Some(Ok(_))) {
-            ui.label(crate::i18n::tr("Nenhum container ainda."));
+            ui.label(crate::i18n::tr("No containers yet."));
         }
         for c in &containers {
             egui::Frame::group(ui.style()).show(ui, |ui| {
@@ -225,8 +225,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ui.label(RichText::new(&c.name).strong());
                     status_badge(ui, c.running);
                     let kind = match c.kind {
-                        Kind::Lab => crate::i18n::tr("laboratório"),
-                        Kind::Llm => crate::i18n::tr("servidor de IA"),
+                        Kind::Lab => crate::i18n::tr("lab"),
+                        Kind::Llm => crate::t2!("AI server", "servidor de IA"),
                         Kind::Distrobox => "distrobox",
                         Kind::Other => "container",
                     };
@@ -235,11 +235,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 ui.horizontal_wrapped(|ui| {
                     let eng = containers::engine().unwrap_or_else(|| "podman".into());
                     if c.running {
-                        if ui.small_button(crate::i18n::tr("Parar")).clicked() {
-                            app.start_job(crate::tf!("Parando {}", "Stopping {}", c.name), vec![eng.clone(), "stop".into(), c.name.clone()]);
+                        if ui.small_button(crate::i18n::tr("Stop")).clicked() {
+                            app.start_job(crate::tf!("Stopping {}", "Parando {}", c.name), vec![eng.clone(), "stop".into(), c.name.clone()]);
                         }
-                    } else if ui.small_button(crate::i18n::tr("Ligar")).clicked() {
-                        app.start_job(crate::tf!("Ligando {}", "Starting {}", c.name), vec![eng.clone(), "start".into(), c.name.clone()]);
+                    } else if ui.small_button(crate::i18n::tr("Turn on")).clicked() {
+                        app.start_job(crate::tf!("Starting {}", "Ligando {}", c.name), vec![eng.clone(), "start".into(), c.name.clone()]);
                     }
                     if ui.add_enabled(c.running, egui::Button::new("Terminal").small()).clicked()
                         && let Err(e) = open_terminal(&c.name)
@@ -247,7 +247,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         app.toast(e, false);
                     }
                     let busy = inspecting.contains(&c.id);
-                    let label = if apps.contains_key(&c.id) { crate::i18n::tr("Atualizar apps") } else { crate::i18n::tr("Ver apps") };
+                    let label = if apps.contains_key(&c.id) { crate::i18n::tr("Refresh apps") } else { crate::i18n::tr("View apps") };
                     if ui.add_enabled(c.running && !busy, egui::Button::new(label).small()).clicked() {
                         crate::bg::inspect(&app.bg, c.clone(), ui.ctx().clone());
                     }
@@ -261,7 +261,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         } else {
                             format!("http://{host}:{}", p.host_port)
                         };
-                        if p.container_port != 2222 && ui.small_button(crate::tf!("abrir :{}", "open :{}", p.host_port)).on_hover_text(&url).clicked() {
+                        if p.container_port != 2222 && ui.small_button(crate::tf!("open :{}", "abrir :{}", p.host_port)).on_hover_text(&url).clicked() {
                             let _ = open_url(&url);
                         }
                     }
@@ -271,36 +271,36 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.label(RichText::new(e).weak());
                     }
                     let can_open = containers::open_command(c, "true").is_some();
-                    egui::CollapsingHeader::new(crate::tf!("Programas com janela ({})", "Programs with a window ({})", a.desktop.len()))
+                    egui::CollapsingHeader::new(crate::tf!("Programs with a window ({})", "Programas com janela ({})", a.desktop.len()))
                         .id_salt(format!("d-{}", c.id))
                         .default_open(!a.desktop.is_empty())
                         .show(ui, |ui| {
                             if a.desktop.is_empty() {
-                                ui.label(RichText::new(crate::i18n::tr("nenhum app com atalho")).weak());
+                                ui.label(RichText::new(crate::i18n::tr("no app with a shortcut")).weak());
                             }
                             ui.horizontal_wrapped(|ui| {
                                 for (name, exec) in &a.desktop {
                                     let b = ui.add_enabled(can_open, egui::Button::new(name)).on_hover_text(exec);
-                                    let b = if can_open { b } else { b.on_disabled_hover_text(crate::i18n::tr("só dá para abrir apps do laboratório e de containers distrobox (que têm acesso à tela)")) };
+                                    let b = if can_open { b } else { b.on_disabled_hover_text(crate::i18n::tr("only apps from the lab and from distrobox containers (which have display access) can be opened")) };
                                     if b.clicked()
                                         && let Some(cmd) = containers::open_command(c, exec)
                                     {
                                         let _ = spawn_detached(&cmd);
-                                        app.toast(crate::tf!("Abrindo {name}", "Opening {name}"), true);
+                                        app.toast(crate::tf!("Opening {name}", "Abrindo {name}"), true);
                                     }
                                 }
                             });
                         });
-                    egui::CollapsingHeader::new(crate::tf!("IDEs e ferramentas ({})", "IDEs and tools ({})", a.tools.len()))
+                    egui::CollapsingHeader::new(crate::tf!("IDEs and tools ({})", "IDEs e ferramentas ({})", a.tools.len()))
                         .id_salt(format!("t-{}", c.id))
                         .show(ui, |ui| {
                             for (n, p) in &a.tools {
                                 ui.label(format!("{n}  —  {p}"));
                             }
                         });
-                    filtered_list(ui, &mut app.filter, &format!("p-{}", c.id), crate::i18n::tr("Pacotes Python"),
+                    filtered_list(ui, &mut app.filter, &format!("p-{}", c.id), crate::i18n::tr("Python packages"),
                         &a.python.iter().map(|(n, v)| format!("{n} {v}")).collect::<Vec<_>>());
-                    filtered_list(ui, &mut app.filter, &format!("s-{}", c.id), crate::i18n::tr("Pacotes do sistema (instalados à mão)"), &a.system);
+                    filtered_list(ui, &mut app.filter, &format!("s-{}", c.id), crate::i18n::tr("System packages (installed by hand)"), &a.system);
                 }
             });
             ui.add_space(4.0);
@@ -308,8 +308,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(6.0);
         ui.label(
             RichText::new(
-                crate::i18n::tr("Dica: apps instalados no laboratório (apt install ... dentro do Terminal) aparecem aqui ao clicar em \
-                 \"Atualizar apps\". Para guardar o que instalou mesmo após atualizar a imagem, prefira pip/conda dentro de ~/lab."),
+                crate::i18n::tr("Tip: apps installed in the lab (apt install ... inside the Terminal) show up here after clicking \
+                 \"Refresh apps\". To keep what you installed even after updating the image, prefer pip/conda inside ~/lab."),
             )
             .small()
             .weak(),
@@ -322,7 +322,7 @@ fn filtered_list(ui: &mut egui::Ui, filter: &mut String, id: &str, title: &str, 
         .id_salt(id)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(crate::i18n::tr("filtrar:"));
+                ui.label(crate::i18n::tr("filter:"));
                 ui.text_edit_singleline(filter);
             });
             let f = filter.to_lowercase();

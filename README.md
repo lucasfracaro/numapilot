@@ -1,77 +1,81 @@
 # numapilot
 
 [![CI](https://github.com/lucasfracaro/numapilot/actions/workflows/ci.yml/badge.svg)](https://github.com/lucasfracaro/numapilot/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/lucasfracaro/numapilot?label=vers%C3%A3o)](https://github.com/lucasfracaro/numapilot/releases/latest)
-[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/lucasfracaro/numapilot?label=release)](https://github.com/lucasfracaro/numapilot/releases/latest)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Linux](https://img.shields.io/badge/Linux-CachyOS%20%2F%20Arch-1793d1?logo=archlinux&logoColor=white)
 ![Rust](https://img.shields.io/badge/Rust-2024-dea584?logo=rust&logoColor=white)
 
-**Português** · [English](README.en.md)
+**English** · [Português](README.pt-BR.md)
 
-[Instalar](#instalar) · [Capturas](#capturas) · [Interface](#a-interface-aba-por-aba) ·
-[Linha de comando](#linha-de-comando) · [Notebook](#notebook) · [BC-250](#bc-250-e-bc-160) ·
-[Novidades](CHANGELOG.md)
+[Install](#install) · [Screenshots](#screenshots) · [Interface](#the-interface-tab-by-tab) ·
+[Command line](#command-line) · [Laptop](#laptop) · [BC-250](#bc-250-and-bc-160) ·
+[Changelog](CHANGELOG.md)
 
-Gerenciador de hardware e programas para Linux (feito no CachyOS): **um app só para controlar
-processador, memória, placas de vídeo, programas, serviços e o que abre com o sistema**, em
-qualquer PC: de um servidor com 2 processadores e placas de IA a um notebook gamer ou uma BC-250.
+Hardware and program manager for Linux (built on CachyOS): **a single app to control processor,
+memory, graphics cards, programs, services and what starts with the system**, on any PC: from a
+server with 2 processors and AI cards to a gaming laptop or a BC-250.
 
-Ele descobre o hardware e mostra só o que faz sentido para ele. Começou escolhendo **qual
-processador (socket NUMA), qual memória e qual GPU** cada programa usa num servidor com
-2× Xeon e 2× MI50, e cresceu para o resto do PC: ventoinhas, potência, undervolt, modos de
-energia, saúde do hardware, inicialização e serviços (como o gerenciador de tarefas do Windows ou
-o Mission Center), IA local, jogos e vários PCs num painel só.
+It detects the hardware and shows only what makes sense for it. It started by choosing **which
+processor (NUMA socket), which memory and which GPU** each program uses on a server with
+2× Xeon and 2× MI50, and grew to the rest of the PC: fans, power, undervolt, power modes, hardware
+health, startup and services (like the Windows task manager or Mission Center), local AI, games
+and several PCs in one panel.
 
-![Aba Programas](docs/interface.png)
+English is the project's language (code, commands, messages, docs). The interface, and the
+messages it shows, are also available in Portuguese (Settings → Language, or `NUMAPILOT_LANG=pt`).
+The screenshots below were taken in Portuguese.
 
-## Capturas
+![Programs tab](docs/interface.png)
+
+## Screenshots
 
 | | |
 |---|---|
-| [![Placas de vídeo](docs/gpus.png)](#placas-de-vídeo) **Placas de vídeo**: histórico, curva da ventoinha, clock e voltagem | [![Mapa e medições](docs/mapa.png)](#mapa-e-medições) **Mapa e medições**: cada thread, temperatura, disco e rede |
-| [![Máquina](docs/maquina.png)](#máquina) **Máquina**: modos, energia em kWh, saúde, processadores | [![Notebook](docs/nvidia.png)](#notebook) **Notebook**: bateria, NVIDIA só quando precisar, telas |
-| [![Inicialização](docs/inicializacao.png)](#inicialização) **Inicialização**: o que abre com o sistema | [![Serviços](docs/servicos.png)](#serviços) **Serviços**: systemd com estado, memória e log |
-| [![Ajustar programa](docs/editor.png)](#programas) **Ajustar…**: processador, memória e placa por programa | [![BC-250](docs/bc250.png)](#bc-250-e-bc-160) **BC-250**: programas da comunidade, CUs, memória da GPU |
+| [![Graphics cards](docs/gpus.png)](#graphics-cards) **Graphics cards**: history, fan curve, clock and voltage | [![Map & measurements](docs/mapa.png)](#map--measurements) **Map & measurements**: each thread, temperature, disk and network |
+| [![Machine](docs/maquina.png)](#machine) **Machine**: modes, energy in kWh, health, processors | [![Laptop](docs/nvidia.png)](#laptop) **Laptop**: battery, NVIDIA only when needed, displays |
+| [![Startup](docs/inicializacao.png)](#startup) **Startup**: what starts with the system | [![Services](docs/servicos.png)](#services) **Services**: systemd with state, memory and log |
+| [![Adjust program](docs/editor.png)](#programs) **Adjust…**: processor, memory and card per program | [![BC-250](docs/bc250.png)](#bc-250-and-bc-160) **BC-250**: community programs, CUs, GPU memory |
 
-## O que ele faz
+## What it does
 
-| Área | Destaques |
+| Area | Highlights |
 |---|---|
-| **Programas** | tabela no estilo de um gerenciador de tarefas (CPU, memória, disco, GPU e memória da GPU por programa, ordenar, buscar), Encerrar/Forçar parada protegidos, e por programa: processador, núcleos, memória, prioridade e placa de vídeo |
-| **Inicialização** | tudo que abre no login e no boot (programas, serviços, restauração de sessão do KDE): ligar, desligar, remover e adicionar (programa, AppImage, script ou comando) |
-| **Serviços** | todos os serviços do systemd com estado e memória: iniciar, parar, reiniciar e ver o log |
-| **Placas de vídeo** | temperaturas, ventoinha (curva ou fixa), limite de potência, clock/voltagem (OverDrive da AMD, curva da NVIDIA), **undervolt automático** com teste de carga, histórico, Resizable BAR, driver NVIDIA |
-| **Máquina** | modos de um clique (Jogo, IA, Silencioso), governor/frequências/uncore/potência por socket, latência baixa em jogos, memória (NUMA, THP, hugepages), sched_ext, ventoinhas da placa-mãe, mitigações e parâmetros do kernel, notebook (bateria, NVIDIA híbrida, ryzenadj, Acer), energia em kWh e R$, saúde (SMART, ECC, bateria) |
-| **Mapa e medições** | uso de cada thread no último minuto, temperatura, memória por socket, **discos e rede**, latência e banda entre sockets |
-| **IA e laboratório** | servidor llama.cpp com API da OpenAI e otimizador de tokens/s; Jupyter, VS Code e PyTorch em container; ROCm da comunidade para MI50 com atualização validada e volta automática |
-| **Jogos** | Steam com um clique, GPU certa por jogo, gamescope, **upscaling** (FSR 4, OptiScaler), otimizador de FPS, Lossless Scaling, VM Windows com placa própria |
-| **Vários PCs** | painel no celular, todos os PCs num painel, Wake-on-LAN, perfis compartilhados, backup diário, avisos no celular (ntfy), Sunshine/Moonlight |
-| **Diagnóstico** | `numapilot doctor`, `numapilot autoteste`, aba Testes com roteiro por máquina, registros |
+| **Programs** | task-manager-style table (CPU, memory, disk, GPU and GPU memory per program, sort, search), protected End/Force stop, and per program: processor, cores, memory, priority and graphics card |
+| **Startup** | everything that starts at login and at boot (programs, services, KDE session restore): turn on, turn off, remove and add (program, AppImage, script or command) |
+| **Services** | every systemd service with state and memory: start, stop, restart and read the log |
+| **Graphics cards** | temperatures, fan (curve or fixed), power limit, clock/voltage (AMD OverDrive, NVIDIA curve), **automatic undervolt** with a load test, history, Resizable BAR, NVIDIA driver |
+| **Machine** | one-click modes (Game, AI, Quiet), governor/frequencies/uncore/power per socket, low latency in games, memory (NUMA, THP, hugepages), sched_ext, motherboard fans, mitigations and kernel parameters, laptop (battery, hybrid NVIDIA, ryzenadj, Acer), energy in kWh and cost, health (SMART, ECC, battery) |
+| **Map & measurements** | usage of each thread over the last minute, temperature, memory per socket, **disks and network**, latency and bandwidth between sockets |
+| **AI and lab** | llama.cpp server with an OpenAI-compatible API and a tokens/s optimizer; Jupyter, VS Code and PyTorch in a container; community ROCm for the MI50 with validated updates and automatic rollback |
+| **Games** | Steam in one click, the right GPU per game, gamescope, **upscaling** (FSR 4, OptiScaler), FPS optimizer, Lossless Scaling, Windows VM with its own card |
+| **Several PCs** | phone panel, all PCs in one panel, Wake-on-LAN, shared profiles, daily backup, phone notifications (ntfy), Sunshine/Moonlight |
+| **Diagnosis** | `numapilot doctor`, `numapilot selftest`, Tests tab with a per-machine script, logs |
 
-## PCs testados
+## Tested PCs
 
-| PC | Processador | Placas de vídeo | Situação |
+| PC | Processor | Graphics cards | Status |
 |---|---|---|---|
-| Servidor | 2× Xeon E5-2696 v4 (2 sockets, 88 threads) | 2× MI50 (gfx906) + RX 470 | onde tudo começou |
-| Notebook Acer Nitro 5 AN515-46 | Ryzen 7 6800H | Radeon 680M + RTX 3070 Ti Laptop | autoteste e roteiro à mão |
-| BC-250 | APU AMD (Cyan Skillfish), 6 ou 8 núcleos | GPU integrada (24 ou 40 CUs) | autoteste |
-| PC CC150 | Intel CC150 | RX 9060 XT (RDNA 4) | autoteste e doctor sem avisos |
-| PC | i7-5775C | BC-160 | a testar |
+| Server | 2× Xeon E5-2696 v4 (2 sockets, 88 threads) | 2× MI50 (gfx906) + RX 470 | where it all started |
+| Acer Nitro 5 AN515-46 laptop | Ryzen 7 6800H | Radeon 680M + RTX 3070 Ti Laptop | self-test and manual script |
+| BC-250 | AMD APU (Cyan Skillfish), 6 or 8 cores | integrated GPU (24 or 40 CUs) | self-test |
+| CC150 PC | Intel CC150 | RX 9060 XT (RDNA 4) | self-test and doctor with no warnings |
+| PC | i7-5775C | BC-160 | to be tested |
 
-Funciona em qualquer Arch/CachyOS; outras distros devem funcionar compilando, mas o instalador
-usa o pacman.
+It works on any Arch/CachyOS; other distros should work when built from source, but the installer
+uses pacman.
 
-## Instalar
+## Install
 
-**Binários prontos** (recomendado): baixe o `.tar.gz` da
-[última release](https://github.com/lucasfracaro/numapilot/releases/latest).
+**Prebuilt binaries** (recommended): download the `.tar.gz` from the
+[latest release](https://github.com/lucasfracaro/numapilot/releases/latest).
 
 ```bash
 tar xzf numapilot-*-x86_64-linux.tar.gz && cd numapilot-*-x86_64-linux
 ./install.sh
 ```
 
-**Do código** (para atualizar com `git pull` depois):
+**From source** (to update with `git pull` later):
 
 ```bash
 sudo pacman -S --needed rust git
@@ -80,50 +84,51 @@ git clone https://github.com/lucasfracaro/numapilot && cd numapilot
 ./install.sh
 ```
 
-O instalador confere tudo antes (pacotes, cgroups v2, NUMA, driver, `/dev/kfd`, grupos `render` e
-`video`, módulo do uncore), instala o que falta pelo pacman (os opcionais ele pergunta, explicando
-para que serve cada um, e oferece os do AUR pelo paru/yay), compila (ou usa os binários prontos),
-instala em `/usr/local/bin`, ativa o serviço e termina com o `numapilot doctor`. Abra
-**numapilot** no menu.
+The installer checks everything first (packages, cgroups v2, NUMA, driver, `/dev/kfd`, the `render`
+and `video` groups, the uncore module), installs what is missing through pacman (it asks about the
+optional ones, explaining what each is for, and offers the AUR ones through paru/yay), builds (or
+uses the prebuilt binaries), installs to `/usr/local/bin`, enables the service and finishes with
+`numapilot doctor`. Open **numapilot** from the menu. The installer's own messages are still in
+Portuguese.
 
-| Comando | O que faz |
+| Command | What it does |
 |---|---|
-| `./install.sh --check` | só mostra o que falta, sem mudar nada |
-| `./install.sh --yes` | instala tudo sem perguntar |
-| `./install.sh --minimal` | só o obrigatório |
-| `./install.sh --restore ARQUIVO` | instala e restaura um backup |
-| `./uninstall.sh` | remove |
+| `./install.sh --check` | only shows what is missing, changes nothing |
+| `./install.sh --yes` | installs everything without asking |
+| `./install.sh --minimal` | only what is required |
+| `./install.sh --restore FILE` | installs and restores a backup |
+| `./uninstall.sh` | removes it |
 
-Rode o instalador num **terminal normal** (Konsole). Terminais dentro de outros programas podem
-bloquear o `sudo` ("sem novos privilégios").
+Run the installer in a **regular terminal** (Konsole). Terminals inside other programs may block
+`sudo` ("no new privileges").
 
-**Pelo pacman:** `packaging/arch/PKGBUILD` gera o `numapilot-git` (`cd packaging/arch && makepkg -si`
-e `sudo systemctl enable --now numapilot`); a versão estável fica em `packaging/arch/release/`.
+**Through pacman:** `packaging/arch/PKGBUILD` builds `numapilot-git` (`cd packaging/arch && makepkg -si`
+and `sudo systemctl enable --now numapilot`); the stable version is in `packaging/arch/release/`.
 
-**Na BIOS** (servidor com 2 processadores): NUMA ligado / "Node Interleaving" desligado. Se o
-`numapilot topo` mostrar só 1 nó com 2 sockets, ele avisa.
+**In the BIOS** (server with 2 processors): NUMA enabled / "Node Interleaving" disabled. If
+`numapilot topo` shows only 1 node with 2 sockets, it warns you.
 
-**Antes de formatar:** `numapilot backup` (ou Configurações → Fazer backup) guarda num `.tar.gz` os
-perfis, os ajustes da máquina, das ventoinhas e das GPUs (inclusive undervolt), o OverDrive, os
-parâmetros do kernel, o laboratório, o servidor de IA e o otimizador de FPS. Depois:
-`./install.sh --restore numapilot-backup-DATA.tar.gz`. Modelos `.gguf` e `~/lab` são seus dados:
-copie à parte.
+**Before formatting:** `numapilot backup` (or Settings → Back up the settings) stores in a `.tar.gz`
+the profiles, the machine, fan and GPU settings (including undervolt), OverDrive, the kernel
+parameters, the lab, the AI server and the FPS optimizer. Afterwards:
+`./install.sh --restore numapilot-backup-DATE.tar.gz`. `.gguf` models and `~/lab` are your data:
+copy them separately.
 
-## Atualizar (e vários PCs no mesmo código)
+## Updating (and several PCs on the same code)
 
 ```bash
-numapilot self-update        # commit instalado, o que falta da pasta e do GitHub
-numapilot self-update run    # git pull + ./install.sh --yes (pede a senha)
-numapilot autoteste          # confirma que nada quebrou nesta máquina
+numapilot self-update        # installed commit, what is missing from the folder and from GitHub
+numapilot self-update run    # git pull + ./install.sh --yes (asks for the password)
+numapilot selftest          # confirms nothing broke on this machine
 ```
 
-Também por Configurações → **Atualizar o numapilot**. Instalado pelo pacote, ele atualiza pelo
+Also through Settings → **Update numapilot**. Installed from the package, it updates through
 pacman/paru.
 
-Quem mexe no código em vários PCs: a `main` do GitHub é a referência. Antes de mexer,
-`git pull --ff-only`; depois, rode o mesmo que a CI, commit e push na hora (não deixe commit só
-local). Cada recurso depende do hardware detectado, então uma correção num PC não quebra os outros;
-rode o `autoteste` neles depois de atualizar.
+If you work on the code from several PCs: GitHub's `main` is the reference. Before changing
+anything, `git pull --ff-only`; afterwards, run the same as the CI, commit and push right away (do
+not leave local-only commits). Every feature depends on the detected hardware, so a fix on one PC
+does not break the others; run `selftest` on them after updating.
 
 ```bash
 cargo fmt --check && cargo test --release \
@@ -133,474 +138,502 @@ shellcheck -S warning install.sh uninstall.sh packaging/gfx906-rocm container/la
 git pull --rebase && git push
 ```
 
-Para dar push de um PC novo: `sudo pacman -S github-cli` e `gh auth login`. Cada tag `vX.Y.Z` gera
-uma release com os binários prontos (`.github/workflows/release.yml`).
+To push from a new PC: `sudo pacman -S github-cli` and `gh auth login`. Each `vX.Y.Z` tag produces
+a release with prebuilt binaries (`.github/workflows/release.yml`).
 
-## A interface, aba por aba
+## The interface, tab by tab
 
-O serviço `numapilot` (root) aplica tudo; a interface (`numapilot-gui`) e a linha de comando falam
-com ele. Se o serviço parar, o que ele mudou volta ao que era. Comandos demorados rodam numa janela
-com a saída ao vivo, sem travar a interface. Temas claro e escuro; ícone na bandeja com
-temperaturas e atalhos (`numapilot-gui --tray`, ou Configurações).
+The `numapilot` service (root) applies everything; the interface (`numapilot-gui`) and the command
+line talk to it. If the service stops, what it changed goes back to what it was. Long commands run
+in a window with live output, without freezing the interface. Light and dark themes; tray icon
+with temperatures and shortcuts (`numapilot-gui --tray`, or Settings).
 
-As capturas de Programas, Inicialização, Serviços e Mapa são do PC CC150. As de Placas de vídeo,
-Máquina, Ajustar…, notebook e BC-250 usam hardware simulado com valores de exemplo
-(`tools/capturas`), para mostrar cada tipo de máquina.
+The Programs, Startup, Services and Map screenshots are from the CC150 PC. The Graphics cards,
+Machine, Adjust…, laptop and BC-250 ones use simulated hardware with example values
+(`tools/capturas`), to show each kind of machine.
 
-### Programas
+### Programs
 
-**Buscar app instalado…** lista tudo o que está instalado (menu do KDE, Flatpak, Snap, jogos da
-Steam, AppImages) para ajustar processador, memória e placa sem precisar abrir o programa antes:
+**Find installed app…** lists everything installed (KDE menu, Flatpak, Snap, Steam games,
+AppImages) to set processor, memory and card without having to open the program first:
 
-![Buscar app instalado](docs/buscar-app.png)
+![Find installed app](docs/buscar-app.png)
 
-Se um programa estiver numa placa diferente da escolhida, a coluna Placa avisa (≠). Para conferir
-a escolha: botão "Testar a escolha desta placa" em Placas de vídeo, ou `numapilot gpu-test`.
+If a program is on a different card from the chosen one, the Card column flags it (≠). To check the
+choice: the "Test this card's selection" button in Graphics cards, or `numapilot gpu-test`.
 
+A task-manager-style table, with programs grouped (Steam games by AppId) into **Applications** and
+**Session and system**:
 
-Tabela no estilo de um gerenciador de tarefas, com os programas agrupados (jogos da Steam pelo
-AppId) em **Aplicativos** e **Sessão e sistema**:
+- columns **Name, PID, CPU, Memory, Disk, GPU, GPU memory and Card**, with the total in the header.
+  Click a header to sort. CPU = % of the machine; memory = PSS (what is shared between processes
+  counts once); disk = read + write right now; GPU and GPU memory from DRM `fdinfo` (amdgpu, Intel,
+  NVIDIA with a recent driver);
+- the arrow (or a double-click) opens the program's processes and the controls: **Processor**
+  (automatic, the GPU's socket, one socket or both; applies right away), **Graphics card** (applies
+  on start: **Reopen**, **Use in the menu** or the Steam option), **Lossless Scaling**, **Adjust…**
+  and **Open at startup**;
+- **End** (SIGTERM) and **Force stop** (SIGKILL, with confirmation) only for your own session
+  programs; never the kernel, the system, other users, the graphical session or numapilot itself;
+- **Search** by name or PID, **Only mine**, **Steam** menu (apply to all games).
 
-- colunas **Nome, PID, CPU, Memória, Disco, GPU, Memória da GPU e Placa**, com o total no cabeçalho.
-  Clique no título para ordenar. CPU = % da máquina; memória = PSS (o que é dividido entre
-  processos conta uma vez); disco = leitura + escrita agora; GPU e memória da GPU pelo `fdinfo` do
-  DRM (amdgpu, Intel, NVIDIA com driver novo);
-- a seta (ou dois cliques) abre os processos do programa e os controles: **Processador**
-  (automático, socket da GPU, um socket ou os dois; vale na hora), **Placa de vídeo** (vale ao abrir:
-  **Reabrir**, **Usar no menu** ou a opção da Steam), **Lossless Scaling**, **Ajustar…** e
-  **Abrir ao iniciar**;
-- **Encerrar** (SIGTERM) e **Forçar parada** (SIGKILL, com confirmação) só para programas seus da
-  sessão; nunca o kernel, o sistema, outros usuários, a sessão gráfica ou o próprio numapilot;
-- **Buscar** por nome ou PID, **Só os meus**, menu **Steam** (aplicar em todos os jogos).
+**Adjust…** (also in Saved choices) is the fine control of one program:
 
-**Ajustar…** (também em Escolhas salvas) é o controle fino de um programa:
-
-| Opção | O que faz | Quando vale |
+| Option | What it does | When it applies |
 |---|---|---|
-| Processadores | socket 0, 1, os dois ou o da GPU | na hora |
-| Núcleos | N CPUs, com ou sem hyper-threading, ou escolhidos no mapa | na hora |
-| O programa enxerga | só os núcleos liberados (`WINE_CPU_TOPOLOGY` no Proton, `OMP/MKL/…_NUM_THREADS`, `GOMAXPROCS`, .NET, Java) | ao abrir |
-| Memória | só do socket, preferir a local, intercalar ou livre; limite em GB | na hora |
-| Prioridade, núcleos exclusivos, baixa latência | CPU/disco, núcleos só dele, sem estados de economia profundos | na hora |
-| Placa de vídeo, perfil de energia da GPU, modo da máquina | GPU e uso (jogo/IA), 3D/computação/VR, Jogo/IA/Silencioso enquanto ele roda | ao abrir |
-| gamescope, upscaling, otimizar FPS | veja [Jogos](#jogos) | ao abrir |
+| Processors | socket 0, 1, both or the GPU's | right away |
+| Cores | N CPUs, with or without hyper-threading, or picked on the map | right away |
+| The program sees | only the allowed cores (`WINE_CPU_TOPOLOGY` in Proton, `OMP/MKL/…_NUM_THREADS`, `GOMAXPROCS`, .NET, Java) | on start |
+| Memory | socket only, prefer local, interleave or free; limit in GB | right away |
+| Priority, exclusive cores, low latency | CPU/disk, cores of its own, no deep idle states | right away |
+| Graphics card, GPU power profile, machine mode | GPU and use (game/AI), 3D/compute/VR, Game/AI/Quiet while it runs | on start |
+| gamescope, upscaling, optimize FPS | see [Games](#games) | on start |
 
-Perfis prontos: **Jogo**, **IA**, **Renderização**, **Silencioso**. Uma prévia mostra o que vai
-acontecer. Por baixo, um cgroup por programa em `numapilot.slice` (criado pelo systemd). As escolhas
-ficam em `/var/lib/numapilot/profiles.json` (`numapilot profile list|set|rm`).
+Ready-made profiles: **Game**, **AI**, **Rendering**, **Quiet**, among others. A preview shows what
+will happen. Underneath, one cgroup per program in `numapilot.slice` (created by systemd). The
+choices live in `/var/lib/numapilot/profiles.json` (`numapilot profile list|set|rm`).
 
-![Editor de programa](docs/editor.png)
+![Program editor](docs/editor.png)
 
-### Inicialização
+### Startup
 
-Tudo que abre quando o sistema liga, como no Windows, com o que está rodando e a memória:
-**programas no login** (autostart do usuário e do sistema, "reabrir o que estava aberto" do KDE),
-**serviços do usuário**, **serviços do sistema (boot)** e **componentes da sessão**.
+Everything that starts when the system boots, like on Windows, with what is running and the
+memory: **login programs** (user and system autostart, KDE's "reopen what was open"), **user
+services**, **system services (boot)** and **session components**.
 
-- Ligar/desligar vale para o próximo login ou boot e é reversível: no autostart do sistema o
-  numapilot cria uma cópia em `~/.config/autostart` que só esconde (ligar apaga a cópia); serviços
-  do usuário usam `disable` (ou `mask`, quando o pacote liga para todos); serviços do sistema pedem
-  a senha. O essencial (Plasma, polkit, rede, login, numapilot) não desliga.
-- **+ Adicionar**: programa instalado (busca no menu), programa aberto agora, arquivo (AppImage,
-  `.sh`, binário) ou comando, com espera opcional antes de abrir. **Remover** apaga o que você criou.
-- **Detalhes**: de onde o item vem — o arquivo que faz abrir (e o pacote dono dele), o programa de
-  verdade (o script, quando é `node script.js` ou `python x.py`), a **origem** (pacote do repositório
-  ou do AUR, Flatpak, npm, pipx, cargo, programa da comunidade, AppImage ou arquivo instalado à mão),
-  descrição, tamanho, pasta do programa e pastas de configuração, com **Abrir pasta**, **Ver na aba
-  Programas** e o log (serviços).
-- **Desinstalar…**: do jeito certo para cada origem (`pacman -Rns`, `flatpak uninstall`,
-  `npm uninstall -g`, `pipx uninstall`, `cargo uninstall` ou apagar os arquivos), parando o serviço e
-  apagando o arquivo de inicialização que ficaria para trás; opcionalmente também as configurações e
-  a pasta do programa. Mostra antes o que vai fazer e roda num terminal (o pacman ainda pede
-  confirmação). Não deixa para pacotes do sistema nem para o próprio numapilot.
-
-```bash
-numapilot inicio                                        # lista
-numapilot inicio desligar xdg:steam.desktop             # ligar / desligar / remover
-numapilot inicio app zapzap                             # programa instalado
-numapilot inicio arquivo ~/Apps/Programa.AppImage --atraso 10
-numapilot inicio origem user:openclaw-gateway.service     # de onde vem
-numapilot inicio desinstalar user:openclaw-gateway.service --config
-numapilot inicio comando "IA local" "numapilot run --gpu compute -- llama-server -m modelo.gguf"
-```
-
-![Inicialização](docs/inicializacao.png)
-
-### Serviços
-
-Todos os serviços do systemd, **do sistema** ou **do usuário**, com estado (rodando, parado, com
-falha), se abrem no boot e memória; filtros Rodando, Parados, Com falha e Todos; **Iniciar**,
-**Parar**, **Reiniciar** (os do sistema pedem a senha) e **Log** (journal). Os essenciais não param.
+- Turning on/off applies to the next login or boot and is reversible: for system autostart,
+  numapilot creates a copy in `~/.config/autostart` that only hides it (turning it on deletes the
+  copy); user services use `disable` (or `mask`, when the package enables it for everyone); system
+  services ask for the password. The essentials (Plasma, polkit, network, login, numapilot) cannot
+  be turned off.
+- **+ Add**: installed program (searches the menu), program open now, file (AppImage, `.sh`,
+  binary) or command, with an optional wait before starting. **Remove** deletes what you created.
+- **Details**: where the item comes from — the file that starts it (and the package that owns it),
+  the real program (the script, when it is `node script.js` or `python x.py`), the **source**
+  (repository or AUR package, Flatpak, npm, pipx, cargo, community program, AppImage or a file
+  installed by hand), description, size, program folder and configuration folders, with **Open
+  folder**, **View in the Programs tab** and the log (services).
+- **Uninstall…**: the right way for each source (`pacman -Rns`, `flatpak uninstall`,
+  `npm uninstall -g`, `pipx uninstall`, `cargo uninstall` or deleting the files), stopping the
+  service and deleting the startup file that would be left behind; optionally also the settings and
+  the program's folder. It shows what it will do first and runs in a terminal (pacman still asks
+  for confirmation). It refuses for system packages and for numapilot itself.
 
 ```bash
-numapilot servicos --rodando            # ou --falhas, --usuario
-numapilot servicos reiniciar docker
-numapilot servicos log docker -n 100
+numapilot startup                                        # list
+numapilot startup off xdg:steam.desktop                 # on / off / remove
+numapilot startup app zapzap                             # installed program
+numapilot startup file ~/Apps/Program.AppImage --delay 10
+numapilot startup source user:openclaw-gateway.service     # where it comes from
+numapilot startup uninstall user:openclaw-gateway.service --config
+numapilot startup command "Local AI" "numapilot run --gpu compute -- llama-server -m model.gguf"
 ```
 
-![Serviços](docs/servicos.png)
+![Startup](docs/inicializacao.png)
 
-### Mapa e medições
+### Services
 
-Uso de cada thread no último minuto (ou o mapa de núcleos por socket, com quem está preso a cada
-um), temperatura do processador, **discos** (leitura, escrita, % ativo) e **rede** (download,
-upload) com o último minuto, memória e governador por socket, alocações no outro socket, e a
-**latência e banda** medidas entre os sockets (`numapilot bench` ou **Medir agora**).
+Every systemd service, **system** or **user**, with state (running, stopped, failed), whether it
+starts at boot and memory; Running, Stopped, Failed and All filters; **Start**, **Stop**,
+**Restart** (the system ones ask for the password) and **Log** (journal). The essential ones cannot
+be stopped.
 
-![Mapa e medições](docs/mapa.png)
+```bash
+numapilot services --running            # or --failed, --user
+numapilot services restart docker
+numapilot services log docker -n 100
+```
 
-### Placas de vídeo
+![Services](docs/servicos.png)
 
-Para cada placa: temperaturas (borda, hotspot, memória), uso, VRAM, histórico de 1 h/6 h/24 h,
-link PCIe e Resizable BAR.
+### Map & measurements
 
-- **Ventoinha**: automático da placa, **curva** (temperatura → %) ou **fixa**; nas RDNA 3/4 usa a
-  curva gravada no firmware. A 95 °C vai a 100% em qualquer modo.
-- **Potência**: limite em W dentro do mínimo e máximo da placa; **economia quando parada**.
-- **Clock e voltagem**: curva de 3 pontos (MI50/Vega 20, RDNA 1), **deslocamento de voltagem**
-  (RDNA 2, 3 e 4) ou, na NVIDIA, clock travado + deslocamento da curva pela NVML.
-- **OverDrive** (AMD, necessário para clock/voltagem e para a ventoinha das RDNA 3/4): botão na
-  aba ou `sudo numapilot boot overdrive on`. Grava `ppfeaturemask` em `/etc/modprobe.d` (sobrevive
-  a atualizações do kernel) e refaz a imagem de boot; reinicie.
-- **Undervolt automático** (**Achar o undervolt sozinho** ou `numapilot undervolt GPU`): desce a
-  voltagem (AMD, passos de 10 mV) ou sobe a curva com o clock travado (NVIDIA), com 1 min de carga
-  (`vkmark`/`glmark2`) por passo; falha se o teste cair ou o kernel registrar reset da GPU. Volta um
-  passo de margem, confirma por 2 min e grava. Se o PC travar, volta com o último valor bom.
-- **Driver NVIDIA**: qual série serve, o que está instalado e os botões **Instalar driver oficial**
-  e **Atualizar** (`chwd` do CachyOS; `numapilot driver status|install|update`).
-- **Placas da comunidade** (BC-250, BC-160): veja [BC-250 e BC-160](#bc-250-e-bc-160).
-- Alerta na bandeja (e no celular) quando uma GPU passa de 90 °C.
+Usage of each thread over the last minute (or the core map per socket, with who is pinned to each
+one), processor temperature, **disks** (read, write, % active) and **network** (download, upload)
+over the last minute, memory and governor per socket, allocations on the other socket, and the
+**latency and bandwidth** measured between the sockets (`numapilot bench` or **Measure now**).
+**Measure cores** (`numapilot bench-cores`) measures cache latency per core and, when the difference
+is larger than the noise, makes core choices prefer the fastest ones.
 
-![Placas de vídeo](docs/gpus.png)
+![Map & measurements](docs/mapa.png)
 
-### Máquina
+### Graphics cards
 
-- **Modos de um clique** (`numapilot machine mode jogo|ia|silencioso|normal`): *Jogo* (socket da
-  placa em `performance`, uncore no máximo, sem balanceamento NUMA, LAVD em modo jogo), *IA* (os dois
-  sockets em `performance`, THP `always`), *Silencioso* (sem turbo, economia, potência limitada).
-  Automáticos **por programa** (enquanto ele roda) e **por horário**; no notebook, por tomada/bateria.
-- **Por socket**: governor, viés de energia (EPB/EPP), frequência mínima e máxima, **uncore** e
-  **limite de potência** (RAPL, PL2), com consumo e temperatura ao vivo.
-- **Memória**: balanceamento NUMA, `zone_reclaim`, THP, hugepages por socket. **sched_ext** pelo
+For each card: temperatures (edge, hotspot, memory), usage, VRAM, 1 h/6 h/24 h history, PCIe link
+and Resizable BAR.
+
+- **Fan**: the card's automatic mode, **curve** (temperature → %) or **fixed**; on RDNA 3/4 it uses
+  the curve stored in the firmware. At 95 °C it goes to 100% in any mode.
+- **Power**: limit in W within the card's minimum and maximum; **power saving when idle**.
+- **Clock and voltage**: 3-point curve (MI50/Vega 20, RDNA 1), **voltage offset** (RDNA 2, 3 and 4)
+  or, on NVIDIA, locked clock + curve offset through NVML.
+- **OverDrive** (AMD, needed for clock/voltage and for the fan on RDNA 3/4): button in the tab or
+  `sudo numapilot boot overdrive on`. It writes `ppfeaturemask` to `/etc/modprobe.d` (survives
+  kernel updates) and rebuilds the boot image; reboot.
+- **Automatic undervolt** (**Find the undervolt automatically** or `numapilot undervolt GPU`):
+  lowers the voltage (AMD, 10 mV steps) or raises the curve with the clock locked (NVIDIA), with
+  1 min of load (`vkmark`/`glmark2`) per step; it fails if the test crashes or the kernel logs a GPU
+  reset. It goes back one step of margin, confirms for 2 min and saves. If the PC freezes, it comes
+  back with the last good value.
+- **NVIDIA driver**: which series fits, what is installed and the **Install official driver** and
+  **Update** buttons (CachyOS's `chwd`; `numapilot driver status|install|update`).
+- **Community boards** (BC-250, BC-160): see [BC-250 and BC-160](#bc-250-and-bc-160).
+- Tray (and phone) alert when a GPU goes over 90 °C.
+
+![Graphics cards](docs/gpus.png)
+
+### Machine
+
+- **One-click modes** (`numapilot machine mode game|ai|quiet|normal`): *Game* (the card's
+  socket in `performance`, uncore at maximum, no NUMA balancing, LAVD in gaming mode), *AI* (both
+  sockets in `performance`, THP `always`), *Quiet* (no turbo, power saving, limited power).
+  Automatic **per program** (while it runs) and **by schedule**; on a laptop, by AC power/battery.
+- **Per socket**: governor, energy bias (EPB/EPP), minimum and maximum frequency, **uncore** and
+  **power limit** (RAPL, PL2), with live power draw and temperature.
+- **Maximum turbo**: a program alone on a few cores of one processor so the clock reaches the
+  highest turbo step (servers with 2 processors); `numapilot turbo` shows the processor's table.
+- **Memory**: NUMA balancing, `zone_reclaim`, THP, hugepages per socket. **sched_ext** through
   `scxctl`.
-- **Ventoinhas da placa-mãe** (nct67xx, it87...) em automático, curva ou fixa; IPMI em servidores.
-- **Mitigações do processador** uma a uma (só as que afetam o seu), com risco e ganho; e
-  **parâmetros do kernel** sem editar o bootloader à mão (Limine, systemd-boot, GRUB, rEFInd; com
-  backup; `sudo numapilot boot cmdline apply +pci=realloc`). Valem depois de reiniciar.
-- **Energia**: potência agora, kWh e custo do dia e do mês.
-- **Saúde do hardware**: SMART dos discos, ECC (EDAC), erros das placas com ECC, desgaste da bateria.
-- **Ligar pela rede** (Wake-on-LAN).
-- **Notebook**: veja [Notebook](#notebook).
+- **Motherboard fans** (nct67xx, it87...) in automatic, curve or fixed; IPMI on servers.
+- **Processor mitigations** one by one (only the ones that affect yours), with risk and gain; and
+  **kernel parameters** without editing the bootloader by hand (Limine, systemd-boot, GRUB, rEFInd;
+  with a backup; `sudo numapilot boot cmdline apply +pci=realloc`). They apply after a reboot.
+- **Energy**: power right now, kWh and cost for the day and the month.
+- **Hardware health**: disk SMART, ECC (EDAC), errors on cards with ECC, battery wear.
+- **Wake over the network** (Wake-on-LAN).
+- **Laptop**: see [Laptop](#laptop).
 
-![Máquina](docs/maquina.png)
+![Machine](docs/maquina.png)
 
-### Laboratório, Servidor de IA e Streaming
+### Lab, AI server and Streaming
 
-- **Laboratório**: container com JupyterLab, VS Code (navegador ou o do PC por SSH), PyCharm e
-  terminal, com PyTorch na GPU e as bibliotecas de dados e ML; lista os containers e os apps de cada
-  um. Detalhes em [IA e laboratório](#ia-e-laboratório).
-- **Servidor de IA**: escolhe o modelo `.gguf`, as GPUs e o contexto; inicia/para; chat e endereço
-  da API (compatível com a da OpenAI); **Otimizar (tokens/s)**.
-- **Streaming**: liga o Sunshine e escolhe a GPU e o codificador (VA-API, NVENC, Quick Sync ou
+- **Lab**: container with JupyterLab, VS Code (browser or the PC's own through SSH), PyCharm and a
+  terminal, with PyTorch on the GPU and the data and ML libraries; lists the containers and the
+  apps in each. Details in [AI and lab](#ai-and-lab).
+- **AI server**: picks the `.gguf` model, the GPUs and the context; start/stop; chat and API address
+  (OpenAI-compatible); **Optimize (tokens/s)**.
+- **Streaming**: turns on Sunshine and picks the GPU and the encoder (VA-API, NVENC, Quick Sync or
   software).
 
-![Laboratório](docs/laboratorio.png)
+![Lab](docs/laboratorio.png)
 
-### Configurações e Testes
+### Settings and Tests
 
-- **Painel no celular** (QR code), **Meus outros PCs**, **avisos no celular**, bandeja, atualização
-  semanal do ROCm, opções de boot, **Máquina virtual Windows**, backup e **Atualizar o numapilot**.
-- **Testes**: roteiro à mão com só os itens desta máquina; **Gerar relatório** junta as respostas, o
-  autoteste e os registros.
+- **Phone panel** (QR code), **My other PCs**, **phone notifications**, tray, **language**, weekly
+  ROCm update, boot options, **Windows virtual machine**, backup and **Update numapilot**.
+- **Tests**: manual script with only this machine's items; **Generate report** puts together the
+  answers, the self-test and the logs.
 
-## Linha de comando
+## Command line
 
-| Comando | O que faz |
+| Command | What it does |
 |---|---|
-| `numapilot status` / `topo` | programas gerenciados agora / nós, núcleos, RAM e GPUs |
-| `numapilot run [--cpu …] [--gpu …] -- programa` | abre um programa com processador, memória e GPU escolhidos (veja abaixo) |
-| `numapilot pin PID --cpu 1` | move um programa que já está rodando |
-| `numapilot profile list\|set\|rm` | escolhas salvas por programa |
-| `numapilot inicio …` / `numapilot servicos …` | inicialização / serviços |
-| `numapilot machine mode jogo\|ia\|silencioso\|normal` | modos da máquina |
-| `numapilot undervolt GPU` | undervolt automático |
-| `numapilot boot status\|overdrive on\|gpu-memory N\|cmdline …` | opções de boot |
-| `numapilot steam enable\|disable\|list` | numapilot nas opções de todos os jogos da Steam |
-| `numapilot upscale fetch\|status\|install\|remove APPID` | OptiScaler por jogo |
-| `numapilot tune start\|status\|apply JOGO` | otimizador de FPS |
-| `numapilot peers add\|list\|remove\|wake\|pull\|backup` | outros PCs |
-| `numapilot web` | painel no celular |
-| `numapilot driver status\|install\|update` | driver NVIDIA |
-| `numapilot hybrid …` / `numapilot autostart igpu\|normal` | NVIDIA do notebook |
-| `numapilot vm check\|prepare\|unprepare\|create` | VM Windows com placa própria |
-| `numapilot board status` / `recipes show\|update` | placas especiais e receitas da comunidade |
-| `numapilot doctor [--report]` / `autoteste` / `log` | diagnóstico, autoteste, registros |
-| `numapilot backup` / `self-update [run]` | backup / atualizar |
-| `gfx906-rocm …` | ROCm, laboratório e servidor de IA (veja [IA e laboratório](#ia-e-laboratório)) |
+| `numapilot status` / `topo` | programs managed right now / nodes, cores, RAM and GPUs |
+| `numapilot run [--cpu …] [--gpu …] -- program` | starts a program with the chosen processor, memory and GPU (see below) |
+| `numapilot pin PID --cpu 1` | moves a program that is already running |
+| `numapilot profile list\|set\|rm` | saved choices per program |
+| `numapilot startup …` / `numapilot services …` | startup / services |
+| `numapilot machine mode game\|ai\|quiet\|normal` | machine modes (game, AI, quiet, normal) |
+| `numapilot turbo` / `numapilot bench-cores` | turbo table and awake cores / cache latency per core |
+| `numapilot undervolt GPU` | automatic undervolt |
+| `numapilot gpu-test` | checks that each card choice lands on the right card |
+| `numapilot boot status\|overdrive on\|gpu-memory N\|cmdline …` | boot options |
+| `numapilot steam enable\|disable\|list` | numapilot in the launch options of every Steam game |
+| `numapilot upscale fetch\|status\|install\|remove APPID` | OptiScaler per game |
+| `numapilot tune start\|status\|apply GAME` | FPS optimizer |
+| `numapilot peers add\|list\|remove\|wake\|pull\|backup` | other PCs |
+| `numapilot web` | phone panel |
+| `numapilot driver status\|install\|update` | NVIDIA driver |
+| `numapilot hybrid …` / `numapilot autostart igpu\|normal` | laptop NVIDIA |
+| `numapilot vm check\|prepare\|unprepare\|create` | Windows VM with its own card |
+| `numapilot board status` / `recipes show\|update` | special boards and community recipes |
+| `numapilot doctor [--report]` / `selftest` / `log` | diagnosis, self-test, logs |
+| `numapilot backup` / `self-update [run]` | backup / update |
+| `gfx906-rocm …` | ROCm, lab and AI server (see [AI and lab](#ai-and-lab)) |
 
-`numapilot --help` e `numapilot COMANDO --help` mostram todas as opções.
+`numapilot --help` and `numapilot COMMAND --help` show every option. Messages follow the language
+chosen in the interface (or `NUMAPILOT_LANG=pt`, or a Portuguese system locale); command names and
+`--help` are always in English. The Portuguese command names from older versions (`inicio`,
+`servicos`, `autoteste`, `mode jogo`...) are still accepted.
 
-## Servidor com 2 processadores
+## Server with 2 processors
 
-### Modo automático
+### Automatic mode
 
-O serviço observa os programas do usuário e, para cada um:
+The service watches the user's programs and, for each one:
 
-| Situação | O que faz |
+| Situation | What it does |
 |---|---|
-| Casa com uma regra do config | aplica na hora, antes de alocar muita memória |
-| Filho de um programa com regra (jogo aberto pela Steam) | herda a decisão |
-| Abre uma GPU | vai para o **socket ligado àquela GPU** |
-| Usa CPU (≥ 0,5 núcleo por 3 s) sem GPU | vai para o **socket menos ocupado** com RAM livre |
-| Usa ≥ 85% dos CPUs do socket por 10 s | **expande para os 2 sockets** e grava isso |
-| Expandido, mas usando < 30% por 2 min | volta para 1 socket |
-| Já foi visto antes | começa no lugar aprendido |
+| Matches a rule in the config | applies it right away, before much memory is allocated |
+| Child of a program with a rule (game started by Steam) | inherits the decision |
+| Opens a GPU | goes to the **socket connected to that GPU** |
+| Uses CPU (≥ 0.5 core for 3 s) with no GPU | goes to the **least busy socket** with free RAM |
+| Uses ≥ 85% of the socket's CPUs for 10 s | **expands to both sockets** and remembers it |
+| Expanded, but using < 30% for 2 min | goes back to 1 socket |
+| Seen before | starts in the learned place |
 
-Como root, ele recebe do kernel um aviso a cada programa aberto (proc connector), então a memória já
-nasce no socket certo. Não mexe em processos do sistema, em quem já definiu a própria afinidade
-(`taskset`) nem em programas fixados. `numapilot learned` mostra o que aprendeu;
-`journalctl -u numapilot -f` mostra as decisões.
+As root, it gets a notice from the kernel for every program started (proc connector), so memory is
+born on the right socket. It does not touch system processes, anything that set its own affinity
+(`taskset`) or pinned programs. `numapilot learned` shows what it learned;
+`journalctl -u numapilot -f` shows the decisions.
 
-### Escolher ao abrir (`numapilot run`)
+### Choosing on start (`numapilot run`)
 
-A GPU só pode ser escolhida quando o programa abre (por variáveis de ambiente):
+The GPU can only be chosen when the program starts (through environment variables):
 
 ```bash
-numapilot run -- blender                                 # automático
-numapilot run -n -- llama-server -m x.gguf               # só mostra o que faria, e por quê
-numapilot run --gpu display --cpu gpu -- ./jogo          # placa de vídeo + o socket dela
-numapilot run --gpu gfx906-1 --use graphics -- %command% # jogo renderizado numa MI50
-numapilot run --gpu compute:all --cpu all -- python treino.py
-numapilot run --cpu all --mem interleave -- ./banco-de-dados
+numapilot run -- blender                                 # automatic
+numapilot run -n -- llama-server -m x.gguf               # only shows what it would do, and why
+numapilot run --gpu display --cpu gpu -- ./game          # graphics card + its socket
+numapilot run --gpu gfx906-1 --use graphics -- %command% # game rendered on an MI50
+numapilot run --gpu compute:all --cpu all -- python train.py
+numapilot run --cpu all --mem interleave -- ./database
 ```
 
-| Opção | Valores |
+| Option | Values |
 |---|---|
 | `--cpu` | `auto`, `all`, `gpu`, `0`, `1`, `0,1`, `cpus:0-21` |
-| `--gpu` | `auto`, `display`, `compute`, `compute:2`, `compute:all`, `none`, apelido ou PCI |
-| `--mem` | `local` (padrão), `interleave`, `bind` |
+| `--gpu` | `auto`, `display`, `compute`, `compute:2`, `compute:all`, `none`, alias or PCI |
+| `--mem` | `local` (default), `interleave`, `bind` |
 | `--use` | `auto`, `graphics`, `compute` |
-| `--fg-gpu` | GPU do frame generation do Lossless Scaling |
+| `--fg-gpu` | GPU for Lossless Scaling frame generation |
 
-No automático, a placa com monitor vai para programas gráficos e as de computação (MI50) para IA
-(`llama-*`, `ollama`, `comfyui`, `vllm`, `whisper*`...), sempre a menos ocupada. Ele configura
+On automatic, the card with the monitor goes to graphical programs and the compute ones (MI50) to
+AI (`llama-*`, `ollama`, `comfyui`, `vllm`, `whisper*`...), always the least busy. It sets
 `DRI_PRIME`, `MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE`, `ROCR_VISIBLE_DEVICES`,
-`CUDA_VISIBLE_DEVICES`, PRIME da NVIDIA e `LSFGVK_GPU`, e exporta `NUMAPILOT_CPUS`,
-`NUMAPILOT_MEMS` e `NUMAPILOT_RENDER` para scripts e containers.
+`CUDA_VISIBLE_DEVICES`, NVIDIA PRIME and `LSFGVK_GPU`, and exports `NUMAPILOT_CPUS`,
+`NUMAPILOT_MEMS` and `NUMAPILOT_RENDER` for scripts and containers.
 
-### Regras permanentes
+### Permanent rules
 
-`/etc/numapilot.toml` (exemplo comentado incluído), depois `sudo systemctl restart numapilot`:
+`/etc/numapilot.toml` (commented example included), then `sudo systemctl restart numapilot`:
 
 ```toml
 [aliases]
 "0000:03:00.0" = "rx470"
 
 [[rule]]
-name = "jogos"
+name = "games"
 match = ["steam", "*.exe", "gamescope"]
-cpu = "gpu"        # socket da placa de vídeo
+cpu = "gpu"        # the graphics card's socket
 gpu = "display"
-reserve = true     # o automático evita outras cargas pesadas nesse socket
+reserve = true     # automatic mode keeps other heavy loads off this socket
 ```
 
-Interrupções das GPUs, placas de rede e NVMe vão para o socket de cada placa (`device_irq`).
+Interrupts from GPUs, network cards and NVMe go to each device's socket (`device_irq`).
 
-### Jogos num servidor de 2 processadores
+### Games on a 2-processor server
 
-| Problema | Causa | O que o perfil **Jogo** faz |
+| Problem | Cause | What the **Game** profile does |
 |---|---|---|
-| Jogo não abre ou o anti-cheat bloqueia | o jogo enxerga 88 threads | `WINE_CPU_TOPOLOGY` faz o Proton enxergar só os núcleos liberados |
-| FPS muito baixo | threads e memória espalhados pelos 2 sockets | 1 socket (o da GPU), núcleos físicos, memória local, prioridade alta, núcleos reservados |
-| Recusa renderizar numa placa e exibir em outra | placa sem monitor ou no outro socket | só a GPU escolhida fica visível e um aviso pede para ligar o monitor nela |
+| Game does not start or the anti-cheat blocks it | the game sees 88 threads | `WINE_CPU_TOPOLOGY` makes Proton see only the allowed cores |
+| Very low FPS | threads and memory spread over both sockets | 1 socket (the GPU's), physical cores, local memory, high priority, reserved cores |
+| Refuses to render on one card and display on another | card without a monitor or on the other socket | only the chosen GPU stays visible and a warning asks you to connect the monitor to it |
 
-DirectX roda pelo Proton (DXVK/VKD3D → Vulkan), então tudo que vale para Vulkan vale para os dois.
-Para jogar **numa MI50**: escolha "gfx906-N — jogo/gráfico" (com o monitor na MI50, ou PRIME para a
-RX 470). **Lossless Scaling** (lsfg-vk): gera os quadros na GPU do jogo; dual GPU precisa de um fork.
+DirectX runs through Proton (DXVK/VKD3D → Vulkan), so everything that holds for Vulkan holds for
+both. To play **on an MI50**: choose "gfx906-N — game/graphics" (with the monitor on the MI50, or
+PRIME to the RX 470). **Lossless Scaling** (lsfg-vk): generates the frames on the game's GPU; dual
+GPU needs a fork.
 
-## IA e laboratório
+## AI and lab
 
-O `gfx906-rocm` (nome mantido por compatibilidade) descobre a pilha de computação do PC e usa as
-imagens certas, sempre com validação antes de atualizar e volta automática:
+`gfx906-rocm` (name kept for compatibility; its messages are still in Portuguese) detects the PC's
+compute stack and uses the right images, always validating before updating and rolling back
+automatically:
 
-| Pilha | Placas | Laboratório (PyTorch) | Servidor de IA (llama.cpp) |
+| Stack | Cards | Lab (PyTorch) | AI server (llama.cpp) |
 |---|---|---|---|
-| `gfx906` | MI50, Radeon VII | imagens da comunidade (mixa3607/ML-gfx906) | build gfx906 da comunidade |
-| `rocm` | RX 6000/7000/9000, APUs RDNA 3.5 | `rocm/pytorch` | `llama.cpp:full-rocm` |
+| `gfx906` | MI50, Radeon VII | community images (mixa3607/ML-gfx906) | community gfx906 build |
+| `rocm` | RX 6000/7000/9000, RDNA 3.5 APUs | `rocm/pytorch` | `llama.cpp:full-rocm` |
 | `cuda` | NVIDIA | `pytorch/pytorch` | `llama.cpp:full-cuda` |
-| `vulkan` | BC-250, BC-160, Intel, outras | PyTorch na CPU | `llama.cpp:full-vulkan` |
+| `vulkan` | BC-250, BC-160, Intel, others | PyTorch on the CPU | `llama.cpp:full-vulkan` |
 
 ```bash
 sudo pacman -S podman
-gfx906-rocm lab up            # laboratório: JupyterLab :8888, VS Code :8443, SSH :2222
-gfx906-rocm lab test          # PyTorch enxerga as GPUs? faz conta em cada uma?
-gfx906-rocm llm up modelo.gguf   # servidor de IA (modelos em ~/models)
-gfx906-rocm llm tune modelo.gguf # acha a combinação mais rápida (tokens/s)
-gfx906-rocm check             # há versão nova? (sem mudar nada)
-gfx906-rocm lab update        # constrói ao lado, valida nas GPUs e só troca se passar
-gfx906-rocm history           # cada atualização com o resultado e o desempenho
+gfx906-rocm lab up            # lab: JupyterLab :8888, VS Code :8443, SSH :2222
+gfx906-rocm lab test          # does PyTorch see the GPUs? does it compute on each one?
+gfx906-rocm llm up model.gguf    # AI server (models in ~/models)
+gfx906-rocm llm tune model.gguf  # finds the fastest combination (tokens/s)
+gfx906-rocm check             # is there a new version? (changes nothing)
+gfx906-rocm lab update        # builds alongside, validates on the GPUs and only switches if it passes
+gfx906-rocm history           # each update with its result and performance
 ```
 
-- **Laboratório**: numpy, pandas, polars, duckdb, scikit-learn, xgboost, lightgbm, transformers,
-  datasets, accelerate, peft, lightning, timm, JupyterLab, code-server, ruff, pytest; projetos em
-  `~/lab`, modelos no cache do Hugging Face do host. O PyTorch da imagem fica travado.
-- **Atualizações sem quebrar**: cada versão nova é validada num container à parte (contas na GPU
-  iguais às da CPU, VRAM, desempenho; mais de 10% mais lenta é recusada) antes de trocar.
-  `gfx906-rocm hold` trava um componente; a verificação semanal pode só avisar ou já instalar.
-- **ROCm nativo para MI50** (lado a lado em `/opt/rocm-gfx906`, sem mexer no ROCm do sistema):
-  `sudo gfx906-rocm update|rollback|list|prune`, `eval "$(gfx906-rocm env)"`.
-- Com o numapilot, o container recebe só as GPUs escolhidas e os núcleos e a memória do socket
-  delas: `numapilot run --gpu gfx906-1 --use compute -- gfx906-rocm lab up`.
-- Para subir no boot, use a aba **Inicialização** → + Adicionar → Comando.
+- **Lab**: numpy, pandas, polars, duckdb, scikit-learn, xgboost, lightgbm, transformers, datasets,
+  accelerate, peft, lightning, timm, JupyterLab, code-server, ruff, pytest; projects in `~/lab`,
+  models in the host's Hugging Face cache. The image's PyTorch stays pinned.
+- **Updates that do not break things**: each new version is validated in a separate container (GPU
+  results equal to the CPU's, VRAM, performance; more than 10% slower is refused) before switching.
+  `gfx906-rocm hold` pins a component; the weekly check can just notify or install right away.
+- **Native ROCm for the MI50** (side by side in `/opt/rocm-gfx906`, without touching the system's
+  ROCm): `sudo gfx906-rocm update|rollback|list|prune`, `eval "$(gfx906-rocm env)"`.
+- With numapilot, the container gets only the chosen GPUs and the cores and memory of their socket:
+  `numapilot run --gpu gfx906-1 --use compute -- gfx906-rocm lab up`.
+- To start it at boot, use the **Startup** tab → + Add → Command.
 
-![Atualizações](docs/atualizacoes.png)
+![Updates](docs/atualizacoes.png)
 
-## Notebook
+## Laptop
 
-- Jogos vão para a placa dedicada no automático; a integrada mostra a imagem.
-- **Bateria**: carga, consumo, saúde, parar de carregar em 80%, perfil de energia, modo automático
-  na tomada e na bateria.
-- **NVIDIA só quando precisar** (`numapilot hybrid auto|hibrido|integrada|nao-mexer`): sempre
-  disponível (dorme quando ninguém usa), desligada (o serviço tira a placa do sistema; o KDE segue na
-  integrada sem sair da sessão) ou automático (tomada/bateria). Mostra quem mantém a placa acordada
-  e em qual placa está cada tela.
-- **Tudo que abre com o sistema na integrada** (`numapilot autostart igpu`), Xwayland só na
-  integrada, e programas na integrada que não carregam o driver da NVIDIA.
-- **Ryzen**: limites de potência pelo `ryzenadj` (reaplicados quando o firmware muda). **Acer
-  Predator/Nitro** com [Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense): ventoinhas,
-  limite de carga, luz do teclado, RGB.
+- Games go to the dedicated card on automatic; the integrated one shows the image.
+- **Battery**: charge, power draw, health, stop charging at 80%, power profile, automatic mode on
+  AC power and on battery.
+- **NVIDIA only when needed** (`numapilot hybrid auto|hybrid|integrated|leave`): always
+  available (sleeps when nobody uses it), off (the service removes the card from the system; KDE
+  carries on with the integrated GPU without leaving the session) or automatic (AC power/battery).
+  It shows who keeps the card awake and which card each display is on.
+- **Everything that starts with the system on the integrated GPU** (`numapilot autostart igpu`),
+  Xwayland on the integrated GPU only, and programs on the integrated GPU that do not load the
+  NVIDIA driver.
+- **Ryzen**: power limits through `ryzenadj` (reapplied when the firmware changes them). **Acer
+  Predator/Nitro** with [Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense): fans, charge
+  limit, keyboard light, RGB.
 
-![NVIDIA e notebook](docs/nvidia.png)
+![NVIDIA and laptop](docs/nvidia.png)
 
-## BC-250 e BC-160
+## BC-250 and BC-160
 
-As receitas da comunidade (`recipes/default.toml`, atualizáveis com `sudo numapilot recipes update`)
-ensinam o numapilot sobre placas especiais.
+The community recipes (`recipes/default.toml`, updatable with `sudo numapilot recipes update`)
+teach numapilot about special boards.
 
-**BC-250** (Placas de vídeo → ajustes da comunidade):
+**BC-250** (Graphics cards → community tweaks):
 
-- **★ BC250 Control Center** em destaque: o
-  [programa da comunidade](https://github.com/movacx/bc250-control-center) que gerencia **núcleos,
-  CUs, frequências e voltagens** (governor e laboratório de voltagem da GPU, overclock da CPU,
-  ventoinha, 40 CUs ao vivo, 8 núcleos, TTM). Um botão instala pelo pacote `-git` do autor e depois
-  vira **Gerenciar núcleos, CUs, frequências e voltagens**.
-- **Outros programas** (umr, bc250-cu-live-manager, bc250-core-unlock, bc250-core-cu-unlock,
-  bc250_smu_oc, BC250-Telemetry), sempre na versão mais nova: pelo AUR `-git` ou por git em
-  `~/.local/share/numapilot/comunidade` (comandos em `~/.local/bin`); **Atualizar** recompila ou faz
-  `git pull`. O EFI de desbloqueio e a temperatura da memória só têm link (mexem no boot ou na SMU).
-- **Agora**: núcleos (6 ou 8) e clock da CPU, CUs (24 ou 40) e clock da GPU. Os CUs vêm da leitura
-  ao vivo do BC250 Control Center, do kernel que já libera os 40 (`bc250_cc_write_mode=3`) ou do
-  boot; diz se os 8 núcleos ficam ao desligar da tomada (biosmod/EFI) ou não.
-- **Diagnóstico**: kernel (versões que quebram a GPU), Mesa mínimo, governor de clock,
-  `amd_iommu=off`; telemetria embaralhada com 8 núcleos (com a correção certa para o kernel em uso);
-  clock confiável pelo hwmon.
-- **Governor**: instalar, ligar e editar a configuração (com backup e volta automática).
-- **Memória para a GPU (IA)**: `sudo numapilot boot gpu-memory 14` libera até ~14 GB para a GPU
-  (modelos de até ~14B); o servidor de IA liga o `GGML_VK_PREFER_HOST_MEMORY`.
-- Sunshine com codificação por software (sem codificador de vídeo).
+- **★ BC250 Control Center** featured: the
+  [community program](https://github.com/movacx/bc250-control-center) that manages **cores, CUs,
+  frequencies and voltages** (GPU governor and voltage lab, CPU overclock, fan, 40 CUs live,
+  8 cores, TTM). One button installs it from the author's `-git` package and then becomes **Manage
+  cores, CUs, frequencies and voltages**.
+- **Other programs** (umr, bc250-cu-live-manager, bc250-core-unlock, bc250-core-cu-unlock,
+  bc250_smu_oc, BC250-Telemetry), always on the newest version: from the AUR `-git` or by git in
+  `~/.local/share/numapilot/comunidade` (commands in `~/.local/bin`); **Update** rebuilds or runs
+  `git pull`. The unlock EFI and the memory temperature only have a link (they touch the boot or
+  the SMU).
+- **Now**: cores (6 or 8) and CPU clock, CUs (24 or 40) and GPU clock. The CUs come from BC250
+  Control Center's live reading, from the kernel that already unlocks all 40
+  (`bc250_cc_write_mode=3`) or from boot; it says whether the 8 cores survive unplugging
+  (biosmod/EFI) or not.
+- **Diagnosis**: kernel (versions that break the GPU), minimum Mesa, clock governor,
+  `amd_iommu=off`; scrambled telemetry with 8 cores (with the right fix for the running kernel);
+  reliable clock from hwmon.
+- **Governor**: install, enable and edit the configuration (with a backup and automatic rollback).
+- **Memory for the GPU (AI)**: `sudo numapilot boot gpu-memory 14` frees up to ~14 GB for the GPU
+  (models up to ~14B); the AI server sets `GGML_VK_PREFER_HOST_MEMORY`.
+- Sunshine with software encoding (no video encoder).
 
-**BC-160**: sem saída de vídeo; renderiza nela e mostra pela outra placa.
+**BC-160**: no video output; render on it and display through the other card.
 
 ![BC-250](docs/bc250.png)
 
-## Jogos
+## Games
 
-- **Steam em todos os jogos** (`numapilot steam enable` ou menu Steam na aba Programas): coloca
-  `numapilot run --` antes do `%command%` mantendo o que já existia; a Steam precisa estar fechada.
-- **gamescope por jogo**: resolução do jogo e de saída, limite de FPS, FSR, na mesma GPU escolhida.
-- **Upscaling por jogo** (no Ajustar…), conforme a placa:
+- **Steam on every game** (`numapilot steam enable` or the Steam menu in the Programs tab): puts
+  `numapilot run --` before `%command%` keeping what was already there; Steam must be closed.
+- **gamescope per game**: game and output resolution, FPS limit, FSR, on the same chosen GPU.
+- **Upscaling per game** (in Adjust…), depending on the card:
 
-| Modo | Para quem | Como |
+| Mode | For | How |
 |---|---|---|
 | FSR 4 | RDNA 4 (RX 9000) | `PROTON_FSR4_UPGRADE=1` |
-| FSR 4 para RDNA 3 | RX 7000 | `PROTON_FSR4_RDNA3_UPGRADE=1` |
-| FSR 3.1 / DLSS / XeSS mais novos | quem o jogo já suporta | `PROTON_*_UPGRADE` |
-| OptiScaler | qualquer placa | `dxgi.dll` na pasta do jogo (devolve a original ao remover); FSR 4 INT8 experimental |
+| FSR 4 for RDNA 3 | RX 7000 | `PROTON_FSR4_RDNA3_UPGRADE=1` |
+| Newest FSR 3.1 / DLSS / XeSS | whatever the game already supports | `PROTON_*_UPGRADE` |
+| OptiScaler | any card | `dxgi.dll` in the game's folder (the original is restored on removal); experimental FSR 4 INT8 |
 
-  Não use o OptiScaler em jogos online (anti-cheat).
-- **Otimizador de FPS**: testa configurações (núcleos, sockets, placas) a cada vez que o jogo abre,
-  mede 60 s com o MangoHud e escolhe a melhor (valorizando o 1% low).
-- **Pelo celular**: lista os jogos da Steam com **Abrir** e **Ligar Sunshine**; com o Wake-on-LAN dá
-  para ligar o PC, abrir o jogo e conectar pelo Moonlight do sofá.
-- **VM Windows com placa própria** (jogos com anti-cheat que não rodam no Proton):
-  `numapilot vm check`, `sudo numapilot vm prepare GPU`, `numapilot vm create NOME --gpu GPU --iso Win11.iso`.
+  Do not use OptiScaler in online games (anti-cheat).
+- **FPS optimizer**: tests settings (cores, sockets, cards) each time the game starts, measures 60 s
+  with MangoHud and picks the best (favoring the 1% low).
+- **From the phone**: lists the Steam games with **Open** and **Start Sunshine**; with Wake-on-LAN
+  you can turn the PC on, start the game and connect with Moonlight from the couch.
+- **Windows VM with its own card** (games with anti-cheat that do not run on Proton):
+  `numapilot vm check`, `sudo numapilot vm prepare GPU`, `numapilot vm create NAME --gpu GPU --iso Win11.iso`.
 
-![Otimizador de FPS](docs/otimizar.png)
+![FPS optimizer](docs/otimizar.png)
 
-## Vários PCs e celular
+## Several PCs and phone
 
-- **Painel no celular** (Configurações → Painel no celular, QR code): temperaturas, uso, programas
-  com perfis de um toque, laboratório e IA. Protegido por token; fora de casa, use uma VPN
-  (Tailscale) em vez de abrir a porta 8577.
-- **Meus PCs** (`numapilot peers add "http://IP:8577/?t=..." NOME`): todos os PCs num painel, gráfico
-  de 24 h, versão de cada um, **Ligar** (Wake-on-LAN), copiar perfis, backup diário em
-  `~/numapilot-backups/NOME/`; `/metrics` no formato do Prometheus.
-- **Avisos no celular** pelo [ntfy](https://ntfy.sh): GPU quente, disco/memória com problema,
-  servidor de IA que parou, PC que saiu da rede, undervolt pronto.
+- **Phone panel** (Settings → Phone panel, QR code): temperatures, usage, programs with one-tap
+  profiles, lab and AI. Protected by a token; away from home, use a VPN (Tailscale) instead of
+  opening port 8577. The panel follows the language chosen on the PC.
+- **My PCs** (`numapilot peers add "http://IP:8577/?t=..." NAME`): all PCs in one panel, 24 h chart,
+  each one's version, **Wake** (Wake-on-LAN), copy profiles, daily backup in
+  `~/numapilot-backups/NAME/`; `/metrics` in Prometheus format.
+- **Phone notifications** through [ntfy](https://ntfy.sh): hot GPU, disk/memory problem, AI server
+  that stopped, PC that left the network, undervolt done.
 
-## Diagnóstico e testes
+## Diagnosis and tests
 
-- `numapilot doctor` testa no hardware real (NUMA, cgroups, serviço, cada GPU, Vulkan/OpenGL, grupos,
-  ferramentas, Steam, placas especiais) e diz o comando que resolve cada problema.
-  `numapilot doctor --report` salva um relatório para enviar.
-- `numapilot autoteste` confere tudo sem mudar nada e grava `~/numapilot-autoteste-MAQUINA-DATA.txt`.
-- Aba **Testes** e [docs/TESTES.md](docs/TESTES.md): roteiro à mão por máquina.
-- `numapilot log`: o que o serviço, a interface e os comandos fizeram.
+- `numapilot doctor` tests on the real hardware (NUMA, cgroups, service, each GPU, Vulkan/OpenGL,
+  groups, tools, Steam, special boards) and gives the command that fixes each problem.
+  `numapilot doctor --report` saves a report to send.
+- `numapilot selftest` checks everything without changing anything and writes
+  `~/numapilot-autoteste-MACHINE-DATE.txt`.
+- **Tests** tab and [docs/TESTES.md](docs/TESTES.md) (still in Portuguese): manual script per machine.
+- `numapilot log`: what the service, the interface and the commands did.
 
-## Limitações
+## Limitations
 
-- O serviço troca processador e memória de programas rodando, mas a GPU só ao abrir.
-- Programas Vulkan de computação escolhem a GPU pelo índice próprio (`GGML_VK_VISIBLE_DEVICES`);
-  o numapilot ainda não configura isso.
-- sched_ext e ananicy-cpp convivem com o numapilot (respeitam a afinidade); vale medir com e sem.
-- Frequência e timings da RAM só mudam na BIOS.
-- Rede por programa não aparece (o kernel não informa sem eBPF).
+- The service changes the processor and memory of running programs, but the GPU only on start.
+- Vulkan compute programs choose the GPU by their own index (`GGML_VK_VISIBLE_DEVICES`); numapilot
+  does not set that yet.
+- sched_ext and ananicy-cpp coexist with numapilot (they respect the affinity); it is worth
+  measuring with and without.
+- RAM frequency and timings can only be changed in the BIOS.
+- Network per program is not shown (the kernel does not report it without eBPF).
+- Still in Portuguese, being translated: code comments, the installer, `gfx906-rocm`, the test
+  guide and the older changelog entries.
 
-## Para desenvolver
+## Development
 
-Rust (edição 2024). A interface usa egui; a bandeja, ksni.
+Rust (2024 edition). The interface uses egui; the tray, ksni. Contributions are welcome, in
+English.
 
 ```
-src/main.rs        linha de comando
-src/daemon.rs      serviço: modo automático, regras, aplicação dos ajustes
-src/ctl.rs         socket de controle (interface e CLI falam com o serviço)
-src/topo.rs        nós NUMA, núcleos, RAM, GPUs
-src/decide.rs      decisão de GPU + socket (numapilot run)
-src/procfs.rs      /proc, afinidade, política de memória, migração
-src/procevents.rs  aviso instantâneo de programas novos (proc connector)
-src/procctl.rs     encerrar com proteção; GPU por processo (fdinfo)
-src/iostat.rs      disco e rede (diskstats, /sys/class/net, /proc/PID/io)
-src/startup.rs     inicialização (autostart, sessão do KDE, systemd)
-src/services.rs    serviços do systemd
-src/profiles.rs    escolhas por programa;  src/cgroup.rs  cgroups por programa
-src/gpuctl.rs      sensores, ventoinha, potência, OverDrive, ReBAR;  src/nvctl.rs, nvml.rs  NVIDIA
-src/undervolt.rs   undervolt automático
-src/cpuctl.rs      C-states, turbo, frequência, EPB/EPP, uncore, RAPL
-src/machine.rs     modos e ajustes da máquina;  src/fans.rs  ventoinhas da placa-mãe
-src/cmdline.rs     parâmetros do kernel e mitigações;  src/bootcfg.rs  modprobe.d
-src/notebook.rs, hybrid.rs, ryzen.rs, acer.rs, autostart.rs   notebook
-src/boards.rs, recipes.rs   placas especiais e receitas (recipes/default.toml)
-src/health.rs, energy.rs, history.rs, notify.rs   saúde, energia, histórico, avisos
-src/web.rs, peers.rs        painel no celular e outros PCs
-src/steam.rs, tuner.rs, upscale.rs   jogos
-src/containers.rs, labcfg.rs        laboratório e servidor de IA (packaging/gfx906-rocm)
-src/vm.rs          VM com VFIO
-src/doctor.rs, selftest.rs, log.rs   diagnóstico, autoteste, registros
-src/bin/numapilot-gui/   interface (uma aba por arquivo) e bandeja
-container/         imagem do laboratório
+src/main.rs        command line
+src/daemon.rs      service: automatic mode, rules, applying the settings
+src/ctl.rs         control socket (interface and CLI talk to the service)
+src/topo.rs        NUMA nodes, cores, RAM, GPUs
+src/decide.rs      GPU + socket decision (numapilot run)
+src/procfs.rs      /proc, affinity, memory policy, migration
+src/procevents.rs  instant notice of new programs (proc connector)
+src/procctl.rs     protected end; GPU per process (fdinfo)
+src/iostat.rs      disk and network (diskstats, /sys/class/net, /proc/PID/io)
+src/startup.rs     startup (autostart, KDE session, systemd)
+src/services.rs    systemd services
+src/profiles.rs    choices per program;  src/cgroup.rs  cgroups per program
+src/gpuctl.rs      sensors, fan, power, OverDrive, ReBAR;  src/nvctl.rs, nvml.rs  NVIDIA
+src/undervolt.rs   automatic undervolt
+src/cpuctl.rs      C-states, turbo, frequency, EPB/EPP, uncore, RAPL
+src/turbo.rs, corebench.rs   turbo table and cache latency per core
+src/machine.rs     machine modes and settings;  src/fans.rs  motherboard fans
+src/cmdline.rs     kernel parameters and mitigations;  src/bootcfg.rs  modprobe.d
+src/notebook.rs, hybrid.rs, ryzen.rs, acer.rs, autostart.rs   laptop
+src/boards.rs, recipes.rs   special boards and recipes (recipes/default.toml)
+src/health.rs, energy.rs, history.rs, notify.rs   health, energy, history, notifications
+src/web.rs, peers.rs        phone panel and other PCs
+src/steam.rs, tuner.rs, upscale.rs   games
+src/containers.rs, labcfg.rs        lab and AI server (packaging/gfx906-rocm)
+src/vm.rs          VM with VFIO
+src/doctor.rs, selftest.rs, log.rs   diagnosis, self-test, logs
+src/i18n.rs, i18n_pt.rs  language and Portuguese texts (service and CLI)
+src/bin/numapilot-gui/   interface (one tab per file), tray and its Portuguese table (i18n_pt.rs)
+container/         lab image
 ```
 
-`cargo test` roda os testes, com várias máquinas simuladas por um sysfs falso
-(`NUMAPILOT_SYSFS`). As capturas de tela do README saem de `tools/capturas` (servidor, notebook e
-BC-250 de mentira, numa tela virtual); veja o README de lá. A CI (GitHub Actions) roda formatação, testes, clippy, compilação sem
-interface e shellcheck a cada push. Mudanças estão no [CHANGELOG](CHANGELOG.md).
+English is the language of the code. Text shown to the user goes through `tr("text")` with its
+pair in the Portuguese table, or `tf!("text {}", "texto {}", value)` when it has values. Tests fail
+when a `tr()` text has no Portuguese pair.
 
-## Licença e créditos
+`cargo test` runs the tests, with several machines simulated by a fake sysfs (`NUMAPILOT_SYSFS`).
+The README screenshots come from `tools/capturas` (fake server, laptop and BC-250, on a virtual
+display); see the README there. The CI (GitHub Actions) runs formatting, tests, clippy, a build
+without the interface and shellcheck on every push. Changes are in the [CHANGELOG](CHANGELOG.md).
 
-[MIT](LICENSE) © 2026 Lucas Fracaro. A fonte [Inter](https://github.com/rsms/inter), que vai dentro
-da interface, é da The Inter Project Authors, sob a [SIL Open Font License 1.1](assets/fonts/OFL.txt).
+## License and credits
 
-O suporte à BC-250 usa conhecimento da comunidade, em especial do
+[MIT](LICENSE) © 2026 Lucas Fracaro. The [Inter](https://github.com/rsms/inter) font, bundled in
+the interface, is by The Inter Project Authors, under the
+[SIL Open Font License 1.1](assets/fonts/OFL.txt).
+
+BC-250 support uses community knowledge, especially from
 [BC250 Control Center](https://github.com/movacx/bc250-control-center) (MIT, Herlin Chavarria):
-tabela de métricas da SMU, CUs liberados pelo kernel e persistência dos 8 núcleos. O ROCm e as
-imagens para gfx906 vêm do [mixa3607/ML-gfx906](https://github.com/mixa3607/ML-gfx906) e do TheRock.
+the SMU metrics table, CUs unlocked by the kernel and persistence of the 8 cores. ROCm and the
+gfx906 images come from [mixa3607/ML-gfx906](https://github.com/mixa3607/ML-gfx906) and TheRock.

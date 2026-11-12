@@ -90,15 +90,15 @@ pub fn protected_reason(
     cgroup: &str,
 ) -> Option<&'static str> {
     if pid <= 1 {
-        return Some(crate::i18n::tr("processo do sistema"));
+        return Some(crate::i18n::tr("system process"));
     }
     if exe.is_empty() {
         // threads do kernel não têm executável
-        return Some(crate::i18n::tr("processo do kernel"));
+        return Some(crate::i18n::tr("kernel process"));
     }
     if uid != my_uid {
         return Some(crate::i18n::tr(
-            "não é seu (é do sistema ou de outro usuário)",
+            "not yours (belongs to the system or another user)",
         ));
     }
     let exe_name = exe.rsplit('/').next().unwrap_or(exe);
@@ -108,7 +108,9 @@ pub fn protected_reason(
         .iter()
         .any(|p| comm == *p || exe_name == *p || exe_name.starts_with("startplasma"))
     {
-        return Some(crate::i18n::tr("faz parte da sessão gráfica ou do sistema"));
+        return Some(crate::i18n::tr(
+            "is part of the graphical session or the system",
+        ));
     }
     let path = cgroup
         .lines()
@@ -120,7 +122,9 @@ pub fn protected_reason(
         || path.starts_with("/system.slice/")
         || path == "/init.scope"
     {
-        return Some(crate::i18n::tr("faz parte da sessão gráfica ou do sistema"));
+        return Some(crate::i18n::tr(
+            "is part of the graphical session or the system",
+        ));
     }
     None
 }
@@ -142,7 +146,7 @@ pub fn kill_blocked(pid: i32, my_uid: u32) -> Option<&'static str> {
         .unwrap_or(0);
     let cg = fs::read_to_string(format!("/proc/{pid}/cgroup")).unwrap_or_default();
     if comm.is_empty() {
-        return Some(crate::i18n::tr("o processo já terminou"));
+        return Some(crate::i18n::tr("the process has already ended"));
     }
     protected_reason(pid, comm.trim(), &exe, uid, my_uid, &cg)
 }

@@ -113,7 +113,7 @@ pub fn state(topo: &Topology) -> Value {
         .map(|(k, (label, cores, nodes, gpus))| {
             let p = profiles.get(&k);
             json!({"key": k, "label": label, "cores": cores, "nodes": nodes, "gpus": gpus,
-                   "profile": p.map(describe).unwrap_or_else(|| crate::i18n::tr("automático").into())})
+                   "profile": p.map(describe).unwrap_or_else(|| crate::i18n::tr("automatic").into())})
         })
         .collect();
     programs.sort_by(|a, b| {
@@ -143,30 +143,26 @@ pub fn state(topo: &Topology) -> Value {
 
 fn describe(p: &Profile) -> String {
     if p.is_auto() {
-        return crate::i18n::tr("automático").into();
+        return crate::i18n::tr("automatic").into();
     }
     let mut v = vec![];
     v.push(match p.cpu.as_str() {
         "auto" => "CPU auto".to_string(),
-        "gpu" => crate::i18n::tr("socket da GPU").into(),
-        "all" => crate::i18n::tr("dois sockets").into(),
+        "gpu" => crate::i18n::tr("GPU's socket").into(),
+        "all" => crate::i18n::tr("both sockets").into(),
         o => format!("socket {o}"),
     });
     if let Some(c) = p.cores {
         v.push(format!(
             "{c} CPUs{}",
-            if p.smt {
-                ""
-            } else {
-                crate::i18n::tr(" sem HT")
-            }
+            if p.smt { "" } else { crate::i18n::tr(" no HT") }
         ));
     }
     if p.gpu != "auto" {
         v.push(p.gpu.clone());
     }
     if p.exclusive {
-        v.push(crate::i18n::tr("exclusivo").into());
+        v.push(crate::i18n::tr("exclusive").into());
     }
     v.join(" · ")
 }
@@ -174,30 +170,34 @@ fn describe(p: &Profile) -> String {
 fn act(body: &Value, topo: &Topology) -> Result<String, String> {
     let _ = topo;
     match body["action"].as_str().unwrap_or("") {
-        "wake" => crate::peers::wake(body["name"].as_str().ok_or(crate::i18n::tr("falta name"))?),
+        "wake" => crate::peers::wake(
+            body["name"]
+                .as_str()
+                .ok_or(crate::i18n::tr("name is missing"))?,
+        ),
         "launch" => {
             let id = body["appid"]
                 .as_str()
-                .ok_or(crate::i18n::tr("falta appid"))?;
+                .ok_or(crate::i18n::tr("appid is missing"))?;
             if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
-                return Err(crate::i18n::tr("appid inválido").into());
+                return Err(crate::i18n::tr("invalid appid").into());
             }
             let name = crate::steam::installed_games()
                 .into_iter()
                 .find(|g| g.0 == id)
                 .map(|g| g.1)
-                .ok_or(crate::i18n::tr("jogo não instalado aqui"))?;
+                .ok_or(crate::i18n::tr("game not installed here"))?;
             spawn_quiet(&["steam", &format!("steam://rungameid/{id}")])?;
             Ok(crate::tf!(
-                "abrindo {name} na Steam",
-                "opening {name} on Steam"
+                "opening {name} on Steam",
+                "abrindo {name} na Steam"
             ))
         }
         "sunshine" => sunshine_start(),
         "preset" => {
             let key = body["key"]
                 .as_str()
-                .ok_or(crate::i18n::tr("falta key"))?
+                .ok_or(crate::i18n::tr("key is missing"))?
                 .to_string();
             let preset = body["preset"].as_str().unwrap_or("auto");
             let r = if preset == "auto" {
@@ -232,13 +232,13 @@ fn act(body: &Value, topo: &Topology) -> Result<String, String> {
             Ok(format!(
                 "{what}: {}",
                 if verb == "up" {
-                    crate::i18n::tr("ligando")
+                    crate::i18n::tr("turning on")
                 } else {
-                    crate::i18n::tr("desligando")
+                    crate::i18n::tr("turning off")
                 }
             ))
         }
-        o => Err(crate::tf!("ação desconhecida: {o}", "unknown action: {o}")),
+        o => Err(crate::tf!("unknown action: {o}", "ação desconhecida: {o}")),
     }
 }
 
@@ -326,7 +326,7 @@ fn sunshine_start() -> Result<String, String> {
             .output()
             .is_ok_and(|o| o.status.success());
         if ok {
-            return Ok(crate::i18n::tr("Sunshine ligado").into());
+            return Ok(crate::i18n::tr("Sunshine on").into());
         }
     }
     let flatpak = std::process::Command::new("flatpak")
@@ -335,13 +335,13 @@ fn sunshine_start() -> Result<String, String> {
         .is_ok_and(|o| o.status.success());
     if flatpak {
         spawn_quiet(&["flatpak", "run", "dev.lizardbyte.app.Sunshine"])?;
-        return Ok(crate::i18n::tr("Sunshine ligando (Flatpak)").into());
+        return Ok(crate::i18n::tr("Sunshine starting (Flatpak)").into());
     }
     if crate::containers::which("sunshine") {
         spawn_quiet(&["sunshine"])?;
-        return Ok(crate::i18n::tr("Sunshine ligando").into());
+        return Ok(crate::i18n::tr("Sunshine starting").into());
     }
-    Err(crate::i18n::tr("Sunshine não instalado neste PC").into())
+    Err(crate::i18n::tr("Sunshine not installed on this PC").into())
 }
 
 fn authorized(req: &tiny_http::Request, token: &str) -> bool {
@@ -380,14 +380,14 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
     let token = token()?;
     let topo = Topology::load(cfg);
     let server = tiny_http::Server::http(format!("{bind}:{port}"))
-        .map_err(|e| anyhow::anyhow!("{}", crate::tf!("porta {port}: {e}", "port {port}: {e}")))?;
+        .map_err(|e| anyhow::anyhow!("{}", crate::tf!("port {port}: {e}", "porta {port}: {e}")))?;
     match url(port) {
-        Some(u) => eprintln!("{}", crate::tf!("Painel: {u}", "Panel: {u}")),
+        Some(u) => eprintln!("{}", crate::tf!("Panel: {u}", "Painel: {u}")),
         None => eprintln!(
             "{}",
             crate::tf!(
-                "Painel na porta {port} (token em {})",
                 "Panel on port {port} (token in {})",
+                "Painel na porta {port} (token em {})",
                 token_path().display()
             )
         ),
@@ -408,7 +408,7 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
                 if bad_auth > 10 {
                     if bad_auth == 11 {
                         crate::log::warn(crate::i18n::tr(
-                            "painel web: muitas tentativas com token errado",
+                            "web panel: too many attempts with a wrong token",
                         ));
                     }
                     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -492,106 +492,53 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
                 };
                 respond(req, code, "application/json", v.to_string())
             }
-            _ => respond(
-                req,
-                404,
-                "text/plain",
-                crate::i18n::tr("não encontrado").into(),
-            ),
+            _ => respond(req, 404, "text/plain", crate::i18n::tr("not found").into()),
         }
     }
     Ok(())
 }
 
-/// Trechos da página trocados quando o idioma é inglês (cada um precisa existir em `PAGE`).
-const PAGE_EN: &[(&str, &str)] = &[
-    (r#"lang="pt-BR""#, r#"lang="en""#),
-    (r#"<h2>Placas de vídeo</h2>"#, r#"<h2>Graphics cards</h2>"#),
-    (r#"<h2>Processadores</h2>"#, r#"<h2>Processors</h2>"#),
-    (r#"<h2>Programas</h2>"#, r#"<h2>Programs</h2>"#),
-    (r#"<h2>Meus PCs</h2>"#, r#"<h2>My PCs</h2>"#),
-    (r#"<h2>Jogos</h2>"#, r#"<h2>Games</h2>"#),
-    (r#"placeholder="procurar""#, r#"placeholder="search""#),
-    (r#">Ligar Sunshine<"#, r#">Start Sunshine<"#),
-    (r#"<h2>Atalhos</h2>"#, r#"<h2>Shortcuts</h2>"#),
-    (
-        r#"Laboratório (Jupyter/VS Code)"#,
-        r#"Lab (Jupyter/VS Code)"#,
-    ),
-    (
-        r#"lab_up'})">Ligar</button>"#,
-        r#"lab_up'})">Turn on</button>"#,
-    ),
-    (
-        r#"lab_down'})">Desligar</button>"#,
-        r#"lab_down'})">Turn off</button>"#,
-    ),
-    (
-        r#"<span>Servidor de IA</span>"#,
-        r#"<span>AI server</span>"#,
-    ),
-    (r#">Iniciar</button>"#, r#">Start</button>"#),
-    (r#">Parar</button>"#, r#">Stop</button>"#),
-    (r#"toast('erro: '+e)"#, r#"toast('error: '+e)"#),
-    (r#"['jogo','Jogo']"#, r#"['jogo','Game']"#),
-    (r#"['ia','IA']"#, r#"['ia','AI']"#),
-    (
-        r#"['silencioso','Silencioso']"#,
-        r#"['silencioso','Quiet']"#,
-    ),
-    (
-        r#"Token inválido: abra o link com ?t= mostrado no numapilot (Configurações → Painel no celular)."#,
-        r#"Invalid token: open the link with ?t= shown in numapilot (Settings → Phone panel)."#,
-    ),
-    (r#"' · hoje '"#, r#"' · today '"#),
-    (
-        r#"'serviço ok':'serviço parado'"#,
-        r#"'service ok':'service stopped'"#,
-    ),
-    (r#" · ventoinha "#, r#" · fan "#),
-    (r#"<div class="mut">uso ${"#, r#"<div class="mut">usage ${"#),
-    (
-        r#"RAM livre ${n.mem_free_gb.toFixed(0)} de ${"#,
-        r#"RAM free ${n.mem_free_gb.toFixed(0)} of ${"#,
-    ),
-    (r#" núcleos</span>"#, r#" cores</span>"#),
-    (r#"p.nodes||'todos'"#, r#"p.nodes||'all'"#),
-    (
-        r#"Nenhum programa sendo usado agora."#,
-        r#"No program in use right now."#,
-    ),
-    (
-        r#"temperatura máx., últimas 24 h"#,
-        r#"max temperature, last 24 h"#,
-    ),
-    (r#" programas</div>"#, r#" programs</div>"#),
-    (
-        r#"(este: ${esc(window.ME)}): atualize em Configurações"#,
-        r#"(this one: ${esc(window.ME)}): update in Settings"#,
-    ),
-    (r#"<button>Abrir</button>"#, r#"<button>Open</button>"#),
-    (r#"})'>Abrir</button>"#, r#"})'>Open</button>"#),
-    (
-        r#"desligado ou fora da rede"#,
-        r#"off or out of the network"#,
-    ),
-    (r#"})'>Ligar</button>"#, r#"})'>Wake</button>"#),
+/// Page snippets swapped when the language is Portuguese (each one must exist in `PAGE`).
+const PAGE_PT: &[(&str, &str)] = &[
+    (r#"lang="en""#, r#"lang="pt-BR""#),
+    (r#"<h2>Graphics cards</h2>"#, r#"<h2>Placas de vídeo</h2>"#),
+    (r#"<h2>Processors</h2>"#, r#"<h2>Processadores</h2>"#),
+    (r#"<h2>Programs</h2>"#, r#"<h2>Programas</h2>"#),
+    (r#"<h2>My PCs</h2>"#, r#"<h2>Meus PCs</h2>"#),
+    (r#"<h2>Games</h2>"#, r#"<h2>Jogos</h2>"#),
+    (r#"placeholder="search""#, r#"placeholder="procurar""#),
+    (r#">Start Sunshine<"#, r#">Ligar Sunshine<"#),
+    (r#"<h2>Shortcuts</h2>"#, r#"<h2>Atalhos</h2>"#),
+    (r#">Start</button>"#, r#">Iniciar</button>"#),
+    (r#">Stop</button>"#, r#">Parar</button>"#),
+    (r#"toast('error: '+e)"#, r#"toast('erro: '+e)"#),
+    (r#"['jogo','Game']"#, r#"['jogo','Jogo']"#),
+    (r#"['ia','AI']"#, r#"['ia','IA']"#),
+    (r#"' · today '"#, r#"' · hoje '"#),
+    (r#" · fan "#, r#" · ventoinha "#),
+    (r#"<div class="mut">usage ${"#, r#"<div class="mut">uso ${"#),
+    (r#" cores</span>"#, r#" núcleos</span>"#),
+    (r#"p.nodes||'all'"#, r#"p.nodes||'todos'"#),
+    (r#" programs</div>"#, r#" programas</div>"#),
+    (r#"<button>Open</button>"#, r#"<button>Abrir</button>"#),
+    (r#"})'>Open</button>"#, r#"})'>Abrir</button>"#),
+    (r#"})'>Wake</button>"#, r#"})'>Ligar</button>"#),
 ];
 
 /// A página no idioma em uso (o escolhido na interface deste PC).
 fn page() -> String {
     crate::i18n::refresh();
     let mut p = PAGE.to_string();
-    if crate::i18n::english() {
-        for (pt, en) in PAGE_EN {
-            p = p.replace(pt, en);
+    if crate::i18n::portuguese() {
+        for (en, pt) in PAGE_PT {
+            p = p.replace(en, pt);
         }
     }
     p
 }
 
 const PAGE: &str = r##"<!DOCTYPE html>
-<html lang="pt-BR"><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#16181d"><title>numapilot</title>
 <style>
@@ -612,18 +559,18 @@ button:active{background:var(--acc)}.hot{color:var(--bad)}.warm{color:var(--warn
 <h1><span>numapilot <span class="mut" id="host"></span></span><span class="mut" id="svc"></span></h1>
 <div id="err" class="card hot" style="display:none"></div>
 <div id="alerts" class="card warm" style="display:none"></div>
-<h2>Placas de vídeo</h2><div class="grid" id="gpus"></div>
-<h2>Processadores</h2><div class="grid" id="nodes"></div>
-<h2>Programas</h2><div id="progs"></div>
-<div id="peersbox" style="display:none"><h2>Meus PCs</h2><div class="grid" id="peers"></div></div>
-<div id="gamesbox" style="display:none"><h2>Jogos</h2><div class="card">
-<div class="row"><input id="gq" placeholder="procurar" oninput="drawGames()" style="flex:1;padding:6px;border-radius:6px;border:1px solid #444;background:#111;color:var(--fg)">
-<button onclick="act({action:'sunshine'})">Ligar Sunshine</button></div><div id="games"></div></div></div>
-<h2>Atalhos</h2><div class="card">
+<h2>Graphics cards</h2><div class="grid" id="gpus"></div>
+<h2>Processors</h2><div class="grid" id="nodes"></div>
+<h2>Programs</h2><div id="progs"></div>
+<div id="peersbox" style="display:none"><h2>My PCs</h2><div class="grid" id="peers"></div></div>
+<div id="gamesbox" style="display:none"><h2>Games</h2><div class="card">
+<div class="row"><input id="gq" placeholder="search" oninput="drawGames()" style="flex:1;padding:6px;border-radius:6px;border:1px solid #444;background:#111;color:var(--fg)">
+<button onclick="act({action:'sunshine'})">Start Sunshine</button></div><div id="games"></div></div></div>
+<h2>Shortcuts</h2><div class="card">
 <div class="row"><span>Laboratório (Jupyter/VS Code)</span></div>
 <button onclick="act({action:'lab_up'})">Ligar</button><button onclick="act({action:'lab_down'})">Desligar</button>
 <div class="row" style="margin-top:10px"><span>Servidor de IA</span></div>
-<button onclick="act({action:'llm_up'})">Iniciar</button><button onclick="act({action:'llm_down'})">Parar</button>
+<button onclick="act({action:'llm_up'})">Start</button><button onclick="act({action:'llm_down'})">Stop</button>
 </div>
 <div id="msg"></div>
 <script>
@@ -632,25 +579,25 @@ if(q.get('t')){try{localStorage.setItem('npt',T)}catch(e){};history.replaceState
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const tc=t=>t==null?'':t>=90?'hot':t>=75?'warm':'cool';
 function toast(m){const e=document.getElementById('msg');e.textContent=m;e.style.display='block';clearTimeout(window._t);window._t=setTimeout(()=>e.style.display='none',3000)}
-async function act(b){try{const r=await fetch('/api/action',{method:'POST',headers:{'X-Token':T,'Content-Type':'application/json'},body:JSON.stringify(b)});const j=await r.json();toast(j.message);setTimeout(load,800)}catch(e){toast('erro: '+e)}}
-const PRE=[['jogo','Jogo'],['ia','IA'],['render','Render'],['silencioso','Silencioso'],['auto','Auto']];
+async function act(b){try{const r=await fetch('/api/action',{method:'POST',headers:{'X-Token':T,'Content-Type':'application/json'},body:JSON.stringify(b)});const j=await r.json();toast(j.message);setTimeout(load,800)}catch(e){toast('error: '+e)}}
+const PRE=[['jogo','Game'],['ia','AI'],['render','Render'],['silencioso','Silencioso'],['auto','Auto']];
 async function load(){
  let s;try{const r=await fetch('/api/state',{headers:{'X-Token':T}});if(r.status==401){document.getElementById('err').style.display='block';document.getElementById('err').textContent='Token inválido: abra o link com ?t= mostrado no numapilot (Configurações → Painel no celular).';return}s=await r.json()}catch(e){return}
  document.getElementById('err').style.display='none';
  window.ME=s.version;
  const al=document.getElementById('alerts');al.style.display=(s.alerts||[]).length?'block':'none';al.innerHTML=(s.alerts||[]).map(a=>'⚠ '+esc(a)).join('<br>');
- document.getElementById('host').textContent=s.host+(s.watts!=null?' · '+Math.round(s.watts)+' W':'')+(s.kwh_today!=null?' · hoje '+s.kwh_today.toFixed(2)+' kWh'+(s.price_kwh?' (R$ '+(s.kwh_today*s.price_kwh).toFixed(2)+')':''):'');
+ document.getElementById('host').textContent=s.host+(s.watts!=null?' · '+Math.round(s.watts)+' W':'')+(s.kwh_today!=null?' · today '+s.kwh_today.toFixed(2)+' kWh'+(s.price_kwh?' (R$ '+(s.kwh_today*s.price_kwh).toFixed(2)+')':''):'');
  document.getElementById('svc').innerHTML=`<span class="dot" style="background:${s.daemon?'var(--ok)':'var(--bad)'}"></span>${s.daemon?'serviço ok':'serviço parado'}`;
  document.getElementById('gpus').innerHTML=s.gpus.map(g=>`<div class="card"><div class="row"><b>${esc(g.alias)}</b><span class="mut">socket ${g.node??'?'}</span></div>
   <div class="big ${tc(g.temp)}">${g.temp!=null?Math.round(g.temp)+' °C':'—'}</div>
-  <div class="mut">${g.power!=null?Math.round(g.power)+' W':''}${g.cap!=null?' / '+Math.round(g.cap)+' W':''} · ventoinha ${g.fan!=null?Math.round(g.fan)+'%':'—'}</div>
-  <div class="mut">uso ${g.busy??0}%${g.vram?` · VRAM ${g.vram[0].toFixed(1)}/${g.vram[1].toFixed(0)} GB`:''}</div>
+  <div class="mut">${g.power!=null?Math.round(g.power)+' W':''}${g.cap!=null?' / '+Math.round(g.cap)+' W':''} · fan ${g.fan!=null?Math.round(g.fan)+'%':'—'}</div>
+  <div class="mut">usage ${g.busy??0}%${g.vram?` · VRAM ${g.vram[0].toFixed(1)}/${g.vram[1].toFixed(0)} GB`:''}</div>
   <div class="bar"><i style="width:${g.busy??0}%"></i></div></div>`).join('');
  document.getElementById('nodes').innerHTML=s.nodes.map(n=>`<div class="card"><div class="row"><b>Socket ${n.id}</b><span class="mut">${n.cpus} threads</span></div>
   <div class="big">${Math.round(n.load*100)}%</div><div class="mut">RAM livre ${n.mem_free_gb.toFixed(0)} de ${n.mem_total_gb.toFixed(0)} GB</div>
   <div class="bar"><i style="width:${Math.round(n.load*100)}%"></i></div></div>`).join('');
- document.getElementById('progs').innerHTML=s.programs.length?s.programs.map(p=>`<div class="card"><div class="row"><b>${esc(p.label)}</b><span class="mut">${p.cores.toFixed(1)} núcleos</span></div>
-  <div class="mut">socket ${esc(p.nodes||'todos')}${p.gpus?' · '+esc(p.gpus):''} · ${esc(p.profile)}</div>
+ document.getElementById('progs').innerHTML=s.programs.length?s.programs.map(p=>`<div class="card"><div class="row"><b>${esc(p.label)}</b><span class="mut">${p.cores.toFixed(1)} cores</span></div>
+  <div class="mut">socket ${esc(p.nodes||'all')}${p.gpus?' · '+esc(p.gpus):''} · ${esc(p.profile)}</div>
   ${PRE.map(([k,l])=>`<button onclick='act({action:"preset",key:${JSON.stringify(p.key)},label:${JSON.stringify(p.label)},preset:"${k}"})'>${l}</button>`).join('')}</div>`).join('')
   :'<div class="card mut">Nenhum programa sendo usado agora.</div>';
 }
@@ -660,14 +607,14 @@ function spark(h){if(!h||!h.filter(v=>v!=null).length)return'';const w=200,ht=36
 async function peers(){try{const r=await fetch('/api/peers',{headers:{'X-Token':T}});if(!r.ok)return;const p=await r.json();
  document.getElementById('peersbox').style.display=p.length?'block':'none';
  document.getElementById('peers').innerHTML=p.map(x=>`<div class="card"><div class="row"><b>${esc(x.name)}</b><span class="dot" style="background:${x.online?(x.daemon?'var(--ok)':'var(--warn)'):'var(--bad)'}"></span></div>
-  ${x.online?`<div class="mut">${esc(x.host||'')} · ${x.gpus} GPU · ${x.programs} programas</div>
+  ${x.online?`<div class="mut">${esc(x.host||'')} · ${x.gpus} GPU · ${x.programs} programs</div>
   <div class="big ${tc(x.hot)}">${x.hot!=null?Math.round(x.hot)+' °C':'—'}</div>
   ${spark(x.hist)}
   ${x.version&&window.ME&&x.version!=window.ME?`<div class="mut warm">numapilot ${esc(x.version)} (este: ${esc(window.ME)}): atualize em Configurações</div>`:''}
   <div class="mut">CPU ${(x.load||[]).map(l=>Math.round(l*100)+'%').join(' · ')}</div>
-  <a href="${esc(x.link)}"><button>Abrir</button></a>`:`<div class="mut">desligado ou fora da rede</div>${x.can_wake?`<button onclick='act({action:"wake",name:${JSON.stringify(x.name)}})'>Ligar</button>`:''}`}</div>`).join('')}catch(e){}}
+  <a href="${esc(x.link)}"><button>Open</button></a>`:`<div class="mut">desligado ou fora da rede</div>${x.can_wake?`<button onclick='act({action:"wake",name:${JSON.stringify(x.name)}})'>Wake</button>`:''}`}</div>`).join('')}catch(e){}}
 let G=[];async function games(){try{const r=await fetch('/api/games',{headers:{'X-Token':T}});if(!r.ok)return;G=await r.json();document.getElementById('gamesbox').style.display=G.length?'block':'none';drawGames()}catch(e){}}
-function drawGames(){const q=(document.getElementById('gq').value||'').toLowerCase();document.getElementById('games').innerHTML=G.filter(g=>g.name.toLowerCase().includes(q)).slice(0,30).map(g=>`<div class="row" style="margin-top:6px"><span>${esc(g.name)}</span><button onclick='act({action:"launch",appid:${JSON.stringify(g.appid)}})'>Abrir</button></div>`).join('')}
+function drawGames(){const q=(document.getElementById('gq').value||'').toLowerCase();document.getElementById('games').innerHTML=G.filter(g=>g.name.toLowerCase().includes(q)).slice(0,30).map(g=>`<div class="row" style="margin-top:6px"><span>${esc(g.name)}</span><button onclick='act({action:"launch",appid:${JSON.stringify(g.appid)}})'>Open</button></div>`).join('')}
 load();setInterval(load,3000);peers();setInterval(peers,15000);games();
 </script></body></html>
 "##;
@@ -677,8 +624,11 @@ mod tests {
     #[test]
     fn page_is_self_contained() {
         assert!(super::PAGE.starts_with("<!DOCTYPE html>"));
-        for (pt, _) in super::PAGE_EN {
-            assert!(super::PAGE.contains(pt), "trecho sumiu da página: {pt}");
+        for (en, _) in super::PAGE_PT {
+            assert!(
+                super::PAGE.contains(en),
+                "snippet missing from the page: {en}"
+            );
         }
         assert!(!super::PAGE.contains("http://") && !super::PAGE.contains("https://"));
     }

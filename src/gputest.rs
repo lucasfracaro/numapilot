@@ -171,22 +171,22 @@ pub fn judge_vulkan(g: &Gpu, same_model: usize, out: &str) -> Line {
     let (verdict, detail) = match devs.first() {
         None => (
             Verdict::NaoDeu,
-            crate::i18n::tr("o Vulkan não listou nenhuma placa com esta escolha").to_string(),
+            crate::i18n::tr("Vulkan listed no card with this choice").to_string(),
         ),
         Some(d) if d.vendor == g.vendor && d.device == g.device => (
             Verdict::Certa,
             if same_model > 1 {
                 crate::tf!(
-                    "{} (há {same_model} placas deste modelo: o modelo confere, mas por aqui não dá \
-                     para saber qual delas)",
                     "{} (there are {same_model} cards of this model: the model matches, but from here it is not \
                      possible to tell which one)",
+                    "{} (há {same_model} placas deste modelo: o modelo confere, mas por aqui não dá \
+                     para saber qual delas)",
                     d.name
                 )
             } else if devs.len() > 1 {
                 crate::tf!(
-                    "{} em primeiro; o programa ainda enxerga {} placa(s) a mais",
                     "{} first; the program still sees {} more card(s)",
+                    "{} em primeiro; o programa ainda enxerga {} placa(s) a mais",
                     d.name,
                     devs.len() - 1
                 )
@@ -197,8 +197,8 @@ pub fn judge_vulkan(g: &Gpu, same_model: usize, out: &str) -> Line {
         Some(d) => (
             Verdict::Errada,
             crate::tf!(
-                "respondeu {} ({:04x}:{:04x})",
                 "{} answered ({:04x}:{:04x})",
+                "respondeu {} ({:04x}:{:04x})",
                 d.name,
                 d.vendor,
                 d.device
@@ -206,7 +206,7 @@ pub fn judge_vulkan(g: &Gpu, same_model: usize, out: &str) -> Line {
         ),
     };
     Line {
-        api: crate::i18n::tr("Vulkan (e DirectX pelo DXVK/VKD3D)").into(),
+        api: crate::i18n::tr("Vulkan (and DirectX through DXVK/VKD3D)").into(),
         verdict,
         detail,
     }
@@ -217,7 +217,7 @@ pub fn judge_gl(g: &Gpu, out: &str) -> Line {
     let (verdict, detail) = match parse_glxinfo(out) {
         None => (
             Verdict::NaoDeu,
-            crate::i18n::tr("o glxinfo não respondeu (precisa de uma sessão gráfica)").to_string(),
+            crate::i18n::tr("glxinfo did not answer (needs a graphical session)").to_string(),
         ),
         Some((Some(id), name)) => (
             if id == g.device {
@@ -240,7 +240,7 @@ pub fn judge_gl(g: &Gpu, out: &str) -> Line {
         }
     };
     Line {
-        api: crate::i18n::tr("OpenGL (e DirectX antigo pelo WineD3D)").into(),
+        api: crate::i18n::tr("OpenGL (and old DirectX through WineD3D)").into(),
         verdict,
         detail,
     }
@@ -259,9 +259,9 @@ pub fn test(g: &Gpu, topo: &Topology, set: &[(String, String)], unset: &[String]
         v.push(judge_vulkan(g, same, &out));
     } else {
         v.push(Line {
-            api: crate::i18n::tr("Vulkan (e DirectX pelo DXVK/VKD3D)").into(),
+            api: crate::i18n::tr("Vulkan (and DirectX through DXVK/VKD3D)").into(),
             verdict: Verdict::NaoDeu,
-            detail: crate::i18n::tr("instale o vulkan-tools (sudo pacman -S vulkan-tools)").into(),
+            detail: crate::i18n::tr("install vulkan-tools (sudo pacman -S vulkan-tools)").into(),
         });
     }
     if which("glxinfo") {
@@ -269,9 +269,9 @@ pub fn test(g: &Gpu, topo: &Topology, set: &[(String, String)], unset: &[String]
         v.push(judge_gl(g, &out));
     } else {
         v.push(Line {
-            api: crate::i18n::tr("OpenGL (e DirectX antigo pelo WineD3D)").into(),
+            api: crate::i18n::tr("OpenGL (and old DirectX through WineD3D)").into(),
             verdict: Verdict::NaoDeu,
-            detail: crate::i18n::tr("instale o mesa-utils (sudo pacman -S mesa-utils)").into(),
+            detail: crate::i18n::tr("install mesa-utils (sudo pacman -S mesa-utils)").into(),
         });
     }
     v

@@ -79,7 +79,7 @@ pub fn enable(iface: &str) -> Result<(), String> {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
     {
-        return Err(crate::i18n::tr("nome de interface inválido").into());
+        return Err(crate::i18n::tr("invalid interface name").into());
     }
     let o = Command::new("ethtool")
         .args(["-s", iface, "wol", "g"])
@@ -137,7 +137,7 @@ pub fn magic_packet(mac: [u8; 6]) -> Vec<u8> {
 /// broadcast da sub-rede do IP do outro PC.
 pub fn wake(mac: &str, ip_hint: Option<&str>) -> Result<(), String> {
     let m =
-        parse_mac(mac).ok_or_else(|| crate::tf!("MAC inválido: {mac}", "invalid MAC: {mac}"))?;
+        parse_mac(mac).ok_or_else(|| crate::tf!("invalid MAC: {mac}", "MAC inválido: {mac}"))?;
     let pkt = magic_packet(m);
     let s = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
     s.set_broadcast(true).map_err(|e| e.to_string())?;
@@ -157,7 +157,7 @@ pub fn wake(mac: &str, ip_hint: Option<&str>) -> Result<(), String> {
     if sent {
         Ok(())
     } else {
-        Err(crate::i18n::tr("não consegui mandar o pacote (rede?)").into())
+        Err(crate::i18n::tr("could not send the packet (network?)").into())
     }
 }
 

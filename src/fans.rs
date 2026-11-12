@@ -72,7 +72,7 @@ pub fn list() -> Vec<BoardFan> {
             v.push(BoardFan {
                 id: format!("{chip}@{dev}/pwm{i}"),
                 label: read_trim(d.join(format!("fan{i}_label")))
-                    .unwrap_or_else(|| crate::tf!("{chip} ventoinha {i}", "{chip} fan {i}")),
+                    .unwrap_or_else(|| crate::tf!("{chip} fan {i}", "{chip} ventoinha {i}")),
                 chip: chip.clone(),
                 rpm: read_u64(d.join(format!("fan{i}_input"))),
                 pct: read_u64(d.join(format!("pwm{i}"))).map(|p| (p as f64 * 100.0 / max).round()),
@@ -119,13 +119,13 @@ impl BoardFanControl {
     pub fn validate(&mut self) -> Result<(), String> {
         if !["cpu", "cpu0", "cpu1", "gpu", "max"].contains(&self.source.as_str()) {
             return Err(crate::tf!(
-                "fonte de temperatura inválida: {}",
                 "invalid temperature source: {}",
+                "fonte de temperatura inválida: {}",
                 self.source
             ));
         }
         if self.curve.len() < 2 {
-            return Err(crate::i18n::tr("a curva precisa de pelo menos 2 pontos").into());
+            return Err(crate::i18n::tr("the curve needs at least 2 points").into());
         }
         self.curve.sort_by(|a, b| a.0.total_cmp(&b.0));
         self.fixed_pct = self.fixed_pct.clamp(0.0, 100.0);
@@ -274,18 +274,18 @@ pub fn supermicro_mode() -> Option<u8> {
 
 pub fn supermicro_set_mode(mode: u8) -> Result<(), String> {
     if !is_supermicro() {
-        return Err(crate::i18n::tr("só em placas Supermicro").into());
+        return Err(crate::i18n::tr("Supermicro boards only").into());
     }
     ipmitool(&["raw", "0x30", "0x45", "0x01", &format!("0x{mode:02x}")])
         .map(|_| ())
-        .ok_or_else(|| crate::i18n::tr("ipmitool falhou").into())
+        .ok_or_else(|| crate::i18n::tr("ipmitool failed").into())
 }
 
 pub fn ipmi_mode_name(m: u8) -> &'static str {
     match m {
-        0 => crate::i18n::tr("padrão"),
-        1 => crate::i18n::tr("máximo"),
-        2 => crate::i18n::tr("ótimo (silencioso)"),
+        0 => crate::i18n::tr("default"),
+        1 => crate::i18n::tr("maximum"),
+        2 => crate::i18n::tr("optimal (quiet)"),
         4 => "heavy IO",
         _ => "?",
     }

@@ -27,15 +27,15 @@ impl Limits {
     pub fn validate(&self) -> Result<(), String> {
         for (n, v) in [
             ("STAPM", self.stapm_w),
-            (crate::i18n::tr("PPT rápido"), self.fast_w),
-            (crate::i18n::tr("PPT lento"), self.slow_w),
+            (crate::i18n::tr("Fast PPT"), self.fast_w),
+            (crate::i18n::tr("Slow PPT"), self.slow_w),
         ] {
             if let Some(v) = v
                 && !(5.0..=200.0).contains(&v)
             {
                 return Err(crate::tf!(
-                    "{n}: {v} W fora da faixa 5-200 W",
-                    "{n}: {v} W out of the 5-200 W range"
+                    "{n}: {v} W out of the 5-200 W range",
+                    "{n}: {v} W fora da faixa 5-200 W"
                 ));
             }
         }
@@ -43,8 +43,8 @@ impl Limits {
             && !(60.0..=105.0).contains(&t)
         {
             return Err(crate::tf!(
-                "temperatura máxima {t} °C fora da faixa 60-105 °C",
-                "maximum temperature {t} °C out of the 60-105 °C range"
+                "maximum temperature {t} °C out of the 60-105 °C range",
+                "temperatura máxima {t} °C fora da faixa 60-105 °C"
             ));
         }
         Ok(())
@@ -123,8 +123,8 @@ pub fn info() -> Result<BTreeMap<String, f64>, String> {
     if m.is_empty() {
         let err = String::from_utf8_lossy(&o.stderr);
         return Err(crate::tf!(
-            "ryzenadj -i não leu nada: {}",
             "ryzenadj -i read nothing: {}",
+            "ryzenadj -i não leu nada: {}",
             err.lines().next_back().unwrap_or("")
         ));
     }
@@ -166,8 +166,8 @@ pub fn apply(l: &Limits) -> Result<(), String> {
     );
     if !o.status.success() || out.contains("not supported") || out.contains("Failed") {
         return Err(crate::tf!(
-            "ryzenadj recusou: {}",
             "ryzenadj refused: {}",
+            "ryzenadj recusou: {}",
             out.lines().rfind(|l| !l.trim().is_empty()).unwrap_or("?")
         ));
     }

@@ -102,7 +102,7 @@ impl Response {
 
 pub fn send(req: &Request) -> Result<Response> {
     let mut s = UnixStream::connect(sock_path()).context(crate::i18n::tr(
-        "daemon não está rodando (systemctl status numapilot)",
+        "daemon is not running (systemctl status numapilot)",
     ))?;
     s.set_read_timeout(Some(Duration::from_secs(5)))?;
     // o serviço responde no idioma de quem pede

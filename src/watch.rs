@@ -122,10 +122,10 @@ pub fn run() {
             crate::notify::event(
                 "llm",
                 "llm-down",
-                crate::i18n::tr("Servidor de IA parou"),
+                crate::i18n::tr("AI server stopped"),
                 &crate::tf!(
-                    "O container do llama.cpp está \"{s}\". Veja o log na aba Servidor de IA.",
-                    "The llama.cpp container is \"{s}\". See the log in the AI server tab."
+                    "The llama.cpp container is \"{s}\". See the log in the AI server tab.",
+                    "O container do llama.cpp está \"{s}\". Veja o log na aba Servidor de IA."
                 ),
                 4,
                 Duration::from_secs(30 * 60),
@@ -157,8 +157,8 @@ pub fn run() {
                     crate::notify::event(
                         "peers",
                         &format!("up-{name}"),
-                        &crate::tf!("{name} voltou", "{name} is back"),
-                        &crate::tf!("{name} está ligado de novo.", "{name} is on again."),
+                        &crate::tf!("{name} is back", "{name} voltou"),
+                        &crate::tf!("{name} is on again.", "{name} está ligado de novo."),
                         2,
                         Duration::from_secs(60),
                     );
@@ -170,10 +170,10 @@ pub fn run() {
                     crate::notify::event(
                         "peers",
                         &format!("down-{name}"),
-                        &crate::tf!("{name} saiu da rede", "{name} left the network"),
+                        &crate::tf!("{name} left the network", "{name} saiu da rede"),
                         &crate::tf!(
-                            "{name} não responde há 3 minutos (desligou, travou ou perdeu a rede).",
-                            "{name} has not answered for 3 minutes (turned off, froze or lost the network)."
+                            "{name} has not answered for 3 minutes (turned off, froze or lost the network).",
+                            "{name} não responde há 3 minutos (desligou, travou ou perdeu a rede)."
                         ),
                         4,
                         Duration::from_secs(3600),

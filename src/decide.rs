@@ -26,8 +26,8 @@ impl Kind {
             o => bail!(
                 "{}",
                 crate::tf!(
-                    "uso deve ser auto, graphics ou compute (recebido '{o}')",
-                    "use must be auto, graphics or compute (got '{o}')"
+                    "use must be auto, graphics or compute (got '{o}')",
+                    "uso deve ser auto, graphics ou compute (recebido '{o}')"
                 )
             ),
         })
@@ -146,8 +146,8 @@ pub fn pick_gpus(
                 bail!(
                     "{}",
                     crate::tf!(
-                        "nenhuma GPU de computação (ROCm) encontrada; veja `numapilot topo`",
-                        "no compute GPU (ROCm) found; see `numapilot topo`"
+                        "no compute GPU (ROCm) found; see `numapilot topo`",
+                        "nenhuma GPU de computação (ROCm) encontrada; veja `numapilot topo`"
                     )
                 );
             }
@@ -162,8 +162,8 @@ pub fn pick_gpus(
                         bail!(
                             "{}",
                             crate::tf!(
-                                "GPU '{n}' não encontrada; veja os apelidos com `numapilot topo`",
-                                "GPU '{n}' not found; see the aliases with `numapilot topo`"
+                                "GPU '{n}' not found; see the aliases with `numapilot topo`",
+                                "GPU '{n}' não encontrada; veja os apelidos com `numapilot topo`"
                             )
                         )
                     }
@@ -221,11 +221,11 @@ pub fn decide_launch(
     let profile = profiles.get(inp.key).filter(|p| !p.is_auto());
     let rule: Option<&Rule> = cfg.find_rule(inp.idents);
     if profile.is_some() {
-        reasons.push(crate::i18n::tr("perfil salvo pela interface gráfica").into());
+        reasons.push(crate::i18n::tr("profile saved by the graphical interface").into());
     } else if let Some(r) = rule {
         reasons.push(crate::tf!(
-            "regra '{}' do config",
             "rule '{}' from the config",
+            "regra '{}' do config",
             r.label()
         ));
     }
@@ -276,13 +276,13 @@ pub fn decide_launch(
     };
     let hint = cfg.is_compute_hint(inp.idents);
     if gpu == GpuSpec::Auto && usage.is_none() && hint {
-        reasons.push(crate::i18n::tr("programa conhecido de computação → GPU ROCm").into());
+        reasons.push(crate::i18n::tr("known compute program → ROCm GPU").into());
     }
     let (gpus, kind) = pick_gpus(topo, &gpu, usage, hint)?;
     if kind == Kind::Graphics && gpus.iter().any(|g| g.role == GpuRole::Compute) {
         reasons.push(crate::tf!(
-            "renderiza na {} e a imagem vai para a placa com monitor (PRIME offload)",
             "renders on the {} and the image goes to the card with the monitor (PRIME offload)",
+            "renderiza na {} e a imagem vai para a placa com monitor (PRIME offload)",
             gpus[0].alias
         ));
     }
@@ -304,8 +304,8 @@ pub fn decide_launch(
                     bail!(
                         "{}",
                         crate::tf!(
-                            "nó {id} não existe (nós: {:?})",
                             "node {id} does not exist (nodes: {:?})",
+                            "nó {id} não existe (nós: {:?})",
                             all
                         )
                     );
@@ -325,21 +325,18 @@ pub fn decide_launch(
         CpuSpec::GpuNode | CpuSpec::Auto => {
             if cpu == CpuSpec::Auto && learned_e.is_some_and(|e| e.wide) {
                 reasons.push(
-                    crate::i18n::tr("aprendido: este programa rende mais com os 2 sockets").into(),
+                    crate::i18n::tr("learned: this program does better with both sockets").into(),
                 );
                 (all.clone(), topo.all_cpus())
             } else if !gpu_nodes.is_empty() {
                 if gpu_nodes.len() > 1 {
                     reasons.push(
-                        crate::i18n::tr(
-                            "GPUs escolhidas estão em sockets diferentes → todos os nós",
-                        )
-                        .into(),
+                        crate::i18n::tr("chosen GPUs are on different sockets → all nodes").into(),
                     );
                 } else {
                     reasons.push(crate::tf!(
-                        "nó {} é o socket ligado à GPU",
                         "node {} is the socket connected to the GPU",
+                        "nó {} é o socket ligado à GPU",
                         gpu_nodes[0]
                     ));
                 }
@@ -347,8 +344,8 @@ pub fn decide_launch(
             } else {
                 let n = least_loaded_node(topo, loads, &[]);
                 reasons.push(crate::tf!(
-                    "nó {n} é o menos ocupado ({:.0}% de uso)",
                     "node {n} is the least busy ({:.0}% usage)",
+                    "nó {n} é o menos ocupado ({:.0}% de uso)",
                     loads.get(&n).copied().unwrap_or(0.0) * 100.0
                 ));
                 (vec![n], topo.cpus_of(&[n]))
@@ -372,13 +369,13 @@ pub fn decide_launch(
             } else if p.cores.is_some() || !p.smt {
                 let v = topo.select_cpus(&nodes, p.cores, p.smt, &[]);
                 reasons.push(crate::tf!(
-                    "{} CPUs{} escolhidos no perfil",
                     "{} CPUs{} chosen in the profile",
+                    "{} CPUs{} escolhidos no perfil",
                     v.len(),
                     if p.smt {
                         ""
                     } else {
-                        crate::i18n::tr(" (sem hyper-threading)")
+                        crate::i18n::tr(" (no hyper-threading)")
                     }
                 ));
                 (topo.nodes_of(&v), v)
@@ -391,7 +388,7 @@ pub fn decide_launch(
     if cpus.is_empty() {
         bail!(
             "{}",
-            crate::tf!("nenhum CPU selecionado", "no CPU selected")
+            crate::tf!("no CPU selected", "nenhum CPU selecionado")
         );
     }
     let fg_name = inp
@@ -404,8 +401,8 @@ pub fn decide_launch(
         n => match topo.gpus.iter().find(|g| g.matches(n)) {
             Some(g) if gpus.first().is_none_or(|x| x.pci != g.pci) => {
                 reasons.push(crate::tf!(
-                    "frame generation (lsfg-vk) na {}: requer lsfg-vk com dual GPU",
                     "frame generation (lsfg-vk) on the {}: requires lsfg-vk with dual GPU",
+                    "frame generation (lsfg-vk) na {}: requer lsfg-vk com dual GPU",
                     g.alias
                 ));
                 Some(g.clone())
@@ -414,8 +411,8 @@ pub fn decide_launch(
             None => bail!(
                 "{}",
                 crate::tf!(
-                    "GPU de frame generation '{n}' não encontrada",
-                    "frame generation GPU '{n}' not found"
+                    "frame generation GPU '{n}' not found",
+                    "GPU de frame generation '{n}' não encontrada"
                 )
             ),
         },
@@ -636,9 +633,9 @@ pub fn game_warnings(topo: &Topology, d: &Decision) -> Vec<String> {
     // No notebook, a dedicada sempre renderiza e a integrada mostra a imagem (é o normal).
     if !g.display_connected && !crate::notebook::is_laptop() {
         w.push(crate::tf!(
-            "O jogo vai renderizar na {} mas o monitor está em outra placa. Alguns jogos e anti-cheats \
-             recusam isso (ex.: Crimson Desert) e a cópia entre placas custa desempenho: ligue o monitor nesta placa.", "The game will render on the {} but the monitor is on another card. Some games and anti-cheats \
-             refuse this (e.g. Crimson Desert) and copying between cards costs performance: connect the monitor to this card.",
+            "The game will render on the {} but the monitor is on another card. Some games and anti-cheats \
+             refuse this (e.g. Crimson Desert) and copying between cards costs performance: connect the monitor to this card.", "O jogo vai renderizar na {} mas o monitor está em outra placa. Alguns jogos e anti-cheats \
+             recusam isso (ex.: Crimson Desert) e a cópia entre placas custa desempenho: ligue o monitor nesta placa.",
             g.alias
         ));
     }
@@ -646,12 +643,12 @@ pub fn game_warnings(topo: &Topology, d: &Decision) -> Vec<String> {
         && !d.nodes.contains(&n)
     {
         w.push(crate::tf!(
-            "A {} está no socket {n}, mas os núcleos escolhidos estão em {:?}: cada quadro atravessa entre os processadores.", "The {} is on socket {n}, but the chosen cores are on {:?}: every frame crosses between the processors.",
+            "The {} is on socket {n}, but the chosen cores are on {:?}: every frame crosses between the processors.", "A {} está no socket {n}, mas os núcleos escolhidos estão em {:?}: cada quadro atravessa entre os processadores.",
             g.alias, d.nodes
         ));
     }
     if d.nodes.len() > 1 && topo.nodes.len() > 1 {
-        w.push(crate::i18n::tr("O jogo vai usar os dois processadores: em jogos isso costuma derrubar o FPS (latência de NUMA).").into());
+        w.push(crate::i18n::tr("The game will use both processors: in games this usually tanks the FPS (NUMA latency).").into());
     }
     let visible = if d.limit_visible {
         d.cpus.len()
@@ -660,9 +657,9 @@ pub fn game_warnings(topo: &Topology, d: &Decision) -> Vec<String> {
     };
     if visible > 32 {
         w.push(crate::tf!(
-            "O jogo vai enxergar {visible} threads. Vários jogos e o Easy Anti-Cheat falham com tantos núcleos: \
-             use o perfil \"Jogo\" (limita o que ele enxerga via WINE_CPU_TOPOLOGY).", "The game will see {visible} threads. Many games and Easy Anti-Cheat fail with that many cores: \
-             use the \"Game\" profile (limits what it sees through WINE_CPU_TOPOLOGY)."
+            "The game will see {visible} threads. Many games and Easy Anti-Cheat fail with that many cores: \
+             use the \"Game\" profile (limits what it sees through WINE_CPU_TOPOLOGY).", "O jogo vai enxergar {visible} threads. Vários jogos e o Easy Anti-Cheat falham com tantos núcleos: \
+             use o perfil \"Jogo\" (limita o que ele enxerga via WINE_CPU_TOPOLOGY)."
         ));
     }
     w

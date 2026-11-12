@@ -11,51 +11,51 @@ pub const KNOBS: &[(&str, &str, &str, &str)] = &[
     (
         "fan_speed",
         "fan_speed",
-        "Ventoinhas (CPU, GPU %)",
-        "0,0 = automático; 100,100 = máximo",
+        "Fans (CPU, GPU %)",
+        "0,0 = automatic; 100,100 = maximum",
     ),
     (
         "battery_limiter",
         "battery_limiter",
-        "Parar de carregar em 80%",
-        "aumenta a vida da bateria quando fica na tomada",
+        "Stop charging at 80%",
+        "extends battery life when it stays plugged in",
     ),
     (
         "lcd_override",
         "lcd_override",
-        "Overdrive da tela",
-        "menos rastro em movimento rápido",
+        "Display overdrive",
+        "less ghosting in fast motion",
     ),
     (
         "backlight_timeout",
         "backlight_timeout",
-        "Apagar a luz do teclado",
-        "depois de 30 s sem usar",
+        "Turn off the keyboard light",
+        "after 30 s of no use",
     ),
     (
         "usb_charging",
         "usb_charging",
-        "Carregar USB desligado",
-        "até a bateria chegar a 10, 20 ou 30% (0 = não)",
+        "USB charging while off",
+        "until the battery reaches 10, 20 or 30% (0 = no)",
     ),
     (
         "boot_animation_sound",
         "boot_animation_sound",
-        "Animação e som ao ligar",
+        "Boot animation and sound",
         "",
     ),
 ];
 
 /// Efeitos do RGB de 4 zonas (four_zone_mode).
 pub const EFFECTS: &[(u8, &str)] = &[
-    (0, "fixo"),
-    (1, "respiração"),
+    (0, "fixed"),
+    (1, "breathing"),
     (2, "neon"),
-    (3, "onda"),
-    (4, "alternando"),
+    (3, "wave"),
+    (4, "shifting"),
     (5, "zoom"),
-    (6, "meteoro"),
-    (7, "piscando"),
+    (6, "meteor"),
+    (7, "twinkling"),
 ];
 
 fn platform() -> PathBuf {
@@ -110,18 +110,18 @@ pub fn validate(key: &str, v: &str) -> Result<(), String> {
         let p: Vec<&str> = v.split(',').collect();
         if p.len() != n {
             return Err(crate::tf!(
-                "{key}: esperava {n} números separados por vírgula",
-                "{key}: expected {n} comma-separated numbers"
+                "{key}: expected {n} comma-separated numbers",
+                "{key}: esperava {n} números separados por vírgula"
             ));
         }
         for (i, x) in p.iter().enumerate() {
             let x: u32 = x.trim().parse().map_err(|_| {
-                crate::tf!("{key}: '{x}' não é número", "{key}: '{x}' is not a number")
+                crate::tf!("{key}: '{x}' is not a number", "{key}: '{x}' não é número")
             })?;
             if x > max[i.min(max.len() - 1)] {
                 return Err(crate::tf!(
-                    "{key}: {x} acima do máximo {}",
                     "{key}: {x} above the maximum {}",
+                    "{key}: {x} acima do máximo {}",
                     max[i.min(max.len() - 1)]
                 ));
             }
@@ -137,7 +137,7 @@ pub fn validate(key: &str, v: &str) -> Result<(), String> {
             if ["0", "10", "20", "30"].contains(&v) {
                 Ok(())
             } else {
-                Err("usb_charging: use 0, 10, 20 ou 30".into())
+                Err("usb_charging: use 0, 10, 20 or 30".into())
             }
         }
         // modo, velocidade, brilho, direção, r, g, b
@@ -160,8 +160,8 @@ pub fn validate(key: &str, v: &str) -> Result<(), String> {
             }
         }
         _ => Err(crate::tf!(
-            "ajuste desconhecido: {key}",
-            "unknown setting: {key}"
+            "unknown setting: {key}",
+            "ajuste desconhecido: {key}"
         )),
     }
 }
@@ -170,8 +170,8 @@ pub fn set(key: &str, v: &str) -> Result<(), String> {
     validate(key, v)?;
     let p = path_for(key).ok_or_else(|| {
         crate::tf!(
-            "{key}: o módulo linuwu_sense não expõe isso neste notebook",
-            "{key}: the linuwu_sense module does not expose this on this laptop"
+            "{key}: the linuwu_sense module does not expose this on this laptop",
+            "{key}: o módulo linuwu_sense não expõe isso neste notebook"
         )
     })?;
     std::fs::write(&p, v).map_err(|e| format!("{}: {e}", p.display()))

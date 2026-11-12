@@ -1,7 +1,5 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-
-mod help_en;
 use numapilot::config::{Config, CpuSpec, GpuSpec, MemSpec};
 use numapilot::decide::{Kind, LaunchInput, decide_launch, gpu_env, sample_node_loads};
 use numapilot::learned::{self, Learned};
@@ -16,7 +14,7 @@ use std::time::Duration;
 #[command(
     name = "numapilot",
     version,
-    about = "Escolhe socket (NUMA), memória e GPU para cada programa"
+    about = "Chooses socket (NUMA), memory and GPU for each program"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -25,42 +23,42 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Mostra nós NUMA, núcleos, memória e GPUs (com o socket de cada uma).
+    /// Shows NUMA nodes, cores, memory and GPUs (with each one's socket).
     Topo,
-    /// Executa um programa no socket/GPU escolhidos (automático por padrão).
+    /// Runs a program on the chosen socket/GPU (automatic by default).
     Run {
         /// auto | all | gpu | 0 | 1 | 0,1 | cpus:0-21
         #[arg(long, short = 'c')]
         cpu: Option<String>,
-        /// auto | display | compute | compute:2 | compute:all | none | apelido/PCI (vírgula)
+        /// auto | display | compute | compute:2 | compute:all | none | alias/PCI (comma)
         #[arg(long, short = 'g')]
         gpu: Option<String>,
         /// local | interleave | bind
         #[arg(long, short = 'm')]
         mem: Option<String>,
-        /// Como usar a GPU: graphics (jogo, mesmo numa MI50) | compute (ROCm) | auto
+        /// How to use the GPU: graphics (game, even on an MI50) | compute (ROCm) | auto
         #[arg(long = "use", short = 'u')]
         usage: Option<String>,
-        /// GPU do frame generation do Lossless Scaling (lsfg-vk). Padrão: a mesma do jogo.
+        /// GPU for Lossless Scaling frame generation (lsfg-vk). Default: the same as the game.
         #[arg(long)]
         fg_gpu: Option<String>,
-        /// Atalho para --use compute.
+        /// Shortcut for --use compute.
         #[arg(long, conflicts_with_all = ["graphics", "usage"])]
         compute: bool,
-        /// Atalho para --use graphics.
+        /// Shortcut for --use graphics.
         #[arg(long, conflicts_with = "usage")]
         graphics: bool,
-        /// Só mostra a decisão, sem executar.
+        /// Only shows the decision, without running.
         #[arg(long, short = 'n')]
         dry_run: bool,
         #[arg(trailing_var_arg = true, required = true, allow_hyphen_values = true)]
         command: Vec<String>,
     },
-    /// Daemon do modo automático (rode como serviço systemd, como root).
+    /// Automatic mode daemon (run it as a systemd service, as root).
     Daemon,
-    /// Lista os processos que o daemon está gerenciando agora.
+    /// Lists the processes the daemon is managing right now.
     Status,
-    /// Fixa um processo já em execução em um nó (ou all) e migra a memória.
+    /// Pins an already running process to a node (or all) and migrates its memory.
     Pin {
         pid: i32,
         /// 0 | 1 | all | 0,1
@@ -69,44 +67,46 @@ enum Cmd {
         #[arg(long)]
         no_migrate: bool,
     },
-    /// Testa cada parte no hardware real e diz o que corrigir.
+    /// Tests each part on the real hardware and says what to fix.
     Doctor {
-        /// Saída em JSON.
+        /// JSON output.
         #[arg(long)]
         json: bool,
-        /// Gera ~/numapilot-relatorio.txt (diagnóstico + sistema) para enviar.
+        /// Generates ~/numapilot-relatorio.txt (diagnosis + system) to send.
         #[arg(long)]
         report: bool,
     },
-    /// Opções de boot que sobrevivem às atualizações do kernel (precisa de sudo para mudar).
-    /// status | overdrive on|off | gpu-memory GiB|padrao | cmdline [add|remove PARAM...]
+    /// Boot options that survive kernel updates (needs sudo to change). status | overdrive on|off
+    /// | gpu-memory GiB|default | cmdline [add|remove PARAM...]
     Boot {
         what: String,
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },
-    /// Placas especiais (BC-250...): setup (o que falta configurar) | status |
-    /// governor-apply ARQUIVO (com sudo)
+    /// Special boards (BC-250...): setup (what is left to configure) | status | governor-apply
+    /// FILE (with sudo)
     Board {
         action: String,
         file: Option<std::path::PathBuf>,
     },
-    /// Receitas da comunidade: show | update [URL] (update com sudo)
+    /// Community recipes: show | update [URL] (update with sudo)
     Recipes { action: String, url: Option<String> },
-    /// Upscaling: fetch (baixa o OptiScaler) | status|install|remove APPID [--int8]
+    /// Upscaling: fetch (downloads OptiScaler) | status|install|remove APPID [--int8]
     Upscale {
         action: String,
         appid: Option<String>,
         #[arg(long)]
         int8: bool,
     },
-    /// Outros PCs: list | add LINK [NOME] | remove NOME | wake NOME (liga pela rede) | pull NOME [todos] (copia perfis) | backup (guarda o de todos)
+    /// Other PCs: list | add LINK [NAME] | remove NAME | wake NAME (wakes over the network) |
+    /// pull NAME [todos] (copies profiles) | backup (stores everyone's)
     Peers {
         action: String,
         arg: Option<String>,
         name: Option<String>,
     },
-    /// Máquina virtual Windows com uma placa só dela: check [GPU] | prepare GPU | unprepare | create NOME --gpu GPU --iso ARQ
+    /// Windows virtual machine with a card of its own: check [GPU] | prepare GPU | unprepare |
+    /// create NAME --gpu GPU --iso FILE
     Vm {
         action: String,
         arg: Option<String>,
@@ -114,185 +114,189 @@ enum Cmd {
         gpu: Option<String>,
         #[arg(long)]
         iso: Option<std::path::PathBuf>,
-        /// Memória (GB)
+        /// Memory (GB)
         #[arg(long, default_value_t = 16)]
         mem: u32,
-        /// Núcleos lógicos
+        /// Logical cores
         #[arg(long, default_value_t = 8)]
         cpus: usize,
-        /// Disco (GB)
+        /// Disk (GB)
         #[arg(long, default_value_t = 120)]
         disk: u32,
     },
-    /// Serviços do systemd: lista [--usuario] [--rodando|--falhas] | iniciar U | parar U |
-    /// reiniciar U | log U
-    #[command(alias = "services")]
+    /// systemd services: list [--user] [--running|--failed] | start U | stop U | restart U |
+    /// log U
+    #[command(name = "services", alias = "servicos")]
     Servicos {
         action: Option<String>,
         unit: Option<String>,
-        /// Serviços do usuário (systemctl --user) em vez dos do sistema
-        #[arg(long)]
+        /// User services (systemctl --user) instead of the system ones
+        #[arg(long = "user", alias = "usuario")]
         usuario: bool,
-        /// Só os que estão rodando
-        #[arg(long)]
+        /// Only the running ones
+        #[arg(long = "running", alias = "rodando")]
         rodando: bool,
-        /// Só os que falharam
-        #[arg(long)]
+        /// Only the failed ones
+        #[arg(long = "failed", alias = "falhas")]
         falhas: bool,
-        /// Linhas do log
-        #[arg(short = 'n', long, default_value_t = 60)]
+        /// Log lines
+        #[arg(short = 'n', long = "lines", alias = "linhas", default_value_t = 60)]
         linhas: u32,
     },
-    /// O que abre quando o sistema liga: lista | ligar ID | desligar ID | remover ID |
-    /// comando NOME "COMANDO" | arquivo CAMINHO | app BUSCA | origem ID | desinstalar ID
-    #[command(alias = "startup")]
+    /// What starts when the system boots: list | on ID | off ID | remove ID | command NAME
+    /// "COMMAND" | file PATH | app SEARCH | source ID | uninstall ID
+    #[command(name = "startup", alias = "inicio")]
     Inicio {
         action: Option<String>,
         args: Vec<String>,
-        /// desinstalar: apagar também as configurações e dados do programa
+        /// desinstalar: also delete the program's settings and data
         #[arg(long)]
         config: bool,
-        /// desinstalar: não perguntar
-        #[arg(long)]
+        /// desinstalar: do not ask
+        #[arg(long = "yes", alias = "sim")]
         sim: bool,
-        /// Segundos de espera antes de abrir (comando, arquivo, app)
-        #[arg(long, default_value_t = 0)]
+        /// Seconds to wait before starting (comando, arquivo, app)
+        #[arg(long = "delay", alias = "atraso", default_value_t = 0)]
         atraso: u32,
     },
-    /// Notebook com NVIDIA: o que abre com o sistema na integrada: status | igpu | normal
+    /// Laptop with NVIDIA: what starts with the system on the integrated GPU: status | igpu |
+    /// normal
     Autostart {
         action: Option<String>,
-        /// Só faz algo em notebook com integrada + NVIDIA (para o instalador)
+        /// Only does something on a laptop with integrated + NVIDIA (for the installer)
         #[arg(long)]
         if_hybrid: bool,
     },
-    /// Notebook com NVIDIA: status | auto | hibrido | integrada | nao-mexer | xwayland on|off
+    /// Laptop with NVIDIA: status | auto | hybrid | integrated | leave | xwayland on|off
     Hybrid {
         action: Option<String>,
         arg: Option<String>,
     },
-    /// Atualiza o próprio numapilot (pacote ou pasta do código): status | run
+    /// Updates numapilot itself (package or code folder): status | run
     #[command(name = "self-update")]
     SelfUpdate { action: Option<String> },
-    /// Undervolt automático de uma GPU (apelido ou PCI): testa passo a passo com carga e grava o último estável
+    /// Automatic undervolt of a GPU (alias or PCI): tests step by step under load and saves the
+    /// last stable one
     Undervolt {
         gpu: String,
-        /// Segundos de carga por passo
+        /// Seconds of load per step
         #[arg(long, default_value_t = 60)]
         secs: u64,
-        /// Passos de margem no fim
+        /// Margin steps at the end
         #[arg(long, default_value_t = 1)]
         margin: u32,
-        /// NVIDIA: clock máximo a travar (MHz)
+        /// NVIDIA: maximum clock to lock (MHz)
         #[arg(long)]
         clock: Option<u32>,
-        /// Tamanho do passo (MHz na NVIDIA, mV na AMD)
+        /// Step size (MHz on NVIDIA, mV on AMD)
         #[arg(long)]
         step: Option<i32>,
     },
-    /// Driver oficial da NVIDIA: status | install | update (install/update com sudo)
+    /// Official NVIDIA driver: status | install | update (install/update with sudo)
     Driver { action: String },
-    /// Guarda todas as configurações num .tar.gz (para reinstalar depois de formatar).
+    /// Stores all settings in a .tar.gz (to reinstall after formatting).
     Backup {
-        /// Arquivo ou pasta de destino (padrão: sua pasta pessoal). Guarde fora do disco do sistema.
+        /// Destination file or folder (default: your home folder). Keep it off the system disk.
         #[arg(long)]
         out: Option<std::path::PathBuf>,
     },
-    /// Restaura um backup (use sudo). Também reaplica OverDrive e parâmetros do kernel.
+    /// Restores a backup (use sudo). Also reapplies OverDrive and kernel parameters.
     Restore {
         file: std::path::PathBuf,
-        /// Não mexe no boot (OverDrive e parâmetros do kernel).
+        /// Leaves the boot alone (OverDrive and kernel parameters).
         #[arg(long)]
         no_boot: bool,
     },
-    /// Ajustes da máquina: status | mode jogo|ia|silencioso|normal
+    /// Machine settings: status | mode game|ai|quiet|normal
     Machine {
         action: String,
         value: Option<String>,
     },
-    /// Painel web para o celular (rode como usuário; veja o link com o token).
+    /// Web panel for the phone (run as your user; see the link with the token).
     Web {
         #[arg(long, default_value_t = numapilot::web::DEFAULT_PORT)]
         port: u16,
-        /// Endereço de escuta (0.0.0.0 = rede local; 127.0.0.1 = só esta máquina).
+        /// Listen address (0.0.0.0 = local network; 127.0.0.1 = this machine only).
         #[arg(long, default_value = "0.0.0.0")]
         bind: String,
-        /// Só mostra o link e sai.
+        /// Only shows the link and exits.
         #[arg(long)]
         url: bool,
     },
-    /// Otimizador de FPS: testa configurações a cada abertura do jogo (mede com o MangoHud).
+    /// FPS optimizer: tests settings each time the game starts (measures with MangoHud).
     Tune {
         /// start | status | stop | apply
         action: String,
-        /// Chave do programa (ex.: steam:1245620); em status, opcional.
+        /// Program key (e.g. steam:1245620); optional in status.
         key: Option<String>,
     },
-    /// Steam: coloca (ou tira) o numapilot nas opções de inicialização de todos os jogos.
+    /// Steam: puts numapilot in (or removes it from) the launch options of every game.
     Steam {
         /// enable | disable | list
         action: String,
     },
-    /// Mede a latência e a banda de memória entre os sockets.
+    /// Measures memory latency and bandwidth between the sockets.
     Bench {
-        /// Tamanho do buffer por teste (MB).
+        /// Buffer size per test (MB).
         #[arg(long, default_value_t = 128)]
         size_mb: usize,
-        /// Threads no teste de banda.
+        /// Threads in the bandwidth test.
         #[arg(long, default_value_t = 8)]
         threads: usize,
     },
-    /// Perfis por programa (os mesmos da interface gráfica).
+    /// Per-program profiles (the same as in the graphical interface).
     Profile {
         #[command(subcommand)]
         action: ProfileCmd,
     },
-    /// Imprime os IDs ROCR_VISIBLE_DEVICES das GPUs de computação (para scripts).
+    /// Prints the ROCR_VISIBLE_DEVICES IDs of the compute GPUs (for scripts).
     #[command(name = "rocr-ids")]
     RocrIds,
-    /// Confere a escolha de placa: roda vulkaninfo e glxinfo como um jogo rodaria em cada placa
-    /// e diz qual respondeu.
+    /// Checks the card selection: runs vulkaninfo and glxinfo the way a game would on each card
+    /// and says which one answered.
     GpuTest {
-        /// Só esta placa (apelido, ex.: amd-0). Sem isso, todas.
+        /// Only this card (alias, e.g. amd-0). Without it, all of them.
         gpu: Option<String>,
         #[arg(long)]
         json: bool,
     },
-    /// Mede a latência do cache em cada núcleo e passa a preferir os mais rápidos (se a diferença
-    /// for maior que o ruído). Deixe o PC parado; leva alguns segundos.
+    /// Measures the cache latency of each core and starts preferring the fastest ones (if the
+    /// difference is larger than the noise). Leave the PC idle; takes a few seconds.
     BenchCores {
-        /// Só mostra a última medição guardada.
-        #[arg(long)]
+        /// Only shows the last saved measurement.
+        #[arg(long = "show", alias = "mostrar")]
         mostrar: bool,
-        /// Apaga a medição (a escolha de núcleos volta à ordem do sistema).
-        #[arg(long)]
+        /// Deletes the measurement (core choice goes back to the system order).
+        #[arg(long = "clear", alias = "apagar")]
         apagar: bool,
     },
-    /// Turbo por núcleos acordados: a tabela do processador e quantos núcleos estão acordados agora.
+    /// Turbo by awake cores: the processor's table and how many cores are awake right now.
     Turbo,
-    /// Mostra o final dos registros (serviço, programa gráfico, linha de comando) e do journal.
+    /// Shows the end of the logs (service, graphical program, command line) and of the journal.
     Log {
-        /// Linhas de cada registro.
+        /// Lines from each log.
         #[arg(short = 'n', default_value_t = 40)]
         lines: usize,
-        /// Só este: servico | gui | cli | tray | web
+        /// Only this one: service | gui | cli | tray | web
         which: Option<String>,
     },
-    /// Testa todas as partes do numapilot nesta máquina (só lê, não muda nada) e grava um relatório.
+    /// Tests every part of numapilot on this machine (read-only, changes nothing) and writes a
+    /// report.
+    #[command(name = "selftest", alias = "autoteste")]
     Autoteste {
-        /// Arquivo do relatório (padrão: ~/numapilot-autoteste-MAQUINA-DATA.txt).
-        #[arg(long)]
+        /// Report file (default: ~/numapilot-autoteste-MACHINE-DATE.txt).
+        #[arg(long = "out", alias = "saida")]
         saida: Option<std::path::PathBuf>,
-        /// Pula os testes que rodam os comandos do numapilot um por um.
-        #[arg(long)]
+        /// Skips the tests that run numapilot's commands one by one.
+        #[arg(long = "quick", alias = "rapido")]
         rapido: bool,
-        /// Saída em JSON (na tela).
+        /// JSON output (on screen).
         #[arg(long)]
         json: bool,
     },
-    /// Mostra ou apaga o que o modo automático aprendeu.
+    /// Shows or deletes what automatic mode has learned.
     Learned {
-        /// Apaga o aprendizado de programas cujo caminho contém este texto.
+        /// Deletes what was learned about programs whose path contains this text.
         #[arg(long)]
         forget: Option<String>,
     },
@@ -300,9 +304,9 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum ProfileCmd {
-    /// Lista os perfis salvos.
+    /// Lists the saved profiles.
     List,
-    /// Salva um perfil. KEY é o executável (caminho completo) ou steam:APPID.
+    /// Saves a profile. KEY is the executable (full path) or steam:APPID.
     Set {
         key: String,
         #[arg(long, default_value = "auto")]
@@ -312,14 +316,15 @@ enum ProfileCmd {
         #[arg(long = "use", default_value = "auto")]
         usage: String,
     },
-    /// Apaga um perfil (o programa volta para o automático).
+    /// Deletes a profile (the program goes back to automatic).
     Rm { key: String },
-    /// Grava todas as escolhas num arquivo, para levar a outro PC ou compartilhar.
+    /// Writes all choices to a file, to take to another PC or share.
     Export {
-        /// Arquivo (padrão: ~/numapilot-escolhas-MAQUINA.json).
+        /// File (default: ~/numapilot-escolhas-MACHINE.json).
         file: Option<std::path::PathBuf>,
     },
-    /// Traz as escolhas de um arquivo exportado (as daqui com a mesma chave são trocadas).
+    /// Brings in the choices from an exported file (the ones here with the same key are
+    /// replaced).
     Import { file: std::path::PathBuf },
 }
 
@@ -332,20 +337,14 @@ fn main() {
         numapilot::log::error(&format!("{e:#}"));
         eprintln!(
             "{}",
-            numapilot::tf!("numapilot: erro: {e:#}", "numapilot: error: {e:#}")
+            numapilot::tf!("numapilot: error: {e:#}", "numapilot: erro: {e:#}")
         );
         std::process::exit(1);
     }
 }
 
 fn real_main() -> Result<()> {
-    let cli = if numapilot::i18n::english() {
-        use clap::{CommandFactory, FromArgMatches};
-        let m = help_en::localize(Cli::command()).get_matches();
-        Cli::from_arg_matches(&m).unwrap_or_else(|e| e.exit())
-    } else {
-        Cli::parse()
-    };
+    let cli = Cli::parse();
     match &cli.cmd {
         Cmd::Daemon => numapilot::log::init("daemon"),
         Cmd::Web { .. } => numapilot::log::init("web"),
@@ -384,7 +383,7 @@ fn real_main() -> Result<()> {
             println!("{}", r.summary());
             println!(
                 "{}",
-                numapilot::tf!("Relatório: {}", "Report: {}", path.display())
+                numapilot::tf!("Report: {}", "Relatório: {}", path.display())
             );
             if r.failed() > 0 {
                 std::process::exit(2);
@@ -427,8 +426,8 @@ fn real_main() -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "\nRelatório salvo em {}: é só me mandar esse arquivo.",
                         "\nReport saved to {}: just send me that file.",
+                        "\nRelatório salvo em {}: é só me mandar esse arquivo.",
                         p.display()
                     )
                 );
@@ -447,8 +446,8 @@ fn real_main() -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "Nenhuma placa especial conhecida neste PC.",
-                        "No known special board in this PC."
+                        "No known special board in this PC.",
+                        "Nenhuma placa especial conhecida neste PC."
                     )
                 );
                 return Ok(());
@@ -461,8 +460,8 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "{} ({}): primeira configuração: {}",
                                 "{} ({}): first setup: {}",
+                                "{} ({}): primeira configuração: {}",
                                 b.name,
                                 g.alias,
                                 numapilot::boards::setup_summary(&steps)
@@ -470,9 +469,9 @@ fn real_main() -> Result<()> {
                         );
                         for s in &steps {
                             let tag = match s.state {
-                                StepState::Ok => numapilot::i18n::tr("pronto  "),
-                                StepState::Todo => numapilot::i18n::tr("FALTA   "),
-                                StepState::Opcional => numapilot::i18n::tr("opcional"),
+                                StepState::Ok => numapilot::i18n::tr("ready   "),
+                                StepState::Todo => numapilot::i18n::tr("MISSING "),
+                                StepState::Opcional => numapilot::i18n::tr("optional"),
                             };
                             println!("  {tag} {}: {}", s.title, s.detail);
                         }
@@ -490,16 +489,16 @@ fn real_main() -> Result<()> {
                                 "  governor {}: {}",
                                 s.name,
                                 if s.active {
-                                    numapilot::i18n::tr("rodando")
+                                    numapilot::i18n::tr("running")
                                 } else {
-                                    numapilot::i18n::tr("parado")
+                                    numapilot::i18n::tr("stopped")
                                 }
                             );
                         }
                         if let Some(c) = numapilot::boards::governor_config(b) {
                             println!(
                                 "{}",
-                                numapilot::tf!("  configuração: {c}", "  configuration: {c}")
+                                numapilot::tf!("  configuration: {c}", "  configuração: {c}")
                             );
                         }
                         for n in &b.notes {
@@ -509,20 +508,20 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
                 "governor-apply" => {
-                    let f = file.context(numapilot::i18n::tr("faltou o arquivo"))?;
+                    let f = file.context(numapilot::i18n::tr("the file is missing"))?;
                     let b = boards
                         .iter()
                         .map(|x| x.0)
                         .find(|b| !b.governor_configs.is_empty())
-                        .context(numapilot::i18n::tr("nenhuma placa com governor"))?;
+                        .context(numapilot::i18n::tr("no board with a governor"))?;
                     numapilot::boards::governor_apply(b, &f, &mut |m| println!("{m}"))
                         .map_err(|e| anyhow::anyhow!(e))
                 }
                 _ => bail!(
                     "{}",
                     numapilot::tf!(
-                        "use: numapilot board status | sudo numapilot board governor-apply ARQUIVO",
-                        "usage: numapilot board status | sudo numapilot board governor-apply FILE"
+                        "usage: numapilot board status | sudo numapilot board governor-apply FILE",
+                        "use: numapilot board status | sudo numapilot board governor-apply ARQUIVO"
                     )
                 ),
             }
@@ -533,8 +532,8 @@ fn real_main() -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "Receitas versão {}: {} placas, {} processadores, {} arquiteturas",
                         "Recipes version {}: {} boards, {} processors, {} architectures",
+                        "Receitas versão {}: {} placas, {} processadores, {} arquiteturas",
                         r.version,
                         r.board.len(),
                         r.cpu.len(),
@@ -547,8 +546,8 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "  {}: {} · computação {} · upscaling {}",
                                 "  {}: {} · compute {} · upscaling {}",
+                                "  {}: {} · computação {} · upscaling {}",
                                 g.alias,
                                 a.family,
                                 a.compute,
@@ -568,8 +567,8 @@ fn real_main() -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "Receitas atualizadas (versão {v}).",
-                        "Recipes updated (version {v})."
+                        "Recipes updated (version {v}).",
+                        "Receitas atualizadas (versão {v})."
                     )
                 );
                 Ok(())
@@ -577,8 +576,8 @@ fn real_main() -> Result<()> {
             _ => bail!(
                 "{}",
                 numapilot::tf!(
-                    "use: numapilot recipes show | sudo numapilot recipes update [URL]",
-                    "usage: numapilot recipes show | sudo numapilot recipes update [URL]"
+                    "usage: numapilot recipes show | sudo numapilot recipes update [URL]",
+                    "use: numapilot recipes show | sudo numapilot recipes update [URL]"
                 )
             ),
         },
@@ -592,23 +591,22 @@ fn real_main() -> Result<()> {
                 let v = upscale::fetch(&mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))?;
                 println!(
                     "{}",
-                    numapilot::tf!("OptiScaler {v} pronto.", "OptiScaler {v} ready.")
+                    numapilot::tf!("OptiScaler {v} ready.", "OptiScaler {v} pronto.")
                 );
                 return Ok(());
             }
-            let id = appid.context(numapilot::i18n::tr("faltou o appid da Steam"))?;
-            let root = upscale::steam_game_root(&id).context(numapilot::i18n::tr(
-                "jogo não encontrado nas bibliotecas da Steam",
-            ))?;
+            let id = appid.context(numapilot::i18n::tr("the Steam appid is missing"))?;
+            let root = upscale::steam_game_root(&id)
+                .context(numapilot::i18n::tr("game not found in the Steam libraries"))?;
             let dir = upscale::exe_dir(&root)
-                .context(numapilot::i18n::tr("não achei o executável do jogo"))?;
+                .context(numapilot::i18n::tr("could not find the game's executable"))?;
             match action.as_str() {
                 "status" => {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "Pasta do executável: {}",
                             "Executable folder: {}",
+                            "Pasta do executável: {}",
                             dir.display()
                         )
                     );
@@ -616,15 +614,15 @@ fn real_main() -> Result<()> {
                         Some(i) => println!(
                             "{}",
                             numapilot::tf!(
-                                "OptiScaler {} instalado ({} arquivos)",
                                 "OptiScaler {} installed ({} files)",
+                                "OptiScaler {} instalado ({} arquivos)",
                                 i.version,
                                 i.files.len()
                             )
                         ),
                         None => println!(
                             "{}",
-                            numapilot::tf!("OptiScaler não instalado", "OptiScaler not installed")
+                            numapilot::tf!("OptiScaler not installed", "OptiScaler não instalado")
                         ),
                     }
                     Ok(())
@@ -637,8 +635,8 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "OptiScaler {v} instalado em {}. Não use em jogos online (anti-cheat pode banir).",
                             "OptiScaler {v} installed in {}. Do not use it in online games (the anti-cheat may ban you).",
+                            "OptiScaler {v} instalado em {}. Não use em jogos online (anti-cheat pode banir).",
                             dir.display()
                         )
                     );
@@ -649,8 +647,8 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "OptiScaler removido de {}",
                             "OptiScaler removed from {}",
+                            "OptiScaler removido de {}",
                             dir.display()
                         )
                     );
@@ -659,8 +657,8 @@ fn real_main() -> Result<()> {
                 _ => bail!(
                     "{}",
                     numapilot::tf!(
-                        "use: numapilot upscale fetch | status|install|remove APPID [--int8]",
-                        "usage: numapilot upscale fetch | status|install|remove APPID [--int8]"
+                        "usage: numapilot upscale fetch | status|install|remove APPID [--int8]",
+                        "use: numapilot upscale fetch | status|install|remove APPID [--int8]"
                     )
                 ),
             }
@@ -681,8 +679,8 @@ fn real_main() -> Result<()> {
                             s["hot"]
                                 .as_f64()
                                 .map(|t| numapilot::tf!(
-                                    "GPU mais quente {t:.0} °C",
-                                    "hottest GPU {t:.0} °C"
+                                    "hottest GPU {t:.0} °C",
+                                    "GPU mais quente {t:.0} °C"
                                 ))
                                 .unwrap_or_default()
                         );
@@ -692,27 +690,27 @@ fn real_main() -> Result<()> {
                 "add" => {
                     let p = peers::add(
                         &arg.context(numapilot::i18n::tr(
-                            "faltou o link (o do QR code do outro PC)",
+                            "the link is missing (the one from the other PC's QR code)",
                         ))?,
                         name.as_deref(),
                     )
                     .map_err(|e| anyhow::anyhow!(e))?;
                     println!(
                         "{}",
-                        numapilot::tf!("{} adicionado ({})", "{} added ({})", p.name, p.url)
+                        numapilot::tf!("{} added ({})", "{} adicionado ({})", p.name, p.url)
                     );
                     Ok(())
                 }
                 "remove" => {
-                    peers::remove(&arg.context(numapilot::i18n::tr("faltou o nome"))?)
+                    peers::remove(&arg.context(numapilot::i18n::tr("the name is missing"))?)
                         .map_err(|e| anyhow::anyhow!(e))?;
-                    println!("{}", numapilot::i18n::tr("removido"));
+                    println!("{}", numapilot::i18n::tr("removed"));
                     Ok(())
                 }
                 "pull" => {
                     let m = peers::pull_profiles(
-                        &arg.context(numapilot::i18n::tr("faltou o nome"))?,
-                        name.as_deref() == Some("todos"),
+                        &arg.context(numapilot::i18n::tr("the name is missing"))?,
+                        matches!(name.as_deref(), Some("todos" | "all")),
                     )
                     .map_err(|e| anyhow::anyhow!(e))?;
                     println!("{m}");
@@ -725,7 +723,7 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
                 "wake" => {
-                    let m = peers::wake(&arg.context(numapilot::i18n::tr("faltou o nome"))?)
+                    let m = peers::wake(&arg.context(numapilot::i18n::tr("the name is missing"))?)
                         .map_err(|e| anyhow::anyhow!(e))?;
                     println!("{m}");
                     Ok(())
@@ -733,8 +731,8 @@ fn real_main() -> Result<()> {
                 _ => bail!(
                     "{}",
                     numapilot::tf!(
-                        "use: numapilot peers list | add LINK [NOME] | remove NOME | wake NOME | pull NOME [todos] | backup",
-                        "usage: numapilot peers list | add LINK [NAME] | remove NAME | wake NAME | pull NAME [todos] | backup"
+                        "usage: numapilot peers list | add LINK [NAME] | remove NAME | wake NAME | pull NAME [all] | backup",
+                        "use: numapilot peers list | add LINK [NOME] | remove NOME | wake NOME | pull NOME [all] | backup"
                     )
                 ),
             }
@@ -766,7 +764,7 @@ fn real_main() -> Result<()> {
                             if c.ok {
                                 " ok "
                             } else {
-                                numapilot::i18n::tr("falta")
+                                numapilot::t2!("missing", "falta")
                             },
                             c.name,
                             if c.detail.is_empty() {
@@ -784,8 +782,8 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "(diga a placa para conferir ela também: numapilot vm check rx470-0)",
-                                "(name the card to check it too: numapilot vm check rx470-0)"
+                                "(name the card to check it too: numapilot vm check rx470-0)",
+                                "(diga a placa para conferir ela também: numapilot vm check rx470-0)"
                             )
                         );
                     }
@@ -796,20 +794,19 @@ fn real_main() -> Result<()> {
                         .as_deref()
                         .or(gpu.as_deref())
                         .and_then(find)
-                        .context(numapilot::i18n::tr("diga a placa (veja numapilot topo)"))?;
+                        .context(numapilot::i18n::tr("name the card (see numapilot topo)"))?;
                     vm::prepare(&topo, &g, &mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
                 }
                 "unprepare" => {
                     vm::unprepare(&mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))
                 }
                 "create" => {
-                    let name = arg.context(numapilot::i18n::tr("diga o nome da VM"))?;
+                    let name = arg.context(numapilot::i18n::tr("name the VM"))?;
                     let g = gpu
                         .as_deref()
                         .and_then(find)
-                        .context(numapilot::i18n::tr("--gpu PLACA"))?;
-                    let iso =
-                        iso.context(numapilot::i18n::tr("--iso arquivo do Windows (.iso)"))?;
+                        .context(numapilot::i18n::tr("--gpu CARD"))?;
+                    let iso = iso.context(numapilot::i18n::tr("--iso Windows file (.iso)"))?;
                     vm::create(
                         &topo,
                         &g,
@@ -825,8 +822,8 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "VM {name} criada: abra no virt-manager para instalar o Windows. Depois instale o driver da placa dentro dela.",
-                            "VM {name} created: open it in virt-manager to install Windows. Then install the card's driver inside it."
+                            "VM {name} created: open it in virt-manager to install Windows. Then install the card's driver inside it.",
+                            "VM {name} criada: abra no virt-manager para instalar o Windows. Depois instale o driver da placa dentro dela."
                         )
                     );
                     Ok(())
@@ -834,8 +831,8 @@ fn real_main() -> Result<()> {
                 _ => bail!(
                     "{}",
                     numapilot::tf!(
-                        "use: numapilot vm check [GPU] | sudo numapilot vm prepare GPU | sudo numapilot vm unprepare | numapilot vm create NOME --gpu GPU --iso ARQ.iso [--mem 16 --cpus 8 --disk 120]",
-                        "usage: numapilot vm check [GPU] | sudo numapilot vm prepare GPU | sudo numapilot vm unprepare | numapilot vm create NAME --gpu GPU --iso FILE.iso [--mem 16 --cpus 8 --disk 120]"
+                        "usage: numapilot vm check [GPU] | sudo numapilot vm prepare GPU | sudo numapilot vm unprepare | numapilot vm create NAME --gpu GPU --iso FILE.iso [--mem 16 --cpus 8 --disk 120]",
+                        "use: numapilot vm check [GPU] | sudo numapilot vm prepare GPU | sudo numapilot vm unprepare | numapilot vm create NOME --gpu GPU --iso ARQ.iso [--mem 16 --cpus 8 --disk 120]"
                     )
                 ),
             }
@@ -852,18 +849,26 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "{} (vale para o próximo Xwayland: saia e entre na sessão, ou feche os programas X11)",
                             "{} (applies to the next Xwayland: log out and in, or close the X11 programs)",
+                            "{} (vale para o próximo Xwayland: saia e entre na sessão, ou feche os programas X11)",
                             if on {
-                                numapilot::i18n::tr("Xwayland usando só o Mesa")
+                                numapilot::i18n::tr("Xwayland using only Mesa")
                             } else {
-                                numapilot::i18n::tr("Xwayland normal")
+                                numapilot::i18n::tr("normal Xwayland")
                             }
                         )
                     );
                     Ok(())
                 }
-                "auto" | "hibrido" | "integrada" | "nao-mexer" => {
+                "auto" | "hibrido" | "integrada" | "nao-mexer" | "hybrid" | "integrated"
+                | "leave" => {
+                    // nomes em inglês na linha de comando; o valor guardado não muda
+                    let act = match act {
+                        "hybrid" => "hibrido",
+                        "integrated" => "integrada",
+                        "leave" => "nao-mexer",
+                        o => o,
+                    };
                     hybrid::remove_login_files();
                     let mut m = numapilot::machine::Machine::load();
                     m.dgpu_mode = (act != "nao-mexer").then(|| act.to_string());
@@ -875,8 +880,8 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "modo da NVIDIA: {act} (o serviço aplica em segundos, sem sair da sessão)",
-                            "NVIDIA mode: {act} (the service applies it within seconds, without leaving the session)"
+                            "NVIDIA mode: {act} (the service applies it within seconds, without leaving the session)",
+                            "modo da NVIDIA: {act} (o serviço aplica em segundos, sem sair da sessão)"
                         )
                     );
                     Ok(())
@@ -897,7 +902,7 @@ fn real_main() -> Result<()> {
                                             "{}{}",
                                             o.name,
                                             if o.connected {
-                                                numapilot::i18n::tr(" [tela]")
+                                                numapilot::i18n::tr(" [display]")
                                             } else {
                                                 ""
                                             }
@@ -911,8 +916,8 @@ fn real_main() -> Result<()> {
                             println!(
                                 "{}",
                                 numapilot::tf!(
-                                    "{}: desligada pelo numapilot (fora do sistema)",
                                     "{}: turned off by numapilot (removed from the system)",
+                                    "{}: desligada pelo numapilot (fora do sistema)",
                                     st.as_ref().map(|s| s.alias.as_str()).unwrap_or("NVIDIA")
                                 )
                             );
@@ -921,8 +926,8 @@ fn real_main() -> Result<()> {
                             println!(
                                 "{}",
                                 numapilot::tf!(
-                                    "Não é um notebook com placa integrada + NVIDIA.",
-                                    "Not a laptop with an integrated card + NVIDIA."
+                                    "Not a laptop with an integrated card + NVIDIA.",
+                                    "Não é um notebook com placa integrada + NVIDIA."
                                 )
                             );
                             return Ok(());
@@ -932,11 +937,11 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "Energia: {}",
                             "Power: {}",
+                            "Energia: {}",
                             match numapilot::notebook::on_ac() {
-                                Some(true) => numapilot::i18n::tr("tomada"),
-                                Some(false) => numapilot::i18n::tr("bateria"),
+                                Some(true) => numapilot::i18n::tr("AC power"),
+                                Some(false) => numapilot::i18n::tr("battery"),
                                 None => "?",
                             }
                         )
@@ -944,12 +949,12 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "Modo: {}",
                             "Mode: {}",
+                            "Modo: {}",
                             m.as_deref()
                                 .and_then(|m| hybrid::MODES.iter().find(|x| x.0 == m))
                                 .map(|x| numapilot::i18n::tr(x.1))
-                                .unwrap_or(numapilot::i18n::tr("não mexer"))
+                                .unwrap_or(numapilot::i18n::tr("leave as is"))
                         )
                     );
                     if let Some(st) = &st {
@@ -957,8 +962,8 @@ fn real_main() -> Result<()> {
                             println!(
                                 "{}",
                                 numapilot::tf!(
-                                    "Esperando para desligar: em uso por {}",
                                     "Waiting to turn off: in use by {}",
+                                    "Esperando para desligar: em uso por {}",
                                     st.blocked_by.join(", ")
                                 )
                             );
@@ -972,8 +977,8 @@ fn real_main() -> Result<()> {
                             println!(
                                 "{}",
                                 numapilot::tf!(
-                                    "O KDE segura a saída de vídeo da NVIDIA: ela não é tirada do sistema, mas dorme sozinha ({}).",
                                     "KDE holds the NVIDIA's video output: it is not removed from the system, but sleeps by itself ({}).",
+                                    "O KDE segura a saída de vídeo da NVIDIA: ela não é tirada do sistema, mas dorme sozinha ({}).",
                                     numapilot::notebook::dgpu_state(&st.pci)
                                 )
                             );
@@ -982,9 +987,9 @@ fn real_main() -> Result<()> {
                     println!(
                         "Xwayland: {}",
                         if hybrid::xwayland_wrapped() {
-                            numapilot::i18n::tr("só Mesa (não prende a NVIDIA)")
+                            numapilot::i18n::tr("Mesa only (does not hold the NVIDIA)")
                         } else {
-                            numapilot::i18n::tr("normal (pode prender a NVIDIA)")
+                            numapilot::i18n::tr("normal (may hold the NVIDIA)")
                         }
                     );
                     Ok(())
@@ -1005,7 +1010,7 @@ fn real_main() -> Result<()> {
                 let u = u.as_deref().ok_or_else(|| {
                     anyhow::anyhow!(
                         "{}",
-                        numapilot::tf!("falta o nome do serviço", "the service name is missing")
+                        numapilot::tf!("the service name is missing", "falta o nome do serviço")
                     )
                 })?;
                 let full = if u.contains('.') {
@@ -1017,12 +1022,12 @@ fn real_main() -> Result<()> {
                     anyhow::anyhow!(
                         "{}",
                         numapilot::tf!(
-                            "serviço {full} não encontrado{}",
                             "service {full} not found{}",
+                            "serviço {full} não encontrado{}",
                             if usuario {
                                 ""
                             } else {
-                                numapilot::i18n::tr(" (do usuário? use --usuario)")
+                                numapilot::i18n::tr(" (a user service? use --user)")
                             }
                         )
                     )
@@ -1063,7 +1068,7 @@ fn real_main() -> Result<()> {
                 "reiniciar" | "restart" => Verb::Restart,
                 o => bail!(
                     "{}",
-                    numapilot::tf!("ação desconhecida: {o}", "unknown action: {o}")
+                    numapilot::tf!("unknown action: {o}", "ação desconhecida: {o}")
                 ),
             };
             let s = find(&unit)?;
@@ -1073,8 +1078,8 @@ fn real_main() -> Result<()> {
                 bail!(
                     "{}",
                     numapilot::tf!(
-                        "{} terminou com erro",
                         "{} finished with an error",
+                        "{} terminou com erro",
                         c.join(" ")
                     )
                 );
@@ -1100,8 +1105,8 @@ fn real_main() -> Result<()> {
                         anyhow::anyhow!(
                             "{}",
                             numapilot::tf!(
-                                "não achei \"{id}\" (veja numapilot inicio lista)",
-                                "could not find \"{id}\" (see numapilot inicio lista)"
+                                "could not find \"{id}\" (see numapilot startup list)",
+                                "não achei \"{id}\" (veja numapilot startup list)"
                             )
                         )
                     })
@@ -1111,8 +1116,8 @@ fn real_main() -> Result<()> {
                     anyhow::anyhow!(
                         "{}",
                         numapilot::tf!(
-                            "falta um argumento (veja numapilot inicio --help)",
-                            "an argument is missing (see numapilot inicio --help)"
+                            "an argument is missing (see numapilot startup --help)",
+                            "falta um argumento (veja numapilot startup --help)"
                         )
                     )
                 })
@@ -1127,9 +1132,9 @@ fn real_main() -> Result<()> {
                         }
                         let now = match (i.running, i.mem) {
                             (true, Some(m)) => {
-                                numapilot::tf!("rodando, {} MB", "running, {} MB", m / 1048576)
+                                numapilot::tf!("running, {} MB", "rodando, {} MB", m / 1048576)
                             }
-                            (true, None) => numapilot::i18n::tr("rodando").into(),
+                            (true, None) => numapilot::i18n::tr("running").into(),
                             _ => String::new(),
                         };
                         println!(
@@ -1140,7 +1145,7 @@ fn real_main() -> Result<()> {
                             now,
                             i.id,
                             if i.protected.is_some() {
-                                numapilot::i18n::tr(" (protegido)")
+                                numapilot::i18n::tr(" (protected)")
                             } else {
                                 ""
                             }
@@ -1148,18 +1153,18 @@ fn real_main() -> Result<()> {
                     }
                     Ok(())
                 }
-                v @ ("ligar" | "desligar" | "on" | "off") => {
+                v @ ("ligar" | "desligar" | "on" | "off" | "enable" | "disable") => {
                     let it = find(&arg(0)?)?;
-                    let on = matches!(v, "ligar" | "on");
+                    let on = matches!(v, "ligar" | "on" | "enable");
                     match startup::set_enabled(&it, on).map_err(|e| anyhow::anyhow!(e))? {
                         Action::Done => {
                             println!(
                                 "{}: {}",
                                 it.name,
                                 if on {
-                                    numapilot::i18n::tr("ligado")
+                                    numapilot::i18n::tr("on")
                                 } else {
-                                    numapilot::i18n::tr("desligado")
+                                    numapilot::i18n::tr("off")
                                 }
                             )
                         }
@@ -1169,8 +1174,8 @@ fn real_main() -> Result<()> {
                                 bail!(
                                     "{}",
                                     numapilot::tf!(
-                                        "{} terminou com erro",
                                         "{} finished with an error",
+                                        "{} terminou com erro",
                                         c.join(" ")
                                     )
                                 );
@@ -1179,7 +1184,7 @@ fn real_main() -> Result<()> {
                     }
                     Ok(())
                 }
-                v @ ("origem" | "desinstalar") => {
+                v @ ("origem" | "desinstalar" | "source" | "uninstall") => {
                     use numapilot::origin;
                     let it = find(&arg(0)?)?;
                     let t = origin::trace(&it.exec, it.file.as_deref());
@@ -1188,14 +1193,14 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "  abre por:   {}{}",
                                 "  started by: {}{}",
+                                "  abre por:   {}{}",
                                 f.display(),
                                 t.file_pkg
                                     .as_ref()
                                     .map(|p| numapilot::tf!(
-                                        " (do pacote {p})",
-                                        " (from package {p})"
+                                        " (from package {p})",
+                                        " (do pacote {p})"
                                     ))
                                     .unwrap_or_default()
                             )
@@ -1203,30 +1208,30 @@ fn real_main() -> Result<()> {
                     }
                     println!(
                         "{}",
-                        numapilot::tf!("  comando:    {}", "  command:    {}", it.exec)
+                        numapilot::tf!("  command:    {}", "  comando:    {}", it.exec)
                     );
                     if let Some(e) = &t.exe {
                         println!(
                             "{}",
-                            numapilot::tf!("  programa:   {}", "  program:    {}", e.display())
+                            numapilot::tf!("  program:    {}", "  programa:   {}", e.display())
                         );
                     }
                     println!(
                         "{}",
-                        numapilot::tf!("  origem:     {}", "  source:     {}", t.source.text())
+                        numapilot::tf!("  source:     {}", "  origem:     {}", t.source.text())
                     );
                     if let Some(d) = &t.description {
                         println!(
                             "{}",
-                            numapilot::tf!("  descrição:  {d}", "  description: {d}")
+                            numapilot::tf!("  description: {d}", "  descrição:  {d}")
                         );
                     }
                     if let Some(sz) = t.size.filter(|s| *s > 0) {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "  tamanho:    {:.1} MB",
                                 "  size:       {:.1} MB",
+                                "  tamanho:    {:.1} MB",
                                 sz as f64 / 1048576.0
                             )
                         );
@@ -1234,13 +1239,13 @@ fn real_main() -> Result<()> {
                     if let Some(d) = &t.app_dir {
                         println!(
                             "{}",
-                            numapilot::tf!("  pasta:      {}", "  folder:     {}", d.display())
+                            numapilot::tf!("  folder:     {}", "  pasta:      {}", d.display())
                         );
                     }
                     for c in &t.configs {
                         println!("  config:     {}", c.display());
                     }
-                    if v == "origem" {
+                    if matches!(v, "origem" | "source") {
                         return Ok(());
                     }
                     let unit = it
@@ -1253,26 +1258,26 @@ fn real_main() -> Result<()> {
                         bail!(
                             "{}",
                             numapilot::tf!(
-                                "não dá para desinstalar: {why}",
-                                "cannot be uninstalled: {why}"
+                                "cannot be uninstalled: {why}",
+                                "não dá para desinstalar: {why}"
                             )
                         );
                     }
-                    println!("{}", numapilot::tf!("\nVai fazer:", "\nIt will run:"));
+                    println!("{}", numapilot::tf!("\nIt will run:", "\nVai fazer:"));
                     for s in &plan.steps {
                         println!("  - {s}");
                     }
                     if !sim {
                         print!(
                             "{}",
-                            numapilot::tf!("Continuar? [s/N] ", "Continue? [y/N] ")
+                            numapilot::tf!("Continue? [y/N] ", "Continuar? [s/N] ")
                         );
                         use std::io::Write;
                         std::io::stdout().flush()?;
                         let mut a = String::new();
                         std::io::stdin().read_line(&mut a)?;
                         if !["s", "y"].contains(&a.trim().to_lowercase().as_str()) {
-                            println!("{}", numapilot::tf!("Nada feito.", "Nothing done."));
+                            println!("{}", numapilot::tf!("Nothing done.", "Nada feito."));
                             return Ok(());
                         }
                     }
@@ -1281,7 +1286,7 @@ fn real_main() -> Result<()> {
                     if let Some(r) = refused {
                         eprintln!(
                             "{}",
-                            numapilot::tf!("(não encerrei: {r})", "(not closed: {r})")
+                            numapilot::tf!("(not closed: {r})", "(não encerrei: {r})")
                         );
                     }
                     let st = std::process::Command::new("sh")
@@ -1291,34 +1296,34 @@ fn real_main() -> Result<()> {
                         bail!(
                             "{}",
                             numapilot::tf!(
-                                "a desinstalação terminou com erro",
-                                "the uninstall finished with an error"
+                                "the uninstall finished with an error",
+                                "a desinstalação terminou com erro"
                             )
                         );
                     }
                     Ok(())
                 }
-                "remover" | "rm" => {
+                "remover" | "rm" | "remove" => {
                     let it = find(&arg(0)?)?;
                     startup::remove(&it).map_err(|e| anyhow::anyhow!(e))?;
-                    println!("{}", numapilot::tf!("{} removido", "{} removed", it.name));
+                    println!("{}", numapilot::tf!("{} removed", "{} removido", it.name));
                     Ok(())
                 }
-                "comando" => {
+                "comando" | "command" => {
                     let p = startup::add_command(&arg(0)?, &args[1..].join(" "), atraso)
                         .map_err(|e| anyhow::anyhow!(e))?;
                     println!(
                         "{}",
-                        numapilot::tf!("adicionado: {}", "added: {}", p.display())
+                        numapilot::tf!("added: {}", "adicionado: {}", p.display())
                     );
                     Ok(())
                 }
-                "arquivo" => {
+                "arquivo" | "file" => {
                     let p = startup::add_file(std::path::Path::new(&arg(0)?), atraso)
                         .map_err(|e| anyhow::anyhow!(e))?;
                     println!(
                         "{}",
-                        numapilot::tf!("adicionado: {}", "added: {}", p.display())
+                        numapilot::tf!("added: {}", "adicionado: {}", p.display())
                     );
                     Ok(())
                 }
@@ -1332,8 +1337,8 @@ fn real_main() -> Result<()> {
                             println!(
                                 "{}",
                                 numapilot::tf!(
-                                    "{n} vai abrir no login ({})",
                                     "{n} will open at login ({})",
+                                    "{n} vai abrir no login ({})",
                                     d.display()
                                 )
                             );
@@ -1341,16 +1346,16 @@ fn real_main() -> Result<()> {
                         [] => bail!(
                             "{}",
                             numapilot::tf!(
-                                "nenhum programa instalado com \"{q}\"",
-                                "no installed program matching \"{q}\""
+                                "no installed program matching \"{q}\"",
+                                "nenhum programa instalado com \"{q}\""
                             )
                         ),
                         many => {
                             println!(
                                 "{}",
                                 numapilot::tf!(
-                                    "Mais de um programa; seja mais específico:",
-                                    "More than one program; be more specific:"
+                                    "More than one program; be more specific:",
+                                    "Mais de um programa; seja mais específico:"
                                 )
                             );
                             for (n, p) in many.iter().take(20) {
@@ -1362,7 +1367,7 @@ fn real_main() -> Result<()> {
                 }
                 o => bail!(
                     "{}",
-                    numapilot::tf!("ação desconhecida: {o}", "unknown action: {o}")
+                    numapilot::tf!("unknown action: {o}", "ação desconhecida: {o}")
                 ),
             }
         }
@@ -1380,16 +1385,16 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "Tudo que abre com o sistema já está na integrada.",
-                                "Everything that starts with the system is already on the integrated GPU."
+                                "Everything that starts with the system is already on the integrated GPU.",
+                                "Tudo que abre com o sistema já está na integrada."
                             )
                         );
                     } else {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "Agora na integrada (vale a partir do próximo login): {}",
                                 "Now on the integrated GPU (applies from the next login): {}",
+                                "Agora na integrada (vale a partir do próximo login): {}",
                                 ch.join(", ")
                             )
                         );
@@ -1401,10 +1406,10 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "Voltaram ao normal: {}",
                             "Back to normal: {}",
+                            "Voltaram ao normal: {}",
                             if ch.is_empty() {
-                                numapilot::i18n::tr("nada").into()
+                                numapilot::i18n::tr("nothing").into()
                             } else {
                                 ch.join(", ")
                             }
@@ -1416,12 +1421,12 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "Na integrada: {}",
                             "On the integrated GPU: {}",
+                            "Na integrada: {}",
                             if autostart::enabled() {
-                                numapilot::i18n::tr("ligado")
+                                numapilot::i18n::tr("on")
                             } else {
-                                numapilot::i18n::tr("desligado")
+                                numapilot::i18n::tr("off")
                             }
                         )
                     );
@@ -1438,8 +1443,8 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "  {s:<40} (serviço do usuário)",
-                                "  {s:<40} (user service)"
+                                "  {s:<40} (user service)",
+                                "  {s:<40} (serviço do usuário)"
                             )
                         );
                     }
@@ -1464,14 +1469,14 @@ fn real_main() -> Result<()> {
             match &h {
                 How::Package(p) => println!(
                     "{}",
-                    numapilot::tf!("instalado pelo pacote {p}", "installed from package {p}")
+                    numapilot::tf!("installed from package {p}", "instalado pelo pacote {p}")
                 ),
                 How::Source(d) => {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "instalado pela pasta {}",
                             "installed from the folder {}",
+                            "instalado pela pasta {}",
                             d.display()
                         )
                     );
@@ -1481,8 +1486,8 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "a pasta tem {ahead} commit(s) que ainda não foram instalados",
-                                "the folder has {ahead} commit(s) not installed yet"
+                                "the folder has {ahead} commit(s) not installed yet",
+                                "a pasta tem {ahead} commit(s) que ainda não foram instalados"
                             )
                         );
                     }
@@ -1490,15 +1495,15 @@ fn real_main() -> Result<()> {
                         Some(0) if ahead == 0 => println!(
                             "{}",
                             numapilot::tf!(
-                                "já está na versão mais nova",
-                                "already on the newest version"
+                                "already on the newest version",
+                                "já está na versão mais nova"
                             )
                         ),
                         Some(0) => println!(
                             "{}",
                             numapilot::tf!(
-                                "nada novo no repositório remoto",
-                                "nothing new in the remote repository"
+                                "nothing new in the remote repository",
+                                "nada novo no repositório remoto"
                             )
                         ),
                         Some(n) => {
@@ -1506,31 +1511,31 @@ fn real_main() -> Result<()> {
                             println!(
                                 "{}",
                                 numapilot::tf!(
-                                    "{n} atualização(ões) novas no repositório",
-                                    "{n} new update(s) in the repository"
+                                    "{n} new update(s) in the repository",
+                                    "{n} atualização(ões) novas no repositório"
                                 )
                             )
                         }
                         None => println!(
                             "{}",
                             numapilot::tf!(
-                                "não consegui consultar o repositório",
-                                "could not query the repository"
+                                "could not query the repository",
+                                "não consegui consultar o repositório"
                             )
                         ),
                     }
                 }
                 How::Unknown => println!(
                     "{}",
-                    numapilot::tf!("origem desconhecida", "unknown source")
+                    numapilot::tf!("unknown source", "origem desconhecida")
                 ),
             }
             if pending && action.as_deref() != Some("run") {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "para instalar: numapilot self-update run",
-                        "to install: numapilot self-update run"
+                        "to install: numapilot self-update run",
+                        "para instalar: numapilot self-update run"
                     )
                 );
             }
@@ -1541,8 +1546,8 @@ fn real_main() -> Result<()> {
                     bail!(
                         "{}",
                         numapilot::tf!(
-                            "a atualização terminou com erro ({st})",
-                            "the update finished with an error ({st})"
+                            "the update finished with an error ({st})",
+                            "a atualização terminou com erro ({st})"
                         )
                     );
                 }
@@ -1564,8 +1569,8 @@ fn real_main() -> Result<()> {
                 .find(|g| g.alias == gpu || g.pci == gpu)
                 .with_context(|| {
                     numapilot::tf!(
-                        "GPU '{gpu}' não encontrada (veja numapilot topo)",
-                        "GPU '{gpu}' not found (see numapilot topo)"
+                        "GPU '{gpu}' not found (see numapilot topo)",
+                        "GPU '{gpu}' não encontrada (veja numapilot topo)"
                     )
                 })?
                 .clone();
@@ -1573,8 +1578,8 @@ fn real_main() -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Deixe o PC parado durante o teste. Ctrl+C para parar e voltar ao que era.",
-                    "Leave the PC idle during the test. Ctrl+C to stop and go back to what it was."
+                    "Leave the PC idle during the test. Ctrl+C to stop and go back to what it was.",
+                    "Deixe o PC parado durante o teste. Ctrl+C para parar e voltar ao que era."
                 )
             );
             let opts = numapilot::undervolt::Opts {
@@ -1588,8 +1593,8 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "\nPronto: {} ({} passo(s) estáveis).",
                             "\nDone: {} ({} stable step(s)).",
+                            "\nPronto: {} ({} passo(s) estáveis).",
                             o.description,
                             o.steps_ok
                         )
@@ -1609,8 +1614,8 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "Nenhuma placa NVIDIA neste computador.",
-                                "No NVIDIA card in this computer."
+                                "No NVIDIA card in this computer.",
+                                "Nenhuma placa NVIDIA neste computador."
                             )
                         );
                         return Ok(());
@@ -1619,8 +1624,8 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "Placa: {} ({}, id {:04x})",
                                 "Card: {} ({}, id {:04x})",
+                                "Placa: {} ({}, id {:04x})",
                                 g.1,
                                 g.0,
                                 g.2
@@ -1631,8 +1636,8 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "Driver indicado: {}",
                                 "Recommended driver: {}",
+                                "Driver indicado: {}",
                                 b.label()
                             )
                         );
@@ -1640,33 +1645,35 @@ fn real_main() -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "Carregado agora: {}",
                             "Loaded now: {}",
-                            s.loaded.clone().unwrap_or("nenhum".into())
+                            "Carregado agora: {}",
+                            s.loaded
+                                .clone()
+                                .unwrap_or(numapilot::t2!("none", "nenhum").into())
                         )
                     );
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "Instalado: {}",
                             "Installed: {}",
+                            "Instalado: {}",
                             s.installed
                                 .clone()
-                                .unwrap_or(numapilot::i18n::tr("não").into())
+                                .unwrap_or(numapilot::i18n::tr("no").into())
                         )
                     );
                     if let Some(a) = &s.available {
                         println!(
                             "{}",
-                            numapilot::tf!("No repositório: {a}", "In the repository: {a}")
+                            numapilot::tf!("In the repository: {a}", "No repositório: {a}")
                         );
                     }
                     if s.nouveau {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "Usando o nouveau (driver aberto da comunidade) agora.",
-                                "Using nouveau (the community's open driver) right now."
+                                "Using nouveau (the community's open driver) right now.",
+                                "Usando o nouveau (driver aberto da comunidade) agora."
                             )
                         );
                     }
@@ -1674,8 +1681,8 @@ fn real_main() -> Result<()> {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "O driver instalado é diferente do carregado: reinicie.",
-                                "The installed driver differs from the loaded one: reboot."
+                                "The installed driver differs from the loaded one: reboot.",
+                                "O driver instalado é diferente do carregado: reinicie."
                             )
                         );
                     }
@@ -1690,8 +1697,8 @@ fn real_main() -> Result<()> {
                 _ => bail!(
                     "{}",
                     numapilot::tf!(
-                        "use: numapilot driver status | sudo numapilot driver install | sudo numapilot driver update",
-                        "usage: numapilot driver status | sudo numapilot driver install | sudo numapilot driver update"
+                        "usage: numapilot driver status | sudo numapilot driver install | sudo numapilot driver update",
+                        "use: numapilot driver status | sudo numapilot driver install | sudo numapilot driver update"
                     )
                 ),
             }
@@ -1700,20 +1707,20 @@ fn real_main() -> Result<()> {
             let f = numapilot::backup::create(out.as_deref()).map_err(|e| anyhow::anyhow!(e))?;
             println!(
                 "{}",
-                numapilot::tf!("Backup salvo em {}", "Backup saved to {}", f.display())
+                numapilot::tf!("Backup saved to {}", "Backup salvo em {}", f.display())
             );
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Copie para fora do disco do sistema (pendrive, outro disco, nuvem) antes de formatar.",
-                    "Copy it off the system disk (USB stick, another disk, cloud) before formatting."
+                    "Copy it off the system disk (USB stick, another disk, cloud) before formatting.",
+                    "Copie para fora do disco do sistema (pendrive, outro disco, nuvem) antes de formatar."
                 )
             );
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Para restaurar: ./install.sh --restore {}",
                     "To restore: ./install.sh --restore {}",
+                    "Para restaurar: ./install.sh --restore {}",
                     f.display()
                 )
             );
@@ -1727,7 +1734,7 @@ fn real_main() -> Result<()> {
             if url {
                 println!(
                     "{}",
-                    numapilot::web::url(port).context(numapilot::i18n::tr("sem rede"))?
+                    numapilot::web::url(port).context(numapilot::i18n::tr("no network"))?
                 );
                 return Ok(());
             }
@@ -1738,8 +1745,8 @@ fn real_main() -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Medindo {} nó(s); leva alguns segundos por par...",
                     "Measuring {} node(s); takes a few seconds per pair...",
+                    "Medindo {} nó(s); leva alguns segundos por par...",
                     t.nodes.len()
                 )
             );
@@ -1749,8 +1756,8 @@ fn real_main() -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "\nResultado salvo em {} (aparece na interface).",
                         "\nResult saved to {} (shows up in the interface).",
+                        "\nResultado salvo em {} (aparece na interface).",
                         p.display()
                     )
                 );
@@ -1784,13 +1791,13 @@ fn gib(kb: u64) -> String {
 
 fn cmd_topo(cfg: &Config) -> Result<()> {
     let t = Topology::load(cfg);
-    println!("{}", numapilot::tf!("Nós NUMA", "NUMA nodes"));
+    println!("{}", numapilot::tf!("NUMA nodes", "Nós NUMA"));
     for n in &t.nodes {
         println!(
             "{}",
             numapilot::tf!(
-                "  nó {}  socket(s) {:?}  CPUs {}  ({} lógicos / {} físicos)  RAM {} (livre {})  distâncias {:?}",
                 "  node {}  socket(s) {:?}  CPUs {}  ({} logical / {} physical)  RAM {} (free {})  distances {:?}",
+                "  nó {}  socket(s) {:?}  CPUs {}  ({} lógicos / {} físicos)  RAM {} (livre {})  distâncias {:?}",
                 n.id,
                 n.sockets,
                 format_cpulist(&n.cpus),
@@ -1805,9 +1812,9 @@ fn cmd_topo(cfg: &Config) -> Result<()> {
     println!("\nGPUs");
     for g in &t.gpus {
         let role = match g.role {
-            GpuRole::Display => numapilot::i18n::tr("vídeo (monitor ligado)"),
-            GpuRole::Compute => numapilot::i18n::tr("computação (ROCm)"),
-            GpuRole::Other => numapilot::i18n::tr("outra"),
+            GpuRole::Display => numapilot::i18n::tr("video (monitor connected)"),
+            GpuRole::Compute => numapilot::i18n::tr("compute (ROCm)"),
+            GpuRole::Other => numapilot::i18n::tr("another"),
         };
         let vram = g
             .vram_used_total()
@@ -1822,8 +1829,8 @@ fn cmd_topo(cfg: &Config) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "  {:<10} {}  {}  [{}]\n             nó {}  {}  {}  ocupação {}  VRAM {}  ROCR {}",
                 "  {:<10} {}  {}  [{}]\n             node {}  {}  {}  load {}  VRAM {}  ROCR {}",
+                "  {:<10} {}  {}  [{}]\n             nó {}  {}  {}  ocupação {}  VRAM {}  ROCR {}",
                 g.alias,
                 g.pci,
                 g.name,
@@ -1845,7 +1852,7 @@ fn cmd_topo(cfg: &Config) -> Result<()> {
     if !w.is_empty() {
         println!();
         for x in w {
-            println!("{}", numapilot::tf!("aviso: {x}", "warning: {x}"));
+            println!("{}", numapilot::tf!("warning: {x}", "aviso: {x}"));
         }
     }
     Ok(())
@@ -1867,7 +1874,7 @@ fn cmd_run(
     let mut profiles = Profiles::load();
     let prog = command
         .first()
-        .context(numapilot::i18n::tr("faltou o programa"))?;
+        .context(numapilot::i18n::tr("the program is missing"))?;
     let exe = which(prog);
     let idents = procfs::idents(basename(prog), exe.as_deref(), &command);
     let key = procfs::learn_key(exe.as_deref(), &command, basename(prog));
@@ -1887,8 +1894,8 @@ fn cmd_run(
         eprintln!(
             "{}",
             numapilot::tf!(
-                "numapilot: otimizador de FPS, teste {}/{n}: {} (jogue ~{} s numa cena parecida)",
                 "numapilot: FPS optimizer, test {}/{n}: {} (play ~{} s in a similar scene)",
+                "numapilot: otimizador de FPS, teste {}/{n}: {} (jogue ~{} s numa cena parecida)",
                 i + 1,
                 v.label,
                 secs + 10
@@ -1914,45 +1921,45 @@ fn cmd_run(
     if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
         eprintln!(
             "{}",
-            numapilot::tf!("programa : {}", "program  : {}", command.join(" "))
+            numapilot::tf!("program  : {}", "programa : {}", command.join(" "))
         );
         eprintln!(
             "{}",
-            numapilot::tf!("perfil   : {pkey}", "profile  : {pkey}")
+            numapilot::tf!("profile  : {pkey}", "perfil   : {pkey}")
         );
         eprintln!(
             "{}",
             numapilot::tf!(
-                "modo     : {}",
                 "mode     : {}",
+                "modo     : {}",
                 if d.manual {
                     "manual"
                 } else {
-                    numapilot::i18n::tr("automático")
+                    numapilot::i18n::tr("automatic")
                 }
             )
         );
         eprintln!(
             "{}",
             numapilot::tf!(
-                "nós      : {:?}  CPUs {}",
                 "nodes    : {:?}  CPUs {}",
+                "nós      : {:?}  CPUs {}",
                 d.nodes,
                 format_cpulist(&d.cpus)
             )
         );
         eprintln!(
             "{}",
-            numapilot::tf!("memória  : {:?}", "memory   : {:?}", d.mem)
+            numapilot::tf!("memory   : {:?}", "memória  : {:?}", d.mem)
         );
         eprintln!(
             "{}",
             numapilot::tf!(
-                "prioridade: {}{}",
                 "priority  : {}{}",
+                "prioridade: {}{}",
                 d.priority,
                 if d.needs_daemon {
-                    numapilot::i18n::tr(" (aplicada pelo serviço)")
+                    numapilot::i18n::tr(" (applied by the service)")
                 } else {
                     ""
                 }
@@ -1961,11 +1968,11 @@ fn cmd_run(
         eprintln!(
             "{}",
             numapilot::tf!(
-                "uso GPU  : {}",
                 "GPU use  : {}",
+                "uso GPU  : {}",
                 match d.kind {
-                    Kind::Graphics => numapilot::i18n::tr("gráfico (jogo/vídeo)"),
-                    Kind::Compute => numapilot::i18n::tr("computação (ROCm)"),
+                    Kind::Graphics => numapilot::i18n::tr("graphics (game/video)"),
+                    Kind::Compute => numapilot::i18n::tr("compute (ROCm)"),
                     Kind::NoGpu => "-",
                 }
             )
@@ -1973,7 +1980,7 @@ fn cmd_run(
         eprintln!(
             "GPU      : {}",
             if d.gpus.is_empty() {
-                numapilot::i18n::tr("nenhuma").to_string()
+                numapilot::i18n::tr("none").to_string()
             } else {
                 d.gpus
                     .iter()
@@ -1983,10 +1990,10 @@ fn cmd_run(
             }
         );
         for r in &d.reasons {
-            eprintln!("{}", numapilot::tf!("motivo   : {r}", "reason   : {r}"));
+            eprintln!("{}", numapilot::tf!("reason   : {r}", "motivo   : {r}"));
         }
         for w in numapilot::decide::game_warnings(&topo, &d) {
-            eprintln!("{}", numapilot::tf!("atenção  : {w}", "warning  : {w}"));
+            eprintln!("{}", numapilot::tf!("warning  : {w}", "atenção  : {w}"));
         }
         for (k, v) in &set {
             eprintln!("env      : {k}={v}");
@@ -2015,14 +2022,14 @@ fn cmd_run(
             Ok(r) if r.ok => {}
             Ok(r) => eprintln!(
                 "{}",
-                numapilot::tf!("numapilot: aviso: {}", "numapilot: warning: {}", r.message)
+                numapilot::tf!("numapilot: warning: {}", "numapilot: aviso: {}", r.message)
             ),
             Err(e) => {
                 eprintln!(
                     "{}",
                     numapilot::tf!(
-                        "numapilot: aviso: limites de memória/prioridade não aplicados ({e:#})",
-                        "numapilot: warning: memory/priority limits not applied ({e:#})"
+                        "numapilot: warning: memory/priority limits not applied ({e:#})",
+                        "numapilot: aviso: limites de memória/prioridade não aplicados ({e:#})"
                     )
                 )
             }
@@ -2045,8 +2052,8 @@ fn cmd_run(
         eprintln!(
             "{}",
             numapilot::tf!(
-                "numapilot: aviso: set_mempolicy falhou ({e}); seguindo só com a afinidade de CPU",
-                "numapilot: warning: set_mempolicy failed ({e}); going on with CPU affinity only"
+                "numapilot: warning: set_mempolicy failed ({e}); going on with CPU affinity only",
+                "numapilot: aviso: set_mempolicy falhou ({e}); seguindo só com a afinidade de CPU"
             )
         );
     }
@@ -2068,8 +2075,8 @@ fn cmd_run(
             eprintln!(
                 "{}",
                 numapilot::tf!(
-                    "numapilot: aviso: gamescope não instalado (sudo pacman -S gamescope); abrindo sem ele",
-                    "numapilot: warning: gamescope not installed (sudo pacman -S gamescope); opening without it"
+                    "numapilot: warning: gamescope not installed (sudo pacman -S gamescope); opening without it",
+                    "numapilot: aviso: gamescope não instalado (sudo pacman -S gamescope); abrindo sem ele"
                 )
             );
         }
@@ -2111,8 +2118,8 @@ fn cmd_run(
             eprintln!(
                 "{}",
                 numapilot::tf!(
-                    "numapilot: aviso: OptiScaler escolhido mas não instalado na pasta do jogo (Ajustar… → Upscaling → Instalar)",
-                    "numapilot: warning: OptiScaler chosen but not installed in the game's folder (Adjust… → Upscaling → Install)"
+                    "numapilot: warning: OptiScaler chosen but not installed in the game's folder (Adjust… → Upscaling → Install)",
+                    "numapilot: aviso: OptiScaler escolhido mas não instalado na pasta do jogo (Ajustar… → Upscaling → Instalar)"
                 )
             );
         }
@@ -2126,7 +2133,7 @@ fn cmd_run(
         }
         let start = numapilot::history::now();
         let st = c.status().with_context(|| {
-            numapilot::tf!("não consegui executar '{}'", "could not run '{}'", argv[0])
+            numapilot::tf!("could not run '{}'", "não consegui executar '{}'", argv[0])
         })?;
         let dir = numapilot::tuner::log_dir(&pkey);
         let res = numapilot::tuner::newest_csv(&dir, start)
@@ -2138,8 +2145,8 @@ fn cmd_run(
                 eprintln!(
                     "{}",
                     numapilot::tf!(
-                        "numapilot: teste {}: {:.1} FPS médio, 1% low {:.1}",
                         "numapilot: test {}: {:.1} average FPS, 1% low {:.1}",
+                        "numapilot: teste {}: {:.1} FPS médio, 1% low {:.1}",
                         i + 1,
                         r.avg,
                         r.low1
@@ -2152,8 +2159,8 @@ fn cmd_run(
             (None, _) => eprintln!(
                 "{}",
                 numapilot::tf!(
-                    "numapilot: o MangoHud não gravou este teste (jogou menos de ~{} s? MangoHud instalado?). Ele se repete na próxima abertura.",
                     "numapilot: MangoHud did not record this test (played less than ~{} s? MangoHud installed?). It repeats on the next start.",
+                    "numapilot: o MangoHud não gravou este teste (jogou menos de ~{} s? MangoHud instalado?). Ele se repete na próxima abertura.",
                     secs + 10
                 )
             ),
@@ -2165,8 +2172,8 @@ fn cmd_run(
     bail!(
         "{}",
         numapilot::tf!(
-            "não consegui executar '{}': {err}",
             "could not run '{}': {err}",
+            "não consegui executar '{}': {err}",
             argv[0]
         )
     )
@@ -2180,8 +2187,8 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "Nenhum perfil salvo: tudo no automático.",
-                        "No saved profile: everything on automatic."
+                        "No saved profile: everything on automatic.",
+                        "Nenhum perfil salvo: tudo no automático."
                     )
                 );
             }
@@ -2189,8 +2196,8 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "{k}\n    cpu={}  gpu={}  uso={}",
                         "{k}\n    cpu={}  gpu={}  use={}",
+                        "{k}\n    cpu={}  gpu={}  uso={}",
                         v.cpu,
                         v.gpu,
                         v.usage
@@ -2231,8 +2238,8 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Escolhas gravadas em {}",
                     "Choices written to {}",
+                    "Escolhas gravadas em {}",
                     f.display()
                 )
             );
@@ -2259,11 +2266,11 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
                 }
             }
             for b in &bad {
-                println!("{}", numapilot::tf!("ignorado: {b}", "ignored: {b}"));
+                println!("{}", numapilot::tf!("ignored: {b}", "ignorado: {b}"));
             }
             println!(
                 "{}",
-                numapilot::tf!("{n} escolha(s) importada(s).", "{n} choice(s) imported.")
+                numapilot::tf!("{n} choice(s) imported.", "{n} escolha(s) importada(s).")
             );
             Ok(())
         }
@@ -2286,8 +2293,8 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "{} configurações a testar em {label}:",
                     "{} settings to test in {label}:",
+                    "{} configurações a testar em {label}:",
                     v.len()
                 )
             );
@@ -2299,8 +2306,8 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Abra o jogo {} vezes (pelo numapilot run ou pela Steam com o numapilot) e jogue ~70 s em cada.",
                     "Open the game {} times (through numapilot run or through Steam with numapilot) and play ~70 s each time.",
+                    "Abra o jogo {} vezes (pelo numapilot run ou pela Steam com o numapilot) e jogue ~70 s em cada.",
                     t.sessions[&k].variants.len()
                 )
             );
@@ -2308,8 +2315,8 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "Atenção: instale o MangoHud (sudo pacman -S mangohud), ele faz a medição.",
-                        "Warning: install MangoHud (sudo pacman -S mangohud), it does the measuring."
+                        "Warning: install MangoHud (sudo pacman -S mangohud), it does the measuring.",
+                        "Atenção: instale o MangoHud (sudo pacman -S mangohud), ele faz a medição."
                     )
                 );
             }
@@ -2324,8 +2331,8 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "{} ({}) — {}/{} testados",
                         "{} ({}) — {}/{} tested",
+                        "{} ({}) — {}/{} testados",
                         s.label,
                         s.key,
                         s.variants.iter().filter(|v| v.result.is_some()).count(),
@@ -2366,20 +2373,19 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Otimização de {k} cancelada.",
-                    "Optimization of {k} cancelled."
+                    "Optimization of {k} cancelled.",
+                    "Otimização de {k} cancelada."
                 )
             );
             Ok(())
         }
         ("apply", Some(k)) => {
-            let s = t
-                .sessions
-                .get(&k)
-                .context(numapilot::i18n::tr("não há otimização para esse programa"))?;
+            let s = t.sessions.get(&k).context(numapilot::i18n::tr(
+                "there is no optimization for this program",
+            ))?;
             let b = s
                 .best()
-                .context(numapilot::i18n::tr("nenhum teste terminou ainda"))?;
+                .context(numapilot::i18n::tr("no test has finished yet"))?;
             let mut profile = s.variants[b].profile.clone();
             profile.label = s.label.clone();
             let r = ctl::send(&ctl::Request::SetProfile {
@@ -2390,8 +2396,8 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Usando \"{}\": {}",
                     "Using \"{}\": {}",
+                    "Usando \"{}\": {}",
                     s.variants[b].label,
                     r.message
                 )
@@ -2401,8 +2407,8 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
         _ => bail!(
             "{}",
             numapilot::tf!(
-                "use: numapilot tune start|stop|apply CHAVE  ou  numapilot tune status [CHAVE]",
-                "usage: numapilot tune start|stop|apply KEY  or  numapilot tune status [KEY]"
+                "usage: numapilot tune start|stop|apply KEY  or  numapilot tune status [KEY]",
+                "use: numapilot tune start|stop|apply CHAVE  ou  numapilot tune status [CHAVE]"
             )
         ),
     }
@@ -2414,14 +2420,14 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
     match (action, value) {
         ("status", _) => {
             let m = Machine::load();
-            println!("{}", numapilot::tf!("Modo: {}", "Mode: {}", m.mode));
+            println!("{}", numapilot::tf!("Mode: {}", "Modo: {}", m.mode));
             println!(
                 "Turbo: {}",
                 cpuctl::turbo()
                     .map(|t| if t {
-                        numapilot::i18n::tr("ligado")
+                        numapilot::i18n::tr("on")
                     } else {
-                        numapilot::i18n::tr("desligado")
+                        numapilot::i18n::tr("off")
                     })
                     .unwrap_or("?")
             );
@@ -2440,8 +2446,8 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "Socket {}: governor {} · {} · {}-{} MHz (agora {}) · uncore {} · {} · limite {} · {}",
                         "Socket {}: governor {} · {} · {}-{} MHz (now {}) · uncore {} · {} · limit {} · {}",
+                        "Socket {}: governor {} · {} · {}-{} MHz (agora {}) · uncore {} · {} · limite {} · {}",
                         n.id,
                         cpuctl::governor(c).unwrap_or("?".into()),
                         match (cpuctl::epp(c), cpuctl::epb(c)) {
@@ -2455,7 +2461,7 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
                         unc.iter()
                             .find(|u| u.package == pkg)
                             .map(|u| format!("{}-{} MHz", u.min_khz / 1000, u.max_khz / 1000))
-                            .unwrap_or(numapilot::i18n::tr("indisponível").into()),
+                            .unwrap_or(numapilot::i18n::tr("unavailable").into()),
                         temps
                             .get(&pkg)
                             .map(|t| format!("{t:.0} °C"))
@@ -2467,7 +2473,7 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
                             .unwrap_or("-".into()),
                         hw["power"][pkg.to_string()]
                             .as_f64()
-                            .map(|w| numapilot::tf!("consumo {w:.0} W", "power draw {w:.0} W"))
+                            .map(|w| numapilot::tf!("power draw {w:.0} W", "consumo {w:.0} W"))
                             .unwrap_or_default(),
                     )
                 );
@@ -2475,8 +2481,8 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Estados de economia (cpu0): {}",
                     "Idle states (cpu0): {}",
+                    "Estados de economia (cpu0): {}",
                     cpuctl::cstates(0)
                         .iter()
                         .map(|s| format!(
@@ -2484,7 +2490,7 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
                             s.name,
                             s.latency_us,
                             if s.disabled {
-                                numapilot::i18n::tr(" (desligado)")
+                                numapilot::i18n::tr(" (off)")
                             } else {
                                 ""
                             }
@@ -2497,8 +2503,8 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "Baixa latência agora nos núcleos {l}",
-                        "Low latency now on cores {l}"
+                        "Low latency now on cores {l}",
+                        "Baixa latência agora nos núcleos {l}"
                     )
                 );
             }
@@ -2507,10 +2513,10 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "Escalonador: {} (disponíveis: {})",
                         "Scheduler: {} (available: {})",
+                        "Escalonador: {} (disponíveis: {})",
                         if cur.is_empty() {
-                            numapilot::i18n::tr("padrão do kernel").into()
+                            numapilot::i18n::tr("kernel default").into()
                         } else {
                             cur
                         },
@@ -2520,7 +2526,17 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
             }
             Ok(())
         }
-        ("mode", Some(name @ ("jogo" | "ia" | "silencioso" | "normal"))) => {
+        (
+            "mode",
+            Some(name @ ("jogo" | "ia" | "silencioso" | "normal" | "game" | "ai" | "quiet")),
+        ) => {
+            // nomes em inglês na linha de comando; o valor guardado não muda
+            let name = match name {
+                "game" => "jogo",
+                "ai" => "ia",
+                "quiet" => "silencioso",
+                o => o,
+            };
             let game_node = cfg
                 .graphics_gpu
                 .as_deref()
@@ -2535,8 +2551,8 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
         _ => bail!(
             "{}",
             numapilot::tf!(
-                "use: numapilot machine status  |  numapilot machine mode jogo|ia|silencioso|normal",
-                "usage: numapilot machine status  |  numapilot machine mode jogo|ia|silencioso|normal"
+                "usage: numapilot machine status  |  numapilot machine mode game|ai|quiet|normal",
+                "use: numapilot machine status  |  numapilot machine mode game|ai|quiet|normal"
             )
         ),
     }
@@ -2552,24 +2568,24 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
                 Some((l, p)) => println!(
                     "{}",
                     numapilot::tf!(
-                        "Bootloader: {} ({})\nConfigurado: {p}",
                         "Bootloader: {} ({})\nConfigured: {p}",
+                        "Bootloader: {} ({})\nConfigurado: {p}",
                         l.name(),
                         l.path.display()
                     )
                 ),
                 None => println!(
                     "{}",
-                    numapilot::tf!("Bootloader não reconhecido", "Bootloader not recognized")
+                    numapilot::tf!("Bootloader not recognized", "Bootloader não reconhecido")
                 ),
             }
             println!(
                 "{}",
-                numapilot::tf!("Em uso agora: {}", "In use now: {}", cmdline::running())
+                numapilot::tf!("In use now: {}", "Em uso agora: {}", cmdline::running())
             );
             println!(
                 "{}",
-                numapilot::tf!("\nParâmetros conhecidos:", "\nKnown parameters:")
+                numapilot::tf!("\nKnown parameters:", "\nParâmetros conhecidos:")
             );
             for (p, t, d) in cmdline::KNOWN {
                 println!(
@@ -2582,16 +2598,16 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "\nMitigações que se aplicam a este processador:",
-                    "\nMitigations that apply to this processor:"
+                    "\nMitigations that apply to this processor:",
+                    "\nMitigações que se aplicam a este processador:"
                 )
             );
             for m in cmdline::relevant_mitigations(&v) {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "  {:<44} risco {} · ganho {} · {}",
                         "  {:<44} risk {} · gain {} · {}",
+                        "  {:<44} risco {} · ganho {} · {}",
                         numapilot::i18n::tr(m.title),
                         numapilot::i18n::tr(m.risk),
                         numapilot::i18n::tr(m.gain),
@@ -2602,8 +2618,8 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "  (tudo de uma vez: mitigations=off)",
-                    "  (all at once: mitigations=off)"
+                    "  (all at once: mitigations=off)",
+                    "  (tudo de uma vez: mitigations=off)"
                 )
             );
             Ok(())
@@ -2619,8 +2635,8 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
                     _ => bail!(
                         "{}",
                         numapilot::tf!(
-                            "use +PARAM para adicionar e -PARAM para tirar (recebido {a})",
-                            "use +PARAM to add and -PARAM to remove (got {a})"
+                            "use +PARAM to add and -PARAM to remove (got {a})",
+                            "use +PARAM para adicionar e -PARAM para tirar (recebido {a})"
                         )
                     ),
                 }
@@ -2633,7 +2649,7 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
             if ps.is_empty() {
                 bail!(
                     "{}",
-                    numapilot::tf!("faltou o parâmetro", "the parameter is missing")
+                    numapilot::tf!("the parameter is missing", "faltou o parâmetro")
                 );
             }
             let (add, rm) = if op == "add" {
@@ -2649,20 +2665,20 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "OverDrive (clock/voltagem das placas AMD): {} agora, {} depois de reiniciar{}",
                     "OverDrive (clock/voltage of the AMD cards): {} now, {} after a reboot{}",
+                    "OverDrive (clock/voltagem das placas AMD): {} agora, {} depois de reiniciar{}",
                     if s.active {
-                        numapilot::i18n::tr("ligado")
+                        numapilot::i18n::tr("on")
                     } else {
-                        numapilot::i18n::tr("desligado")
+                        numapilot::i18n::tr("off")
                     },
                     if s.on_next_boot {
-                        numapilot::i18n::tr("ligado")
+                        numapilot::i18n::tr("on")
                     } else {
-                        numapilot::i18n::tr("desligado")
+                        numapilot::i18n::tr("off")
                     },
                     if s.from_cmdline {
-                        numapilot::i18n::tr(" (definido na linha do kernel)")
+                        numapilot::i18n::tr(" (set on the kernel command line)")
                     } else {
                         ""
                     }
@@ -2672,34 +2688,34 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "Memória da GPU integrada (ttm): {} agora, {} no boot",
                     "Integrated GPU memory (ttm): {} now, {} at boot",
+                    "Memória da GPU integrada (ttm): {} agora, {} no boot",
                     bootcfg::ttm_now()
                         .map(|p| format!("{:.1} GiB", gib(p)))
                         .unwrap_or("?".into()),
                     bootcfg::saved_ttm()
                         .map(|p| format!("{:.1} GiB", gib(p)))
-                        .unwrap_or(numapilot::i18n::tr("padrão (metade da RAM)").into())
+                        .unwrap_or(numapilot::i18n::tr("default (half the RAM)").into())
                 )
             );
             println!(
                 "{}",
-                numapilot::tf!("Arquivo: {}", "File: {}", bootcfg::conf_path().display())
+                numapilot::tf!("File: {}", "Arquivo: {}", bootcfg::conf_path().display())
             );
             match bootcfg::initramfs_tool() {
                 Some(t) => println!(
                     "{}",
                     numapilot::tf!(
-                        "Imagem de boot refeita com: {}",
                         "Boot image rebuilt with: {}",
+                        "Imagem de boot refeita com: {}",
                         t.join(" ")
                     )
                 ),
                 None => println!(
                     "{}",
                     numapilot::tf!(
-                        "Nenhuma ferramenta de initramfs encontrada",
-                        "No initramfs tool found"
+                        "No initramfs tool found",
+                        "Nenhuma ferramenta de initramfs encontrada"
                     )
                 ),
             }
@@ -2718,7 +2734,7 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
                         .replace(',', ".")
                         .parse::<f64>()
                         .context(numapilot::i18n::tr(
-                            "use um número em GiB (ex.: 14) ou padrao",
+                            "use a number in GiB (e.g. 14) or default",
                         ))?,
                 )
             };
@@ -2727,8 +2743,8 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
         _ => bail!(
             "{}",
             numapilot::tf!(
-                "use: numapilot boot status | sudo numapilot boot overdrive on|off | sudo numapilot boot gpu-memory GiB|padrao | numapilot boot cmdline [add|remove PARAM...]",
-                "usage: numapilot boot status | sudo numapilot boot overdrive on|off | sudo numapilot boot gpu-memory GiB|padrao | numapilot boot cmdline [add|remove PARAM...]"
+                "usage: numapilot boot status | sudo numapilot boot overdrive on|off | sudo numapilot boot gpu-memory GiB|default | numapilot boot cmdline [add|remove PARAM...]",
+                "use: numapilot boot status | sudo numapilot boot overdrive on|off | sudo numapilot boot gpu-memory GiB|default | numapilot boot cmdline [add|remove PARAM...]"
             )
         ),
     }
@@ -2742,8 +2758,8 @@ fn cmd_steam(action: &str) -> Result<()> {
         bail!(
             "{}",
             numapilot::tf!(
-                "não achei a configuração da Steam (localconfig.vdf)",
-                "could not find the Steam configuration (localconfig.vdf)"
+                "could not find the Steam configuration (localconfig.vdf)",
+                "não achei a configuração da Steam (localconfig.vdf)"
             )
         )
     };
@@ -2770,8 +2786,8 @@ fn cmd_steam(action: &str) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "{n} jogo(s) alterado(s) em {} (backup ao lado).",
                     "{n} game(s) changed in {} (backup next to it).",
+                    "{n} jogo(s) alterado(s) em {} (backup ao lado).",
                     path.display()
                 )
             );
@@ -2780,8 +2796,8 @@ fn cmd_steam(action: &str) -> Result<()> {
         _ => bail!(
             "{}",
             numapilot::tf!(
-                "use: numapilot steam enable | disable | list",
-                "usage: numapilot steam enable | disable | list"
+                "usage: numapilot steam enable | disable | list",
+                "use: numapilot steam enable | disable | list"
             )
         ),
     }
@@ -2803,19 +2819,19 @@ fn which(prog: &str) -> Option<String> {
 
 fn cmd_status() -> Result<()> {
     let s = std::fs::read_to_string(daemon::state_path()).context(numapilot::i18n::tr(
-        "o daemon não parece estar rodando (systemctl status numapilot)",
+        "the daemon does not seem to be running (systemctl status numapilot)",
     ))?;
     let rows: Vec<daemon::Row> = serde_json::from_str(&s)?;
     println!(
         "{}",
         numapilot::tf!(
-            "{:>7}  {:<16} {:>6}  {:<12} {:<6} {:<10} {:<14} origem",
             "{:>7}  {:<16} {:>6}  {:<12} {:<6} {:<10} {:<14} source",
+            "{:>7}  {:<16} {:>6}  {:<12} {:<6} {:<10} {:<14} origem",
             "PID",
-            numapilot::i18n::tr("PROGRAMA"),
-            numapilot::i18n::tr("NÚCL."),
-            numapilot::i18n::tr("ESTADO"),
-            numapilot::i18n::tr("NÓS"),
+            numapilot::i18n::tr("PROGRAM"),
+            numapilot::i18n::tr("CORES"),
+            numapilot::i18n::tr("STATE"),
+            numapilot::i18n::tr("NODES"),
             "GPU",
             "CPUs"
         )
@@ -2837,8 +2853,8 @@ fn cmd_pin(cfg: &Config, pid: i32, cpu: &str, no_migrate: bool) -> Result<()> {
         _ => bail!(
             "{}",
             numapilot::tf!(
-                "em `pin` use um número de nó, uma lista (0,1) ou all",
-                "in `pin` use a node number, a list (0,1) or all"
+                "in `pin` use a node number, a list (0,1) or all",
+                "em `pin` use um número de nó, uma lista (0,1) ou all"
             )
         ),
     };
@@ -2846,27 +2862,27 @@ fn cmd_pin(cfg: &Config, pid: i32, cpu: &str, no_migrate: bool) -> Result<()> {
         if topo.node(*n).is_none() {
             bail!(
                 "{}",
-                numapilot::tf!("nó {n} não existe", "node {n} does not exist")
+                numapilot::tf!("node {n} does not exist", "nó {n} não existe")
             );
         }
     }
-    let st = procfs::read_stat(pid).context(numapilot::i18n::tr("processo não encontrado"))?;
+    let st = procfs::read_stat(pid).context(numapilot::i18n::tr("process not found"))?;
     let cpus = topo.cpus_of(&nodes);
     let ok = procfs::set_affinity_all(pid, &cpus);
     if ok == 0 {
         bail!(
             "{}",
             numapilot::tf!(
-                "sem permissão (use sudo para processos de outros usuários)",
-                "no permission (use sudo for other users' processes)"
+                "no permission (use sudo for other users' processes)",
+                "sem permissão (use sudo para processos de outros usuários)"
             )
         );
     }
     println!(
         "{}",
         numapilot::tf!(
-            "{} (pid {pid}): {ok} threads → nó(s) {:?} [{}]",
             "{} (pid {pid}): {ok} threads → node(s) {:?} [{}]",
+            "{} (pid {pid}): {ok} threads → nó(s) {:?} [{}]",
             st.comm,
             nodes,
             format_cpulist(&cpus)
@@ -2882,16 +2898,16 @@ fn cmd_pin(cfg: &Config, pid: i32, cpu: &str, no_migrate: bool) -> Result<()> {
             Ok(_) => println!(
                 "{}",
                 numapilot::tf!(
-                    "memória migrada para o(s) nó(s) {:?}",
                     "memory migrated to node(s) {:?}",
+                    "memória migrada para o(s) nó(s) {:?}",
                     nodes
                 )
             ),
             Err(e) => println!(
                 "{}",
                 numapilot::tf!(
-                    "aviso: migração de memória falhou: {e}",
-                    "warning: memory migration failed: {e}"
+                    "warning: memory migration failed: {e}",
+                    "aviso: migração de memória falhou: {e}"
                 )
             ),
         }
@@ -2909,8 +2925,8 @@ fn cmd_pin(cfg: &Config, pid: i32, cpu: &str, no_migrate: bool) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "aviso: não consegui registrar o pin para o daemon (rode com sudo); ele pode reposicionar o processo.",
-                "warning: could not register the pin with the daemon (run with sudo); it may reposition the process."
+                "warning: could not register the pin with the daemon (run with sudo); it may reposition the process.",
+                "aviso: não consegui registrar o pin para o daemon (rode com sudo); ele pode reposicionar o processo."
             )
         );
     }
@@ -2923,14 +2939,13 @@ fn cmd_learned(forget: Option<String>) -> Result<()> {
         let before = l.map.len();
         l.map.retain(|k, _| !k.contains(&pat));
         l.dirty = true;
-        l.save().context(numapilot::i18n::tr(
-            "não consegui salvar (precisa de sudo?)",
-        ))?;
+        l.save()
+            .context(numapilot::i18n::tr("could not save (needs sudo?)"))?;
         println!(
             "{}",
             numapilot::tf!(
-                "{} entrada(s) removida(s). Reinicie o daemon para ele recarregar.",
                 "{} entry(ies) removed. Restart the daemon for it to reload.",
+                "{} entrada(s) removida(s). Reinicie o daemon para ele recarregar.",
                 before - l.map.len()
             )
         );
@@ -2940,8 +2955,8 @@ fn cmd_learned(forget: Option<String>) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "Nada aprendido ainda ({}).",
                 "Nothing learned yet ({}).",
+                "Nada aprendido ainda ({}).",
                 Learned::path().display()
             )
         );
@@ -2950,8 +2965,8 @@ fn cmd_learned(forget: Option<String>) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "{}  {}  pico {:.0}% de um nó  gpu-nó {}  execuções {}",
                 "{}  {}  peak {:.0}% of a node  gpu-node {}  runs {}",
+                "{}  {}  pico {:.0}% de um nó  gpu-nó {}  execuções {}",
                 if e.wide { "[2 sockets]" } else { "[1 socket] " },
                 k,
                 e.peak_frac * 100.0,
@@ -2967,7 +2982,7 @@ fn cmd_learned(forget: Option<String>) -> Result<()> {
 
 fn cmd_log(lines: usize, which: Option<&str>) -> Result<()> {
     let want = which.map(|w| match w {
-        "servico" | "serviço" | "daemon" => "serviço",
+        "servico" | "serviço" | "service" | "daemon" => "serviço",
         o => o,
     });
     let mut shown = 0;
@@ -3007,8 +3022,8 @@ fn cmd_log(lines: usize, which: Option<&str>) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "== journal do serviço (este boot) ==",
-                        "== service journal (this boot) =="
+                        "== service journal (this boot) ==",
+                        "== journal do serviço (este boot) =="
                     )
                 );
                 print!("{t}");
@@ -3018,7 +3033,7 @@ fn cmd_log(lines: usize, which: Option<&str>) -> Result<()> {
     if shown == 0 {
         println!(
             "{}",
-            numapilot::tf!("Nenhum registro ainda.", "No logs yet.")
+            numapilot::tf!("No logs yet.", "Nenhum registro ainda.")
         );
     }
     Ok(())
@@ -3040,8 +3055,8 @@ fn cmd_gpu_test(cfg: &Config, only: Option<&str>, json: bool) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "{} ({}): dormindo, pulei para não acordar (teste só ela: numapilot gpu-test {})",
                         "{} ({}): asleep, skipped so as not to wake it (test only it: numapilot gpu-test {})",
+                        "{} ({}): dormindo, pulei para não acordar (teste só ela: numapilot gpu-test {})",
                         g.alias,
                         g.short_name(),
                         g.alias
@@ -3058,9 +3073,9 @@ fn cmd_gpu_test(cfg: &Config, only: Option<&str>, json: bool) -> Result<()> {
             println!("{} ({}, {})", g.alias, g.short_name(), g.pci);
             for l in &lines {
                 let tag = match l.verdict {
-                    Verdict::Certa => numapilot::i18n::tr("certa  "),
-                    Verdict::Errada => numapilot::i18n::tr("ERRADA "),
-                    Verdict::NaoDeu => numapilot::i18n::tr("não deu"),
+                    Verdict::Certa => numapilot::i18n::tr("right  "),
+                    Verdict::Errada => numapilot::i18n::tr("WRONG  "),
+                    Verdict::NaoDeu => numapilot::i18n::tr("failed"),
                 };
                 println!("  {tag} {}: {}", l.api, l.detail);
             }
@@ -3068,8 +3083,8 @@ fn cmd_gpu_test(cfg: &Config, only: Option<&str>, json: bool) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "  nome para o filtro do DXVK/VKD3D: {n}",
-                        "  name for the DXVK/VKD3D filter: {n}"
+                        "  name for the DXVK/VKD3D filter: {n}",
+                        "  nome para o filtro do DXVK/VKD3D: {n}"
                     )
                 );
             }
@@ -3080,15 +3095,15 @@ fn cmd_gpu_test(cfg: &Config, only: Option<&str>, json: bool) -> Result<()> {
             .count();
         set.clear();
         all.push(
-            serde_json::json!({"alias": g.alias, "pci": g.pci, numapilot::i18n::tr("linhas"): lines, "filtro_dx": dxf}),
+            serde_json::json!({"alias": g.alias, "pci": g.pci, numapilot::i18n::tr("lines"): lines, "filtro_dx": dxf}),
         );
     }
     if !found {
         anyhow::bail!(
             "{}",
             numapilot::tf!(
-                "placa não encontrada (veja os apelidos em: numapilot topo)",
-                "card not found (see the aliases in: numapilot topo)"
+                "card not found (see the aliases in: numapilot topo)",
+                "placa não encontrada (veja os apelidos em: numapilot topo)"
             )
         );
     }
@@ -3099,8 +3114,8 @@ fn cmd_gpu_test(cfg: &Config, only: Option<&str>, json: bool) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "Alguma escolha caiu na placa errada. Mande esta saída e a de: numapilot run --dry-run --gpu APELIDO -- true",
-                "Some choice landed on the wrong card. Send this output and that of: numapilot run --dry-run --gpu ALIAS -- true"
+                "Some choice landed on the wrong card. Send this output and that of: numapilot run --dry-run --gpu ALIAS -- true",
+                "Alguma escolha caiu na placa errada. Mande esta saída e a de: numapilot run --dry-run --gpu APELIDO -- true"
             )
         );
     }
@@ -3135,8 +3150,8 @@ fn cmd_turbo(cfg: &Config) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "Processador {} ({} núcleos)",
                 "Processor {} ({} cores)",
+                "Processador {} ({} núcleos)",
                 n.id,
                 total
             )
@@ -3145,23 +3160,23 @@ fn cmd_turbo(cfg: &Config) -> Result<()> {
             Some(true) => println!(
                 "{}",
                 numapilot::tf!(
-                    "  acordados agora: ~{awake:.1} (média de 1 s)",
-                    "  awake now: ~{awake:.1} (1 s average)"
+                    "  awake now: ~{awake:.1} (1 s average)",
+                    "  acordados agora: ~{awake:.1} (média de 1 s)"
                 )
             ),
             Some(false) => println!(
                 "{}",
                 numapilot::tf!(
-                    "  estados profundos (C3/C6) DESLIGADOS: todos os núcleos contam como acordados; ligue em Máquina → Processador",
-                    "  deep states (C3/C6) OFF: every core counts as awake; turn them on in Machine → Processor"
+                    "  deep states (C3/C6) OFF: every core counts as awake; turn them on in Machine → Processor",
+                    "  estados profundos (C3/C6) DESLIGADOS: todos os núcleos contam como acordados; ligue em Máquina → Processador"
                 )
             ),
             None => {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "  sem cpuidle neste sistema: não dá para estimar os núcleos acordados",
-                        "  no cpuidle on this system: the awake cores cannot be estimated"
+                        "  no cpuidle on this system: the awake cores cannot be estimated",
+                        "  sem cpuidle neste sistema: não dá para estimar os núcleos acordados"
                     )
                 )
             }
@@ -3171,8 +3186,8 @@ fn cmd_turbo(cfg: &Config) -> Result<()> {
                 println!(
                     "{}",
                     numapilot::tf!(
-                        "  tabela (núcleos acordados → clock máximo): {}",
                         "  table (cores awake → maximum clock): {}",
+                        "  tabela (núcleos acordados → clock máximo): {}",
                         turbo::describe(t)
                     )
                 );
@@ -3180,8 +3195,8 @@ fn cmd_turbo(cfg: &Config) -> Result<()> {
                     println!(
                         "{}",
                         numapilot::tf!(
-                            "  com a carga de agora: até {:.1} GHz",
                             "  with the current load: up to {:.1} GHz",
+                            "  com a carga de agora: até {:.1} GHz",
                             mhz as f64 / 1000.0
                         )
                     );
@@ -3190,8 +3205,8 @@ fn cmd_turbo(cfg: &Config) -> Result<()> {
             None => println!(
                 "{}",
                 numapilot::tf!(
-                    "  tabela de turbo indisponível (só Intel; precisa do serviço rodando ou de sudo)",
-                    "  turbo table unavailable (Intel only; needs the service running or sudo)"
+                    "  turbo table unavailable (Intel only; needs the service running or sudo)",
+                    "  tabela de turbo indisponível (só Intel; precisa do serviço rodando ou de sudo)"
                 )
             ),
         }
@@ -3210,7 +3225,7 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
             "{}",
             if r.ok {
                 numapilot::i18n::tr(
-                    "Medição apagada: a escolha de núcleos volta à ordem do sistema.",
+                    "Measurement deleted: core choice goes back to the system order.",
                 )
             } else {
                 r.message.as_str()
@@ -3224,8 +3239,8 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
             _ => bail!(
                 "{}",
                 numapilot::tf!(
-                    "nenhuma medição guardada (rode: numapilot bench-cores)",
-                    "no saved measurement (run: numapilot bench-cores)"
+                    "no saved measurement (run: numapilot bench-cores)",
+                    "nenhuma medição guardada (rode: numapilot bench-cores)"
                 )
             ),
         }
@@ -3233,8 +3248,8 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "Deixe o PC parado durante a medição.",
-                "Leave the PC idle during the measurement."
+                "Leave the PC idle during the measurement.",
+                "Deixe o PC parado durante a medição."
             )
         );
         corebench::measure(&topo, &mut |l| println!("{l}")).map_err(|e| anyhow::anyhow!(e))?
@@ -3253,8 +3268,8 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "Processador {} (do mais rápido ao mais lento):",
                 "Processor {} (fastest to slowest):",
+                "Processador {} (do mais rápido ao mais lento):",
                 n.id
             )
         );
@@ -3262,8 +3277,8 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
             println!(
                 "{}",
                 numapilot::tf!(
-                    "  núcleo {i:>2} (CPU {cpu:>3}): {ns:.2} ns  {:+.1}%",
                     "  core {i:>2} (CPU {cpu:>3}): {ns:.2} ns  {:+.1}%",
+                    "  núcleo {i:>2} (CPU {cpu:>3}): {ns:.2} ns  {:+.1}%",
                     (ns / best - 1.0) * 100.0
                 )
             );
@@ -3273,8 +3288,8 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
     println!(
         "{}",
         numapilot::tf!(
-            "Diferença entre o melhor e o pior núcleo: {:.1}% · ruído da medição: {:.1}%",
             "Difference between the best and the worst core: {:.1}% · measurement noise: {:.1}%",
+            "Diferença entre o melhor e o pior núcleo: {:.1}% · ruído da medição: {:.1}%",
             rank.spread_pct,
             rank.noise_pct
         )
@@ -3283,18 +3298,18 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "A diferença é maior que o ruído: a escolha de núcleos passa a preferir os mais rápidos.",
-                "The difference is larger than the noise: core choice now prefers the fastest ones."
+                "The difference is larger than the noise: core choice now prefers the fastest ones.",
+                "A diferença é maior que o ruído: a escolha de núcleos passa a preferir os mais rápidos."
             )
         );
     } else {
         println!(
             "{}",
             numapilot::tf!(
-                "A diferença é pequena demais (ou a medição variou muito) para valer como critério: \
-             a escolha de núcleos continua na ordem do sistema. Se o PC estava ocupado, feche tudo e meça de novo.",
                 "The difference is too small (or the measurement varied too much) to count as a criterion: \
-             core choice stays in the system order. If the PC was busy, close everything and measure again."
+             core choice stays in the system order. If the PC was busy, close everything and measure again.",
+                "A diferença é pequena demais (ou a medição variou muito) para valer como critério: \
+             a escolha de núcleos continua na ordem do sistema. Se o PC estava ocupado, feche tudo e meça de novo."
             )
         );
     }
@@ -3304,30 +3319,12 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
             bail!(
                 "{}",
                 numapilot::tf!(
-                    "medi, mas o serviço não guardou: {}",
                     "measured, but the service did not save it: {}",
+                    "medi, mas o serviço não guardou: {}",
                     r.message
                 )
             );
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod help_tests {
-    /// Todo texto do `--help` precisa ter tradução em `help_en.rs`.
-    #[test]
-    fn help_fully_translated() {
-        use clap::CommandFactory;
-        let mut missing = Vec::new();
-        super::help_en::missing(&super::Cli::command(), &mut missing);
-        missing.sort();
-        missing.dedup();
-        assert!(
-            missing.is_empty(),
-            "sem tradução no --help:\n{}",
-            missing.join("\n@@\n")
-        );
-    }
 }

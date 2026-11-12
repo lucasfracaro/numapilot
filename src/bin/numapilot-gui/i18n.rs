@@ -1,57 +1,88 @@
-//! Tradução da interface. O português é o idioma do código. Texto fixo: `tr("texto")` com o par
-//! em `i18n_en.rs`; texto com valores: `tf!("texto {}", "text {}", valor)`. O que não tem tradução
-//! aparece em português (as mensagens que vêm do serviço e da linha de comando, por exemplo).
+//! Interface translation. English is the language of the code; Portuguese is the translation.
+//! Fixed text: `tr("text")` with its pair in `i18n_pt.rs`; text with values:
+//! `tf!("text {}", "texto {}", value)`. The language itself is decided by the library
+//! (`numapilot::i18n`), so the interface, the service and the command line agree.
 
-#[path = "i18n_en.rs"]
-mod en;
+#[path = "i18n_pt.rs"]
+mod pt;
 
-/// `format!` nos dois idiomas: `tf!("texto {}", "text {}", valor)`.
+/// `format!` in both languages: `tf!("text {}", "texto {}", value)`.
 #[macro_export]
 macro_rules! tf {
-    ($pt:literal, $en:literal $(, $($arg:tt)*)?) => {
-        if $crate::i18n::english() {
-            format!($en $(, $($arg)*)?)
-        } else {
+    ($en:literal, $pt:literal $(, $($arg:tt)*)?) => {
+        if $crate::i18n::portuguese() {
             format!($pt $(, $($arg)*)?)
+        } else {
+            format!($en $(, $($arg)*)?)
         }
     };
 }
 
-/// Carrega o idioma (escolha salva ou idioma do sistema; a biblioteca decide).
+/// Fixed text with its Portuguese form inline: `t2!("System", "Do sistema")`.
+#[macro_export]
+macro_rules! t2 {
+    ($en:literal, $pt:literal) => {
+        if $crate::i18n::portuguese() { $pt } else { $en }
+    };
+}
+
+/// Loads the language (saved choice or system locale; the library decides).
 pub fn init() {
-    let _ = english();
+    let _ = portuguese();
 }
 
-pub fn english() -> bool {
-    numapilot::i18n::english()
+pub fn portuguese() -> bool {
+    numapilot::i18n::portuguese()
 }
 
-pub fn set_english(en: bool) {
-    numapilot::i18n::save_user_choice(en);
+pub fn set_portuguese(pt: bool) {
+    numapilot::i18n::save_user_choice(pt);
 }
 
-/// Texto no idioma escolhido (o próprio texto se não houver tradução).
+/// The text in the language in use (the text itself when there is no translation).
 pub fn tr(s: &'static str) -> &'static str {
-    if !english() {
+    if !portuguese() {
         return s;
     }
     static MAP: std::sync::OnceLock<std::collections::HashMap<&'static str, &'static str>> =
         std::sync::OnceLock::new();
-    MAP.get_or_init(|| en::EN.iter().copied().collect())
+    MAP.get_or_init(|| pt::PT.iter().copied().collect())
         .get(s)
         .copied()
-        // textos que vêm das tabelas da biblioteca (mitigações, modos, ajustes da Acer…)
+        // texts that come from the library's tables (mitigations, modes, Acer settings…)
         .unwrap_or_else(|| numapilot::i18n::tr(s))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::en::EN;
+    use super::pt::PT;
 
-    /// Todo `tr("…")` do código precisa ter o par na tabela (senão o inglês mostra português).
+    #[test]
+    fn no_duplicate_keys() {
+        let mut seen = std::collections::HashSet::new();
+        for (k, _) in PT {
+            assert!(seen.insert(*k), "duplicate: {k}");
+        }
+    }
+
+    /// Texts that are the same in both languages.
+    const SAME: &[&str] = &[];
+
+    /// Every `tr("…")` in the interface needs its Portuguese pair (here or in the library).
     #[test]
     fn every_tr_has_a_pair() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/numapilot-gui");
+        let norm = |s: &str| {
+            s.replace("\\n", "")
+                .split_whitespace()
+                .collect::<String>()
+                .replace('\\', "")
+        };
+        let keys: std::collections::HashSet<String> = PT
+            .iter()
+            .map(|(k, _)| norm(k))
+            .chain(SAME.iter().map(|k| norm(k)))
+            .collect();
         let mut missing = Vec::new();
         for e in std::fs::read_dir(dir).unwrap().flatten() {
             let name = e.file_name().to_string_lossy().to_string();
@@ -65,31 +96,21 @@ mod tests {
                 if !rest.starts_with('"') {
                     continue;
                 }
-                let mut end = 1;
                 let b = rest.as_bytes();
+                let mut end = 1;
                 while b[end] != b'"' {
                     end += if b[end] == b'\\' { 2 } else { 1 };
                 }
                 let lit = &rest[1..end];
-                // a tabela guarda o texto já interpretado; compara sem as continuações de linha
-                let norm = |s: &str| {
-                    s.replace("\\n", "")
-                        .split_whitespace()
-                        .collect::<String>()
-                        .replace('\\', "")
-                };
-                if !EN.iter().any(|(k, _)| norm(k) == norm(lit)) {
+                if !keys.contains(&norm(lit)) && !numapilot::i18n::has_pair(lit) {
                     missing.push(format!("{name}: {lit}"));
                 }
             }
         }
-        assert!(missing.is_empty(), "sem tradução:\n{}", missing.join("\n"));
-    }
-
-    #[test]
-    fn no_duplicate_keys() {
-        for (i, (k, _)) in EN.iter().enumerate() {
-            assert!(!EN[..i].iter().any(|(o, _)| o == k), "repetido: {k}");
-        }
+        assert!(
+            missing.is_empty(),
+            "no Portuguese pair for:\n{}",
+            missing.join("\n")
+        );
     }
 }

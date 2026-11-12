@@ -115,7 +115,7 @@ impl LabSettings {
         }
         std::fs::create_dir_all(cfg_dir())?;
         let mut out = String::from(
-            "# Ajustes feitos pelo numapilot (interface gráfica). Lido pelo gfx906-rocm.\n",
+            "# Settings made by numapilot (graphical interface). Read by gfx906-rocm.\n",
         );
         for (k, v) in cur {
             out.push_str(&format!("{k}=\"{}\"\n", v.replace('"', "")));

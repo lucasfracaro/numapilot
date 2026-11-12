@@ -40,8 +40,8 @@ pub fn core_map(
             .collect();
         ui.label(
             RichText::new(crate::tf!(
-                "Socket {} — {} núcleos / {} threads{}",
                 "Socket {} — {} cores / {} threads{}",
+                "Socket {} — {} núcleos / {} threads{}",
                 n.id,
                 n.cores.len(),
                 n.cpus.len(),
@@ -165,14 +165,14 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
         if let Some(a) = app.awake.get(&pkg) {
             let total = n.physical_cores.max(n.cores.len());
             let mut txt = crate::tf!(
-                "Turbo: ~{a:.1} de {total} núcleos acordados",
-                "Turbo: ~{a:.1} of {total} cores awake"
+                "Turbo: ~{a:.1} of {total} cores awake",
+                "Turbo: ~{a:.1} de {total} núcleos acordados"
             );
             let table = app.turbo_tables.get(&pkg);
             if let Some(mhz) = table.and_then(|t| numapilot::turbo::limit_for(t, *a)) {
                 txt.push_str(&crate::tf!(
-                    " → até {:.1} GHz",
                     " → up to {:.1} GHz",
+                    " → até {:.1} GHz",
                     mhz as f64 / 1000.0
                 ));
             }
@@ -180,25 +180,25 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
             match table {
                 Some(t) => {
                     r.on_hover_text(crate::tf!(
-                        "Quanto menos núcleos acordados neste processador, mais alto o clock dos que estão em uso.\n\
-                         Núcleos acordados → clock máximo:\n{}\n\
-                         Programas com AVX2 pesado usam uma tabela um pouco mais baixa.", "The fewer cores awake on this processor, the higher the clock of the ones in use.\n\
+                        "The fewer cores awake on this processor, the higher the clock of the ones in use.\n\
                          Cores awake → maximum clock:\n{}\n\
-                         Programs with heavy AVX2 use a slightly lower table.",
+                         Programs with heavy AVX2 use a slightly lower table.", "Quanto menos núcleos acordados neste processador, mais alto o clock dos que estão em uso.\n\
+                         Núcleos acordados → clock máximo:\n{}\n\
+                         Programas com AVX2 pesado usam uma tabela um pouco mais baixa.",
                         numapilot::turbo::describe(t)
                     ));
                 }
                 None => {
                     r.on_hover_text(crate::i18n::tr(
-                        "A tabela de turbo vem do serviço do numapilot (só processadores Intel).",
+                        "The turbo table comes from the numapilot service (Intel processors only).",
                     ));
                 }
             }
             if deep == Some(false) {
                 ui.label(
                     RichText::new(
-                        crate::i18n::tr("Os estados de economia profundos (C3/C6) estão desligados: todos os núcleos contam como \
-                         acordados e o turbo fica no valor de todos os núcleos. Ligue-os em Máquina → Processador."),
+                        crate::i18n::tr("The deep idle states (C3/C6) are off: every core counts as \
+                         awake and turbo stays at the all-core value. Turn them on in Machine → Processor."),
                     )
                     .size(12.5)
                     .color(p.warn),
@@ -266,15 +266,15 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
                     let core = n.cores.iter().position(|k| k.contains(&c));
                     let mut tip = format!("CPU {c}: {:.0}%", l * 100.0);
                     if let Some(k) = core {
-                        tip.push_str(&crate::tf!(" · núcleo {k}", " · core {k}"));
+                        tip.push_str(&crate::tf!(" · core {k}", " · núcleo {k}"));
                     }
                     if let Some(mhz) = app.cpu_freq.get(&c) {
                         tip.push_str(&format!(" · {:.2} GHz", *mhz as f64 / 1000.0));
                     }
                     if let Some(ps) = who.get(&c) {
                         tip.push_str(&crate::tf!(
-                            "\npreso aqui: {}",
                             "\npinned here: {}",
+                            "\npreso aqui: {}",
                             ps.join(", ")
                         ));
                     }
@@ -318,11 +318,11 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
                 crate::theme::spark_in(&painter, g, sp, c);
                 let label = if multi {
                     crate::tf!(
-                        "Temperatura socket {pkg} (último minuto, 30–100 °C)",
-                        "Temperature socket {pkg} (last minute, 30–100 °C)"
+                        "Temperature socket {pkg} (last minute, 30–100 °C)",
+                        "Temperatura socket {pkg} (último minuto, 30–100 °C)"
                     )
                 } else {
-                    crate::i18n::tr("Temperatura do processador (último minuto, 30–100 °C)").into()
+                    crate::i18n::tr("Processor temperature (last minute, 30–100 °C)").into()
                 };
                 painter.text(
                     rect.left_top() + egui::vec2(6.0, 4.0),
@@ -342,7 +342,7 @@ fn thread_graphs(app: &App, ui: &mut egui::Ui, who: &BTreeMap<usize, Vec<String>
         });
     }
     ui.label(
-        RichText::new(crate::i18n::tr("Passe o mouse num gráfico para ver o núcleo e a frequência; ponto amarelo = algum programa está preso a ele."))
+        RichText::new(crate::i18n::tr("Hover over a chart to see the core and the frequency; yellow dot = some program is pinned to it."))
             .size(11.5)
             .color(p.weak),
     );
@@ -378,8 +378,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut app.map_threads, true, crate::i18n::tr("Gráfico por thread"));
-            ui.selectable_value(&mut app.map_threads, false, crate::i18n::tr("Mapa de núcleos"));
+            ui.selectable_value(&mut app.map_threads, true, crate::i18n::tr("Per-thread chart"));
+            ui.selectable_value(&mut app.map_threads, false, crate::i18n::tr("Core map"));
         });
         ui.add_space(4.0);
         if app.map_threads {
@@ -387,8 +387,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         } else {
             ui.label(
                 RichText::new(
-                    crate::i18n::tr("Cada quadrado é um núcleo físico (dividido nos 2 threads). Cor = uso; ponto branco = algum programa \
-                     está preso a ele (passe o mouse para ver)."),
+                    crate::i18n::tr("Each square is a physical core (split into its 2 threads). Color = usage; white dot = some program \
+                     is pinned to it (hover to see)."),
                 )
                 .weak(),
             );
@@ -398,15 +398,15 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         disks_and_net(app, ui);
         ui.separator();
 
-        ui.heading(crate::i18n::tr("Memória e frequência por socket"));
+        ui.heading(crate::i18n::tr("Memory and frequency per socket"));
         let nodes = app.topo.nodes.clone();
         egui::Grid::new("sockets").num_columns(4).spacing([16.0, 6.0]).striped(true).show(ui, |ui| {
             ui.label(RichText::new("Socket").strong());
-            ui.label(RichText::new(crate::i18n::tr("Memória em uso")).strong());
-            ui.label(RichText::new(crate::i18n::tr("Alocações no outro socket")).strong())
-                .on_hover_text(crate::i18n::tr("Páginas de memória que precisaram ser criadas no outro socket (numastat other_node/numa_miss), por segundo."));
-            ui.label(RichText::new(crate::i18n::tr("Governador")).strong())
-                .on_hover_text(crate::i18n::tr("performance = frequência máxima sempre (jogos); schedutil/powersave = economiza energia."));
+            ui.label(RichText::new(crate::i18n::tr("Memory in use")).strong());
+            ui.label(RichText::new(crate::i18n::tr("Allocations on the other socket")).strong())
+                .on_hover_text(crate::i18n::tr("Memory pages that had to be created on the other socket (numastat other_node/numa_miss), per second."));
+            ui.label(RichText::new(crate::i18n::tr("Governor")).strong())
+                .on_hover_text(crate::i18n::tr("performance = always maximum frequency (games); schedutil/powersave = saves power."));
             ui.end_row();
             for n in &nodes {
                 ui.label(format!("{}", n.id));
@@ -420,11 +420,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ui.label(format!("{:.1} / {:.0} GB", used_kb / 1048576.0, tot / 1048576.0));
                 });
                 let rate = app.numa_rates.get(&n.id).copied().unwrap_or((0.0, 0.0));
-                let txt = crate::tf!("{:.0}/s ({:.1}% das alocações)", "{:.0}/s ({:.1}% of allocations)", rate.0, rate.1 * 100.0);
+                let txt = crate::tf!("{:.0}/s ({:.1}% of allocations)", "{:.0}/s ({:.1}% das alocações)", rate.0, rate.1 * 100.0);
                 ui.label(if rate.1 > 0.05 { RichText::new(txt).color(Color32::from_rgb(230, 160, 40)) } else { RichText::new(txt) });
                 let (cur, avail) = governors(n.cpus[0]);
                 if avail.is_empty() {
-                    ui.label(RichText::new(crate::i18n::tr("indisponível")).weak());
+                    ui.label(RichText::new(crate::i18n::tr("unavailable")).weak());
                 } else {
                     let mut sel = cur.clone();
                     egui::ComboBox::from_id_salt(format!("gov-{}", n.id)).selected_text(&sel).show_ui(ui, |ui| {
@@ -440,11 +440,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         if !numapilot::containers::which("irqbalance") || crate::jobs::quick(&["pgrep", "-x", "irqbalance"]).is_empty() {
-            ui.label(RichText::new(crate::i18n::tr("Interrupções das GPUs: atendidas pelo socket de cada placa.")).small().weak());
+            ui.label(RichText::new(crate::i18n::tr("GPU interrupts: handled by each card's socket.")).small().weak());
         } else {
             ui.label(
                 RichText::new(
-                    crate::i18n::tr("O irqbalance está rodando e pode desfazer o ajuste das interrupções das GPUs: \
+                    crate::i18n::tr("irqbalance is running and may undo the GPU interrupt tuning: \
                      sudo systemctl disable --now irqbalance"),
                 )
                 .small()
@@ -454,14 +454,14 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.separator();
 
         ui.horizontal(|ui| {
-            ui.heading(crate::i18n::tr("Latência do cache por núcleo"));
+            ui.heading(crate::i18n::tr("Cache latency per core"));
             if ui
-                .button(crate::i18n::tr("Medir núcleos"))
-                .on_hover_text(crate::i18n::tr("Mede o acesso ao cache L3 a partir de cada núcleo (alguns segundos, com o PC parado). Se a diferença for maior que o ruído, as escolhas de núcleos, inclusive o turbo máximo, passam a preferir os mais rápidos."))
+                .button(crate::i18n::tr("Measure cores"))
+                .on_hover_text(crate::i18n::tr("Measures L3 cache access from each core (a few seconds, with the PC idle). If the difference is larger than the noise, core choices, including maximum turbo, start preferring the fastest ones."))
                 .clicked()
             {
                 app.start_job(
-                    crate::i18n::tr("Medindo a latência do cache por núcleo"),
+                    crate::i18n::tr("Measuring cache latency per core"),
                     vec![crate::jobs::sibling("numapilot"), "bench-cores".into()],
                 );
             }
@@ -470,46 +470,46 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             Some(r) => {
                 ui.label(
                     RichText::new(crate::tf!(
-                        "Diferença entre o melhor e o pior núcleo: {:.1}% (ruído da medição {:.1}%). {}", "Difference between the best and the worst core: {:.1}% (measurement noise {:.1}%). {}",
+                        "Difference between the best and the worst core: {:.1}% (measurement noise {:.1}%). {}", "Diferença entre o melhor e o pior núcleo: {:.1}% (ruído da medição {:.1}%). {}",
                         r.spread_pct,
                         r.noise_pct,
                         if r.useful {
-                            crate::i18n::tr("Em uso: os programas com número de núcleos escolhido ficam nos mais rápidos.")
+                            crate::i18n::tr("In use: programs with a chosen number of cores get the fastest ones.")
                         } else {
-                            crate::i18n::tr("Pequena demais para usar como critério: a ordem do sistema continua.")
+                            crate::i18n::tr("Too small to use as a criterion: the system order stays.")
                         }
                     ))
                     .weak(),
                 );
             }
             None => {
-                ui.label(RichText::new(crate::i18n::tr("Ainda não medido.")).weak());
+                ui.label(RichText::new(crate::i18n::tr("Not measured yet.")).weak());
             }
         }
         ui.separator();
 
         ui.horizontal(|ui| {
-            ui.heading(crate::i18n::tr("Latência e banda entre sockets (medidas)"));
-            if ui.button(crate::i18n::tr("Medir agora")).on_hover_text(crate::i18n::tr("Leva ~10 s; o PC fica ocupado durante o teste")).clicked() {
+            ui.heading(crate::i18n::tr("Latency and bandwidth between sockets (measured)"));
+            if ui.button(crate::i18n::tr("Measure now")).on_hover_text(crate::i18n::tr("Takes ~10 s; the PC is busy during the test")).clicked() {
                 let mut v = vec![crate::jobs::sibling("numapilot")];
                 v.push("bench".into());
-                app.start_job(crate::i18n::tr("Medindo latência e banda de memória"), v);
+                app.start_job(crate::i18n::tr("Measuring memory latency and bandwidth"), v);
                 app.bench_checked = None;
             }
         });
         match &app.bench {
             None => {
-                ui.label(RichText::new(crate::i18n::tr("Ainda não medido. Clique em \"Medir agora\".")).weak());
+                ui.label(RichText::new(crate::i18n::tr("Not measured yet. Click \"Measure now\".")).weak());
             }
             Some(b) => {
                 egui::Grid::new("bench").num_columns(b.nodes.len() + 1).spacing([18.0, 4.0]).striped(true).show(ui, |ui| {
-                    ui.label(RichText::new(crate::i18n::tr("CPUs \\ memória")).small());
+                    ui.label(RichText::new(crate::i18n::tr("CPUs \\ memory")).small());
                     for n in &b.nodes {
-                        ui.label(RichText::new(crate::tf!("memória do socket {n}", "memory of socket {n}")).strong());
+                        ui.label(RichText::new(crate::tf!("memory of socket {n}", "memória do socket {n}")).strong());
                     }
                     ui.end_row();
                     for (i, n) in b.nodes.iter().enumerate() {
-                        ui.label(RichText::new(crate::tf!("CPUs do socket {n}", "CPUs of socket {n}")).strong());
+                        ui.label(RichText::new(crate::tf!("CPUs of socket {n}", "CPUs do socket {n}")).strong());
                         for j in 0..b.nodes.len() {
                             let lat = b.latency_ns[i][j];
                             let bw = b.bandwidth_gbs[i][j];
@@ -523,17 +523,17 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     let extra = (b.latency_ns[0][1] / b.latency_ns[0][0] - 1.0) * 100.0;
                     let bw = (1.0 - b.bandwidth_gbs[0][1] / b.bandwidth_gbs[0][0].max(0.001)) * 100.0;
                     ui.label(crate::tf!(
-                        "Usar a memória do outro socket custa {extra:.0}% a mais de latência e {bw:.0}% menos banda. \
-                         Por isso jogos rendem mais presos a um socket com a memória local.", "Using the other socket's memory costs {extra:.0}% more latency and {bw:.0}% less bandwidth. \
-                         That is why games do better pinned to one socket with local memory."
+                        "Using the other socket's memory costs {extra:.0}% more latency and {bw:.0}% less bandwidth. \
+                         That is why games do better pinned to one socket with local memory.", "Usar a memória do outro socket custa {extra:.0}% a mais de latência e {bw:.0}% menos banda. \
+                         Por isso jogos rendem mais presos a um socket com a memória local."
                     ));
                 }
             }
         }
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            if ui.small_button(crate::i18n::tr("Diagnóstico completo (gfx906-rocm doctor)")).clicked() {
-                app.start_job(crate::i18n::tr("Diagnóstico"), gfx(&["doctor"]));
+            if ui.small_button(crate::i18n::tr("Full diagnosis (gfx906-rocm doctor)")).clicked() {
+                app.start_job(crate::i18n::tr("Diagnosis"), gfx(&["doctor"]));
             }
         });
     });
@@ -579,9 +579,9 @@ fn disks_and_net(app: &App, ui: &mut egui::Ui) {
     let write = Color32::from_rgb(0xf0, 0xa6, 0x3a);
     let down = Color32::from_rgb(0x3e, 0xcf, 0x8e);
     let up = Color32::from_rgb(0xc0, 0x7c, 0xf0);
-    ui.heading(crate::i18n::tr("Discos e rede"));
+    ui.heading(crate::i18n::tr("Disks and network"));
     if app.disk_rates.is_empty() && app.net_rates.is_empty() {
-        ui.label(RichText::new(crate::i18n::tr("Medindo...")).weak());
+        ui.label(RichText::new(crate::i18n::tr("Measuring...")).weak());
         return;
     }
     egui::Grid::new("io")
@@ -594,24 +594,24 @@ fn disks_and_net(app: &App, ui: &mut egui::Ui) {
             let empty = std::collections::VecDeque::new();
             for d in &app.disk_rates {
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(crate::tf!("Disco {}", "Disk {}", d.name)).strong());
+                    ui.label(RichText::new(crate::tf!("Disk {}", "Disco {}", d.name)).strong());
                     if !d.model.is_empty() {
                         ui.label(RichText::new(&d.model).small().weak());
                     }
                 });
                 ui.vertical(|ui| {
                     ui.label(
-                        RichText::new(crate::tf!("leitura {}", "read {}", fmt_rate(d.read_bps)))
+                        RichText::new(crate::tf!("read {}", "leitura {}", fmt_rate(d.read_bps)))
                             .color(read),
                     );
                     ui.label(
-                        RichText::new(crate::tf!("escrita {}", "write {}", fmt_rate(d.write_bps)))
+                        RichText::new(crate::tf!("write {}", "escrita {}", fmt_rate(d.write_bps)))
                             .color(write),
                     );
                     ui.label(
                         RichText::new(crate::tf!(
-                            "ativo {:.0}% do tempo",
                             "active {:.0}% of the time",
+                            "ativo {:.0}% do tempo",
                             d.busy_pct
                         ))
                         .small()
@@ -636,7 +636,7 @@ fn disks_and_net(app: &App, ui: &mut egui::Ui) {
                             if n.wifi {
                                 "Wi-Fi"
                             } else {
-                                crate::i18n::tr("Rede")
+                                crate::i18n::tr("Network")
                             },
                             n.name
                         ))
@@ -660,7 +660,7 @@ fn disks_and_net(app: &App, ui: &mut egui::Ui) {
         });
     ui.label(
         RichText::new(crate::i18n::tr(
-            "Gráficos: último minuto, na mesma escala (linha cheia = leitura/download).",
+            "Charts: last minute, on the same scale (solid line = read/download).",
         ))
         .small()
         .weak(),

@@ -189,7 +189,7 @@ impl Default for GpuControl {
 impl GpuControl {
     pub fn validate(&mut self) -> Result<(), String> {
         if self.curve.len() < 2 {
-            return Err(crate::i18n::tr("a curva precisa de pelo menos 2 pontos").into());
+            return Err(crate::i18n::tr("the curve needs at least 2 points").into());
         }
         self.curve
             .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -267,12 +267,12 @@ impl GpuControls {
 // ---------- escrita (daemon) ----------
 
 pub fn set_fan_auto(pci: &str) -> io::Result<()> {
-    let h = hwmon_dir(pci).ok_or_else(|| io::Error::other(crate::i18n::tr("sem hwmon")))?;
+    let h = hwmon_dir(pci).ok_or_else(|| io::Error::other(crate::i18n::tr("no hwmon")))?;
     fs::write(h.join("pwm1_enable"), "2")
 }
 
 pub fn set_fan_pct(pci: &str, pct: f64) -> io::Result<()> {
-    let h = hwmon_dir(pci).ok_or_else(|| io::Error::other(crate::i18n::tr("sem hwmon")))?;
+    let h = hwmon_dir(pci).ok_or_else(|| io::Error::other(crate::i18n::tr("no hwmon")))?;
     let max = num(h.join("pwm1_max")).unwrap_or(255.0);
     if read_trim(h.join("pwm1_enable")).as_deref() != Some("1") {
         fs::write(h.join("pwm1_enable"), "1")?;
@@ -286,13 +286,13 @@ pub fn set_power_cap(pci: &str, watts: Option<f64>) -> io::Result<f64> {
     if crate::nvctl::is_nvidia(pci) {
         return crate::nvctl::set_power_limit(pci, watts).map_err(io::Error::other);
     }
-    let h = hwmon_dir(pci).ok_or_else(|| io::Error::other(crate::i18n::tr("sem hwmon")))?;
+    let h = hwmon_dir(pci).ok_or_else(|| io::Error::other(crate::i18n::tr("no hwmon")))?;
     let w = |f: &str| num(h.join(f)).map(|v| v / 1_000_000.0);
     let target = match watts {
         Some(x) => x,
         None => w("power1_cap_default")
             .or_else(|| w("power1_cap_max"))
-            .ok_or_else(|| io::Error::other(crate::i18n::tr("sem limite padrão")))?,
+            .ok_or_else(|| io::Error::other(crate::i18n::tr("no default limit")))?,
     };
     let lo = w("power1_cap_min").unwrap_or(0.0);
     let hi = w("power1_cap_max").unwrap_or(target);

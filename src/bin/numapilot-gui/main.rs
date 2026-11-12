@@ -269,74 +269,69 @@ const TABS: &[(Tab, &str, &str, &str)] = &[
     (
         Tab::Programs,
         "▶",
-        "Programas",
-        "O que está aberto agora e em qual processador e placa cada um roda",
+        "Programs",
+        "What is open now and which processor and card each one runs on",
     ),
     (
         Tab::Startup,
         "🚀",
-        "Inicialização",
-        "Tudo que abre quando o sistema liga: programas do login e serviços",
+        "Startup",
+        "Everything that starts with the system: login programs and services",
     ),
     (
         Tab::Services,
         "⚙",
-        "Serviços",
-        "Serviços do sistema e do usuário: iniciar, parar, reiniciar e ver o log",
+        "Services",
+        "System and user services: start, stop, restart and read the log",
     ),
     (
         Tab::Map,
         "🗺",
-        "Mapa e medições",
-        "Núcleos, memória por socket e medições de desempenho",
+        "Map & measurements",
+        "Cores, memory per socket and performance measurements",
     ),
     (
         Tab::Profiles,
         "💾",
-        "Escolhas salvas",
-        "Escolhas por programa que valem toda vez que ele abrir",
+        "Saved choices",
+        "Per-program choices applied every time it starts",
     ),
     (
         Tab::Gpus,
         "🎮",
-        "Placas de vídeo",
-        "Ventoinha, potência, clock e undervolt de cada placa",
+        "Graphics cards",
+        "Fan, power, clock and undervolt of each card",
     ),
     (
         Tab::Machine,
         "🖥",
-        "Máquina",
-        "Modo de energia, processador, notebook e saúde do hardware",
+        "Machine",
+        "Power mode, processor, laptop and hardware health",
     ),
     (
         Tab::Lab,
         "🔬",
-        "Laboratório",
-        "Containers com ROCm, Jupyter e IDEs",
+        "Lab",
+        "Containers with ROCm, Jupyter and IDEs",
     ),
-    (
-        Tab::Llm,
-        "💬",
-        "Servidor de IA",
-        "Modelos locais com llama.cpp",
-    ),
+    (Tab::Llm, "💬", "AI server", "Local models with llama.cpp"),
     (
         Tab::Stream,
         "📡",
         "Streaming",
-        "Sunshine e Moonlight: jogar de outro aparelho",
+        "Sunshine and Moonlight: play from another device",
     ),
     (
         Tab::Settings,
         "⚙",
-        "Configurações",
-        "Outros PCs, avisos, atualização e máquina virtual",
+        "Settings",
+        "Other PCs, notifications, updates and virtual machine",
     ),
     (
         Tab::Tests,
         "📋",
-        "Testes",
-        "Roteiro para testar o programa, autoteste e relatório para enviar",
+        "Tests",
+        "Manual test script, self-test and a report to send",
     ),
 ];
 
@@ -448,28 +443,25 @@ impl App {
         let renders: Vec<String> = topo.gpus.iter().filter_map(|g| g.render.clone()).collect();
         let bg = bg::start(ctx.clone(), renders);
         let mut cpu_opts = vec![
-            (
-                "auto".to_string(),
-                crate::i18n::tr("Automático").to_string(),
-            ),
+            ("auto".to_string(), crate::i18n::tr("Automatic").to_string()),
             (
                 "gpu".to_string(),
-                crate::i18n::tr("Socket da GPU escolhida").to_string(),
+                crate::i18n::tr("Socket of the chosen GPU").to_string(),
             ),
         ];
         for n in &topo.nodes {
             cpu_opts.push((
                 n.id.to_string(),
-                crate::tf!("Só o socket {}", "Only socket {}", n.id),
+                crate::tf!("Only socket {}", "Só o socket {}", n.id),
             ));
         }
         if topo.nodes.len() > 1 {
-            cpu_opts.push(("all".into(), crate::i18n::tr("Os dois sockets").into()));
+            cpu_opts.push(("all".into(), crate::i18n::tr("Both sockets").into()));
         }
         let mut gpu_opts = vec![(
             "auto".to_string(),
             "auto".to_string(),
-            crate::i18n::tr("Automático").to_string(),
+            crate::i18n::tr("Automatic").to_string(),
         )];
         let sk = |n: Option<usize>| {
             n.map(|n| format!("socket {n}"))
@@ -479,7 +471,7 @@ impl App {
             match g.role {
                 GpuRole::Compute => {
                     let mon = if g.display_connected {
-                        crate::i18n::tr(", monitor próprio")
+                        crate::i18n::tr(", own monitor")
                     } else {
                         ""
                     };
@@ -487,8 +479,8 @@ impl App {
                         g.alias.clone(),
                         "graphics".into(),
                         crate::tf!(
-                            "{} — jogo/gráfico ({}{mon})",
                             "{} — game/graphics ({}{mon})",
+                            "{} — jogo/gráfico ({}{mon})",
                             g.alias,
                             sk(g.numa_node)
                         ),
@@ -497,8 +489,8 @@ impl App {
                         g.alias.clone(),
                         "compute".into(),
                         crate::tf!(
-                            "{} — IA / ROCm ({})",
                             "{} — AI / ROCm ({})",
+                            "{} — IA / ROCm ({})",
                             g.alias,
                             sk(g.numa_node)
                         ),
@@ -508,8 +500,8 @@ impl App {
                     g.alias.clone(),
                     "graphics".into(),
                     crate::tf!(
-                        "{} — vídeo ({})",
                         "{} — video ({})",
+                        "{} — vídeo ({})",
                         g.alias,
                         sk(g.numa_node)
                     ),
@@ -519,7 +511,7 @@ impl App {
         gpu_opts.push((
             "none".into(),
             "auto".into(),
-            crate::i18n::tr("Nenhuma GPU").into(),
+            crate::i18n::tr("No GPU").into(),
         ));
         let mut app = App {
             topo,
@@ -786,9 +778,9 @@ impl App {
     pub(crate) fn toast(&mut self, msg: impl Into<String>, ok: bool) {
         let m = msg.into();
         if ok {
-            numapilot::log::info(&crate::tf!("aviso na tela: {m}", "on-screen notice: {m}"));
+            numapilot::log::info(&crate::tf!("on-screen notice: {m}", "aviso na tela: {m}"));
         } else {
-            numapilot::log::warn(&crate::tf!("aviso na tela: {m}", "on-screen notice: {m}"));
+            numapilot::log::warn(&crate::tf!("on-screen notice: {m}", "aviso na tela: {m}"));
         }
         self.toast = Some((m, ok, Instant::now()));
     }
@@ -796,7 +788,10 @@ impl App {
     /// Roda um comando em segundo plano e mostra a saída numa janelinha.
     pub(crate) fn start_job(&mut self, title: impl Into<String>, argv: Vec<String>) {
         if self.job.as_ref().is_some_and(|j| j.finished().is_none()) {
-            self.toast(crate::i18n::tr("Espere o comando anterior terminar"), false);
+            self.toast(
+                crate::i18n::tr("Wait for the previous command to finish"),
+                false,
+            );
             self.show_job = true;
             return;
         }
@@ -811,9 +806,9 @@ impl App {
         }
         let mut open = true;
         let status = match job.finished() {
-            None => crate::i18n::tr("rodando…"),
-            Some(true) => crate::i18n::tr("concluído"),
-            Some(false) => crate::i18n::tr("com erro"),
+            None => crate::i18n::tr("running…"),
+            Some(true) => crate::i18n::tr("finished"),
+            Some(false) => crate::i18n::tr("failed"),
         };
         egui::Window::new(format!("{} — {status}", job.title))
             .id(egui::Id::unique("numapilot-job"))
@@ -825,7 +820,7 @@ impl App {
                     ui.horizontal(|ui| {
                         ui.spinner();
                         ui.label(crate::i18n::tr(
-                            "pode fechar esta janela; o comando continua em segundo plano",
+                            "you can close this window; the command keeps running in the background",
                         ));
                     });
                 }
@@ -851,8 +846,8 @@ impl App {
             r => format!("{r:?}"),
         };
         numapilot::log::info(&crate::tf!(
-            "pedido ao serviço: {}",
             "request to the service: {}",
+            "pedido ao serviço: {}",
             what.chars().take(300).collect::<String>()
         ));
         match ctl::send(&req) {
@@ -936,9 +931,9 @@ impl App {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 for (v, l) in [
-                    (egui::ThemePreference::System, i18n::tr("Sistema")),
-                    (egui::ThemePreference::Light, i18n::tr("Claro")),
-                    (egui::ThemePreference::Dark, i18n::tr("Escuro")),
+                    (egui::ThemePreference::System, i18n::tr("System")),
+                    (egui::ThemePreference::Light, i18n::tr("Light")),
+                    (egui::ThemePreference::Dark, i18n::tr("Dark")),
                 ] {
                     if ui
                         .selectable_label(pref == v, RichText::new(l).size(12.0))
@@ -950,7 +945,7 @@ impl App {
                     }
                 }
             });
-            ui.label(RichText::new(i18n::tr("Tema")).size(11.5).color(p.weak));
+            ui.label(RichText::new(i18n::tr("Theme")).size(11.5).color(p.weak));
         });
     }
 
@@ -973,13 +968,13 @@ impl App {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if self.daemon_ok {
-                    theme::chip(ui, i18n::tr("Serviço ativo"), p.ok);
+                    theme::chip(ui, i18n::tr("Service running"), p.ok);
                 } else {
-                    theme::chip(ui, i18n::tr("Serviço parado"), p.err);
+                    theme::chip(ui, i18n::tr("Service stopped"), p.err);
                 }
                 if self.job.is_some()
                     && !self.show_job
-                    && ui.button(crate::i18n::tr("Último comando")).clicked()
+                    && ui.button(crate::i18n::tr("Last command")).clicked()
                 {
                     self.show_job = true;
                 }
@@ -996,12 +991,14 @@ impl App {
                     ui.set_min_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new(i18n::tr("O serviço do numapilot não está rodando: as escolhas não são aplicadas."))
-                                .color(p.err),
+                            RichText::new(i18n::tr(
+                                "The numapilot service is not running: choices are not applied.",
+                            ))
+                            .color(p.err),
                         );
-                        if ui.button(i18n::tr("Ativar o serviço")).clicked() {
+                        if ui.button(i18n::tr("Start the service")).clicked() {
                             self.start_job(
-                                crate::i18n::tr("Ativar o serviço"),
+                                crate::i18n::tr("Start the service"),
                                 vec![
                                     "pkexec".into(),
                                     "systemctl".into(),
@@ -1025,13 +1022,13 @@ impl App {
                     let cores = n.physical_cores.max(n.cores.len());
                     let name = if multi {
                         crate::tf!(
-                            "{} · socket {} · {cores} núcleos",
                             "{} · socket {} · {cores} cores",
+                            "{} · socket {} · {cores} núcleos",
                             self.cpu_name,
                             n.id
                         )
                     } else {
-                        crate::tf!("{} · {cores} núcleos", "{} · {cores} cores", self.cpu_name)
+                        crate::tf!("{} · {cores} cores", "{} · {cores} núcleos", self.cpu_name)
                     };
                     let info = self.cpu_info(&n);
                     let key = format!("cpu{}", n.id);
@@ -1055,9 +1052,9 @@ impl App {
                         ui,
                         &theme::Metric {
                             key: "mem",
-                            name: crate::i18n::tr("Memória"),
+                            name: crate::i18n::tr("Memory"),
                             big: &format!("{:.1} GB", mu as f64 / 1048576.0),
-                            small: &crate::tf!("de {:.0} GB", "of {:.0} GB", mt as f64 / 1048576.0),
+                            small: &crate::tf!("of {:.0} GB", "de {:.0} GB", mt as f64 / 1048576.0),
                             frac: mu as f32 / mt as f32,
                             color: Color32::from_rgb(0x9b, 0x7b, 0xff),
                             spark: self.sparks.get("mem"),
@@ -1124,7 +1121,7 @@ impl App {
         // Uso: núcleos e memória (com o limite, se tiver)
         ui.vertical(|ui| {
             ui.set_min_width(110.0);
-            ui.label(crate::tf!("{:.1} núcleos", "{:.1} cores", g.cores));
+            ui.label(crate::tf!("{:.1} cores", "{:.1} núcleos", g.cores));
             ui.label(
                 RichText::new(if g.steam {
                     format!("Steam · {}", g.key)
@@ -1148,16 +1145,14 @@ impl App {
                         };
                         ui.label(
                             RichText::new(crate::tf!(
-                                "{} de {lim:.1} GB",
                                 "{} of {lim:.1} GB",
+                                "{} de {lim:.1} GB",
                                 fmt_bytes(b)
                             ))
                             .small()
                             .color(c),
                         )
-                        .on_hover_text(crate::i18n::tr(
-                            "Memória em uso / limite escolhido em Ajustar…",
-                        ));
+                        .on_hover_text(crate::i18n::tr("Memory in use / limit chosen in Adjust…"));
                         theme::meter(
                             ui,
                             f as f32,
@@ -1168,7 +1163,7 @@ impl App {
                     None => {
                         ui.label(RichText::new(fmt_bytes(b)).small().weak())
                             .on_hover_text(crate::i18n::tr(
-                                "Memória em uso pelo programa (somando os processos dele)",
+                                "Memory in use by the program (adding up its processes)",
                             ));
                     }
                 }
@@ -1178,9 +1173,9 @@ impl App {
         ui.vertical(|ui| {
             ui.set_min_width(170.0);
             let where_ = match g.nodes.len() {
-                0 => crate::i18n::tr("livre (todos)").to_string(),
+                0 => crate::i18n::tr("free (all)").to_string(),
                 1 => format!("socket {}", g.nodes[0]),
-                _ => crate::i18n::tr("os dois sockets").to_string(),
+                _ => crate::i18n::tr("both sockets").to_string(),
             };
             let ncpu = numapilot::util::parse_cpulist(&g.cpus).len();
             let total = self.topo.all_cpus().len();
@@ -1189,18 +1184,18 @@ impl App {
             } else {
                 where_
             });
-            let gpu = if g.gpus.is_empty() { crate::i18n::tr("sem GPU").to_string() } else { format!("GPU {}", g.gpus.join(", ")) };
+            let gpu = if g.gpus.is_empty() { crate::i18n::tr("no GPU").to_string() } else { format!("GPU {}", g.gpus.join(", ")) };
             ui.label(RichText::new(format!("{gpu} · {}", g.origin)).small().weak());
             let tot: u64 = g.mem.iter().sum();
             if tot >= 64 && self.topo.nodes.len() > 1 {
                 let local: u64 = g.mem.iter().enumerate().filter(|(n, _)| g.nodes.contains(n)).map(|(_, v)| *v).sum();
                 let pct = if g.nodes.is_empty() { 100.0 } else { local as f64 * 100.0 / tot as f64 };
-                let txt = crate::tf!("memória {:.1} GB · {pct:.0}% local", "memory {:.1} GB · {pct:.0}% local", tot as f64 / 1024.0);
+                let txt = crate::tf!("memory {:.1} GB · {pct:.0}% local", "memória {:.1} GB · {pct:.0}% local", tot as f64 / 1024.0);
                 if pct < 80.0 {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(txt).small().color(Color32::from_rgb(230, 160, 40)))
-                            .on_hover_text(crate::i18n::tr("Parte da memória está no outro socket: cada acesso a ela é mais lento."));
-                        if ui.small_button(crate::i18n::tr("corrigir")).clicked() {
+                            .on_hover_text(crate::i18n::tr("Part of the memory is on the other socket: every access to it is slower."));
+                        if ui.small_button(crate::i18n::tr("fix")).clicked() {
                             self.pending_fix = Some(g.key.clone());
                         }
                     });
@@ -1246,7 +1241,7 @@ impl App {
                 });
             // Lossless Scaling (lsfg-vk): em qual GPU gerar os quadros.
             let fg_text = if fg == "same" {
-                crate::i18n::tr("Lossless Scaling: mesma GPU").to_string()
+                crate::i18n::tr("Lossless Scaling: same GPU").to_string()
             } else {
                 format!("Lossless Scaling: {fg} (dual GPU)")
             };
@@ -1257,15 +1252,15 @@ impl App {
                     ui.selectable_value(
                         &mut fg,
                         "same".to_string(),
-                        crate::i18n::tr("Mesma GPU do jogo (lsfg-vk oficial)"),
+                        crate::i18n::tr("Same GPU as the game (official lsfg-vk)"),
                     );
                     for gg in &self.topo.gpus {
                         ui.selectable_value(
                             &mut fg,
                             gg.alias.clone(),
                             crate::tf!(
-                                "{} — dual GPU (precisa de fork do lsfg-vk)",
                                 "{} — dual GPU (needs an lsfg-vk fork)",
+                                "{} — dual GPU (precisa de fork do lsfg-vk)",
                                 gg.alias
                             ),
                         );
@@ -1277,7 +1272,7 @@ impl App {
                 && !g.gpus.contains(&prof.gpu)
             {
                 ui.label(
-                    RichText::new(crate::i18n::tr("reabra o programa para trocar a GPU"))
+                    RichText::new(crate::i18n::tr("reopen the program to switch the GPU"))
                         .small()
                         .color(Color32::from_rgb(230, 160, 40)),
                 );
@@ -1286,32 +1281,32 @@ impl App {
         // Ações
         let mut action: Option<&str> = None;
         ui.horizontal(|ui| {
-            if ui.button(crate::i18n::tr("Ajustar…")).on_hover_text(crate::i18n::tr("Núcleos, memória, prioridade, GPU e perfis prontos")).clicked() {
+            if ui.button(crate::i18n::tr("Adjust…")).on_hover_text(crate::i18n::tr("Cores, memory, priority, GPU and ready-made profiles")).clicked() {
                 action = Some("edit");
             }
             if g.steam {
-                if ui.button(crate::i18n::tr("Copiar opção Steam")).on_hover_text(crate::tf!(
-                    "Cole nas Propriedades do jogo → Opções de inicialização:\n{STEAM_OPTION}\n(uma vez por jogo; depois a GPU escolhida aqui vale sempre)", "Paste into the game's Properties → Launch options:\n{STEAM_OPTION}\n(once per game; after that the GPU chosen here always applies)"
+                if ui.button(crate::i18n::tr("Copy Steam option")).on_hover_text(crate::tf!(
+                    "Paste into the game's Properties → Launch options:\n{STEAM_OPTION}\n(once per game; after that the GPU chosen here always applies)", "Cole nas Propriedades do jogo → Opções de inicialização:\n{STEAM_OPTION}\n(uma vez por jogo; depois a GPU escolhida aqui vale sempre)"
                 )).clicked() {
                     action = Some("steam");
                 }
             } else {
                 let mine = g.uid == self.my_uid;
-                if ui.add_enabled(mine, egui::Button::new(crate::i18n::tr("Reabrir")))
-                    .on_hover_text(crate::i18n::tr("Fecha e abre de novo com a CPU e a GPU escolhidas"))
+                if ui.add_enabled(mine, egui::Button::new(crate::i18n::tr("Reopen")))
+                    .on_hover_text(crate::i18n::tr("Closes and opens it again with the chosen CPU and GPU"))
                     .clicked()
                 {
                     action = Some("relaunch");
                 }
                 if mine {
                     let at_login = numapilot::startup::find_for_exe(&g.exe).filter(|i| i.enabled);
-                    let txt = if at_login.is_some() { crate::i18n::tr("Abre ao iniciar: sim") } else { crate::i18n::tr("Abrir ao iniciar") };
+                    let txt = if at_login.is_some() { crate::i18n::tr("Opens at startup: yes") } else { crate::i18n::tr("Open at startup") };
                     if ui
                         .button(txt)
                         .on_hover_text(if at_login.is_some() {
-                            crate::i18n::tr("Já abre quando você entra na sessão. Clique para não abrir mais (aba Inicialização tem tudo).")
+                            crate::i18n::tr("Already opens when you log in. Click to stop that (the Startup tab has everything).")
                         } else {
-                            crate::i18n::tr("Faz este programa abrir quando você entra na sessão (aba Inicialização tem tudo)")
+                            crate::i18n::tr("Makes this program open when you log in (the Startup tab has everything)")
                         })
                         .clicked()
                     {
@@ -1320,11 +1315,11 @@ impl App {
                 }
                 if let Some(d) = self.desktop_for(&g.exe) {
                     let on = desktop::is_overridden(&d);
-                    let txt = if on { crate::i18n::tr("No menu: sim") } else { crate::i18n::tr("Usar no menu") };
+                    let txt = if on { crate::i18n::tr("In the menu: yes") } else { crate::i18n::tr("Use in the menu") };
                     if ui.button(txt).on_hover_text(if on {
-                        crate::i18n::tr("O atalho do menu já abre pelo numapilot. Clique para desfazer.")
+                        crate::i18n::tr("The menu shortcut already opens through numapilot. Click to undo.")
                     } else {
-                        crate::i18n::tr("Faz o atalho do menu abrir este programa pelo numapilot, para a GPU escolhida valer sempre.")
+                        crate::i18n::tr("Makes the menu shortcut open this program through numapilot, so the chosen GPU always applies.")
                     }).clicked() {
                         action = Some(if on { "menu-off" } else { "menu-on" });
                     }
@@ -1361,16 +1356,14 @@ impl App {
             Some("steam") => {
                 ui.ctx().copy_text(STEAM_OPTION.to_string());
                 self.toast(
-                    crate::i18n::tr(
-                        "Copiado! Cole em Steam → Propriedades do jogo → Opções de inicialização.",
-                    ),
+                    crate::i18n::tr("Copied! Paste into Steam → game Properties → Launch options."),
                     true,
                 );
             }
             Some("relaunch") => {
                 relaunch(g, self.bg_msgs.clone());
                 self.toast(
-                    crate::tf!("Reabrindo {}...", "Reopening {}...", g.label),
+                    crate::tf!("Reopening {}...", "Reabrindo {}...", g.label),
                     true,
                 );
             }
@@ -1379,16 +1372,16 @@ impl App {
                     match desktop::install_override(&d) {
                         Ok(p) => self.toast(
                             crate::tf!(
-                                "Atalho do menu ajustado ({})",
                                 "Menu shortcut adjusted ({})",
+                                "Atalho do menu ajustado ({})",
                                 p.display()
                             ),
                             true,
                         ),
                         Err(e) => self.toast(
                             crate::tf!(
-                                "Não consegui ajustar o atalho: {e}",
-                                "Could not adjust the shortcut: {e}"
+                                "Could not adjust the shortcut: {e}",
+                                "Não consegui ajustar o atalho: {e}"
                             ),
                             false,
                         ),
@@ -1399,8 +1392,8 @@ impl App {
                 match numapilot::startup::add_running(g.main_pid, &g.label) {
                     Ok(_) => self.toast(
                         crate::tf!(
-                            "{} vai abrir quando você entrar na sessão",
                             "{} will open when you log in",
+                            "{} vai abrir quando você entrar na sessão",
                             g.label
                         ),
                         true,
@@ -1414,8 +1407,8 @@ impl App {
                     match numapilot::startup::set_enabled(&it, false) {
                         Ok(_) => self.toast(
                             crate::tf!(
-                                "{} não abre mais ao iniciar",
                                 "{} no longer opens at startup",
+                                "{} não abre mais ao iniciar",
                                 g.label
                             ),
                             true,
@@ -1428,11 +1421,12 @@ impl App {
             Some("menu-off") => {
                 if let Some(d) = self.desktop_for(&g.exe) {
                     match desktop::remove_override(&d) {
-                        Ok(()) => {
-                            self.toast(crate::i18n::tr("Atalho do menu voltou ao original"), true)
-                        }
+                        Ok(()) => self.toast(
+                            crate::i18n::tr("Menu shortcut restored to the original"),
+                            true,
+                        ),
                         Err(e) => self.toast(
-                            crate::tf!("Não consegui desfazer: {e}", "Could not undo: {e}"),
+                            crate::tf!("Could not undo: {e}", "Não consegui desfazer: {e}"),
                             false,
                         ),
                     }
@@ -1445,36 +1439,36 @@ impl App {
     fn profiles_tab(&mut self, ui: &mut egui::Ui) {
         ui.label(
             RichText::new(crate::i18n::tr(
-                "Programas com escolhas próprias. Os que não estão aqui ficam no automático.",
+                "Programs with their own choices. The ones not listed here stay on automatic.",
             ))
             .weak(),
         );
         ui.horizontal_wrapped(|ui| {
             if ui
-                .add_enabled(!self.profiles.map.is_empty(), egui::Button::new(crate::i18n::tr("Exportar…")))
-                .on_hover_text(crate::i18n::tr("Grava todas as escolhas num arquivo, para levar a outro PC ou compartilhar."))
+                .add_enabled(!self.profiles.map.is_empty(), egui::Button::new(crate::i18n::tr("Export…")))
+                .on_hover_text(crate::i18n::tr("Writes all choices to a file, to take to another PC or share."))
                 .clicked()
             {
                 let f = numapilot::profiles::export_path();
                 match std::fs::write(&f, numapilot::profiles::export_text()) {
-                    Ok(()) => self.toast(crate::tf!("Escolhas gravadas em {}", "Choices written to {}", f.display()), true),
-                    Err(e) => self.toast(crate::tf!("Não consegui gravar {}: {e}", "Could not write {}: {e}", f.display()), false),
+                    Ok(()) => self.toast(crate::tf!("Choices written to {}", "Escolhas gravadas em {}", f.display()), true),
+                    Err(e) => self.toast(crate::tf!("Could not write {}: {e}", "Não consegui gravar {}: {e}", f.display()), false),
                 }
             }
             ui.separator();
             ui.add(
                 egui::TextEdit::singleline(&mut self.import_path)
-                    .hint_text(crate::i18n::tr("arquivo .json exportado (caminho completo)"))
+                    .hint_text(crate::i18n::tr("exported .json file (full path)"))
                     .desired_width(320.0),
             );
             if ui
-                .add_enabled(!self.import_path.trim().is_empty(), egui::Button::new(crate::i18n::tr("Importar")))
-                .on_hover_text(crate::i18n::tr("Traz as escolhas do arquivo. Núcleos e placas de outro PC são adaptados (voltam para o automático)."))
+                .add_enabled(!self.import_path.trim().is_empty(), egui::Button::new(crate::i18n::tr("Import")))
+                .on_hover_text(crate::i18n::tr("Brings in the choices from the file. Cores and cards from another PC are adapted (they go back to automatic)."))
                 .clicked()
             {
                 let path = self.import_path.trim().replace("~/", &format!("{}/", jobs::home().display()));
                 self.start_job(
-                    crate::i18n::tr("Importar escolhas"),
+                    crate::i18n::tr("Import choices"),
                     vec![
                         jobs::sibling_abs("numapilot"),
                         "profile".into(),
@@ -1487,7 +1481,7 @@ impl App {
         ui.separator();
         if self.profiles.map.is_empty() {
             ui.label(crate::i18n::tr(
-                "Nenhuma escolha salva: tudo no automático.",
+                "No saved choices: everything on automatic.",
             ));
             return;
         }
@@ -1506,10 +1500,10 @@ impl App {
                 .spacing([14.0, 8.0])
                 .show(ui, |ui| {
                     for h in [
-                        crate::i18n::tr("Programa"),
-                        crate::i18n::tr("Processador"),
-                        crate::i18n::tr("Placa de vídeo"),
-                        crate::i18n::tr("Uso da GPU"),
+                        crate::i18n::tr("Program"),
+                        crate::i18n::tr("Processor"),
+                        crate::i18n::tr("Graphics card"),
+                        crate::i18n::tr("GPU usage"),
                         "Lossless Scaling",
                         "",
                     ] {
@@ -1532,25 +1526,25 @@ impl App {
                             .map(|(_, t)| t.clone());
                         ui.label(cpu_t.unwrap_or_else(|| p.cpu.clone()));
                         ui.label(if p.gpu == "auto" {
-                            crate::i18n::tr("Automático").to_string()
+                            crate::i18n::tr("Automatic").to_string()
                         } else {
                             p.gpu.clone()
                         });
                         ui.label(match p.usage.as_str() {
-                            "graphics" => crate::i18n::tr("jogo / gráfico"),
-                            "compute" => crate::i18n::tr("IA / ROCm"),
-                            _ => crate::i18n::tr("automático"),
+                            "graphics" => crate::i18n::tr("game / graphics"),
+                            "compute" => crate::i18n::tr("AI / ROCm"),
+                            _ => crate::i18n::tr("automatic"),
                         });
                         ui.label(if p.fg_gpu == "same" {
-                            crate::i18n::tr("mesma GPU").to_string()
+                            crate::i18n::tr("same GPU").to_string()
                         } else {
                             p.fg_gpu.clone()
                         });
                         ui.horizontal(|ui| {
-                            if ui.button(crate::i18n::tr("Ajustar…")).clicked() {
+                            if ui.button(crate::i18n::tr("Adjust…")).clicked() {
                                 edit = Some((k.clone(), p.clone()));
                             }
-                            if ui.button(crate::i18n::tr("Voltar ao automático")).clicked() {
+                            if ui.button(crate::i18n::tr("Back to automatic")).clicked() {
                                 delete = Some(k.clone());
                             }
                         });
@@ -1697,8 +1691,8 @@ fn relaunch(g: &Group, msgs: Arc<Mutex<Vec<(String, bool)>>>) {
         if argv.is_empty() {
             push(
                 crate::tf!(
-                    "Não consegui ler a linha de comando de {label}",
-                    "Could not read the command line of {label}"
+                    "Could not read the command line of {label}",
+                    "Não consegui ler a linha de comando de {label}"
                 ),
                 false,
             );
@@ -1714,8 +1708,8 @@ fn relaunch(g: &Group, msgs: Arc<Mutex<Vec<(String, bool)>>>) {
         if pids.iter().any(|p| procfs::alive(*p)) {
             push(
                 crate::tf!(
-                    "{label} não fechou; feche manualmente e abra de novo",
-                    "{label} did not close; close it manually and open it again"
+                    "{label} did not close; close it manually and open it again",
+                    "{label} não fechou; feche manualmente e abra de novo"
                 ),
                 false,
             );
@@ -1740,15 +1734,15 @@ fn relaunch(g: &Group, msgs: Arc<Mutex<Vec<(String, bool)>>>) {
         match c.spawn() {
             Ok(_) => push(
                 crate::tf!(
-                    "{label} reaberto com a nova escolha",
-                    "{label} reopened with the new choice"
+                    "{label} reopened with the new choice",
+                    "{label} reaberto com a nova escolha"
                 ),
                 true,
             ),
             Err(e) => push(
                 crate::tf!(
-                    "Não consegui reabrir {label}: {e}",
-                    "Could not reopen {label}: {e}"
+                    "Could not reopen {label}: {e}",
+                    "Não consegui reabrir {label}: {e}"
                 ),
                 false,
             ),
@@ -1772,13 +1766,13 @@ fn main() -> eframe::Result {
     }
     numapilot::log::init("gui");
     numapilot::log::info(&crate::tf!(
-        "aberto (versão {})",
         "open (version {})",
+        "aberto (versão {})",
         env!("CARGO_PKG_VERSION")
     ));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("numapilot — processador e placa de vídeo por programa")
+            .with_title("numapilot — processor and graphics card per program")
             .with_app_id("numapilot")
             .with_inner_size(window_size())
             .with_min_inner_size([800.0, 400.0]),

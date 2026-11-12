@@ -412,9 +412,9 @@ impl Topology {
             .collect();
         if self.nodes.len() == 1 && all_sockets.len() > 1 {
             w.push(crate::tf!(
-                "{} sockets mas só 1 nó NUMA: provavelmente 'Node Interleaving' está ligado na BIOS. \
-                 Desligue-o (deixe NUMA ativo) para este programa ter efeito.", "{} sockets but only 1 NUMA node: 'Node Interleaving' is probably enabled in the BIOS. \
-                 Turn it off (keep NUMA enabled) for this program to have any effect.",
+                "{} sockets but only 1 NUMA node: 'Node Interleaving' is probably enabled in the BIOS. \
+                 Turn it off (keep NUMA enabled) for this program to have any effect.", "{} sockets mas só 1 nó NUMA: provavelmente 'Node Interleaving' está ligado na BIOS. \
+                 Desligue-o (deixe NUMA ativo) para este programa ter efeito.",
                 all_sockets.len()
             ));
         }
@@ -422,7 +422,7 @@ impl Topology {
             for g in &self.gpus {
                 if g.numa_node.is_none() {
                     w.push(crate::tf!(
-                        "GPU {} ({}) sem nó NUMA informado pelo firmware. Defina em [gpu_node] no /etc/numapilot.toml.", "GPU {} ({}) has no NUMA node reported by the firmware. Set it in [gpu_node] in /etc/numapilot.toml.",
+                        "GPU {} ({}) has no NUMA node reported by the firmware. Set it in [gpu_node] in /etc/numapilot.toml.", "GPU {} ({}) sem nó NUMA informado pelo firmware. Defina em [gpu_node] no /etc/numapilot.toml.",
                         g.alias, g.pci
                     ));
                 }
@@ -1067,7 +1067,7 @@ pub mod tests {
         let d2 = run(&["meujogo"], Some("all"), Some("display"), &learned);
         let w2 = crate::decide::game_warnings(&t, &d2);
         assert!(
-            w2.iter().any(|x| x.contains("dois processadores"))
+            w2.iter().any(|x| x.contains("both processors"))
                 && w2.iter().any(|x| x.contains("88 threads")),
             "{w2:?}"
         );

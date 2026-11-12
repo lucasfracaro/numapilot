@@ -314,7 +314,7 @@ pub fn list() -> Vec<App> {
             name,
             source: "Steam",
             key: format!("steam:{id}"),
-            detail: crate::tf!("Steam, jogo {id}", "Steam, game {id}"),
+            detail: crate::tf!("Steam, game {id}", "Steam, jogo {id}"),
             desktop: None,
         });
     }

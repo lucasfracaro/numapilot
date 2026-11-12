@@ -4,8 +4,10 @@ Leia antes de mexer. Resume o que já foi feito e combinado com o Lucas em sess�
 
 ## O dono e como ele trabalha
 
-- Lucas, Brasil, fala **português**: respostas, textos da interface, mensagens de erro,
-  comentários de código e commits em português do Brasil.
+- Lucas, Brasil, fala **português**: responda a ele em português do Brasil.
+- **O projeto é em inglês** (decisão de 2026-11-12, para receber colaboração): código, textos no
+  código, nomes de comandos e opções, mensagens, registros, comentários novos, commits, README e
+  CHANGELOG em inglês. Só a interface (e as mensagens que ela mostra) tem os dois idiomas.
 - Todos os PCs rodam **CachyOS** (Arch). Notebook com **KDE Plasma Wayland**.
 - Gosta de "pode fazer todos": implementar, testar, commitar e dar push direto na `main`.
 - Regras combinadas:
@@ -154,21 +156,26 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   (`corebench::sort_units`, degraus de 1%) só se `useful` (diferença ≥ 2% e ≥ 3× o ruído) e se o
   modelo da CPU for o mesmo. Ainda não medido em hardware real (no servidor a diferença esperada
   é de poucos %).
-- Inglês (2026-11-12): interface, serviço e CLI. Texto fixo = `crate::i18n::tr("pt")` com o par
-  na tabela (`src/i18n_en.rs` para biblioteca/CLI, `src/bin/numapilot-gui/i18n_en.rs` para a
-  interface, que cai na da biblioteca); texto com valores = `crate::tf!("pt {}", "en {}", v)`
-  (`numapilot::` no `main.rs`); tabelas `const` guardam o português e o `tr()` fica onde o texto
-  é mostrado. Os testes `every_tr_has_a_pair` falham se um `tr()` ficar sem par. Texto novo:
-  sempre nos dois idiomas. Idioma (`src/i18n.rs`): `NUMAPILOT_LANG`, `~/.config/numapilot/lang`,
-  para o root `/var/lib/numapilot/lang`, senão o do sistema; cada pedido ao serviço leva `"lang"`
-  e o serviço passa a responder nele. Nos testes é sempre português. Não traduzir: palavras
-  usadas como chave/comparação (modos `jogo`/`ia`, `nenhum`, `padrao`, subcomandos), conteúdo de
-  arquivos gravados, `nlog!`, e os estados `AVISO`/`FALHOU`/`PULOU` do autoteste.
-- `--help` em inglês: `src/help_en.rs` troca os textos do clap (chave = o texto do `///`; o
-  teste `help_fully_translated` falha se faltar). Painel web: `PAGE_EN` em `src/web.rs` troca
-  trechos da página. `README.en.md` é a tradução do README: mudou um, mude o outro.
-- Falta em inglês: `install.sh`, `gfx906-rocm`, `docs/TESTES.md`, CHANGELOG; testar tudo isso em
-  hardware real.
+- Idiomas (2026-11-12): **inglês é o idioma base do código**; o português é a tradução.
+  Texto fixo mostrado ao usuário = `crate::i18n::tr("text")` com o par em `src/i18n_pt.rs`
+  (biblioteca/CLI) ou `src/bin/numapilot-gui/i18n_pt.rs` (interface, que cai na da biblioteca);
+  texto com valores = `crate::tf!("text {}", "texto {}", v)` (`numapilot::` no `main.rs`); duas
+  formas em português para o mesmo inglês = `t2!("on", "ligada")`; tabelas `const` guardam o
+  inglês e o `tr()` fica onde o texto é mostrado. Os testes `every_tr_has_a_pair` falham se um
+  `tr()` ficar sem par. Registros (`nlog!`), relatórios, `--help` e conteúdo de arquivos gravados
+  são só em inglês. Idioma em uso (`src/i18n.rs`): `NUMAPILOT_LANG`, `~/.config/numapilot/lang`,
+  para o root `/var/lib/numapilot/lang`, senão português só se o sistema for `pt_*`; cada pedido
+  ao serviço leva `"lang"`. Nos testes é sempre inglês. Painel web: `PAGE_PT` em `src/web.rs`.
+- Comandos em inglês: `startup`, `services`, `selftest`, `--user/--running/--failed/--delay/…`,
+  `machine mode game|ai|quiet|normal`, `hybrid auto|hybrid|integrated|leave`. Os nomes antigos
+  (`inicio`, `servicos`, `autoteste`, `jogo`…) continuam aceitos como apelidos. **Os valores
+  guardados não mudaram** (modo `jogo`/`ia`/`silencioso`, `hibrido`/`integrada`, perfil `padrao`,
+  estados `falhou`/`pulei` da aba Testes, pastas do backup): mudar exige migração dos arquivos
+  dos PCs. Níveis do registro agora `ERROR`/`WARN` (a leitura aceita os antigos).
+- `README.md` é o inglês (principal) e `README.pt-BR.md` a tradução: mudou um, mude o outro.
+- Falta passar para inglês: comentários do código e nomes internos em português (`St::Pulou`,
+  campos como `usuario`), `install.sh`, `gfx906-rocm`, `docs/TESTES.md`, entradas antigas do
+  CHANGELOG, este arquivo; e testar tudo isso em hardware real.
 
 ## Capturas do README
 
@@ -179,7 +186,7 @@ numa tela Xvfb. Programas, Inicialização, Serviços e Mapa são capturas reais
 
 ## Testar e registros
 
-- `numapilot autoteste` — confere tudo nesta máquina sem mudar nada e grava
+- `numapilot selftest` — confere tudo nesta máquina sem mudar nada e grava
   `~/numapilot-autoteste-MAQUINA-DATA.txt` (sai com código 2 se algo falhou).
 - Aba **Testes** na interface: roteiro à mão só com os itens desta máquina; "Gerar relatório"
   junta respostas + autoteste + registros em `~/numapilot-testes-MAQUINA-DATA.txt`.

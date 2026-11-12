@@ -20,14 +20,14 @@ pub(crate) enum Col {
 }
 
 const COLS: &[(Col, &str, f32)] = &[
-    (Col::Name, "Nome", 0.0),
+    (Col::Name, "Name", 0.0),
     (Col::Pid, "PID", 72.0),
     (Col::Cpu, "CPU", 70.0),
-    (Col::Mem, "Memória", 92.0),
-    (Col::Disk, "Disco", 84.0),
+    (Col::Mem, "Memory", 92.0),
+    (Col::Disk, "Disk", 84.0),
     (Col::Gpu, "GPU", 62.0),
-    (Col::Vram, "Memória da GPU", 118.0),
-    (Col::Card, "Placa", 120.0),
+    (Col::Vram, "GPU memory", 118.0),
+    (Col::Card, "Card", 120.0),
 ];
 
 const ROW_H: f32 = 30.0;
@@ -242,23 +242,23 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         .and_then(|g| app.progs.blocked.get(&g.main_pid).copied());
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(RichText::new(format!("{} {}", groups.len(), crate::i18n::tr("programas em execução"))).size(20.0).strong());
-            ui.label(RichText::new(crate::tf!("{nproc} processos", "{nproc} processes")).weak());
+            ui.label(RichText::new(format!("{} {}", groups.len(), crate::i18n::tr("programs running"))).size(20.0).strong());
+            ui.label(RichText::new(crate::tf!("{nproc} processes", "{nproc} processos")).weak());
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let can = sel.is_some() && blocked.is_none();
-            let why = blocked.unwrap_or(crate::i18n::tr("Selecione um programa na lista"));
+            let why = blocked.unwrap_or(crate::i18n::tr("Select a program in the list"));
             let force = ui
-                .add_enabled(can, egui::Button::new(crate::i18n::tr("⊗ Forçar parada")))
-                .on_hover_text(crate::i18n::tr("Fecha na hora (SIGKILL). O que não foi salvo se perde."))
+                .add_enabled(can, egui::Button::new(crate::i18n::tr("⊗ Force stop")))
+                .on_hover_text(crate::i18n::tr("Closes it right away (SIGKILL). Anything unsaved is lost."))
                 .on_disabled_hover_text(why);
             let stop = ui
-                .add_enabled(can, egui::Button::new(crate::i18n::tr("■ Encerrar")))
-                .on_hover_text(crate::i18n::tr("Pede para o programa fechar (SIGTERM), como fechar a janela"))
+                .add_enabled(can, egui::Button::new(crate::i18n::tr("■ End")))
+                .on_hover_text(crate::i18n::tr("Asks the program to close (SIGTERM), like closing the window"))
                 .on_disabled_hover_text(why);
             let adjust = ui
-                .add_enabled(sel.is_some(), egui::Button::new(crate::i18n::tr("Ajustar…")))
-                .on_hover_text(crate::i18n::tr("Núcleos, memória, prioridade, GPU e perfis prontos"));
+                .add_enabled(sel.is_some(), egui::Button::new(crate::i18n::tr("Adjust…")))
+                .on_hover_text(crate::i18n::tr("Cores, memory, priority, GPU and ready-made profiles"));
             if let Some(g) = &sel {
                 if stop.clicked() {
                     kill(app, g, false);
@@ -279,7 +279,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
             ui.separator();
-            if ui.button(crate::i18n::tr(if app.progs.expanded.is_empty() { crate::i18n::tr("Abrir tudo") } else { crate::i18n::tr("Fechar tudo") })).clicked() {
+            if ui.button(crate::i18n::tr(if app.progs.expanded.is_empty() { crate::i18n::tr("Expand all") } else { crate::i18n::tr("Collapse all") })).clicked() {
                 if app.progs.expanded.is_empty() {
                     app.progs.expanded = groups.iter().map(|g| g.key.clone()).collect();
                 } else {
@@ -288,38 +288,38 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
             ui.menu_button("Steam ⏷", |ui| {
                 if ui
-                    .button(crate::i18n::tr("Aplicar em todos os jogos"))
-                    .on_hover_text(crate::i18n::tr("Coloca \"numapilot run -- %command%\" nas opções de inicialização de todos os jogos instalados (mantém o que já existia). Feche a Steam antes."))
+                    .button(crate::i18n::tr("Apply to all games"))
+                    .on_hover_text(crate::i18n::tr("Puts \"numapilot run -- %command%\" in the launch options of every installed game (keeps what was already there). Close Steam first."))
                     .clicked()
                 {
-                    app.start_job(crate::i18n::tr("Steam: aplicar em todos os jogos"), vec![crate::jobs::sibling("numapilot"), "steam".into(), "enable".into()]);
+                    app.start_job(crate::i18n::tr("Steam: apply to all games"), vec![crate::jobs::sibling("numapilot"), "steam".into(), "enable".into()]);
                     ui.close();
                 }
-                if ui.button(crate::i18n::tr("Remover de todos")).clicked() {
-                    app.start_job(crate::i18n::tr("Steam: remover de todos os jogos"), vec![crate::jobs::sibling("numapilot"), "steam".into(), "disable".into()]);
+                if ui.button(crate::i18n::tr("Remove from all")).clicked() {
+                    app.start_job(crate::i18n::tr("Steam: remove from all games"), vec![crate::jobs::sibling("numapilot"), "steam".into(), "disable".into()]);
                     ui.close();
                 }
-                if ui.button(crate::i18n::tr("Ver lista")).clicked() {
-                    app.start_job(crate::i18n::tr("Steam: jogos"), vec![crate::jobs::sibling("numapilot"), "steam".into(), "list".into()]);
+                if ui.button(crate::i18n::tr("View list")).clicked() {
+                    app.start_job(crate::i18n::tr("Steam: games"), vec![crate::jobs::sibling("numapilot"), "steam".into(), "list".into()]);
                     ui.close();
                 }
             });
-            if ui.checkbox(&mut app.only_mine, crate::i18n::tr("Só os meus")).changed() {
+            if ui.checkbox(&mut app.only_mine, crate::i18n::tr("Only mine")).changed() {
                 app.force_refresh();
             }
-            ui.add(egui::TextEdit::singleline(&mut app.progs.filter).hint_text(crate::i18n::tr("🔍 Buscar")).desired_width(160.0));
+            ui.add(egui::TextEdit::singleline(&mut app.progs.filter).hint_text(crate::i18n::tr("🔍 Search")).desired_width(160.0));
         });
     });
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button(crate::i18n::tr("🔍 Buscar app instalado…"))
-            .on_hover_text(crate::i18n::tr("Lista os programas instalados (menu, Flatpak, Snap, AppImage, jogos da Steam) para escolher processador, memória e placa sem precisar abrir o programa antes."))
+            .button(crate::i18n::tr("🔍 Find installed app…"))
+            .on_hover_text(crate::i18n::tr("Lists the installed programs (menu, Flatpak, Snap, AppImage, Steam games) to choose processor, memory and card without having to open the program first."))
             .clicked()
         {
             app.progs.finder = Some(Finder::new());
         }
         ui.label(
-            RichText::new(crate::i18n::tr("Clique numa linha para selecionar; na seta (ou dois cliques) para ver os processos e escolher processador e placa. CPU muda na hora; a GPU vale quando o programa abre."))
+            RichText::new(crate::i18n::tr("Click a row to select it; the arrow (or double-click) shows the processes and lets you choose processor and card. CPU changes right away; the GPU applies when the program starts."))
                 .small()
                 .weak(),
         );
@@ -450,7 +450,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
 
     if groups.is_empty() {
         ui.add_space(12.0);
-        ui.label(crate::i18n::tr("Nenhum programa sendo usado agora. Abra algo (um jogo, o Blender, o llama-server...) e ele aparece aqui."));
+        ui.label(crate::i18n::tr("No program in use right now. Open something (a game, Blender, llama-server...) and it shows up here."));
         return;
     }
 
@@ -463,7 +463,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            for (si, (title, list)) in [(crate::i18n::tr("Aplicativos"), apps), (crate::i18n::tr("Sessão e sistema"), sys)]
+            for (si, (title, list)) in [(crate::i18n::tr("Applications"), apps), (crate::i18n::tr("Session and system"), sys)]
                 .into_iter()
                 .enumerate()
             {
@@ -500,7 +500,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ui.painter().text(
                         pos2(rect.right() - 8.0, rect.center().y),
                         Align2::RIGHT_CENTER,
-                        crate::i18n::tr("não podem ser encerrados por aqui"),
+                        crate::i18n::tr("cannot be ended from here"),
                         FontId::proportional(11.0),
                         p.weak,
                     );
@@ -552,7 +552,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                         },
                     };
                     let sub = if g.pids.len() > 1 {
-                        crate::tf!("{} processos", "{} processes", g.pids.len())
+                        crate::tf!("{} processes", "{} processos", g.pids.len())
                     } else {
                         String::new()
                     };
@@ -631,11 +631,11 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 if let Some((want, got)) = &wrong {
                                     ui.label(
                                         RichText::new(crate::tf!(
-                                            "Placa diferente da escolhida: pediu {want}, mas está usando {got}. \
-                                             A escolha de placa só vale ao abrir: use Reabrir. Se continuar, \
-                                             confira com \"Testar a escolha desta placa\" na aba Placas de vídeo.", "Different card from the chosen one: asked for {want}, but it is using {got}. \
+                                            "Different card from the chosen one: asked for {want}, but it is using {got}. \
                                              The card choice only applies on start: use Reopen. If it persists, \
-                                             check with \"Test this card's selection\" in the Graphics cards tab."
+                                             check with \"Test this card's selection\" in the Graphics cards tab.", "Placa diferente da escolhida: pediu {want}, mas está usando {got}. \
+                                             A escolha de placa só vale ao abrir: use Reabrir. Se continuar, \
+                                             confira com \"Testar a escolha desta placa\" na aba Placas de vídeo."
                                         ))
                                         .color(p.warn),
                                     );
@@ -654,30 +654,30 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         let g = groups.iter().find(|g| g.key == k).cloned();
         let mut close = g.is_none();
         if let Some(g) = g {
-            egui::Window::new(crate::i18n::tr("Forçar parada"))
+            egui::Window::new(crate::i18n::tr("Force stop"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ui.ctx(), |ui| {
                     ui.label(crate::tf!(
-                        "Fechar \"{}\" na hora ({} processo(s))?",
                         "Close \"{}\" right away ({} process(es))?",
+                        "Fechar \"{}\" na hora ({} processo(s))?",
                         g.label,
                         g.pids.len()
                     ));
                     ui.label(
-                        RichText::new(crate::i18n::tr("O que não foi salvo nele se perde."))
+                        RichText::new(crate::i18n::tr("Anything unsaved in it is lost."))
                             .color(p.warn),
                     );
                     ui.horizontal(|ui| {
                         if ui
-                            .button(RichText::new(crate::i18n::tr("Forçar parada")).color(p.err))
+                            .button(RichText::new(crate::i18n::tr("Force stop")).color(p.err))
                             .clicked()
                         {
                             kill(app, &g, true);
                             close = true;
                         }
-                        if ui.button(crate::i18n::tr("Cancelar")).clicked() {
+                        if ui.button(crate::i18n::tr("Cancel")).clicked() {
                             close = true;
                         }
                     });
@@ -721,13 +721,13 @@ fn kill(app: &mut App, g: &Group, force: bool) {
     ));
     match (n, refused) {
         (0, Some(why)) => app.toast(
-            crate::tf!("Não encerrei {}: {why}", "Did not end {}: {why}", g.label),
+            crate::tf!("Did not end {}: {why}", "Não encerrei {}: {why}", g.label),
             false,
         ),
         (_, Some(why)) => app.toast(
             crate::tf!(
-                "{}: {n} processo(s) encerrado(s); pulei {why}",
                 "{}: {n} process(es) ended; skipped {why}",
+                "{}: {n} processo(s) encerrado(s); pulei {why}",
                 g.label
             ),
             true,
@@ -736,9 +736,9 @@ fn kill(app: &mut App, g: &Group, force: bool) {
             format!(
                 "{} {}",
                 if force {
-                    crate::i18n::tr("Parada forçada:")
+                    crate::i18n::tr("Forced stop:")
                 } else {
-                    crate::i18n::tr("Encerrando")
+                    crate::i18n::tr("Ending")
                 },
                 g.label
             ),
@@ -874,7 +874,7 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
     let mut open = true;
     let mut pick: Option<numapilot::apps::App> = None;
     let mut menu_fix: Option<std::path::PathBuf> = None;
-    egui::Window::new(crate::i18n::tr("Buscar app instalado"))
+    egui::Window::new(crate::i18n::tr("Find installed app"))
         .open(&mut open)
         .collapsible(false)
         .default_size([640.0, 520.0])
@@ -883,14 +883,14 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
             ui.horizontal(|ui| {
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut f.query)
-                        .hint_text(crate::i18n::tr("🔍 Nome do programa, executável ou origem"))
+                        .hint_text(crate::i18n::tr("🔍 Program name, executable or source"))
                         .desired_width(360.0),
                 );
                 if f.focus {
                     r.request_focus();
                     f.focus = false;
                 }
-                if ui.button(crate::i18n::tr("Recarregar")).clicked() {
+                if ui.button(crate::i18n::tr("Reload")).clicked() {
                     f.apps = numapilot::apps::list();
                 }
             });
@@ -899,7 +899,7 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
                 let mut sources: Vec<&'static str> = f.apps.iter().map(|a| a.source).collect();
                 sources.sort_unstable();
                 sources.dedup();
-                if ui.selectable_label(f.source.is_none(), crate::tf!("Todos ({})", "All ({})", f.apps.len())).clicked() {
+                if ui.selectable_label(f.source.is_none(), crate::tf!("All ({})", "Todos ({})", f.apps.len())).clicked() {
                     f.source = None;
                 }
                 for s in sources {
@@ -911,8 +911,8 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.label(
                 RichText::new(
-                    crate::i18n::tr("A escolha fica salva e vale quando o programa abrir. Processador e memória valem em qualquer \
-                     abertura; para a placa de vídeo, abra pelo menu ajustado (opção no próprio Ajustar…) ou pelo Reabrir."),
+                    crate::i18n::tr("The choice is saved and applies when the program starts. Processor and memory apply on any \
+                     start; for the graphics card, open it from the adjusted menu (option in Adjust… itself) or with Reopen."),
                 )
                 .small()
                 .weak(),
@@ -925,7 +925,7 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
                 .filter(|a| numapilot::apps::matches(a, &f.query))
                 .collect();
             if shown.is_empty() {
-                ui.label(RichText::new(crate::i18n::tr("Nenhum programa encontrado com essa busca.")).weak());
+                ui.label(RichText::new(crate::i18n::tr("No program found with this search.")).weak());
             }
             egui::ScrollArea::vertical().auto_shrink(false).show_rows(ui, 44.0, shown.len(), |ui, range| {
                 for a in &shown[range] {
@@ -939,28 +939,28 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
                                 ui.label(RichText::new(&a.name).family(egui::FontFamily::Name(theme::BOLD.into())));
                                 ui.label(RichText::new(a.source).small().color(p.accent));
                                 if saved {
-                                    ui.label(RichText::new(crate::i18n::tr("escolha salva")).small().color(p.ok));
+                                    ui.label(RichText::new(crate::i18n::tr("saved choice")).small().color(p.ok));
                                 }
                                 if running {
-                                    ui.label(RichText::new(crate::i18n::tr("aberto agora")).small().color(p.weak));
+                                    ui.label(RichText::new(crate::i18n::tr("open now")).small().color(p.weak));
                                 }
                             });
                             ui.label(RichText::new(&a.detail).small().weak());
                         });
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_space(8.0);
-                            if ui.button(crate::i18n::tr("Ajustar…")).clicked() {
+                            if ui.button(crate::i18n::tr("Adjust…")).clicked() {
                                 pick = Some((*a).clone());
                             }
                             // a placa de vídeo só vale se o programa abrir pelo numapilot
                             if let Some(d) = &a.desktop {
                                 if numapilot::desktop::is_overridden(d) {
-                                    ui.label(RichText::new(crate::i18n::tr("menu ajustado")).small().color(p.ok))
-                                        .on_hover_text(crate::i18n::tr("Aberto pelo menu, este programa já passa pelo numapilot (a escolha de placa vale)."));
+                                    ui.label(RichText::new(crate::i18n::tr("menu adjusted")).small().color(p.ok))
+                                        .on_hover_text(crate::i18n::tr("Opened from the menu, this program already goes through numapilot (the card choice applies)."));
                                 } else if saved
                                     && ui
-                                        .small_button(crate::i18n::tr("Ajustar o menu"))
-                                        .on_hover_text(crate::i18n::tr("Faz o atalho do menu abrir este programa pelo numapilot, para a escolha de placa de vídeo valer. Dá para desfazer em Escolhas salvas."))
+                                        .small_button(crate::i18n::tr("Adjust the menu"))
+                                        .on_hover_text(crate::i18n::tr("Makes the menu shortcut open this program through numapilot, so the graphics card choice applies. Can be undone in Saved choices."))
                                         .clicked()
                                 {
                                     menu_fix = Some(d.clone());
@@ -976,16 +976,16 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
         match numapilot::desktop::install_override(&d) {
             Ok(pth) => app.toast(
                 crate::tf!(
-                    "Atalho do menu ajustado ({})",
                     "Menu shortcut adjusted ({})",
+                    "Atalho do menu ajustado ({})",
                     pth.display()
                 ),
                 true,
             ),
             Err(e) => app.toast(
                 crate::tf!(
-                    "Não consegui ajustar o atalho: {e}",
-                    "Could not adjust the shortcut: {e}"
+                    "Could not adjust the shortcut: {e}",
+                    "Não consegui ajustar o atalho: {e}"
                 ),
                 false,
             ),

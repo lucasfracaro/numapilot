@@ -205,20 +205,20 @@ impl Machine {
                 && a > b
             {
                 return Err(crate::tf!(
-                    "socket {n}: frequência mínima maior que a máxima",
-                    "socket {n}: minimum frequency higher than the maximum"
+                    "socket {n}: minimum frequency higher than the maximum",
+                    "socket {n}: frequência mínima maior que a máxima"
                 ));
             }
             if let Some(w) = t.power_limit_w
                 && w < 20.0
             {
                 return Err(crate::tf!(
-                    "socket {n}: limite de potência muito baixo",
-                    "socket {n}: power limit too low"
+                    "socket {n}: power limit too low",
+                    "socket {n}: limite de potência muito baixo"
                 ));
             }
             if t.epb.is_some_and(|e| e > 15) {
-                return Err(crate::i18n::tr("EPB vai de 0 a 15").into());
+                return Err(crate::i18n::tr("EPB goes from 0 to 15").into());
             }
             if let Some(e) = &t.epp
                 && ![
@@ -230,7 +230,7 @@ impl Machine {
                 ]
                 .contains(&e.as_str())
             {
-                return Err(crate::tf!("EPP inválido: {e}", "invalid EPP: {e}"));
+                return Err(crate::tf!("invalid EPP: {e}", "EPP inválido: {e}"));
             }
         }
         if let Some(r) = &self.ryzen {
@@ -240,14 +240,14 @@ impl Machine {
             && !crate::hybrid::MODES.iter().any(|x| x.0 == m)
         {
             return Err(crate::tf!(
-                "modo da NVIDIA inválido: {m}",
-                "invalid NVIDIA mode: {m}"
+                "invalid NVIDIA mode: {m}",
+                "modo da NVIDIA inválido: {m}"
             ));
         }
         if let Some(s) = self.schedule.iter().find(|s| !s.valid()) {
             return Err(crate::tf!(
-                "horário inválido: {} às {} ({})",
                 "invalid time: {} to {} ({})",
+                "horário inválido: {} às {} ({})",
                 s.from,
                 s.to,
                 s.mode
@@ -259,34 +259,34 @@ impl Machine {
         if let Some(t) = &self.thp
             && !["always", "madvise", "never"].contains(&t.as_str())
         {
-            return Err(crate::tf!("THP inválido: {t}", "invalid THP: {t}"));
+            return Err(crate::tf!("invalid THP: {t}", "THP inválido: {t}"));
         }
         if let Some(s) = &self.scx
             && !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         {
-            return Err(crate::i18n::tr("nome de escalonador inválido").into());
+            return Err(crate::i18n::tr("invalid scheduler name").into());
         }
         if let Some(m) = &self.scx_mode
             && !["auto", "gaming", "powersave", "lowlatency", "server"].contains(&m.as_str())
         {
             return Err(crate::tf!(
-                "modo do escalonador inválido: {m}",
-                "invalid scheduler mode: {m}"
+                "invalid scheduler mode: {m}",
+                "modo do escalonador inválido: {m}"
             ));
         }
         for m in [&self.ac_mode, &self.battery_mode].into_iter().flatten() {
             if !["normal", "jogo", "ia", "silencioso"].contains(&m.as_str()) {
-                return Err(crate::tf!("modo desconhecido: {m}", "unknown mode: {m}"));
+                return Err(crate::tf!("unknown mode: {m}", "modo desconhecido: {m}"));
             }
         }
         if self.charge_limit.is_some_and(|c| !(20..=100).contains(&c)) {
-            return Err(crate::i18n::tr("limite de carga entre 20% e 100%").into());
+            return Err(crate::i18n::tr("charge limit between 20% and 100%").into());
         }
         if self
             .ipmi_fan_mode
             .is_some_and(|m| ![0, 1, 2, 4].contains(&m))
         {
-            return Err(crate::i18n::tr("modo de ventoinha IPMI inválido").into());
+            return Err(crate::i18n::tr("invalid IPMI fan mode").into());
         }
         Ok(())
     }
@@ -535,7 +535,7 @@ pub fn apply_uncore(topo: &Topology, node: usize, t: Option<&SocketTune>) -> Res
             let u = cpuctl::uncores()
                 .into_iter()
                 .find(|u| u.package == pkg)
-                .ok_or(crate::i18n::tr("uncore indisponível"))?;
+                .ok_or(crate::i18n::tr("uncore unavailable"))?;
             let lo = a.map(|x| x as u64 * 1000).unwrap_or(u.init_min_khz);
             let hi = b.map(|x| x as u64 * 1000).unwrap_or(u.init_max_khz);
             cpuctl::set_uncore(pkg, lo, hi)
@@ -609,7 +609,7 @@ pub fn apply(
                 if (lo, hi) != (f.min_khz, f.max_khz) {
                     e(
                         cpuctl::set_freq(&[c], lo, hi),
-                        &crate::tf!("frequência cpu{c}", "frequency cpu{c}"),
+                        &crate::tf!("frequency cpu{c}", "frequência cpu{c}"),
                     );
                 }
             }
@@ -628,7 +628,7 @@ pub fn apply(
         {
             e(
                 cpuctl::set_rapl_limit(pkg, w),
-                &crate::tf!("potência socket {}", "power socket {}", n.id),
+                &crate::tf!("power socket {}", "potência socket {}", n.id),
             );
         }
         if let Some(w) = t
@@ -640,7 +640,7 @@ pub fn apply(
         {
             e(
                 cpuctl::set_rapl_limit2(pkg, w),
-                &crate::tf!("pico de potência socket {}", "power peak socket {}", n.id),
+                &crate::tf!("power peak socket {}", "pico de potência socket {}", n.id),
             );
         }
         let want = m
@@ -653,17 +653,17 @@ pub fn apply(
         {
             e(
                 std::fs::write(huge_path(n.id), h.to_string()).map_err(|x| x.to_string()),
-                &crate::tf!("hugepages nó {}", "hugepages node {}", n.id),
+                &crate::tf!("hugepages node {}", "hugepages nó {}", n.id),
             );
             if let Some(got) = hugepages(n.id)
                 && got < h
             {
                 e(
                     Err(crate::tf!(
-                        "pedi {h} páginas, o kernel conseguiu {got} (memória fragmentada; tente logo após ligar)",
-                        "asked for {h} pages, the kernel managed {got} (fragmented memory; try right after boot)"
+                        "asked for {h} pages, the kernel managed {got} (fragmented memory; try right after boot)",
+                        "pedi {h} páginas, o kernel conseguiu {got} (memória fragmentada; tente logo após ligar)"
                     )),
-                    &crate::tf!("hugepages nó {}", "hugepages node {}", n.id),
+                    &crate::tf!("hugepages node {}", "hugepages nó {}", n.id),
                 );
             }
         }
@@ -712,7 +712,7 @@ pub fn apply(
                 m.scx_mode.as_deref(),
                 prev_scx.0.is_some(),
             ),
-            crate::i18n::tr("escalonador"),
+            crate::i18n::tr("scheduler"),
         );
     }
     // notebook
@@ -723,7 +723,7 @@ pub fn apply(
     {
         e(
             crate::notebook::set_charge_limit(c),
-            crate::i18n::tr("limite de carga"),
+            crate::i18n::tr("charge limit"),
         );
     }
     // Só quando o perfil pedido mudou (ou na primeira aplicação): trocar outra coisa da máquina
@@ -735,7 +735,7 @@ pub fn apply(
     {
         e(
             crate::notebook::set_platform_profile(&p),
-            crate::i18n::tr("perfil da plataforma"),
+            crate::i18n::tr("platform profile"),
         );
     }
     if crate::notebook::is_laptop() {
@@ -750,7 +750,7 @@ pub fn apply(
             {
                 e(
                     crate::notebook::set_runtime_pm(&g.pci, w == "auto"),
-                    crate::i18n::tr("placa dedicada dormir"),
+                    crate::i18n::tr("dedicated card sleep"),
                 );
             }
         }
@@ -766,13 +766,13 @@ pub fn apply(
         let had = prev.and_then(|p| p.ryzen.clone()).filter(|l| !l.is_empty());
         match want {
             Some(w) if prev.is_none() || had.as_ref() != Some(&w) => {
-                e(crate::ryzen::apply(&w), crate::i18n::tr("limites do Ryzen"))
+                e(crate::ryzen::apply(&w), crate::i18n::tr("Ryzen limits"))
             }
             None if had.is_some() => {
                 if let Some(o) = &orig.ryzen {
                     e(
                         crate::ryzen::apply(o),
-                        crate::i18n::tr("limites do Ryzen (originais)"),
+                        crate::i18n::tr("Ryzen limits (original)"),
                     );
                 }
             }
@@ -807,7 +807,7 @@ pub fn apply(
     {
         e(
             crate::fans::supermicro_set_mode(mode),
-            crate::i18n::tr("ventoinhas IPMI"),
+            crate::i18n::tr("IPMI fans"),
         );
     }
     errs
@@ -901,12 +901,12 @@ impl LowLatency {
         }
         if !want.is_empty() {
             crate::nlog!(
-                "baixa latência nos núcleos {} ({} estados de economia desligados)",
+                "low latency on cores {} ({} idle states disabled)",
                 crate::util::format_cpulist(&want),
                 self.cstates.len()
             );
         } else if !self.cpus.is_empty() {
-            crate::nlog!("baixa latência desligada");
+            crate::nlog!("low latency off");
         }
         self.cpus = want;
     }

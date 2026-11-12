@@ -175,8 +175,8 @@ pub fn run(
         let bw_cpus: Vec<usize> = firsts.iter().copied().take(threads.max(1)).collect();
         for (j, &mn) in nodes.iter().enumerate() {
             progress(&crate::tf!(
-                "CPUs do socket {cn} lendo a memória do socket {mn}...",
-                "CPUs of socket {cn} reading the memory of socket {mn}..."
+                "CPUs of socket {cn} reading the memory of socket {mn}...",
+                "CPUs do socket {cn} lendo a memória do socket {mn}..."
             ));
             r.latency_ns[i][j] = latency(lat_cpu, mn, size_mb);
             r.bandwidth_gbs[i][j] = bandwidth(&bw_cpus, mn, (size_mb / 2).max(16));
@@ -190,8 +190,8 @@ pub fn print(r: &BenchResult) {
     println!(
         "{}",
         crate::tf!(
-            "\nLatência (ns por acesso)      linhas = CPUs do socket, colunas = memória do socket",
-            "\nLatency (ns per access)      rows = socket's CPUs, columns = socket's memory"
+            "\nLatency (ns per access)      rows = socket's CPUs, columns = socket's memory",
+            "\nLatência (ns por acesso)      linhas = CPUs do socket, colunas = memória do socket"
         )
     );
     println!("          {}", head.join("  "));
@@ -205,8 +205,8 @@ pub fn print(r: &BenchResult) {
     println!(
         "{}",
         crate::tf!(
-            "\nBanda de leitura (GB/s, {} threads)",
             "\nRead bandwidth (GB/s, {} threads)",
+            "\nBanda de leitura (GB/s, {} threads)",
             r.threads
         )
     );
@@ -225,8 +225,8 @@ pub fn print(r: &BenchResult) {
             println!(
                 "{}",
                 crate::tf!(
-                    "\nAcessar a memória do outro socket custa {:.0}% a mais de latência.",
                     "\nAccessing the other socket's memory costs {:.0}% more latency.",
+                    "\nAcessar a memória do outro socket custa {:.0}% a mais de latência.",
                     (remote / local - 1.0) * 100.0
                 )
             );

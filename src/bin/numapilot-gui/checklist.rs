@@ -59,369 +59,369 @@ const ITEMS: &[Item] = &[
     // Geral
     it(
         "abrir",
-        "Geral",
-        "Abrir o programa",
-        "Abra o numapilot pelo menu do sistema.",
-        "A janela abre em poucos segundos, no tema do sistema, sem aviso de erro.",
+        "General",
+        "Open the program",
+        "Open numapilot from the system menu.",
+        "The window opens within a few seconds, in the system theme, with no error message.",
         Always,
     ),
     it(
         "janela-unica",
-        "Geral",
-        "Uma janela só",
-        "Com a janela aberta, abra o numapilot de novo pelo menu.",
-        "A janela que já estava aberta vem para frente; não abre outra.",
+        "General",
+        "Single window",
+        "With the window open, open numapilot again from the menu.",
+        "The window that was already open comes to the front; no second one opens.",
         Always,
     ),
     it(
         "bandeja",
-        "Geral",
-        "Ícone na bandeja",
-        "Ligue o ícone na bandeja (Configurações), feche a janela e clique no ícone.",
-        "A janela abre. Só existe um ícone do numapilot na bandeja.",
+        "General",
+        "Tray icon",
+        "Turn on the tray icon (Settings), close the window and click the icon.",
+        "The window opens. There is only one numapilot icon in the tray.",
         Always,
     ),
     it(
         "tema",
-        "Geral",
-        "Tema",
-        "Troque para Claro e Escuro no menu lateral, feche e abra de novo.",
-        "O tema muda na hora e continua o escolhido depois de reabrir.",
+        "General",
+        "Theme",
+        "Switch to Light and Dark in the side menu, close and open again.",
+        "The theme changes right away and stays as chosen after reopening.",
         Always,
     ),
     it(
         "medidores",
-        "Geral",
-        "Medidores do topo",
-        "Abra um jogo ou benchmark e olhe os cartões de CPU, memória e placas.",
-        "Os valores sobem, as barras deslizam sem pular e batem com outro monitor (Mission Center, nvtop).",
+        "General",
+        "Top meters",
+        "Open a game or benchmark and watch the CPU, memory and card tiles.",
+        "The values go up, the bars slide without jumping and match another monitor (Mission Center, nvtop).",
         Always,
     ),
     it(
         "servico",
-        "Geral",
-        "Serviço parado e religar",
-        "No terminal: sudo systemctl stop numapilot. Depois use o botão \"Ativar o serviço\".",
-        "Aparece \"Serviço parado\" com o botão; o botão pede a senha e volta para \"Serviço ativo\".",
+        "General",
+        "Service stopped and restart",
+        "In the terminal: sudo systemctl stop numapilot. Then use the \"Start the service\" button.",
+        "\"Service stopped\" shows up with the button; the button asks for the password and it goes back to \"Service running\".",
         Always,
     ),
     it(
         "log",
-        "Geral",
-        "Registro",
-        "No terminal: numapilot log",
-        "Mostra o que foi feito (serviço, programa e comandos) com data e hora.",
+        "General",
+        "Log",
+        "In the terminal: numapilot log",
+        "Shows what was done (service, program and commands) with date and time.",
         Always,
     ),
     // Programas
     it(
         "lista",
-        "Programas",
-        "Lista de programas",
-        "Abra um programa qualquer (navegador, jogo).",
-        "Ele aparece em Programas em até 5 segundos, com o socket e a placa que está usando.",
+        "Programs",
+        "Program list",
+        "Open any program (browser, game).",
+        "It shows up in Programs within 5 seconds, with the socket and the card it is using.",
         Always,
     ),
     it(
         "tabela",
-        "Programas",
-        "Ordenar e buscar",
-        "Clique nos títulos Nome, CPU, Memória e GPU (de novo inverte); busque por nome e por PID.",
-        "A ordem muda; CPU, memória e GPU de um jogo batem com o Mission Center ou o MangoHud.",
+        "Programs",
+        "Sort and search",
+        "Click the Name, CPU, Memory and GPU headers (again to reverse); search by name and by PID.",
+        "The order changes; CPU, memory and GPU of a game match Mission Center or MangoHud.",
         Always,
     ),
     it(
         "encerrar",
-        "Programas",
-        "Encerrar e Forçar parada",
-        "Abra um programa seu (ex.: Dolphin), selecione e use Encerrar; abra de novo e use Forçar parada.",
-        "Encerrar fecha; Forçar parada pede confirmação e fecha. kwin, plasmashell e Xwayland ficam em \"Sessão e sistema\" e os botões não deixam.",
+        "Programs",
+        "End and Force stop",
+        "Open one of your programs (e.g. Dolphin), select it and use End; open it again and use Force stop.",
+        "End closes it; Force stop asks for confirmation and closes it. kwin, plasmashell and Xwayland stay under \"Session and system\" and the buttons refuse.",
         Always,
     ),
     it(
         "nucleos",
-        "Programas",
-        "Escolher núcleos",
-        "Em Ajustar…, escolha núcleos específicos e salve.",
-        "No Mapa (gráfico por thread) aparece o ponto amarelo nesses núcleos e o uso fica neles.",
+        "Programs",
+        "Choose cores",
+        "In Adjust…, pick specific cores and save.",
+        "In the Map (per-thread chart) the yellow dot shows on those cores and the load stays on them.",
         Always,
     ),
     it(
         "limite-mem",
-        "Programas",
-        "Limite de memória",
-        "Em Ajustar…, marque \"Limitar a memória do programa a\" 2 GB e use o programa.",
-        "O programa não passa do limite (o excedente vai para o swap); o PC não trava.",
+        "Programs",
+        "Memory limit",
+        "In Adjust…, check \"Limit the program's memory to\" 2 GB and use the program.",
+        "The program does not go past the limit (the excess goes to swap); the PC does not freeze.",
         Always,
     ),
     it(
         "gpu-escolha",
-        "Programas",
-        "Escolher a placa",
-        "Em Ajustar…, escolha outra placa e use Reabrir.",
-        "O programa reabre e passa a usar a placa escolhida (o uso aparece nela).",
+        "Programs",
+        "Choose the card",
+        "In Adjust…, pick another card and use Reopen.",
+        "The program reopens and starts using the chosen card (its usage shows there).",
         Always,
     ),
     it(
         "steam",
-        "Programas",
-        "Jogos da Steam",
-        "Use \"Aplicar em todos os jogos\" com a Steam fechada; depois \"Remover de todos\".",
-        "As opções de inicialização dos jogos mudam e voltam ao que eram.",
+        "Programs",
+        "Steam games",
+        "Use \"Apply to all games\" with Steam closed; then \"Remove from all\".",
+        "The games' launch options change and go back to what they were.",
         Always,
     ),
     // Mapa
     it(
         "threads",
-        "Mapa",
-        "Gráfico por thread",
-        "Abra Mapa e medições → Gráfico por thread e rode algo pesado.",
-        "Os gráficos dos threads em uso sobem; ao passar o mouse mostra o núcleo e a frequência.",
+        "Map",
+        "Per-thread chart",
+        "Open Map & measurements → Per-thread chart and run something heavy.",
+        "The charts of the threads in use go up; hovering shows the core and the frequency.",
         Always,
     ),
     it(
         "temp-cpu",
-        "Mapa",
-        "Temperatura do processador",
-        "Olhe o gráfico de temperatura com carga e depois parado.",
-        "Acompanha a temperatura real (sobe com carga, desce parado).",
+        "Map",
+        "Processor temperature",
+        "Watch the temperature chart under load and then idle.",
+        "It follows the real temperature (up under load, down when idle).",
         Always,
     ),
     it(
         "memoria-local",
-        "Mapa",
-        "Memória só do socket",
-        "Em Ajustar… de um programa, escolha usar só a memória do socket dele.",
-        "Em \"Alocações no outro socket\" esse programa não aumenta as alocações remotas.",
+        "Map",
+        "Socket-only memory",
+        "In a program's Adjust…, choose to use only its socket's memory.",
+        "Under \"Allocations on the other socket\" this program does not increase remote allocations.",
         MultiSocket,
     ),
     it(
         "medir",
-        "Mapa",
-        "Medir latência e banda",
-        "Clique em \"Medir agora\".",
-        "A tabela é preenchida sem erro.",
+        "Map",
+        "Measure latency and bandwidth",
+        "Click \"Measure now\".",
+        "The table fills in with no error.",
         MultiSocket,
     ),
     // Placas
     it(
         "ventoinha",
-        "Placas",
-        "Curva da ventoinha",
-        "Em Placas de vídeo, escolha \"curva\", aplique e depois Desfazer.",
-        "A ventoinha segue a curva; Desfazer volta para o automático da placa.",
+        "Cards",
+        "Fan curve",
+        "In Graphics cards, choose \"curve\", apply and then Undo.",
+        "The fan follows the curve; Undo goes back to the card's automatic mode.",
         FanControl,
     ),
     it(
         "potencia",
-        "Placas",
-        "Limite de potência",
-        "Baixe o limite de potência de uma placa e rode um jogo. Se a placa não mostra esse controle, o fabricante trava: marque Pulei.",
-        "Os watts no topo não passam do limite; Desfazer volta ao padrão.",
+        "Cards",
+        "Power limit",
+        "Lower a card's power limit and run a game. If the card does not show this control, the vendor locks it: mark Skipped.",
+        "The watts at the top stay under the limit; Undo restores the default.",
         Always,
     ),
     it(
         "undervolt",
-        "Placas",
-        "Undervolt automático",
-        "Na tomada, use \"Achar o undervolt sozinho\" e deixe o PC parado.",
-        "Escolhe um programa de carga com 80% de uso ou mais, mostra clock e uso, termina e grava; o terminal fecha com Enter.",
+        "Cards",
+        "Automatic undervolt",
+        "On AC power, use \"Find the undervolt automatically\" and leave the PC idle.",
+        "It picks a load program with 80% usage or more, shows clock and usage, finishes and saves; the terminal closes with Enter.",
         Always,
     ),
     it(
         "nv-offset",
-        "Placas",
-        "Deslocamento de clock (NVIDIA)",
-        "Aplique um deslocamento pequeno (ex.: +50 MHz) e reinicie o serviço.",
-        "O valor aparece aplicado e volta sozinho depois de reiniciar o serviço.",
+        "Cards",
+        "Clock offset (NVIDIA)",
+        "Apply a small offset (e.g. +50 MHz) and restart the service.",
+        "The value shows as applied and resets by itself after restarting the service.",
         Nvidia,
     ),
     it(
         "overdrive",
-        "Placas",
+        "Cards",
         "OverDrive (AMD)",
-        "Use \"Ativar OverDrive\" e reinicie o PC.",
-        "Depois de reiniciar, os controles de clock e voltagem da placa ficam disponíveis.",
+        "Use \"Enable OverDrive\" and reboot the PC.",
+        "After rebooting, the card's clock and voltage controls become available.",
         AmdOdOff,
     ),
     it(
         "clock-amd",
-        "Placas",
-        "Clock e voltagem (AMD)",
-        "Na placa AMD, em \"Clock e voltagem\", marque personalizar, baixe \"GPU máx.\" e aplique; depois Desfazer.",
-        "Com carga, o clock da placa não passa do valor escolhido; Desfazer volta ao de fábrica.",
+        "Cards",
+        "Clock and voltage (AMD)",
+        "On the AMD card, under \"Clock and voltage\", check customize, lower \"GPU max\" and apply; then Undo.",
+        "Under load, the card's clock stays under the chosen value; Undo restores the factory value.",
         AmdOdOn,
     ),
     // Máquina
     it(
         "modo",
-        "Máquina",
-        "Modos da máquina",
-        "Troque entre Jogo, IA, Silencioso e Normal.",
-        "O governador e a preferência de energia mudam (numapilot autoteste mostra); Normal volta ao que era.",
+        "Machine",
+        "Machine modes",
+        "Switch between Game, AI, Quiet and Normal.",
+        "The governor and the energy preference change (numapilot selftest shows it); Normal restores what it was.",
         Always,
     ),
     it(
         "horario",
-        "Máquina",
-        "Modo por horário",
-        "Crie um horário que começa daqui a 2 minutos.",
-        "Na hora, o modo troca sozinho; depois do fim, volta.",
+        "Machine",
+        "Scheduled mode",
+        "Create a schedule that starts 2 minutes from now.",
+        "At that time the mode switches by itself; after the end, it goes back.",
         Always,
     ),
     it(
         "energia",
-        "Máquina",
-        "Energia e custo",
-        "Informe o preço do kWh e espere alguns minutos.",
-        "Hoje/mês começam a contar e crescem com o uso.",
+        "Machine",
+        "Energy and cost",
+        "Enter the kWh price and wait a few minutes.",
+        "Today/month start counting and grow with usage.",
         Always,
     ),
     it(
         "saude",
-        "Máquina",
-        "Saúde do hardware",
-        "Espere 1 minuto depois de iniciar o serviço e abra a seção Saúde.",
-        "Discos, memória e placas aparecem com estado (sem \"nunca coletado\").",
+        "Machine",
+        "Hardware health",
+        "Wait 1 minute after starting the service and open the Health section.",
+        "Disks, memory and cards show a status (no \"never collected\").",
         Always,
     ),
     // Notebook
     it(
         "bateria",
-        "Notebook",
-        "Tomada e bateria",
-        "Tire o carregador; depois ligue de novo.",
-        "Em até 10 s o numapilot mostra \"na bateria\" e depois \"na tomada\".",
+        "Laptop",
+        "AC power and battery",
+        "Unplug the charger; then plug it back in.",
+        "Within 10 s numapilot shows \"on battery\" and then \"on AC power\".",
         Laptop,
     ),
     it(
         "nv-auto",
-        "Notebook",
-        "NVIDIA no automático",
-        "Modo auto. Na bateria, feche o que usa a NVIDIA; depois ligue na tomada.",
-        "Na bateria a NVIDIA desliga (numapilot hybrid: \"desligada\"); na tomada volta.",
+        "Laptop",
+        "NVIDIA on automatic",
+        "Auto mode. On battery, close whatever uses the NVIDIA; then plug in the charger.",
+        "On battery the NVIDIA turns off (numapilot hybrid: \"off\"); on AC power it comes back.",
         NvidiaLaptop,
     ),
     it(
         "nv-segurando",
-        "Notebook",
-        "Quem segura a NVIDIA",
-        "Rode: numapilot hybrid",
-        "Lista só programas que realmente usam a NVIDIA (sem systemd, kwin, etc.).",
+        "Laptop",
+        "Who is holding the NVIDIA",
+        "Run: numapilot hybrid",
+        "Lists only programs that really use the NVIDIA (no systemd, kwin, etc.).",
         NvidiaLaptop,
     ),
     it(
         "autostart",
-        "Notebook",
-        "Programas do login na integrada",
-        "Depois de entrar na sessão, rode: numapilot hybrid",
-        "Nada que abre com o sistema aparece segurando a NVIDIA.",
+        "Laptop",
+        "Login programs on the integrated GPU",
+        "After logging in, run: numapilot hybrid",
+        "Nothing that starts with the system shows up holding the NVIDIA.",
         NvidiaLaptop,
     ),
     it(
         "telas",
-        "Notebook",
-        "Telas externas",
-        "Ligue monitores no HDMI e no USB-C/Thunderbolt; troque um de porta.",
-        "Todas dão imagem; trocar de porta não deixa as telas piscando.",
+        "Laptop",
+        "External displays",
+        "Connect monitors to HDMI and USB-C/Thunderbolt; move one to another port.",
+        "All of them show an image; changing ports does not leave the displays flickering.",
         Laptop,
     ),
     it(
         "ryzenadj",
-        "Notebook",
-        "Limites do Ryzen",
-        "Mude o limite STAPM em Máquina e rode: sudo ryzenadj --info",
-        "O valor novo aparece no ryzenadj e continua depois de alguns minutos.",
+        "Laptop",
+        "Ryzen limits",
+        "Change the STAPM limit in Machine and run: sudo ryzenadj --info",
+        "The new value shows in ryzenadj and is still there after a few minutes.",
         RyzenLaptop,
     ),
     it(
         "acer",
-        "Notebook",
-        "Controles da Acer",
-        "Mude o perfil/ventoinha da Acer em Máquina. Se não aparece nada, rode numapilot autoteste: o item Acer mostra o motivo.",
-        "O notebook responde (ventoinha/perfil mudam) e o valor fica salvo.",
+        "Laptop",
+        "Acer controls",
+        "Change the Acer profile/fan in Machine. If nothing shows up, run numapilot selftest: the Acer item shows why.",
+        "The laptop responds (fan/profile change) and the value stays saved.",
         Acer,
     ),
     // Placa especial
     it(
         "bc-apps",
         "BC-250",
-        "Apps da comunidade",
-        "Em Placas de vídeo, veja a seção da BC-250.",
-        "Os apps da comunidade aparecem com instalar/abrir.",
+        "Community apps",
+        "In Graphics cards, look at the BC-250 section.",
+        "The community apps show up with install/open.",
         Board,
     ),
     it(
         "bc-mem",
         "BC-250",
-        "Memória da GPU",
-        "Mude a memória da GPU e reinicie.",
-        "Depois de reiniciar, o autoteste mostra o valor novo em \"Memória da GPU (TTM)\".",
+        "GPU memory",
+        "Change the GPU memory and reboot.",
+        "After rebooting, the self-test shows the new value under \"GPU memory (TTM)\".",
         Board,
     ),
     it(
         "bc-cu",
         "BC-250",
-        "Núcleos e CUs",
-        "Rode o autoteste.",
-        "Mostra os núcleos e CUs ativos esperados para o desbloqueio.",
+        "Cores and CUs",
+        "Run the self-test.",
+        "Shows the active cores and CUs expected for the unlock.",
         Board,
     ),
     it(
         "bc-stream",
         "BC-250",
-        "Streaming sem codificador de vídeo",
-        "Ligue o Sunshine pelo numapilot e conecte pelo Moonlight.",
-        "Conecta usando a codificação por software, com imagem estável.",
+        "Streaming without a video encoder",
+        "Turn on Sunshine from numapilot and connect with Moonlight.",
+        "It connects using software encoding, with a stable image.",
         Board,
     ),
     // Outros
     it(
         "ia",
-        "Outros",
-        "Servidor de IA",
-        "Inicie um modelo pequeno e mande uma pergunta.",
-        "Responde; \"Ajustar melhor\" termina e sugere configurações.",
+        "Other",
+        "AI server",
+        "Start a small model and send a question.",
+        "It answers; \"Tune better\" finishes and suggests settings.",
         Always,
     ),
     it(
         "lab",
-        "Outros",
-        "Laboratório",
-        "Crie um container e abra o Jupyter.",
-        "O container sobe e o Jupyter abre no navegador.",
+        "Other",
+        "Lab",
+        "Create a container and open Jupyter.",
+        "The container starts and Jupyter opens in the browser.",
         Always,
     ),
     it(
         "streaming",
-        "Outros",
+        "Other",
         "Streaming",
-        "Ligue o Sunshine e conecte pelo Moonlight; abra um jogo pelo celular.",
-        "Conecta e o jogo abre.",
+        "Turn on Sunshine and connect with Moonlight; open a game from the phone.",
+        "It connects and the game opens.",
         Always,
     ),
     it(
         "peers",
-        "Outros",
-        "Outros PCs",
-        "Adicione o link de outro PC e use \"ligar pela rede\" com ele desligado.",
-        "Ele aparece online; o comando de ligar acorda o PC.",
+        "Other",
+        "Other PCs",
+        "Add another PC's link and use \"wake over the network\" with it turned off.",
+        "It shows as online; the wake command turns the PC on.",
         Always,
     ),
     it(
         "avisos",
-        "Outros",
-        "Avisos no celular",
-        "Configure o ntfy e envie o teste.",
-        "O aviso chega no celular.",
+        "Other",
+        "Phone notifications",
+        "Set up ntfy and send the test.",
+        "The notification arrives on the phone.",
         Always,
     ),
     it(
         "backup",
-        "Outros",
-        "Cópia das configurações",
-        "Use \"Guardar de todos\" em Outros PCs.",
-        "Os arquivos aparecem na pasta de cópias.",
+        "Other",
+        "Settings backup",
+        "Use \"Save from all\" in Other PCs.",
+        "The files show up in the backup folder.",
         Always,
     ),
 ];
@@ -528,8 +528,8 @@ fn applies(w: When, f: &Flags) -> bool {
 fn st_label(st: &str) -> &'static str {
     match st {
         "ok" => "OK",
-        "falhou" => crate::i18n::tr("FALHOU"),
-        "pulei" => crate::i18n::tr("PULEI"),
+        "falhou" => crate::i18n::tr("FAILED"),
+        "pulei" => crate::i18n::tr("SKIPPED"),
         _ => "—",
     }
 }
@@ -546,8 +546,8 @@ fn report(app: &App) -> Result<PathBuf, String> {
             .count()
     };
     let mut s = format!(
-        "# numapilot — relatório de testes\n\nversão {} · máquina {} · {}\n\
-         Testes à mão: {} itens · {} OK · {} falharam · {} pulados · {} sem resposta\n",
+        "# numapilot — test report\n\nversion {} · machine {} · {}\n\
+         Manual tests: {} items · {} OK · {} failed · {} skipped · {} unanswered\n",
         env!("CARGO_PKG_VERSION"),
         numapilot::selftest::hostname(),
         numapilot::log::now(),
@@ -579,7 +579,7 @@ fn report(app: &App) -> Result<PathBuf, String> {
     match std::fs::read_to_string(autotest_path()) {
         Ok(t) => s.push_str(&t),
         Err(_) => s.push_str(
-            "# autoteste\n\n(não rodado: use \"Rodar o autoteste\" antes de gerar o relatório)\n",
+            "# self-test\n\n(not run: use \"Run the self-test\" before generating the report)\n",
         ),
     }
     s.push_str("\n\n# registros (final)\n");
@@ -602,8 +602,8 @@ fn report(app: &App) -> Result<PathBuf, String> {
     ));
     std::fs::write(&out, s).map_err(|e| format!("{}: {e}", out.display()))?;
     numapilot::log::info(&crate::tf!(
-        "relatório de testes gerado: {}",
         "test report generated: {}",
+        "relatório de testes gerado: {}",
         out.display()
     ));
     Ok(out)
@@ -633,41 +633,41 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button(crate::i18n::tr("Rodar o autoteste"))
-            .on_hover_text(crate::i18n::tr("Testa todas as partes pela linha de comando (só lê, não muda nada). Leva um ou dois minutos."))
+            .button(crate::i18n::tr("Run the self-test"))
+            .on_hover_text(crate::i18n::tr("Tests every part from the command line (read-only, changes nothing). Takes a minute or two."))
             .clicked()
         {
             let exe = crate::jobs::sibling_abs("numapilot");
             app.start_job(
-                crate::i18n::tr("Autoteste"),
+                crate::i18n::tr("Self-test"),
                 vec![
                     exe,
-                    "autoteste".into(),
-                    "--saida".into(),
+                    "selftest".into(),
+                    "--out".into(),
                     autotest_path().display().to_string(),
                 ],
             );
         }
         if ui
-            .button(crate::i18n::tr("Gerar relatório"))
-            .on_hover_text(crate::i18n::tr("Um arquivo com suas respostas, o último autoteste e o final dos registros, para enviar."))
+            .button(crate::i18n::tr("Generate report"))
+            .on_hover_text(crate::i18n::tr("A file with your answers, the last self-test and the end of the logs, to send."))
             .clicked()
         {
             match report(app) {
                 Ok(pth) => {
-                    app.toast(crate::tf!("Relatório: {}", "Report: {}", pth.display()), true);
+                    app.toast(crate::tf!("Report: {}", "Relatório: {}", pth.display()), true);
                     app.checklist.last_report = Some(pth);
                 }
-                Err(e) => app.toast(crate::tf!("Não consegui gerar o relatório: {e}", "Could not generate the report: {e}"), false),
+                Err(e) => app.toast(crate::tf!("Could not generate the report: {e}", "Não consegui gerar o relatório: {e}"), false),
             }
         }
-        if ui.button(crate::i18n::tr("Limpar respostas")).clicked() {
+        if ui.button(crate::i18n::tr("Clear answers")).clicked() {
             app.checklist.res.clear();
             app.checklist.save();
         }
         ui.label(
             RichText::new(crate::tf!(
-                "{answered} de {} respondidos · {failed} falharam", "{answered} of {} answered · {failed} failed",
+                "{answered} of {} answered · {failed} failed", "{answered} de {} respondidos · {failed} falharam",
                 items.len()
             ))
             .color(if failed > 0 { p.err } else { p.weak }),
@@ -676,8 +676,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     if let Some(pth) = &app.checklist.last_report {
         ui.label(
             RichText::new(crate::tf!(
-                "Último relatório: {}",
                 "Last report: {}",
+                "Último relatório: {}",
                 pth.display()
             ))
             .small()
@@ -686,7 +686,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     }
     ui.label(
         RichText::new(
-            crate::i18n::tr("Só aparecem os testes que valem para esta máquina. As respostas ficam salvas; marque e escreva uma nota quando algo der errado."),
+            crate::i18n::tr("Only the tests that apply to this machine are shown. Answers are saved; mark and write a note when something goes wrong."),
         )
         .small()
         .weak(),
@@ -732,8 +732,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
                                     for (v, l, c) in [
-                                        ("pulei", crate::i18n::tr("Pulei"), p.weak),
-                                        ("falhou", crate::i18n::tr("Falhou"), p.err),
+                                        ("pulei", crate::i18n::tr("Skipped"), p.weak),
+                                        ("falhou", crate::i18n::tr("Failed"), p.err),
                                         ("ok", "OK", p.ok),
                                     ] {
                                         let sel = st == v;
@@ -757,8 +757,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                                 e.st = v.to_string();
                                                 e.quando = numapilot::log::now();
                                                 numapilot::log::info(&crate::tf!(
-                                                    "teste \"{}\": {}",
                                                     "test \"{}\": {}",
+                                                    "teste \"{}\": {}",
                                                     i.title,
                                                     st_label(v)
                                                 ));
@@ -771,8 +771,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         });
                         ui.label(
                             RichText::new(crate::tf!(
-                                "Como: {}",
                                 "How: {}",
+                                "Como: {}",
                                 crate::i18n::tr(i.how)
                             ))
                             .size(12.5)
@@ -780,8 +780,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         );
                         ui.label(
                             RichText::new(crate::tf!(
-                                "Esperado: {}",
                                 "Expected: {}",
+                                "Esperado: {}",
                                 crate::i18n::tr(i.expect)
                             ))
                             .size(12.5),
@@ -790,9 +790,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             let r = ui.add(
                                 egui::TextEdit::singleline(&mut e.nota)
                                     .hint_text(if e.st == "falhou" {
-                                        crate::i18n::tr("O que aconteceu? (aparece no relatório)")
+                                        crate::i18n::tr("What happened? (goes into the report)")
                                     } else {
-                                        crate::i18n::tr("nota (opcional)")
+                                        crate::i18n::tr("note (optional)")
                                     })
                                     .desired_width(f32::INFINITY),
                             );

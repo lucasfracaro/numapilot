@@ -10,32 +10,32 @@ use std::process::Command;
 
 /// Modos: (id, nome, explicação).
 pub const MODES: &[(&str, &str, &str)] = &[
-    ("nenhum", "Nenhum", "o jogo como ele é"),
+    ("nenhum", "None", "the game as it is"),
     (
         "fsr4",
         "FSR 4 (RDNA 4)",
-        "troca o FSR 3.1 do jogo pelo FSR 4 (proton-cachyos/GE baixam a DLL)",
+        "swaps the game's FSR 3.1 for FSR 4 (proton-cachyos/GE download the DLL)",
     ),
     (
         "fsr4-rdna3",
-        "FSR 4 para RDNA 3",
-        "a mesma troca com o caminho de compatibilidade das RX 7000",
+        "FSR 4 for RDNA 3",
+        "the same swap with the RX 7000 compatibility path",
     ),
-    ("fsr3", "FSR 3.1 mais novo", "atualiza o FSR 3.1 do jogo"),
+    ("fsr3", "Newest FSR 3.1", "updates the game's FSR 3.1"),
     (
         "dlss",
-        "DLSS mais novo (NVIDIA)",
-        "atualiza a DLL do DLSS do jogo",
+        "Newest DLSS (NVIDIA)",
+        "updates the game's DLSS DLL",
     ),
     (
         "xess",
-        "XeSS mais novo",
-        "atualiza o XeSS do jogo (roda em qualquer placa)",
+        "Newest XeSS",
+        "updates the game's XeSS (runs on any card)",
     ),
     (
         "optiscaler",
         "OptiScaler",
-        "põe FSR/XeSS (e FSR 4 INT8 experimental) em jogos que só têm DLSS ou nada",
+        "adds FSR/XeSS (and experimental FSR 4 INT8) to games that only have DLSS or nothing",
     ),
 ];
 
@@ -152,14 +152,12 @@ pub fn fetch(log: &mut dyn FnMut(&str)) -> Result<String, String> {
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {
-        return Err(
-            crate::i18n::tr("não consegui consultar as versões do OptiScaler no GitHub").into(),
-        );
+        return Err(crate::i18n::tr("could not query the OptiScaler versions on GitHub").into());
     }
     let j: serde_json::Value = serde_json::from_slice(&out.stdout).map_err(|e| e.to_string())?;
     let tag = j["tag_name"]
         .as_str()
-        .ok_or(crate::i18n::tr("resposta sem versão"))?
+        .ok_or(crate::i18n::tr("response without a version"))?
         .to_string();
     let asset = j["assets"]
         .as_array()
@@ -169,22 +167,24 @@ pub fn fetch(log: &mut dyn FnMut(&str)) -> Result<String, String> {
                 n.contains("optiscaler") && (n.ends_with(".7z") || n.ends_with(".zip"))
             })
         })
-        .ok_or(crate::i18n::tr("a versão não tem o arquivo do OptiScaler"))?;
+        .ok_or(crate::i18n::tr(
+            "the release does not have the OptiScaler file",
+        ))?;
     let url = asset["browser_download_url"]
         .as_str()
-        .ok_or(crate::i18n::tr("sem link"))?;
+        .ok_or(crate::i18n::tr("no link"))?;
     let name = asset["name"].as_str().unwrap_or("optiscaler.7z");
     let dest = data_dir().join(&tag);
     if dest.join("OptiScaler.ini").exists() || find_file(&dest, "OptiScaler.dll", 2).is_some() {
         log(&crate::tf!(
-            "OptiScaler {tag} já baixado",
-            "OptiScaler {tag} already downloaded"
+            "OptiScaler {tag} already downloaded",
+            "OptiScaler {tag} já baixado"
         ));
         return Ok(tag);
     }
     std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
     let arc = data_dir().join(name);
-    log(&crate::tf!("baixando {name}", "downloading {name}"));
+    log(&crate::tf!("downloading {name}", "baixando {name}"));
     let st = Command::new("curl")
         .args(["-fL", "--max-time", "300", "-o"])
         .arg(&arc)
@@ -192,7 +192,7 @@ pub fn fetch(log: &mut dyn FnMut(&str)) -> Result<String, String> {
         .status()
         .map_err(|e| e.to_string())?;
     if !st.success() {
-        return Err(crate::i18n::tr("download falhou").into());
+        return Err(crate::i18n::tr("download failed").into());
     }
     let st = if name.ends_with(".7z") {
         Command::new("7z")
@@ -212,12 +212,12 @@ pub fn fetch(log: &mut dyn FnMut(&str)) -> Result<String, String> {
     let _ = std::fs::remove_file(&arc);
     match st {
         Ok(s) if s.success() => {}
-        Ok(_) => return Err(crate::i18n::tr("não consegui extrair o arquivo").into()),
-        Err(_) => return Err(crate::i18n::tr("instale o 7zip (sudo pacman -S 7zip)").into()),
+        Ok(_) => return Err(crate::i18n::tr("could not extract the file").into()),
+        Err(_) => return Err(crate::i18n::tr("install 7zip (sudo pacman -S 7zip)").into()),
     }
     log(&crate::tf!(
-        "OptiScaler {tag} pronto em {}",
         "OptiScaler {tag} ready in {}",
+        "OptiScaler {tag} pronto em {}",
         dest.display()
     ));
     Ok(tag)
@@ -309,13 +309,13 @@ pub fn installed(dir: &Path) -> Option<Installed> {
 /// Copia o OptiScaler para a pasta do executável (como dxgi.dll).
 pub fn install(dir: &Path, int8: bool) -> Result<String, String> {
     let (ver, src) = local_release().ok_or(crate::i18n::tr(
-        "baixe o OptiScaler antes (botão Baixar / numapilot upscale fetch)",
+        "download OptiScaler first (Download button / numapilot upscale fetch)",
     ))?;
     if installed(dir).is_some() {
         remove(dir)?;
     }
     let dll = find_file(&src, "OptiScaler.dll", 2)
-        .ok_or(crate::i18n::tr("OptiScaler.dll não encontrado no pacote"))?;
+        .ok_or(crate::i18n::tr("OptiScaler.dll not found in the package"))?;
     let root = dll.parent().unwrap().to_path_buf();
     let mut files = vec![];
     let had_dxgi = dir.join("dxgi.dll").exists();
@@ -389,7 +389,7 @@ pub fn install(dir: &Path, int8: bool) -> Result<String, String> {
 /// Tira só o que o numapilot colocou e devolve a dxgi.dll original.
 pub fn remove(dir: &Path) -> Result<(), String> {
     let m = installed(dir).ok_or(crate::i18n::tr(
-        "o OptiScaler não foi instalado pelo numapilot nesta pasta",
+        "OptiScaler was not installed by numapilot in this folder",
     ))?;
     for f in &m.files {
         let _ = std::fs::remove_file(dir.join(f));

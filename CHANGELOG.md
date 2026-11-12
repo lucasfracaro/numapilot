@@ -2,12 +2,16 @@
 
 ## Ainda não lançado
 
-- **Inglês em tudo** (Configurações → Idioma, ou `NUMAPILOT_LANG=en`): a interface inteira, as
-  mensagens do serviço, a linha de comando (doctor, autoteste, erros, avisos no celular), o
-  `--help` e o painel no celular; e o README em inglês (`README.en.md`). O serviço responde no
-  idioma de quem pede. Sem escolha, vale o idioma do sistema. Continuam em português os nomes dos
-  subcomandos, os registros internos do serviço, o instalador, o `gfx906-rocm` e o resto da
-  documentação.
+- **English is now the project's language**, to make collaboration easier. The code's texts, the
+  command line, `--help`, logs and reports are in English; the interface (and the messages it
+  shows) is available in English and Portuguese (Settings → Language, or `NUMAPILOT_LANG=pt`;
+  without a choice, Portuguese only on a `pt_*` system). `README.md` is English and
+  `README.pt-BR.md` is the Portuguese version.
+- **Command names in English**: `startup` (was `inicio`), `services` (`servicos`), `selftest`
+  (`autoteste`), options `--user`, `--running`, `--failed`, `--lines`, `--delay`, `--yes`,
+  `--out`, `--quick`, `--show`, `--clear`, and values `machine mode game|ai|quiet`,
+  `hybrid hybrid|integrated|leave`, `gpu-memory default`. The old names still work.
+- Log levels are now `ERROR`/`WARN`; self-test statuses are `WARN`/`FAILED`/`SKIPPED`.
 - **Latência do cache por núcleo** (`numapilot bench-cores` e botão "Medir núcleos" no Mapa):
   mede o acesso ao cache L3 a partir de cada núcleo e, quando a diferença é maior que o ruído da
   medição, a escolha de núcleos (perfis com número de núcleos e o turbo máximo) passa a preferir

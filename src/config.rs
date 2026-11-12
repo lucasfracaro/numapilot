@@ -154,7 +154,7 @@ impl Config {
         let p = Self::path();
         let mut cfg = match std::fs::read_to_string(&p) {
             Ok(s) => toml::from_str::<Config>(&s)
-                .with_context(|| crate::tf!("erro ao ler {}", "error reading {}", p.display()))?,
+                .with_context(|| crate::tf!("error reading {}", "erro ao ler {}", p.display()))?,
             Err(_) => Config::default(),
         };
         if cfg.compute_hints.is_empty() {
@@ -163,29 +163,29 @@ impl Config {
         for r in &cfg.rules {
             CpuSpec::parse(&r.cpu).with_context(|| {
                 crate::tf!(
-                    "regra '{}': cpu inválido",
                     "rule '{}': invalid cpu",
+                    "regra '{}': cpu inválido",
                     r.label()
                 )
             })?;
             GpuSpec::parse(&r.gpu).with_context(|| {
                 crate::tf!(
-                    "regra '{}': gpu inválido",
                     "rule '{}': invalid gpu",
+                    "regra '{}': gpu inválido",
                     r.label()
                 )
             })?;
             MemSpec::parse(&r.mem).with_context(|| {
                 crate::tf!(
-                    "regra '{}': mem inválido",
                     "rule '{}': invalid mem",
+                    "regra '{}': mem inválido",
                     r.label()
                 )
             })?;
             crate::decide::Kind::parse_usage(&r.usage).with_context(|| {
                 crate::tf!(
-                    "regra '{}': use inválido",
                     "rule '{}': invalid use",
+                    "regra '{}': use inválido",
                     r.label()
                 )
             })?;
@@ -226,7 +226,7 @@ impl CpuSpec {
                 if v.is_empty() {
                     bail!(
                         "{}",
-                        crate::tf!("lista de CPUs vazia: {s}", "empty CPU list: {s}")
+                        crate::tf!("empty CPU list: {s}", "lista de CPUs vazia: {s}")
                     );
                 }
                 CpuSpec::Cpus(v)
@@ -240,8 +240,8 @@ impl CpuSpec {
                         bail!(
                             "{}",
                             crate::tf!(
-                                "use auto, all, gpu, número(s) de nó ou cpus:LISTA (recebido '{s}')",
-                                "use auto, all, gpu, node number(s) or cpus:LIST (got '{s}')"
+                                "use auto, all, gpu, node number(s) or cpus:LIST (got '{s}')",
+                                "use auto, all, gpu, número(s) de nó ou cpus:LISTA (recebido '{s}')"
                             )
                         )
                     }
@@ -299,8 +299,8 @@ impl MemSpec {
             o => bail!(
                 "{}",
                 crate::tf!(
-                    "mem deve ser local, interleave ou bind (recebido '{o}')",
-                    "mem must be local, interleave or bind (got '{o}')"
+                    "mem must be local, interleave or bind (got '{o}')",
+                    "mem deve ser local, interleave ou bind (recebido '{o}')"
                 )
             ),
         })

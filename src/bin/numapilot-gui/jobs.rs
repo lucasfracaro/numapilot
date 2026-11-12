@@ -90,8 +90,8 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
         };
         push(&format!("$ {}", argv.join(" ")));
         numapilot::log::info(&crate::tf!(
-            "comando: {} — {}",
             "command: {} — {}",
+            "comando: {} — {}",
             j.title,
             argv.join(" ")
         ));
@@ -105,12 +105,12 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
             Ok(c) => c,
             Err(e) => {
                 push(&crate::tf!(
-                    "não consegui executar: {e}",
-                    "could not run it: {e}"
+                    "could not run it: {e}",
+                    "não consegui executar: {e}"
                 ));
                 numapilot::log::error(&crate::tf!(
-                    "não consegui executar {}: {e}",
                     "could not run {}: {e}",
+                    "não consegui executar {}: {e}",
                     argv[0]
                 ));
                 if let Ok(mut s) = j.status.lock() {
@@ -144,8 +144,8 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
         let title = j.title.clone();
         if ok {
             numapilot::log::info(&crate::tf!(
-                "comando concluído: {title}",
-                "command finished: {title}"
+                "command finished: {title}",
+                "comando concluído: {title}"
             ));
         } else {
             let tail = j
@@ -157,14 +157,14 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
                 })
                 .unwrap_or_default();
             numapilot::log::error(&crate::tf!(
-                "comando com erro: {title}\n{tail}",
-                "command failed: {title}\n{tail}"
+                "command failed: {title}\n{tail}",
+                "comando com erro: {title}\n{tail}"
             ));
         }
         push(if ok {
-            crate::i18n::tr("[concluído]")
+            crate::i18n::tr("[finished]")
         } else {
-            crate::i18n::tr("[terminou com erro]")
+            crate::i18n::tr("[finished with an error]")
         });
         if let Ok(mut s) = j.status.lock() {
             *s = Some(ok);
@@ -248,7 +248,7 @@ pub fn in_terminal(cmd: &[String]) -> Result<(), String> {
         vec!["xterm".into(), "-e".into()]
     } else {
         return Err(crate::i18n::tr(
-            "nenhum terminal encontrado (konsole, gnome-terminal, kitty, alacritty, xterm)",
+            "no terminal found (konsole, gnome-terminal, kitty, alacritty, xterm)",
         )
         .into());
     };
@@ -258,7 +258,7 @@ pub fn in_terminal(cmd: &[String]) -> Result<(), String> {
         .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
         .collect();
     let script = format!(
-        "{}; s=$?; echo; if [ $s -eq 0 ]; then echo 'Terminou.'; else echo \"Terminou com erro ($s).\"; fi; printf 'Enter para fechar esta janela. '; read -r _",
+        "{}; s=$?; echo; if [ $s -eq 0 ]; then echo 'Finished.'; else echo \"Finished with an error ($s).\"; fi; printf 'Press Enter to close this window. '; read -r _",
         quoted.join(" ")
     );
     let wrapped = vec!["sh".to_string(), "-c".to_string(), script];

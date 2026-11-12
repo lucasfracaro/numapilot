@@ -33,15 +33,15 @@ impl Service {
     /// "rodando", "parado", "com falha"...
     pub fn state_text(&self) -> &'static str {
         match (self.active.as_str(), self.sub.as_str()) {
-            ("active", "running") => crate::i18n::tr("rodando"),
-            ("active", "exited") => crate::i18n::tr("terminou (ok)"),
-            ("active", "waiting") | ("active", "listening") => crate::i18n::tr("esperando"),
-            ("active", _) => crate::i18n::tr("ativo"),
-            ("activating", _) => crate::i18n::tr("iniciando"),
-            ("deactivating", _) => crate::i18n::tr("parando"),
-            ("reloading", _) => crate::i18n::tr("recarregando"),
-            ("failed", _) => crate::i18n::tr("com falha"),
-            _ => crate::i18n::tr("parado"),
+            ("active", "running") => crate::i18n::tr("running"),
+            ("active", "exited") => crate::i18n::tr("finished (ok)"),
+            ("active", "waiting") | ("active", "listening") => crate::i18n::tr("waiting"),
+            ("active", _) => crate::i18n::tr("active"),
+            ("activating", _) => crate::i18n::tr("starting"),
+            ("deactivating", _) => crate::i18n::tr("stopping"),
+            ("reloading", _) => crate::i18n::tr("reloading"),
+            ("failed", _) => crate::t2!("failed", "com falha"),
+            _ => crate::i18n::tr("stopped"),
         }
     }
     /// Abre no boot/login?
@@ -174,7 +174,7 @@ pub fn list(user: bool) -> Vec<Service> {
             s.description = s.unit.trim_end_matches(".service").to_string();
         }
         s.protected = crate::startup::essential_unit(&s.unit).then_some(crate::i18n::tr(
-            "essencial para o sistema, a rede ou o login",
+            "essential for the system, the network or login",
         ));
     }
     // programas abertos pelo desktop viram unidades temporárias (app-...@hash.service): são
@@ -204,9 +204,9 @@ impl Verb {
     }
     pub fn text(self) -> &'static str {
         match self {
-            Verb::Start => crate::i18n::tr("Iniciar"),
-            Verb::Stop => crate::i18n::tr("Parar"),
-            Verb::Restart => crate::i18n::tr("Reiniciar"),
+            Verb::Start => crate::i18n::tr("Start"),
+            Verb::Stop => crate::i18n::tr("Stop"),
+            Verb::Restart => crate::i18n::tr("Restart"),
         }
     }
 }
@@ -229,8 +229,8 @@ pub fn action_command(s: &Service, v: Verb) -> Result<Vec<String>, String> {
     c.push(v.word().into());
     c.push(s.unit.clone());
     crate::log::info(&crate::tf!(
-        "serviço {}: {}",
         "service {}: {}",
+        "serviço {}: {}",
         s.id(),
         v.word()
     ));
@@ -279,11 +279,11 @@ pub fn unit_logs(unit: &str, user: bool, lines: u32) -> String {
             if t.trim().is_empty() || t.contains("-- No entries --") {
                 let e = String::from_utf8_lossy(&o.stderr).trim().to_string();
                 if e.is_empty() {
-                    crate::i18n::tr("(nada no log)").into()
+                    crate::i18n::tr("(nothing in the log)").into()
                 } else {
                     crate::tf!(
-                        "(sem acesso ao log: {e}; entre no grupo wheel ou systemd-journal)",
-                        "(no access to the log: {e}; join the wheel or systemd-journal group)"
+                        "(no access to the log: {e}; join the wheel or systemd-journal group)",
+                        "(sem acesso ao log: {e}; entre no grupo wheel ou systemd-journal)"
                     )
                 }
             } else {
@@ -331,7 +331,7 @@ mod tests {
             mem: None,
             protected: Some("x"),
         };
-        assert_eq!(s.state_text(), "rodando");
+        assert_eq!(s.state_text(), "running");
         assert_eq!(s.at_boot(), Some(true));
         assert!(action_command(&s, Verb::Stop).is_err());
         assert_eq!(
@@ -341,7 +341,7 @@ mod tests {
         s.user = true;
         s.protected = None;
         s.active = "failed".into();
-        assert!(s.failed() && s.state_text() == "com falha");
+        assert!(s.failed() && s.state_text() == "failed");
         assert_eq!(
             action_command(&s, Verb::Restart).unwrap(),
             vec!["systemctl", "--user", "restart", "NetworkManager.service"]

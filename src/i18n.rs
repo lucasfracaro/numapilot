@@ -1,29 +1,38 @@
-//! Idioma das mensagens. O português é o idioma do código. Texto fixo: `tr("texto")` com o par
-//! em `i18n_en.rs`; texto com valores: `tf!("texto {}", "text {}", valor)`. O que não tem par
-//! aparece em português.
+//! Message language. English is the language of the code; Portuguese is the translation.
+//! Fixed text: `tr("text")` with its pair in `i18n_pt.rs`; text with values:
+//! `tf!("text {}", "texto {}", value)`; two Portuguese forms for the same English text:
+//! `t2!("on", "ligada")`. Text without a pair is shown in English.
 //!
-//! De onde vem o idioma: `NUMAPILOT_LANG` (pt/en), depois `~/.config/numapilot/lang` (a escolha
-//! feita na interface), depois, para o root, o último idioma pedido ao serviço
-//! (`/var/lib/numapilot/lang`), e por fim o idioma do sistema (inglês só se não for português).
-//! O serviço responde no idioma de quem pede: cada pedido leva `"lang"`.
+//! Where the language comes from: `NUMAPILOT_LANG` (en/pt), then `~/.config/numapilot/lang` (the
+//! choice made in the interface), then, for root, the last language asked of the service
+//! (`/var/lib/numapilot/lang`), and finally the system locale (Portuguese only for `pt_*`).
+//! The service answers in the language of whoever asks: every request carries `"lang"`.
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
-#[path = "i18n_en.rs"]
-mod en;
+#[path = "i18n_pt.rs"]
+mod pt;
 
-/// 0 = ainda não decidido, 1 = português, 2 = inglês.
+/// 0 = not decided yet, 1 = English, 2 = Portuguese.
 static LANG: AtomicU8 = AtomicU8::new(0);
 
-/// `format!` nos dois idiomas: `tf!("texto {}", "text {}", valor)`.
+/// `format!` in both languages: `tf!("text {}", "texto {}", value)`.
 #[macro_export]
 macro_rules! tf {
-    ($pt:literal, $en:literal $(, $($arg:tt)*)?) => {
-        if $crate::i18n::english() {
-            format!($en $(, $($arg)*)?)
-        } else {
+    ($en:literal, $pt:literal $(, $($arg:tt)*)?) => {
+        if $crate::i18n::portuguese() {
             format!($pt $(, $($arg)*)?)
+        } else {
+            format!($en $(, $($arg)*)?)
         }
+    };
+}
+
+/// Fixed text with its Portuguese form inline: `t2!("on", "ligada")`.
+#[macro_export]
+macro_rules! t2 {
+    ($en:literal, $pt:literal) => {
+        if $crate::i18n::portuguese() { $pt } else { $en }
     };
 }
 
@@ -40,10 +49,11 @@ fn service_file() -> std::path::PathBuf {
     crate::learned::state_dir().join("lang")
 }
 
+/// `Some(true)` = Portuguese.
 fn parse(s: &str) -> Option<bool> {
     match s.trim().to_lowercase().as_str() {
-        "en" | "english" => Some(true),
-        "pt" | "pt_br" | "pt-br" | "portugues" | "português" => Some(false),
+        "pt" | "pt_br" | "pt-br" | "portugues" | "português" | "portuguese" => Some(true),
+        "en" | "english" => Some(false),
         _ => None,
     }
 }
@@ -71,37 +81,38 @@ fn detect() -> bool {
         .or_else(|| std::env::var("LC_MESSAGES").ok().filter(|v| !v.is_empty()))
         .or_else(|| std::env::var("LANG").ok())
         .unwrap_or_default();
-    !(l.is_empty() || l.starts_with("pt") || l == "C" || l == "POSIX" || l.starts_with("C."))
+    l.starts_with("pt")
 }
 
-pub fn english() -> bool {
+/// Is the language in use Portuguese? (Always English in the tests.)
+pub fn portuguese() -> bool {
     if cfg!(test) {
         return false;
     }
     match LANG.load(Ordering::Relaxed) {
         0 => {
-            let en = detect();
-            LANG.store(if en { 2 } else { 1 }, Ordering::Relaxed);
-            en
+            let pt = detect();
+            LANG.store(if pt { 2 } else { 1 }, Ordering::Relaxed);
+            pt
         }
         v => v == 2,
     }
 }
 
-/// Decide o idioma de novo (processos que ficam abertos, como o painel web, acompanham a
-/// troca feita na interface).
+/// Decides the language again (long-lived processes, like the web panel, follow a change made
+/// in the interface).
 pub fn refresh() {
     LANG.store(0, Ordering::Relaxed);
 }
 
-/// Troca o idioma deste processo.
-pub fn set_english(en: bool) {
-    LANG.store(if en { 2 } else { 1 }, Ordering::Relaxed);
+/// Changes the language of this process.
+pub fn set_portuguese(pt: bool) {
+    LANG.store(if pt { 2 } else { 1 }, Ordering::Relaxed);
 }
 
-/// Troca o idioma e guarda a escolha do usuário (a interface usa).
-pub fn save_user_choice(en: bool) {
-    set_english(en);
+/// Changes the language and stores the user's choice (used by the interface).
+pub fn save_user_choice(pt: bool) {
+    set_portuguese(pt);
     let f = user_file();
     if let Some(d) = f.parent() {
         let _ = std::fs::create_dir_all(d);
@@ -110,31 +121,36 @@ pub fn save_user_choice(en: bool) {
 }
 
 pub fn code() -> &'static str {
-    if english() { "en" } else { "pt" }
+    if portuguese() { "pt" } else { "en" }
 }
 
-/// No serviço: passa a responder (e a publicar o estado) no idioma de quem fez o pedido.
+/// In the service: start answering (and publishing state) in the language of the request.
 pub fn follow_client(request_json: &str) {
-    let Some(en) = serde_json::from_str::<serde_json::Value>(request_json)
+    let Some(pt) = serde_json::from_str::<serde_json::Value>(request_json)
         .ok()
         .and_then(|v| v.get("lang").and_then(|l| l.as_str()).and_then(parse))
     else {
         return;
     };
-    if en != english() {
-        set_english(en);
+    if pt != portuguese() {
+        set_portuguese(pt);
         let _ = std::fs::write(service_file(), code());
     }
 }
 
-/// Texto no idioma escolhido (o próprio texto se não houver tradução).
+/// Does this text have a Portuguese pair? (for the interface's own test)
+pub fn has_pair(s: &str) -> bool {
+    pt::PT.iter().any(|(k, _)| *k == s)
+}
+
+/// The text in the language in use (the text itself when there is no translation).
 pub fn tr(s: &'static str) -> &'static str {
-    if !english() {
+    if !portuguese() {
         return s;
     }
     static MAP: std::sync::OnceLock<std::collections::HashMap<&'static str, &'static str>> =
         std::sync::OnceLock::new();
-    MAP.get_or_init(|| en::EN.iter().copied().collect())
+    MAP.get_or_init(|| pt::PT.iter().copied().collect())
         .get(s)
         .copied()
         .unwrap_or(s)
@@ -142,27 +158,48 @@ pub fn tr(s: &'static str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::en::EN;
+    use super::pt::PT;
 
     #[test]
     fn no_duplicate_keys() {
         let mut seen = std::collections::HashSet::new();
-        for (k, _) in EN {
-            assert!(seen.insert(*k), "repetido: {k}");
+        for (k, _) in PT {
+            assert!(seen.insert(*k), "duplicate: {k}");
         }
     }
 
-    /// Todo `tr("…")` da biblioteca e da linha de comando precisa ter o par na tabela.
+    /// Every `tr("…")` in the library and the command line needs its pair in the table
+    /// (unless the text is the same in both languages).
     #[test]
     fn every_tr_has_a_pair() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let missing = missing_pairs(&dir, PT, SAME);
+        assert!(
+            missing.is_empty(),
+            "no Portuguese pair for:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    /// Texts that are the same in both languages.
+    const SAME: &[&str] = &["cgroups v2"];
+
+    pub fn missing_pairs(
+        dir: &std::path::Path,
+        table: &[(&str, &str)],
+        same: &[&str],
+    ) -> Vec<String> {
         let norm = |s: &str| {
             s.replace("\\n", "")
                 .split_whitespace()
                 .collect::<String>()
                 .replace('\\', "")
         };
-        let keys: std::collections::HashSet<String> = EN.iter().map(|(k, _)| norm(k)).collect();
+        let keys: std::collections::HashSet<String> = table
+            .iter()
+            .map(|(k, _)| norm(k))
+            .chain(same.iter().map(|k| norm(k)))
+            .collect();
         let mut missing = Vec::new();
         for e in std::fs::read_dir(dir).unwrap().flatten() {
             let name = e.file_name().to_string_lossy().to_string();
@@ -187,6 +224,6 @@ mod tests {
                 }
             }
         }
-        assert!(missing.is_empty(), "sem tradução:\n{}", missing.join("\n"));
+        missing
     }
 }

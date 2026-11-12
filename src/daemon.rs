@@ -146,9 +146,9 @@ impl Hw {
         crate::nlog!(
             "{}: modo {name}",
             if ac == Some(true) {
-                crate::i18n::tr("na tomada")
+                crate::i18n::tr("on AC power")
             } else {
-                crate::i18n::tr("na bateria")
+                crate::i18n::tr("on battery")
             }
         );
     }
@@ -210,9 +210,9 @@ impl Hw {
         crate::nlog!(
             "modo {target} ({})",
             if self.auto_mode.is_some() {
-                crate::i18n::tr("regra automática")
+                crate::i18n::tr("automatic rule")
             } else {
-                crate::i18n::tr("fim da regra, volta ao anterior")
+                crate::i18n::tr("end of the rule, back to the previous one")
             }
         );
     }
@@ -293,13 +293,13 @@ impl Hw {
                         st.removed = true;
                         st.blocked_by.clear();
                         st.last_error = None;
-                        crate::nlog!("NVIDIA desligada ({}): só a integrada", st.alias);
+                        crate::nlog!("NVIDIA off ({}): integrated only", st.alias);
                     }
                     Err(e) => st.last_error = Some(e),
                 }
             } else {
                 if st.blocked_by != users {
-                    crate::nlog!("NVIDIA em uso, não desliguei: {}", users.join(", "));
+                    crate::nlog!("NVIDIA in use, not turned off: {}", users.join(", "));
                 }
                 st.blocked_by = users;
             }
@@ -318,7 +318,7 @@ impl Hw {
         self.lowlat = LowLatency::default();
         self.lowlat.set(cpus, &self.machine, topo);
         for e in &errs {
-            crate::nlog!("máquina: {e}");
+            crate::nlog!("machine: {e}");
         }
         errs
     }
@@ -341,7 +341,7 @@ impl Hw {
                             Ok(()) => {
                                 self.board_manual.insert(f.id.clone(), pct);
                             }
-                            Err(e) => crate::nlog!("ventoinha {}: {e}", f.id),
+                            Err(e) => crate::nlog!("fan {}: {e}", f.id),
                         }
                     }
                 }
@@ -380,8 +380,8 @@ impl Hw {
             });
             if active.as_deref() != Some(name) {
                 match gpuctl::set_power_profile(pci, prof) {
-                    Ok(()) => crate::nlog!("GPU {pci}: perfil de energia {name}"),
-                    Err(e) => crate::nlog!("GPU {pci}: perfil de energia: {e}"),
+                    Ok(()) => crate::nlog!("GPU {pci}: power profile {name}"),
+                    Err(e) => crate::nlog!("GPU {pci}: power profile: {e}"),
                 }
             }
         }
@@ -622,7 +622,7 @@ impl Ctx<'_> {
         let migrate = migrate && t.profile.as_ref().is_none_or(|p| p.memory != "free");
         let n = procfs::set_affinity_all(pid, &cpus);
         if n == 0 {
-            t.state = St::Ignored(crate::i18n::tr("sem permissão para mudar a afinidade").into());
+            t.state = St::Ignored(crate::i18n::tr("no permission to change the affinity").into());
             return;
         }
         let all = self.topo.node_ids();
@@ -635,7 +635,7 @@ impl Ctx<'_> {
             });
         }
         crate::nlog!(
-            "{} (pid {pid}) → nó(s) {:?} [{}]: {why}",
+            "{} (pid {pid}) → node(s) {:?} [{}]: {why}",
             t.comm,
             nodes,
             format_cpulist(&cpus)
@@ -701,7 +701,7 @@ impl Ctx<'_> {
                     status_update(|s| s.cgroup_ok_count += 1);
                 }
                 Err(e) => {
-                    crate::nlog!("{}: não consegui aplicar o grupo de controle: {e}", t.comm);
+                    crate::nlog!("{}: could not apply the control group: {e}", t.comm);
                     status_update(|s| s.cgroup_last_error = Some(e.clone()));
                 }
             }
@@ -721,7 +721,7 @@ impl Ctx<'_> {
                     t,
                     cpus,
                     true,
-                    crate::i18n::tr("escolha feita na interface"),
+                    crate::i18n::tr("choice made in the interface"),
                     tick,
                 );
             }
@@ -735,7 +735,7 @@ impl Ctx<'_> {
                 t.nodes.clear();
                 t.cpus.clear();
                 crate::nlog!(
-                    "{} (pid {pid}) → automático (escolha feita na interface)",
+                    "{} (pid {pid}) → automatic (choice made in the interface)",
                     t.comm
                 );
             }
@@ -758,7 +758,7 @@ fn bind_ctl() -> Option<UnixListener> {
             Some(l)
         }
         Err(e) => {
-            crate::nlog!("aviso: sem socket de controle ({}): {e}", p.display());
+            crate::nlog!("warning: no control socket ({}): {e}", p.display());
             None
         }
     }
@@ -766,7 +766,7 @@ fn bind_ctl() -> Option<UnixListener> {
 
 pub fn run(cfg: Config) -> Result<()> {
     if !is_root() {
-        crate::nlog!("aviso: sem root só é possível mexer nos seus próprios processos.");
+        crate::nlog!("warning: without root only your own processes can be moved.");
     }
     unsafe {
         libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
@@ -774,10 +774,10 @@ pub fn run(cfg: Config) -> Result<()> {
     }
     let topo = Topology::load(&cfg);
     for w in topo.warnings() {
-        crate::nlog!("aviso: {w}");
+        crate::nlog!("warning: {w}");
     }
     if topo.nodes.len() < 2 {
-        crate::nlog!("só há 1 nó NUMA: o daemon apenas vai observar.");
+        crate::nlog!("there is only 1 NUMA node: the daemon will only watch.");
     }
     let ctx = Ctx {
         cfg: &cfg,
@@ -796,8 +796,8 @@ pub fn run(cfg: Config) -> Result<()> {
     for (pci, c) in &gpuc.map {
         if let Some(w) = c.power_cap_w {
             match gpuctl::set_power_cap(pci, Some(w)) {
-                Ok(v) => crate::nlog!("GPU {pci}: limite de potência {v:.0} W"),
-                Err(e) => crate::nlog!("GPU {pci}: não consegui limitar a potência: {e}"),
+                Ok(v) => crate::nlog!("GPU {pci}: power limit {v:.0} W"),
+                Err(e) => crate::nlog!("GPU {pci}: could not limit the power: {e}"),
             }
         }
     }
@@ -811,10 +811,10 @@ pub fn run(cfg: Config) -> Result<()> {
     if hw.machine != Machine::default() {
         let errs = hw.apply_machine(&topo, None);
         if errs.is_empty() {
-            crate::nlog!("modo da máquina: {} aplicado", hw.machine.mode);
+            crate::nlog!("machine mode: {} applied", hw.machine.mode);
         } else {
             crate::nlog!(
-                "modo da máquina: {} com {} erro(s): {}",
+                "machine mode: {} with {} error(s): {}",
                 hw.machine.mode,
                 errs.len(),
                 errs.join("; ")
@@ -834,12 +834,12 @@ pub fn run(cfg: Config) -> Result<()> {
     if cfg.daemon.device_irq {
         let n = crate::irqs::apply(&topo);
         if n > 0 {
-            crate::nlog!("{n} interrupções de disco/rede no socket da placa");
+            crate::nlog!("{n} disk/network interrupts on the card's socket");
         }
     }
     for (pci, c) in &gpuc.map {
         if let Err(e) = nv_offsets(pci, c) {
-            crate::nlog!("GPU {pci}: deslocamento de clock não aplicado: {e}");
+            crate::nlog!("GPU {pci}: clock offset not applied: {e}");
         }
         if let Some(m) = c.clock_max_mhz
             && let Err(e) = if crate::nvctl::is_nvidia(pci) {
@@ -848,18 +848,18 @@ pub fn run(cfg: Config) -> Result<()> {
                 gpuctl::set_intel_max_freq(pci, Some(m))
             }
         {
-            crate::nlog!("GPU {pci}: clock máximo não aplicado: {e}");
+            crate::nlog!("GPU {pci}: maximum clock not applied: {e}");
         }
         if c.fan != FanMode::Auto
             && gpuctl::read_sensors(pci).fw_fan_curve
             && let Err(e) = gpuctl::apply_fw_fan(pci, c)
         {
-            crate::nlog!("GPU {pci}: curva da ventoinha não aplicada: {e}");
+            crate::nlog!("GPU {pci}: fan curve not applied: {e}");
         }
         if let Some(od) = &c.od
             && let Err(e) = gpuctl::apply_od(pci, Some(od))
         {
-            crate::nlog!("GPU {pci}: clock/voltagem não aplicados: {e}");
+            crate::nlog!("GPU {pci}: clock/voltage not applied: {e}");
             status_update(|s| s.od_errors.push(format!("{pci}: {e}")));
         }
     }
@@ -875,11 +875,11 @@ pub fn run(cfg: Config) -> Result<()> {
         s.started = history::now();
     });
     crate::nlog!(
-        "detecção de programas: {}",
+        "program detection: {}",
         if execs.is_some() {
-            crate::i18n::tr("instantânea (proc connector)")
+            crate::i18n::tr("instant (proc connector)")
         } else {
-            crate::i18n::tr("por varredura")
+            crate::i18n::tr("by scanning")
         }
     );
     let tck = procfs::clk_tck();
@@ -891,7 +891,7 @@ pub fn run(cfg: Config) -> Result<()> {
     let mut tick: u64 = 0;
     let tick_dur = Duration::from_millis(cfg.daemon.tick_ms);
     crate::nlog!(
-        "daemon iniciado: {} nós, {} GPUs, amostra a cada {} ms",
+        "daemon started: {} nodes, {} GPUs, sampling every {} ms",
         topo.nodes.len(),
         topo.gpus.len(),
         cfg.daemon.tick_ms
@@ -973,7 +973,7 @@ pub fn run(cfg: Config) -> Result<()> {
                 pid,
                 starttime: st.starttime,
             }) {
-                t.state = St::Ignored(crate::i18n::tr("pin manual (numapilot pin)").into());
+                t.state = St::Ignored(crate::i18n::tr("manual pin (numapilot pin)").into());
                 continue;
             }
             let delta = st.cpu_ticks.saturating_sub(t.last_ticks) as f64;
@@ -1107,10 +1107,10 @@ pub fn run(cfg: Config) -> Result<()> {
                                 crate::notify::event(
                                     "gpu_hot",
                                     &format!("hot-{}", g.pci),
-                                    &crate::tf!("GPU quente: {}", "Hot GPU: {}", g.alias),
+                                    &crate::tf!("Hot GPU: {}", "GPU quente: {}", g.alias),
                                     &crate::tf!(
-                                        "{} está a {t:.0} °C (ventoinha {}, {}). Confira a ventilação ou reduza a potência.",
                                         "{} is at {t:.0} °C (fan {}, {}). Check the airflow or lower the power.",
+                                        "{} está a {t:.0} °C (ventoinha {}, {}). Confira a ventilação ou reduza a potência.",
                                         g.alias,
                                         s.fan_pct.map(|p| format!("{p:.0}%")).unwrap_or("?".into()),
                                         s.power_w
@@ -1140,11 +1140,11 @@ pub fn run(cfg: Config) -> Result<()> {
                 let r = crate::health::collect(&t);
                 for (lvl, p) in crate::health::problems(&r) {
                     if lvl >= 2 {
-                        crate::nlog!("saúde: {p}");
+                        crate::nlog!("health: {p}");
                         crate::notify::event(
                             "health",
                             &p,
-                            crate::i18n::tr("Problema no hardware"),
+                            crate::i18n::tr("Hardware problem"),
                             &p,
                             4,
                             Duration::from_secs(24 * 3600),
@@ -1213,18 +1213,18 @@ pub fn run(cfg: Config) -> Result<()> {
                 Ok(()) => {
                     if want.is_empty() {
                         let _ = std::fs::remove_file(&reserved_flag);
-                        crate::nlog!("núcleos exclusivos liberados");
+                        crate::nlog!("exclusive cores released");
                     } else {
                         let _ = std::fs::write(&reserved_flag, format_cpulist(&want));
                         crate::nlog!(
-                            "núcleos {} reservados (o resto do sistema não usa)",
+                            "cores {} reserved (the rest of the system does not use them)",
                             format_cpulist(&want)
                         );
                     }
                     reserved_now = want;
                 }
                 Err(e) => {
-                    crate::nlog!("não consegui reservar núcleos: {e}");
+                    crate::nlog!("could not reserve cores: {e}");
                     reserved_now = want;
                 }
             }
@@ -1279,7 +1279,7 @@ pub fn run(cfg: Config) -> Result<()> {
         write_state(&ctx, &procs, &ppids, &profiles);
         if last_save.elapsed() > Duration::from_secs(30) {
             if let Err(e) = learned.save() {
-                crate::nlog!("não consegui salvar o aprendizado: {e}");
+                crate::nlog!("could not save what was learned: {e}");
             }
             last_save = Instant::now();
         }
@@ -1358,12 +1358,12 @@ fn admin_denied(uid: u32, ctx: &Ctx) -> Option<String> {
         return None;
     }
     crate::nlog!(
-        "pedido recusado: usuário {uid} não está em {}",
+        "request refused: user {uid} is not in {}",
         allowed.join(", ")
     );
     Some(crate::tf!(
-        "sem permissão: só usuários dos grupos {} mudam a máquina inteira (sudo usermod -aG wheel SEU_USUARIO, ou admin_groups em /etc/numapilot.toml)",
         "no permission: only users in the groups {} change the whole machine (sudo usermod -aG wheel YOUR_USER, or admin_groups in /etc/numapilot.toml)",
+        "sem permissão: só usuários dos grupos {} mudam a máquina inteira (sudo usermod -aG wheel SEU_USUARIO, ou admin_groups em /etc/numapilot.toml)",
         allowed.join(", ")
     ))
 }
@@ -1406,9 +1406,9 @@ fn serve(
             Ok(Request::SetMachine { machine }) => handle_machine(uid, ctx, hw, machine),
             Ok(Request::SetBoardFan { id, control }) => handle_board_fan(uid, ctx, hw, id, control),
             Ok(req) => handle(req, uid, ctx, procs, profiles, tick),
-            Err(e) => Response::err(crate::tf!("pedido inválido: {e}", "invalid request: {e}")),
+            Err(e) => Response::err(crate::tf!("invalid request: {e}", "pedido inválido: {e}")),
         },
-        _ => Response::err(crate::i18n::tr("não consegui ler o pedido")),
+        _ => Response::err(crate::i18n::tr("could not read the request")),
     };
     let mut out = serde_json::to_string(&resp).unwrap_or_default();
     out.push('\n');
@@ -1449,7 +1449,7 @@ fn handle(
                     .values()
                     .any(|v| !v.is_finite() || *v <= 0.0 || *v > 10_000.0)
             {
-                return Response::err(crate::i18n::tr("medição inválida"));
+                return Response::err(crate::i18n::tr("invalid measurement"));
             }
             let p = crate::corebench::path();
             return match serde_json::to_string(&rank)
@@ -1458,20 +1458,20 @@ fn handle(
             {
                 Ok(()) => {
                     crate::nlog!(
-                        "latência de cache por núcleo: diferença de {:.1}% (ruído {:.1}%), {}",
+                        "cache latency per core: difference of {:.1}% (noise {:.1}%), {}",
                         rank.spread_pct,
                         rank.noise_pct,
                         if rank.useful {
-                            crate::i18n::tr("em uso na escolha de núcleos")
+                            crate::i18n::tr("in use for choosing cores")
                         } else {
-                            crate::i18n::tr("pequena demais para usar")
+                            crate::i18n::tr("too small to use")
                         }
                     );
-                    Response::ok(crate::i18n::tr("medição guardada"))
+                    Response::ok(crate::i18n::tr("measurement saved"))
                 }
                 Err(e) => Response::err(crate::tf!(
-                    "não consegui salvar: {e}",
-                    "could not save: {e}"
+                    "could not save: {e}",
+                    "não consegui salvar: {e}"
                 )),
             };
         }
@@ -1484,26 +1484,26 @@ fn handle(
             }
             return match notify.save() {
                 Ok(()) => Response::ok(if notify.enabled {
-                    crate::i18n::tr("avisos ligados")
+                    crate::i18n::tr("notifications on")
                 } else {
-                    crate::i18n::tr("avisos desligados")
+                    crate::i18n::tr("notifications off")
                 }),
                 Err(e) => Response::err(crate::tf!(
-                    "não consegui salvar: {e}",
-                    "could not save: {e}"
+                    "could not save: {e}",
+                    "não consegui salvar: {e}"
                 )),
             };
         }
         Request::SetGpuControl { .. }
         | Request::SetMachine { .. }
         | Request::SetBoardFan { .. } => {
-            return Response::err(crate::i18n::tr("pedido no lugar errado"));
+            return Response::err(crate::i18n::tr("request in the wrong place"));
         }
         Request::SetProfile { key, profile, pid } => (key, profile, pid),
         Request::DeleteProfile { key, pid } => (key, Profile::default(), pid),
     };
     if uid != 0 && uid < ctx.cfg.daemon.min_uid {
-        return Response::err(crate::i18n::tr("sem permissão"));
+        return Response::err(crate::i18n::tr("no permission"));
     }
     if let Err(e) = profile.validate() {
         return Response::err(e);
@@ -1512,13 +1512,13 @@ fn handle(
         .and(GpuSpec::parse(&profile.gpu).map(|_| ()))
         .and(Kind::parse_usage(&profile.usage).map(|_| ()))
     {
-        return Response::err(crate::tf!("perfil inválido: {e}", "invalid profile: {e}"));
+        return Response::err(crate::tf!("invalid profile: {e}", "perfil inválido: {e}"));
     }
     if let Some(p) = pid
         && uid != 0
         && procfs::uid(p).is_some_and(|owner| owner != uid)
     {
-        return Response::err(crate::i18n::tr("esse processo é de outro usuário"));
+        return Response::err(crate::i18n::tr("this process belongs to another user"));
     }
     if profile.is_auto() {
         profiles.map.remove(&key);
@@ -1527,8 +1527,8 @@ fn handle(
     }
     if let Err(e) = profiles.save() {
         return Response::err(crate::tf!(
-            "não consegui salvar o perfil: {e}",
-            "could not save the profile: {e}"
+            "could not save the profile: {e}",
+            "não consegui salvar o perfil: {e}"
         ));
     }
     // Aplica já a escolha de CPU em todos os processos desse programa.
@@ -1553,8 +1553,8 @@ fn handle(
         ctx.apply_extras(&pids, &t, &profile, prev.as_ref());
     }
     Response::ok(crate::tf!(
-        "perfil salvo; {n} processo(s) ajustado(s) agora",
-        "profile saved; {n} process(es) adjusted now"
+        "profile saved; {n} process(es) adjusted now",
+        "perfil salvo; {n} processo(s) ajustado(s) agora"
     ))
 }
 
@@ -1595,7 +1595,7 @@ fn admit(
             &mut t,
             vec![n],
             true,
-            crate::i18n::tr("aprendido: usa a GPU deste socket"),
+            crate::i18n::tr("learned: uses this socket's GPU"),
             tick,
         );
         t.origin = "aprendido".into();
@@ -1615,7 +1615,7 @@ fn gpu_tick(pci: &str, c: &gpuctl::GpuControl, last: &mut HashMap<String, f64>) 
             // Sobe na hora; desce só com 3% de diferença (evita a ventoinha "caçando").
             if prev.is_none_or(|p| pct > p || p - pct >= 3.0 || s.fan_mode_raw != Some(1)) {
                 if let Err(e) = gpuctl::set_fan_pct(pci, pct) {
-                    crate::nlog!("ventoinha {pci}: {e}");
+                    crate::nlog!("fan {pci}: {e}");
                 } else {
                     last.insert(pci.to_string(), pct);
                 }
@@ -1642,10 +1642,10 @@ fn handle_adopt(
     label: Option<String>,
 ) -> Response {
     if uid != 0 && procfs::uid(pid) != Some(uid) {
-        return Response::err(crate::i18n::tr("esse processo é de outro usuário"));
+        return Response::err(crate::i18n::tr("this process belongs to another user"));
     }
     let Some(st) = procfs::read_stat(pid) else {
-        return Response::err(crate::i18n::tr("processo não existe"));
+        return Response::err(crate::i18n::tr("process does not exist"));
     };
     let learned = Learned::default();
     let mut t = classify(ctx, &learned, profiles, pid, &st, None);
@@ -1658,7 +1658,7 @@ fn handle_adopt(
         }
     }
     let Some(p) = given.or_else(|| profiles.get(&t.pkey).cloned()) else {
-        return Response::ok(crate::i18n::tr("sem perfil"));
+        return Response::ok(crate::i18n::tr("no profile"));
     };
     if let Err(e) = p.validate() {
         return Response::err(e);
@@ -1668,7 +1668,7 @@ fn handle_adopt(
     t.nodes = ctx.topo.nodes_of(&t.cpus);
     ctx.apply_extras(&[pid], &t, &p, None);
     procs.insert(pid, t);
-    Response::ok(crate::i18n::tr("perfil aplicado"))
+    Response::ok(crate::i18n::tr("profile applied"))
 }
 
 /// Traz de volta a memória que ficou no socket errado.
@@ -1697,12 +1697,12 @@ fn handle_fix_memory(uid: u32, ctx: &Ctx, procs: &HashMap<i32, Tracked>, key: &s
     }
     if n == 0 {
         Response::ok(crate::i18n::tr(
-            "nada a mover (o programa usa todos os sockets)",
+            "nothing to move (the program uses all sockets)",
         ))
     } else {
         Response::ok(crate::tf!(
-            "movendo a memória de {n} processo(s) para o socket certo",
-            "moving the memory of {n} process(es) to the right socket"
+            "moving the memory of {n} process(es) to the right socket",
+            "movendo a memória de {n} processo(s) para o socket certo"
         ))
     }
 }
@@ -1715,7 +1715,7 @@ fn write_governor(ctx: &Ctx, node: usize, gov: &str) -> Result<usize, String> {
     let n = ctx
         .topo
         .node(node)
-        .ok_or(crate::i18n::tr("nó não existe"))?;
+        .ok_or(crate::i18n::tr("node does not exist"))?;
     let mut ok = 0;
     for c in &n.cpus {
         let p = crate::util::sys(&format!(
@@ -1726,7 +1726,7 @@ fn write_governor(ctx: &Ctx, node: usize, gov: &str) -> Result<usize, String> {
         }
     }
     if ok == 0 {
-        Err(crate::i18n::tr("não consegui mudar o governador (cpufreq indisponível?)").into())
+        Err(crate::i18n::tr("could not change the governor (cpufreq unavailable?)").into())
     } else {
         Ok(ok)
     }
@@ -1737,7 +1737,7 @@ fn handle_governor(uid: u32, ctx: &Ctx, node: usize, gov: &str) -> Response {
         return Response::err(e);
     }
     if !gov.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || gov.is_empty() {
-        return Response::err(crate::i18n::tr("governador inválido"));
+        return Response::err(crate::i18n::tr("invalid governor"));
     }
     match write_governor(ctx, node, gov) {
         Ok(n) => {
@@ -1752,8 +1752,8 @@ fn handle_governor(uid: u32, ctx: &Ctx, node: usize, gov: &str) -> Response {
                 serde_json::to_string(&m).unwrap_or_default(),
             );
             Response::ok(crate::tf!(
-                "socket {node}: {gov} em {n} CPUs",
-                "socket {node}: {gov} on {n} CPUs"
+                "socket {node}: {gov} on {n} CPUs",
+                "socket {node}: {gov} em {n} CPUs"
             ))
         }
         Err(e) => Response::err(e),
@@ -1799,8 +1799,8 @@ fn handle_gpu(
     }
     if !ctx.topo.gpus.iter().any(|g| g.pci == pci) {
         return Response::err(crate::tf!(
-            "GPU {pci} não existe",
-            "GPU {pci} does not exist"
+            "GPU {pci} does not exist",
+            "GPU {pci} não existe"
         ));
     }
     if let Err(e) = control.validate() {
@@ -1815,21 +1815,21 @@ fn handle_gpu(
     {
         match gpuctl::apply_fw_fan(&pci, &control) {
             Ok(()) => {}
-            Err(e) => return Response::err(crate::tf!("ventoinha: {e}", "fan: {e}")),
+            Err(e) => return Response::err(crate::tf!("fan: {e}", "ventoinha: {e}")),
         }
     } else if control.fan != FanMode::Auto && !s.fan_controllable {
         return Response::err(crate::i18n::tr(
-            "esta placa não permite controlar a ventoinha (sem pwm1 no hwmon)",
+            "this card does not allow fan control (no pwm1 in hwmon)",
         ));
     }
     let mut msg = Vec::new();
     if control.power_cap_w != old.power_cap_w {
         match gpuctl::set_power_cap(&pci, control.power_cap_w) {
-            Ok(v) => msg.push(crate::tf!("potência {v:.0} W", "power {v:.0} W")),
+            Ok(v) => msg.push(crate::tf!("power {v:.0} W", "potência {v:.0} W")),
             Err(e) => {
                 return Response::err(crate::tf!(
-                    "não consegui mudar a potência: {e}",
-                    "could not change the power: {e}"
+                    "could not change the power: {e}",
+                    "não consegui mudar a potência: {e}"
                 ));
             }
         }
@@ -1841,13 +1841,13 @@ fn handle_gpu(
             gpuctl::set_intel_max_freq(&pci, control.clock_max_mhz)
         } else {
             return Response::err(crate::i18n::tr(
-                "travar o clock por aqui é para NVIDIA e Intel; nas AMD use clock/voltagem",
+                "locking the clock here is for NVIDIA and Intel; on AMD use clock/voltage",
             ));
         };
         match r {
             Ok(()) => msg.push(match control.clock_max_mhz {
-                Some(m) => crate::tf!("clock até {m} MHz", "clock up to {m} MHz"),
-                None => crate::i18n::tr("clock normal").into(),
+                Some(m) => crate::tf!("clock up to {m} MHz", "clock até {m} MHz"),
+                None => crate::i18n::tr("normal clock").into(),
             }),
             Err(e) => return Response::err(format!("clock: {e}")),
         }
@@ -1856,9 +1856,7 @@ fn handle_gpu(
         != (old.nv_gpc_offset_mhz, old.nv_mem_offset_mhz)
     {
         if !crate::nvctl::is_nvidia(&pci) {
-            return Response::err(crate::i18n::tr(
-                "deslocamento de clock por aqui é só para NVIDIA",
-            ));
+            return Response::err(crate::i18n::tr("clock offset here is NVIDIA only"));
         }
         let mut c = control.clone();
         // o que foi tirado volta a 0
@@ -1870,15 +1868,15 @@ fn handle_gpu(
         }
         match nv_offsets(&pci, &c) {
             Ok(()) => msg.push(crate::tf!(
-                "deslocamento GPU {:+} / memória {:+} MHz",
                 "offset GPU {:+} / memory {:+} MHz",
+                "deslocamento GPU {:+} / memória {:+} MHz",
                 control.nv_gpc_offset_mhz.unwrap_or(0),
                 control.nv_mem_offset_mhz.unwrap_or(0)
             )),
             Err(e) => {
                 return Response::err(crate::tf!(
-                    "deslocamento de clock: {e}",
-                    "clock offset: {e}"
+                    "clock offset: {e}",
+                    "deslocamento de clock: {e}"
                 ));
             }
         }
@@ -1887,12 +1885,12 @@ fn handle_gpu(
         let od = control.od.as_ref().filter(|o| !o.is_default());
         match gpuctl::apply_od(&pci, od) {
             Ok(()) => msg.push(if od.is_some() {
-                crate::i18n::tr("clock/voltagem aplicados").into()
+                crate::i18n::tr("clock/voltage applied").into()
             } else {
-                crate::i18n::tr("clock/voltagem de fábrica").into()
+                crate::i18n::tr("factory clock/voltage").into()
             }),
             Err(e) => {
-                return Response::err(crate::tf!("clock/voltagem: {e}", "clock/voltage: {e}"));
+                return Response::err(crate::tf!("clock/voltage: {e}", "clock/voltagem: {e}"));
             }
         }
         if od.is_none() {
@@ -1902,16 +1900,16 @@ fn handle_gpu(
     if control.fan == FanMode::Auto && old.fan != FanMode::Auto {
         let _ = gpuctl::set_fan_auto(&pci);
         fan_last.remove(&pci);
-        msg.push(crate::i18n::tr("ventoinha automática").into());
+        msg.push(crate::i18n::tr("automatic fan").into());
     } else if control.fan != FanMode::Auto {
         fan_last.remove(&pci); // força reaplicar no próximo tick
         msg.push(match control.fan {
             FanMode::Fixed => crate::tf!(
-                "ventoinha fixa em {:.0}%",
                 "fan fixed at {:.0}%",
+                "ventoinha fixa em {:.0}%",
                 control.fixed_pct
             ),
-            _ => crate::i18n::tr("ventoinha pela curva").to_string(),
+            _ => crate::i18n::tr("fan on the curve").to_string(),
         });
     }
     if trial {
@@ -1937,13 +1935,13 @@ fn handle_gpu(
     }
     if let Err(e) = disk.save() {
         return Response::err(crate::tf!(
-            "não consegui salvar: {e}",
-            "could not save: {e}"
+            "could not save: {e}",
+            "não consegui salvar: {e}"
         ));
     }
     crate::nlog!("GPU {pci}: {}", msg.join(", "));
     Response::ok(if msg.is_empty() {
-        crate::i18n::tr("nada mudou").to_string()
+        crate::i18n::tr("nothing changed").to_string()
     } else {
         msg.join(", ")
     })
@@ -1959,8 +1957,8 @@ fn handle_machine(uid: u32, ctx: &Ctx, hw: &mut Hw, m: Machine) -> Response {
     let prev = std::mem::replace(&mut hw.machine, m);
     if let Err(e) = hw.machine.save() {
         return Response::err(crate::tf!(
-            "não consegui salvar: {e}",
-            "could not save: {e}"
+            "could not save: {e}",
+            "não consegui salvar: {e}"
         ));
     }
     // Trocou o modo à mão enquanto uma regra automática valia: respeita até a regra mudar.
@@ -1969,17 +1967,17 @@ fn handle_machine(uid: u32, ctx: &Ctx, hw: &mut Hw, m: Machine) -> Response {
         hw.manual_mode = None;
     }
     let errs = hw.apply_machine(ctx.topo, Some(&prev));
-    crate::nlog!("modo da máquina: {}", hw.machine.mode);
+    crate::nlog!("machine mode: {}", hw.machine.mode);
     if errs.is_empty() {
         Response::ok(crate::tf!(
-            "modo {} aplicado",
             "mode {} applied",
+            "modo {} aplicado",
             hw.machine.mode
         ))
     } else {
         Response::ok(crate::tf!(
-            "aplicado com avisos: {}",
             "applied with warnings: {}",
+            "aplicado com avisos: {}",
             errs.join("; ")
         ))
     }
@@ -1997,17 +1995,17 @@ fn handle_board_fan(
     }
     if !hw.board_fans.iter().any(|f| f.id == id) {
         return Response::err(crate::tf!(
-            "ventoinha {id} não existe",
-            "fan {id} does not exist"
+            "fan {id} does not exist",
+            "ventoinha {id} não existe"
         ));
     }
     if let Err(e) = c.validate() {
         return Response::err(e);
     }
     let msg = match c.fan {
-        FanMode::Auto => crate::i18n::tr("automática (chip da placa)").to_string(),
-        FanMode::Fixed => crate::tf!("fixa em {:.0}%", "fixed at {:.0}%", c.fixed_pct),
-        FanMode::Curve => crate::tf!("pela curva ({})", "on the curve ({})", c.source),
+        FanMode::Auto => crate::i18n::tr("automatic (board chip)").to_string(),
+        FanMode::Fixed => crate::tf!("fixed at {:.0}%", "fixa em {:.0}%", c.fixed_pct),
+        FanMode::Curve => crate::tf!("on the curve ({})", "pela curva ({})", c.source),
     };
     if c.fan == FanMode::Auto && c.label.is_empty() {
         hw.board.map.remove(&id);
@@ -2022,12 +2020,12 @@ fn handle_board_fan(
     }
     if let Err(e) = hw.board.save() {
         return Response::err(crate::tf!(
-            "não consegui salvar: {e}",
-            "could not save: {e}"
+            "could not save: {e}",
+            "não consegui salvar: {e}"
         ));
     }
-    crate::nlog!("ventoinha {id}: {msg}");
-    Response::ok(crate::tf!("ventoinha {msg}", "fan {msg}"))
+    crate::nlog!("fan {id}: {msg}");
+    Response::ok(crate::tf!("fan {msg}", "ventoinha {msg}"))
 }
 
 fn reserved_nodes(procs: &HashMap<i32, Tracked>) -> Vec<usize> {
@@ -2081,7 +2079,7 @@ fn classify(
     let ignore = |t: &mut Tracked, why: &str| t.state = St::Ignored(why.to_string());
 
     if uid < ctx.cfg.daemon.min_uid {
-        ignore(&mut t, crate::i18n::tr("processo do sistema"));
+        ignore(&mut t, crate::i18n::tr("system process"));
         return t;
     }
     if ctx
@@ -2091,7 +2089,7 @@ fn classify(
         .iter()
         .any(|p| idents.iter().any(|i| glob_match(p, i)))
     {
-        ignore(&mut t, crate::i18n::tr("na lista ignore"));
+        ignore(&mut t, crate::i18n::tr("on the ignore list"));
         return t;
     }
     let mode = procfs::env_var(pid, "NUMAPILOT_MODE");
@@ -2115,7 +2113,7 @@ fn classify(
     if !ours && mode.as_deref() != Some("auto") {
         ignore(
             &mut t,
-            crate::i18n::tr("afinidade definida por outro programa (taskset?)"),
+            crate::i18n::tr("affinity set by another program (taskset?)"),
         );
         return t;
     }
@@ -2134,7 +2132,7 @@ fn classify(
     }
 
     if let Some(rule) = ctx.cfg.find_rule(&idents) {
-        t.origin = crate::tf!("regra '{}'", "rule '{}'", rule.label());
+        t.origin = crate::tf!("rule '{}'", "regra '{}'", rule.label());
         t.reserve = rule.reserve;
         let cpu = CpuSpec::parse(&rule.cpu).unwrap_or(CpuSpec::Auto);
         let gpu = GpuSpec::parse(&rule.gpu).unwrap_or(GpuSpec::Auto);
@@ -2153,7 +2151,7 @@ fn classify(
         && p.state == St::Placed
         && same_set(&allowed, &ctx.topo.cpus_of(&p.nodes))
     {
-        t.origin = crate::tf!("herdado de {}", "inherited from {}", p.comm);
+        t.origin = crate::tf!("inherited from {}", "herdado de {}", p.comm);
         t.nodes = p.nodes.clone();
         t.fixed = true;
         t.state = St::Placed;
@@ -2164,7 +2162,7 @@ fn classify(
         && e.wide
         && ctx.topo.nodes.len() > 1
     {
-        t.origin = crate::i18n::tr("aprendido (2 sockets)").into();
+        t.origin = crate::i18n::tr("learned (2 sockets)").into();
         t.nodes = ctx.topo.node_ids();
         t.state = St::Placed;
     }
@@ -2220,7 +2218,7 @@ fn step(
                     nodes.sort_unstable();
                     nodes.dedup();
                     if !nodes.is_empty() {
-                        let why = crate::tf!("usa a GPU {}", "uses GPU {}", t.gpus.join(","));
+                        let why = crate::tf!("uses GPU {}", "usa a GPU {}", t.gpus.join(","));
                         if nodes.len() == 1 {
                             t.gpu_node = Some(nodes[0]);
                             let n = nodes[0];
@@ -2237,8 +2235,8 @@ fn step(
             if t.active >= d.watch_ticks {
                 let n = least_loaded_node(ctx.topo, loads, reserved);
                 let why = crate::tf!(
-                    "{:.1} núcleos em uso; nó {n} é o menos ocupado",
                     "{:.1} cores in use; node {n} is the least busy",
+                    "{:.1} núcleos em uso; nó {n} é o menos ocupado",
                     t.cores
                 );
                 learned.update(&t.key, |e| e.runs += 1);
@@ -2272,8 +2270,8 @@ fn step(
                     learned.update(&t.key, |e| e.gpu_node = Some(n));
                     if t.nodes[0] != n {
                         let why = crate::tf!(
-                            "passou a usar a GPU {}",
                             "started using GPU {}",
+                            "passou a usar a GPU {}",
                             t.gpus.join(",")
                         );
                         ctx.apply(pid, t, vec![n], true, &why, tick);
@@ -2292,8 +2290,8 @@ fn step(
                 t.hi = if frac >= d.promote_frac { t.hi + 1 } else { 0 };
                 if t.hi >= d.promote_ticks {
                     let why = crate::tf!(
-                        "saturou o nó ({:.0}% por {} amostras) → 2 sockets",
                         "saturated the node ({:.0}% for {} samples) → 2 sockets",
+                        "saturou o nó ({:.0}% por {} amostras) → 2 sockets",
                         frac * 100.0,
                         t.hi
                     );
@@ -2314,8 +2312,8 @@ fn step(
                         .gpu_node
                         .unwrap_or_else(|| least_loaded_node(ctx.topo, loads, reserved));
                     let why = crate::tf!(
-                        "uso baixo por {} amostras → volta para 1 socket",
                         "low usage for {} samples → back to 1 socket",
+                        "uso baixo por {} amostras → volta para 1 socket",
                         t.lo
                     );
                     t.lo = 0;
@@ -2356,7 +2354,7 @@ fn write_state(
                         "1 socket".into()
                     }
                 }
-                St::Watching => crate::i18n::tr("observando").into(),
+                St::Watching => crate::i18n::tr("watching").into(),
                 St::Ignored(r) => r.clone(),
             },
             nodes: t
@@ -2402,7 +2400,7 @@ fn nv_offsets(pci: &str, c: &gpuctl::GpuControl) -> Result<(), String> {
         return Ok(());
     }
     if crate::nvctl::asleep(pci) {
-        return Err(crate::i18n::tr("a placa está dormindo; aplico quando ela acordar").into());
+        return Err(crate::i18n::tr("the card is asleep; it will be applied when it wakes").into());
     }
     let o = crate::nvml::offsets(pci)?;
     if let Some(v) = c.nv_gpc_offset_mhz {
