@@ -173,8 +173,10 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   estados `falhou`/`pulei` da aba Testes, pastas do backup): mudar exige migração dos arquivos
   dos PCs. Níveis do registro agora `ERROR`/`WARN` (a leitura aceita os antigos).
 - `README.md` é o inglês (principal) e `README.pt-BR.md` a tradução: mudou um, mude o outro.
-- Falta passar para inglês: comentários do código e nomes internos em português (`St::Pulou`,
-  campos como `usuario`), `install.sh`, `gfx906-rocm`, `docs/TESTES.md`, entradas antigas do
+- Já em inglês: comentários e nomes internos do código, `install.sh`, `uninstall.sh`.
+- Falta passar para inglês: `packaging/gfx906-rocm` (~1500 linhas), textos de
+  `recipes/default.toml`, comentários de `packaging/numapilot.toml` e `gfx906-rocm.conf`,
+  `container/lab-start`, `docs/TESTES.md`, `tools/capturas/README.md`, entradas antigas do
   CHANGELOG, este arquivo; e testar tudo isso em hardware real.
 
 ## Capturas do README

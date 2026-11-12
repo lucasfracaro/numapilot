@@ -12,6 +12,7 @@
   `--out`, `--quick`, `--show`, `--clear`, and values `machine mode game|ai|quiet`,
   `hybrid hybrid|integrated|leave`, `gpu-memory default`. The old names still work.
 - Log levels are now `ERROR`/`WARN`; self-test statuses are `WARN`/`FAILED`/`SKIPPED`.
+- Code comments, internal names and the installer (`install.sh`, `uninstall.sh`) are in English.
 - **Latência do cache por núcleo** (`numapilot bench-cores` e botão "Medir núcleos" no Mapa):
   mede o acesso ao cache L3 a partir de cada núcleo e, quando a diferença é maior que o ruído da
   medição, a escolha de núcleos (perfis com número de núcleos e o turbo máximo) passa a preferir

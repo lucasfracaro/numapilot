@@ -1,10 +1,10 @@
 # shellcheck shell=bash
 post_install() {
-  echo ">> Ative o serviço:      sudo systemctl enable --now numapilot"
-  echo ">> Interface gráfica:    numapilot (no menu) ou numapilot-gui"
-  echo ">> Laboratório/IA:       sudo pacman -S podman  e depois  gfx906-rocm lab up"
-  echo ">> Conferir tudo:        numapilot doctor"
-  echo ">> Painel no celular:    systemctl --user enable --now numapilot-web  (link: numapilot web --url)"
+  echo ">> Enable the service:   sudo systemctl enable --now numapilot"
+  echo ">> Graphical interface:  numapilot (in the menu) or numapilot-gui"
+  echo ">> Lab/AI:               sudo pacman -S podman  and then  gfx906-rocm lab up"
+  echo ">> Check everything:     numapilot doctor"
+  echo ">> Phone panel:          systemctl --user enable --now numapilot-web  (link: numapilot web --url)"
 }
 post_upgrade() {
   systemctl daemon-reload >/dev/null 2>&1

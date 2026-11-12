@@ -88,8 +88,7 @@ The installer checks everything first (packages, cgroups v2, NUMA, driver, `/dev
 and `video` groups, the uncore module), installs what is missing through pacman (it asks about the
 optional ones, explaining what each is for, and offers the AUR ones through paru/yay), builds (or
 uses the prebuilt binaries), installs to `/usr/local/bin`, enables the service and finishes with
-`numapilot doctor`. Open **numapilot** from the menu. The installer's own messages are still in
-Portuguese.
+`numapilot doctor`. Open **numapilot** from the menu.
 
 | Command | What it does |
 |---|---|
@@ -578,8 +577,8 @@ teach numapilot about special boards.
   measuring with and without.
 - RAM frequency and timings can only be changed in the BIOS.
 - Network per program is not shown (the kernel does not report it without eBPF).
-- Still in Portuguese, being translated: code comments, the installer, `gfx906-rocm`, the test
-  guide and the older changelog entries.
+- Still in Portuguese, being translated: `gfx906-rocm`, the community recipes' notes, the
+  comments in the sample config files, the test guide and the older changelog entries.
 
 ## Development
 
