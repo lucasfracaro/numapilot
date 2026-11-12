@@ -3,9 +3,11 @@
 ## Ainda não lançado
 
 - **Inglês em tudo** (Configurações → Idioma, ou `NUMAPILOT_LANG=en`): a interface inteira, as
-  mensagens do serviço e a linha de comando (doctor, autoteste, erros, avisos no celular). O
-  serviço responde no idioma de quem pede. Sem escolha, vale o idioma do sistema. Continuam em
-  português o `--help`, o painel web, os registros internos do serviço e a documentação.
+  mensagens do serviço, a linha de comando (doctor, autoteste, erros, avisos no celular), o
+  `--help` e o painel no celular; e o README em inglês (`README.en.md`). O serviço responde no
+  idioma de quem pede. Sem escolha, vale o idioma do sistema. Continuam em português os nomes dos
+  subcomandos, os registros internos do serviço, o instalador, o `gfx906-rocm` e o resto da
+  documentação.
 - **Latência do cache por núcleo** (`numapilot bench-cores` e botão "Medir núcleos" no Mapa):
   mede o acesso ao cache L3 a partir de cada núcleo e, quando a diferença é maior que o ruído da
   medição, a escolha de núcleos (perfis com número de núcleos e o turbo máximo) passa a preferir

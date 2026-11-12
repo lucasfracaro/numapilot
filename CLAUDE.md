@@ -164,7 +164,11 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   e o serviço passa a responder nele. Nos testes é sempre português. Não traduzir: palavras
   usadas como chave/comparação (modos `jogo`/`ia`, `nenhum`, `padrao`, subcomandos), conteúdo de
   arquivos gravados, `nlog!`, e os estados `AVISO`/`FALHOU`/`PULOU` do autoteste.
-- Falta: `--help` (clap), painel web e documentação em inglês; testar tudo isso em hardware real.
+- `--help` em inglês: `src/help_en.rs` troca os textos do clap (chave = o texto do `///`; o
+  teste `help_fully_translated` falha se faltar). Painel web: `PAGE_EN` em `src/web.rs` troca
+  trechos da página. `README.en.md` é a tradução do README: mudou um, mude o outro.
+- Falta em inglês: `install.sh`, `gfx906-rocm`, `docs/TESTES.md`, CHANGELOG; testar tudo isso em
+  hardware real.
 
 ## Capturas do README
 

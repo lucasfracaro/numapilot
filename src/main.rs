@@ -1,5 +1,7 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
+
+mod help_en;
 use numapilot::config::{Config, CpuSpec, GpuSpec, MemSpec};
 use numapilot::decide::{Kind, LaunchInput, decide_launch, gpu_env, sample_node_loads};
 use numapilot::learned::{self, Learned};
@@ -337,7 +339,13 @@ fn main() {
 }
 
 fn real_main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = if numapilot::i18n::english() {
+        use clap::{CommandFactory, FromArgMatches};
+        let m = help_en::localize(Cli::command()).get_matches();
+        Cli::from_arg_matches(&m).unwrap_or_else(|e| e.exit())
+    } else {
+        Cli::parse()
+    };
     match &cli.cmd {
         Cmd::Daemon => numapilot::log::init("daemon"),
         Cmd::Web { .. } => numapilot::log::init("web"),
@@ -3304,4 +3312,22 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod help_tests {
+    /// Todo texto do `--help` precisa ter tradução em `help_en.rs`.
+    #[test]
+    fn help_fully_translated() {
+        use clap::CommandFactory;
+        let mut missing = Vec::new();
+        super::help_en::missing(&super::Cli::command(), &mut missing);
+        missing.sort();
+        missing.dedup();
+        assert!(
+            missing.is_empty(),
+            "sem tradução no --help:\n{}",
+            missing.join("\n@@\n")
+        );
+    }
 }

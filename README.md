@@ -6,6 +6,8 @@
 ![Linux](https://img.shields.io/badge/Linux-CachyOS%20%2F%20Arch-1793d1?logo=archlinux&logoColor=white)
 ![Rust](https://img.shields.io/badge/Rust-2024-dea584?logo=rust&logoColor=white)
 
+**Português** · [English](README.en.md)
+
 [Instalar](#instalar) · [Capturas](#capturas) · [Interface](#a-interface-aba-por-aba) ·
 [Linha de comando](#linha-de-comando) · [Notebook](#notebook) · [BC-250](#bc-250-e-bc-160) ·
 [Novidades](CHANGELOG.md)

@@ -88,6 +88,12 @@ pub fn english() -> bool {
     }
 }
 
+/// Decide o idioma de novo (processos que ficam abertos, como o painel web, acompanham a
+/// troca feita na interface).
+pub fn refresh() {
+    LANG.store(0, Ordering::Relaxed);
+}
+
 /// Troca o idioma deste processo.
 pub fn set_english(en: bool) {
     LANG.store(if en { 2 } else { 1 }, Ordering::Relaxed);

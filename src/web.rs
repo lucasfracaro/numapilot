@@ -400,9 +400,7 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
             bad_auth = 0;
         }
         match (req.method(), path.as_str()) {
-            (tiny_http::Method::Get, "/") => {
-                respond(req, 200, "text/html; charset=utf-8", PAGE.to_string())
-            }
+            (tiny_http::Method::Get, "/") => respond(req, 200, "text/html; charset=utf-8", page()),
             (_, p) if (p.starts_with("/api/") || p == "/metrics") && !authorized(&req, &token) => {
                 // segura quem fica tentando adivinhar o token: depois de 10 erros seguidos,
                 // cada erro novo espera 2 s (um acerto zera)
@@ -505,6 +503,93 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Trechos da página trocados quando o idioma é inglês (cada um precisa existir em `PAGE`).
+const PAGE_EN: &[(&str, &str)] = &[
+    (r#"lang="pt-BR""#, r#"lang="en""#),
+    (r#"<h2>Placas de vídeo</h2>"#, r#"<h2>Graphics cards</h2>"#),
+    (r#"<h2>Processadores</h2>"#, r#"<h2>Processors</h2>"#),
+    (r#"<h2>Programas</h2>"#, r#"<h2>Programs</h2>"#),
+    (r#"<h2>Meus PCs</h2>"#, r#"<h2>My PCs</h2>"#),
+    (r#"<h2>Jogos</h2>"#, r#"<h2>Games</h2>"#),
+    (r#"placeholder="procurar""#, r#"placeholder="search""#),
+    (r#">Ligar Sunshine<"#, r#">Start Sunshine<"#),
+    (r#"<h2>Atalhos</h2>"#, r#"<h2>Shortcuts</h2>"#),
+    (
+        r#"Laboratório (Jupyter/VS Code)"#,
+        r#"Lab (Jupyter/VS Code)"#,
+    ),
+    (
+        r#"lab_up'})">Ligar</button>"#,
+        r#"lab_up'})">Turn on</button>"#,
+    ),
+    (
+        r#"lab_down'})">Desligar</button>"#,
+        r#"lab_down'})">Turn off</button>"#,
+    ),
+    (
+        r#"<span>Servidor de IA</span>"#,
+        r#"<span>AI server</span>"#,
+    ),
+    (r#">Iniciar</button>"#, r#">Start</button>"#),
+    (r#">Parar</button>"#, r#">Stop</button>"#),
+    (r#"toast('erro: '+e)"#, r#"toast('error: '+e)"#),
+    (r#"['jogo','Jogo']"#, r#"['jogo','Game']"#),
+    (r#"['ia','IA']"#, r#"['ia','AI']"#),
+    (
+        r#"['silencioso','Silencioso']"#,
+        r#"['silencioso','Quiet']"#,
+    ),
+    (
+        r#"Token inválido: abra o link com ?t= mostrado no numapilot (Configurações → Painel no celular)."#,
+        r#"Invalid token: open the link with ?t= shown in numapilot (Settings → Phone panel)."#,
+    ),
+    (r#"' · hoje '"#, r#"' · today '"#),
+    (
+        r#"'serviço ok':'serviço parado'"#,
+        r#"'service ok':'service stopped'"#,
+    ),
+    (r#" · ventoinha "#, r#" · fan "#),
+    (r#"<div class="mut">uso ${"#, r#"<div class="mut">usage ${"#),
+    (
+        r#"RAM livre ${n.mem_free_gb.toFixed(0)} de ${"#,
+        r#"RAM free ${n.mem_free_gb.toFixed(0)} of ${"#,
+    ),
+    (r#" núcleos</span>"#, r#" cores</span>"#),
+    (r#"p.nodes||'todos'"#, r#"p.nodes||'all'"#),
+    (
+        r#"Nenhum programa sendo usado agora."#,
+        r#"No program in use right now."#,
+    ),
+    (
+        r#"temperatura máx., últimas 24 h"#,
+        r#"max temperature, last 24 h"#,
+    ),
+    (r#" programas</div>"#, r#" programs</div>"#),
+    (
+        r#"(este: ${esc(window.ME)}): atualize em Configurações"#,
+        r#"(this one: ${esc(window.ME)}): update in Settings"#,
+    ),
+    (r#"<button>Abrir</button>"#, r#"<button>Open</button>"#),
+    (r#"})'>Abrir</button>"#, r#"})'>Open</button>"#),
+    (
+        r#"desligado ou fora da rede"#,
+        r#"off or out of the network"#,
+    ),
+    (r#"})'>Ligar</button>"#, r#"})'>Wake</button>"#),
+];
+
+/// A página no idioma em uso (o escolhido na interface deste PC).
+fn page() -> String {
+    crate::i18n::refresh();
+    let mut p = PAGE.to_string();
+    if crate::i18n::english() {
+        for (pt, en) in PAGE_EN {
+            p = p.replace(pt, en);
+        }
+    }
+    p
+}
+
 const PAGE: &str = r##"<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -592,6 +677,9 @@ mod tests {
     #[test]
     fn page_is_self_contained() {
         assert!(super::PAGE.starts_with("<!DOCTYPE html>"));
+        for (pt, _) in super::PAGE_EN {
+            assert!(super::PAGE.contains(pt), "trecho sumiu da página: {pt}");
+        }
         assert!(!super::PAGE.contains("http://") && !super::PAGE.contains("https://"));
     }
 }
