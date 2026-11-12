@@ -89,7 +89,12 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
             ctx.request_repaint();
         };
         push(&format!("$ {}", argv.join(" ")));
-        numapilot::log::info(&format!("comando: {} — {}", j.title, argv.join(" ")));
+        numapilot::log::info(&crate::tf!(
+            "comando: {} — {}",
+            "command: {} — {}",
+            j.title,
+            argv.join(" ")
+        ));
         let child = Command::new(&argv[0])
             .args(&argv[1..])
             .stdin(Stdio::null())
@@ -99,8 +104,15 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
         let mut child = match child {
             Ok(c) => c,
             Err(e) => {
-                push(&format!("não consegui executar: {e}"));
-                numapilot::log::error(&format!("não consegui executar {}: {e}", argv[0]));
+                push(&crate::tf!(
+                    "não consegui executar: {e}",
+                    "could not run it: {e}"
+                ));
+                numapilot::log::error(&crate::tf!(
+                    "não consegui executar {}: {e}",
+                    "could not run {}: {e}",
+                    argv[0]
+                ));
                 if let Ok(mut s) = j.status.lock() {
                     *s = Some(false);
                 }
@@ -131,7 +143,10 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
         // no registro: o comando e, se deu erro, o fim da saída
         let title = j.title.clone();
         if ok {
-            numapilot::log::info(&format!("comando concluído: {title}"));
+            numapilot::log::info(&crate::tf!(
+                "comando concluído: {title}",
+                "command finished: {title}"
+            ));
         } else {
             let tail = j
                 .out
@@ -141,12 +156,15 @@ pub fn run(title: impl Into<String>, argv: Vec<String>, ctx: eframe::egui::Conte
                     v.into_iter().rev().collect::<Vec<_>>().join("\n")
                 })
                 .unwrap_or_default();
-            numapilot::log::error(&format!("comando com erro: {title}\n{tail}"));
+            numapilot::log::error(&crate::tf!(
+                "comando com erro: {title}\n{tail}",
+                "command failed: {title}\n{tail}"
+            ));
         }
         push(if ok {
-            "[concluído]"
+            crate::i18n::tr("[concluído]")
         } else {
-            "[terminou com erro]"
+            crate::i18n::tr("[terminou com erro]")
         });
         if let Ok(mut s) = j.status.lock() {
             *s = Some(ok);
@@ -229,9 +247,10 @@ pub fn in_terminal(cmd: &[String]) -> Result<(), String> {
     } else if has("xterm") {
         vec!["xterm".into(), "-e".into()]
     } else {
-        return Err(
-            "nenhum terminal encontrado (konsole, gnome-terminal, kitty, alacritty, xterm)".into(),
-        );
+        return Err(crate::i18n::tr(
+            "nenhum terminal encontrado (konsole, gnome-terminal, kitty, alacritty, xterm)",
+        )
+        .into());
     };
     // Roda o comando e, no fim, deixa claro que acabou: fecha com Enter.
     let quoted: Vec<String> = cmd

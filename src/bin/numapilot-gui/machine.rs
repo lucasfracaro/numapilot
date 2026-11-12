@@ -91,14 +91,14 @@ impl MachineUi {
 
 fn tri(ui: &mut egui::Ui, id: &str, v: &mut Option<bool>, on: &str, off: &str) {
     let txt = match v {
-        None => "não mexer",
+        None => crate::i18n::tr("não mexer"),
         Some(true) => on,
         Some(false) => off,
     };
     egui::ComboBox::from_id_salt(id)
         .selected_text(txt)
         .show_ui(ui, |ui| {
-            ui.selectable_value(v, None, "não mexer");
+            ui.selectable_value(v, None, crate::i18n::tr("não mexer"));
             ui.selectable_value(v, Some(true), on);
             ui.selectable_value(v, Some(false), off);
         });
@@ -139,8 +139,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         let mu = &mut app.mach;
         // ---------------- modos ----------------
-        ui.heading("Modo da máquina");
-        ui.label(RichText::new("Um clique ajusta processadores, memória e escalonador juntos. \"Normal\" devolve tudo como o sistema estava.").weak());
+        ui.heading(crate::i18n::tr("Modo da máquina"));
+        ui.label(RichText::new(crate::i18n::tr("Um clique ajusta processadores, memória e escalonador juntos. \"Normal\" devolve tudo como o sistema estava.")).weak());
         ui.horizontal_wrapped(|ui| {
             let game_node = app
                 .cfg
@@ -150,10 +150,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 .or_else(|| topo.display_gpu())
                 .and_then(|g| g.numa_node);
             for (name, label, tip) in [
-                ("normal", "Normal", "Tudo como o sistema estava."),
-                ("jogo", "Jogo", "Socket da placa de vídeo em desempenho máximo, uncore no máximo, turbo, sem balanceamento NUMA automático e escalonador LAVD em modo jogo."),
-                ("ia", "IA", "Os dois sockets em desempenho, uncore no máximo, THP sempre e sem balanceamento NUMA automático."),
-                ("silencioso", "Silencioso", "Sem turbo, governor econômico, EPB economia, potência limitada a 60% e LAVD em economia."),
+                ("normal", "Normal", crate::i18n::tr("Tudo como o sistema estava.")),
+                ("jogo", crate::i18n::tr("Jogo"), crate::i18n::tr("Socket da placa de vídeo em desempenho máximo, uncore no máximo, turbo, sem balanceamento NUMA automático e escalonador LAVD em modo jogo.")),
+                ("ia", crate::i18n::tr("IA"), crate::i18n::tr("Os dois sockets em desempenho, uncore no máximo, THP sempre e sem balanceamento NUMA automático.")),
+                ("silencioso", crate::i18n::tr("Silencioso"), crate::i18n::tr("Sem turbo, governor econômico, EPB economia, potência limitada a 60% e LAVD em economia.")),
             ] {
                 let cur = mu.saved.mode == name;
                 let b = egui::Button::new(RichText::new(label).strong()).selected(cur).min_size(egui::vec2(110.0, 30.0));
@@ -164,7 +164,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
             }
             if !["normal", "jogo", "ia", "silencioso"].contains(&mu.saved.mode.as_str()) {
-                ui.label(RichText::new(format!("atual: {}", mu.saved.mode)).weak());
+                ui.label(RichText::new(crate::tf!("atual: {}", "current: {}", mu.saved.mode)).weak());
             }
         });
         let Some(m) = mu.edit.as_mut() else { return };
@@ -173,22 +173,22 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         if numapilot::notebook::is_laptop() {
             use numapilot::notebook as nb;
             ui.add_space(8.0);
-            ui.heading("Notebook");
+            ui.heading(crate::i18n::tr("Notebook"));
             let ac = nb::on_ac();
             for b in nb::battery_info() {
-                ui.label(format!(
-                    "Bateria {}: {}% · {} · {}{}",
+                ui.label(crate::tf!(
+                    "Bateria {}: {}% · {} · {}{}", "Battery {}: {}% · {} · {}{}",
                     b.name,
                     b.pct.map(|p| p.to_string()).unwrap_or("?".into()),
                     match b.status.as_str() {
                         "Charging" => "carregando",
                         "Discharging" => "descarregando",
                         "Full" => "cheia",
-                        "Not charging" => "parada no limite",
+                        "Not charging" => crate::i18n::tr("parada no limite"),
                         o => o,
                     },
                     b.power_w.map(|w| format!("{w:.1} W")).unwrap_or_default(),
-                    b.health_pct.map(|h| format!(" · saúde {h:.0}%")).unwrap_or_default()
+                    b.health_pct.map(|h| crate::tf!(" · saúde {h:.0}%", " · health {h:.0}%")).unwrap_or_default()
                 ));
             }
             // ---- telas e modo da NVIDIA (trocado com a sessão aberta) ----
@@ -203,7 +203,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         .filter(|o| o.connected)
                         .map(|o| {
                             if o.name.starts_with("eDP") {
-                                format!("tela do notebook ({})", o.name)
+                                crate::tf!("tela do notebook ({})", "laptop display ({})", o.name)
                             } else if o.name.starts_with("DP") && g.is_integrated() {
                                 format!("{} (USB-C/Thunderbolt)", o.name)
                             } else {
@@ -214,29 +214,29 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     let free: Vec<String> = outs.iter().filter(|o| !o.connected && !o.name.starts_with("eDP")).map(|o| o.name.clone()).collect();
                     format!(
                         "{}{}",
-                        if on.is_empty() { "nenhuma tela".to_string() } else { on.join(", ") },
-                        if g.is_nvidia() && !free.is_empty() { format!(" · saídas livres: {}", free.join(", ")) } else { String::new() }
+                        if on.is_empty() { crate::i18n::tr("nenhuma tela").to_string() } else { on.join(", ") },
+                        if g.is_nvidia() && !free.is_empty() { crate::tf!(" · saídas livres: {}", " · free outputs: {}", free.join(", ")) } else { String::new() }
                     )
                 };
                 if let Some(ig) = topo.gpus.iter().find(|g| g.is_integrated()) {
-                    ui.label(format!("Telas na {}: {}", ig.alias, desc(ig)));
+                    ui.label(crate::tf!("Telas na {}: {}", "Displays on the {}: {}", ig.alias, desc(ig)));
                 }
                 match pair {
                     Some((_, nv)) => {
-                        ui.label(format!("Telas na {}: {}", nv.alias, desc(nv)));
+                        ui.label(crate::tf!("Telas na {}: {}", "Displays on the {}: {}", nv.alias, desc(nv)));
                     }
                     None => {
-                        ui.label(format!(
-                            "{}: desligada pelo numapilot (fora do sistema; o HDMI não funciona)",
+                        ui.label(crate::tf!(
+                            "{}: desligada pelo numapilot (fora do sistema; o HDMI não funciona)", "{}: turned off by numapilot (removed from the system; HDMI does not work)",
                             dstate.as_ref().map(|d| d.alias.as_str()).unwrap_or("NVIDIA")
                         ));
                     }
                 }
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("NVIDIA:").strong()).on_hover_text(
-                        "Troca na hora, sem sair da sessão: \"desligada\" tira a placa do sistema (zero consumo, nada a acorda, o KDE segue \
+                        crate::i18n::tr("Troca na hora, sem sair da sessão: \"desligada\" tira a placa do sistema (zero consumo, nada a acorda, o KDE segue \
                          só na integrada e o HDMI não funciona); \"disponível\" devolve e o KDE a adiciona sozinho. \
-                         Só desliga se nenhum programa estiver usando a NVIDIA.",
+                         Só desliga se nenhum programa estiver usando a NVIDIA."),
                     );
                     let mut v = m.dgpu_mode.clone();
                     egui::ComboBox::from_id_salt("dgpumode")
@@ -244,10 +244,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             v.as_deref()
                                 .and_then(|x| hybrid::MODES.iter().find(|y| y.0 == x))
                                 .map(|y| y.1)
-                                .unwrap_or("não mexer (dorme quando ninguém usa)"),
+                                .unwrap_or(crate::i18n::tr("não mexer (dorme quando ninguém usa)")),
                         )
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut v, None, "não mexer (dorme quando ninguém usa)");
+                            ui.selectable_value(&mut v, None, crate::i18n::tr("não mexer (dorme quando ninguém usa)"));
                             for (k, l) in hybrid::MODES {
                                 ui.selectable_value(&mut v, Some(k.to_string()), *l);
                             }
@@ -261,8 +261,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 if let Some(st) = &dstate {
                     if st.sleep_only && !st.want_present {
                         ui.label(
-                            RichText::new(format!(
-                                "O KDE mantém a saída de vídeo da NVIDIA aberta, então ela não é tirada do sistema (não é seguro com o desktop segurando). Sem programas usando, ela dorme sozinha: agora {}.",
+                            RichText::new(crate::tf!(
+                                "O KDE mantém a saída de vídeo da NVIDIA aberta, então ela não é tirada do sistema (não é seguro com o desktop segurando). Sem programas usando, ela dorme sozinha: agora {}.", "KDE keeps the NVIDIA's video output open, so it is not removed from the system (not safe with the desktop holding it). With no programs using it, it sleeps by itself: now {}.",
                                 nb::dgpu_state(&st.pci)
                             ))
                             .small()
@@ -276,53 +276,53 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                     if !st.blocked_by.is_empty() && !st.want_present {
                         ui.label(
-                            RichText::new(format!(
-                                "Esperando para desligar a NVIDIA: em uso por {}. Feche esses programas (ou abra-os na integrada).",
+                            RichText::new(crate::tf!(
+                                "Esperando para desligar a NVIDIA: em uso por {}. Feche esses programas (ou abra-os na integrada).", "Waiting to turn off the NVIDIA: in use by {}. Close those programs (or open them on the integrated GPU).",
                                 st.blocked_by.join(", ")
                             ))
                             .color(Color32::from_rgb(230, 160, 40)),
                         );
                     }
                     if let Some(e) = &st.last_error {
-                        ui.label(RichText::new(format!("Erro: {e}")).color(Color32::from_rgb(229, 83, 75)));
+                        ui.label(RichText::new(crate::tf!("Erro: {e}", "Error: {e}")).color(Color32::from_rgb(229, 83, 75)));
                     }
                 }
                 {
                     use numapilot::autostart;
                     let mut on = autostart::enabled();
                     if ui
-                        .checkbox(&mut on, "Tudo que abre com o sistema na integrada")
+                        .checkbox(&mut on, crate::i18n::tr("Tudo que abre com o sistema na integrada"))
                         .on_hover_text(
-                            "Os programas da inicialização (ZapZap, notificadores...) e os serviços do usuário (ex.: Sunshine) \
+                            crate::i18n::tr("Os programas da inicialização (ZapZap, notificadores...) e os serviços do usuário (ex.: Sunshine) \
                              passam a usar só a 680M, então não acordam a NVIDIA. Lançadores de jogos (Steam, Heroic, Lutris) \
-                             ficam como estão: os jogos continuam na NVIDIA. Vale a partir do próximo login.",
+                             ficam como estão: os jogos continuam na NVIDIA. Vale a partir do próximo login."),
                         )
                         .changed()
                     {
                         if on {
                             match autostart::apply(&topo) {
-                                Ok(ch) => app_toast_ok2 = Some(format!(
-                                    "Na integrada no próximo login: {}",
-                                    if ch.is_empty() { "nada novo".into() } else { ch.join(", ") }
+                                Ok(ch) => app_toast_ok2 = Some(crate::tf!(
+                                    "Na integrada no próximo login: {}", "On the integrated GPU at the next login: {}",
+                                    if ch.is_empty() { crate::i18n::tr("nada novo").into() } else { ch.join(", ") }
                                 )),
                                 Err(e) => app_toast = Some(e),
                             }
                         } else {
                             autostart::revert();
-                            app_toast_ok2 = Some("Inicialização de volta ao normal (próximo login)".into());
+                            app_toast_ok2 = Some(crate::i18n::tr("Inicialização de volta ao normal (próximo login)").into());
                         }
                     }
                 }
                 if !hybrid::xwayland_wrapped() {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("O Xwayland pode prender a NVIDIA à toa.").small().weak());
+                        ui.label(RichText::new(crate::i18n::tr("O Xwayland pode prender a NVIDIA à toa.")).small().weak());
                         if ui
-                            .small_button("usar só a integrada no Xwayland")
-                            .on_hover_text("Instala /usr/local/bin/Xwayland que usa só o Mesa (pede a senha). Jogos X11 escolhidos para a NVIDIA continuam indo para ela. Vale no próximo login.")
+                            .small_button(crate::i18n::tr("usar só a integrada no Xwayland"))
+                            .on_hover_text(crate::i18n::tr("Instala /usr/local/bin/Xwayland que usa só o Mesa (pede a senha). Jogos X11 escolhidos para a NVIDIA continuam indo para ela. Vale no próximo login."))
                             .clicked()
                         {
                             job = Some((
-                                "Xwayland só na integrada".into(),
+                                crate::i18n::tr("Xwayland só na integrada").into(),
                                 vec!["pkexec".into(), numapilot::desktop::numapilot_bin(), "hybrid".into(), "xwayland".into(), "on".into()],
                             ));
                         }
@@ -331,30 +331,30 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
             let fans = nb::ec_fans();
             if !fans.is_empty() {
-                ui.label(format!(
-                    "Ventoinhas: {}",
+                ui.label(crate::tf!(
+                    "Ventoinhas: {}", "Fans: {}",
                     fans.iter().map(|r| format!("{r} RPM")).collect::<Vec<_>>().join(" · ")
                 ));
             }
             egui::Grid::new("nb").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
-                let modes = [("normal", "Normal"), ("jogo", "Jogo"), ("ia", "IA"), ("silencioso", "Silencioso")];
+                let modes = [("normal", "Normal"), ("jogo", crate::i18n::tr("Jogo")), ("ia", crate::i18n::tr("IA")), ("silencioso", crate::i18n::tr("Silencioso"))];
                 let combo = |ui: &mut egui::Ui, id: &str, v: &mut Option<String>| {
-                    let txt = v.as_deref().and_then(|x| modes.iter().find(|m| m.0 == x)).map(|m| m.1).unwrap_or("não trocar");
+                    let txt = v.as_deref().and_then(|x| modes.iter().find(|m| m.0 == x)).map(|m| m.1).unwrap_or(crate::i18n::tr("não trocar"));
                     egui::ComboBox::from_id_salt(id).selected_text(txt).show_ui(ui, |ui| {
-                        ui.selectable_value(v, None, "não trocar");
+                        ui.selectable_value(v, None, crate::i18n::tr("não trocar"));
                         for (k, l) in modes {
                             ui.selectable_value(v, Some(k.to_string()), l);
                         }
                     });
                 };
-                ui.label(format!("Ao ligar na tomada{}", if ac == Some(true) { " (agora)" } else { "" }));
+                ui.label(crate::tf!("Ao ligar na tomada{}", "When plugged in{}", if ac == Some(true) { crate::i18n::tr(" (agora)") } else { "" }));
                 combo(ui, "acm", &mut m.ac_mode);
                 ui.end_row();
-                ui.label(format!("Na bateria{}", if ac == Some(false) { " (agora)" } else { "" }));
+                ui.label(crate::tf!("Na bateria{}", "On battery{}", if ac == Some(false) { crate::i18n::tr(" (agora)") } else { "" }));
                 combo(ui, "batm", &mut m.battery_mode);
                 ui.end_row();
                 if nb::battery_info().iter().any(|b| b.charge_limit.is_some()) {
-                    ui.label("Parar de carregar em").on_hover_text("Deixar a bateria em 80% quando o notebook fica sempre na tomada aumenta muito a vida útil dela.");
+                    ui.label(crate::i18n::tr("Parar de carregar em")).on_hover_text(crate::i18n::tr("Deixar a bateria em 80% quando o notebook fica sempre na tomada aumenta muito a vida útil dela."));
                     ui.horizontal(|ui| {
                         let mut on = m.charge_limit.is_some();
                         let mut v = m.charge_limit.unwrap_or(80);
@@ -366,11 +366,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
                 let ch = nb::platform_profiles();
                 if !ch.is_empty() {
-                    ui.label("Perfil de energia do notebook").on_hover_text("Perfil do fabricante (ACPI): mexe em ventoinhas e limites de potência. Os modos já escolhem um.");
+                    ui.label(crate::i18n::tr("Perfil de energia do notebook")).on_hover_text(crate::i18n::tr("Perfil do fabricante (ACPI): mexe em ventoinhas e limites de potência. Os modos já escolhem um."));
                     egui::ComboBox::from_id_salt("pp")
-                        .selected_text(m.platform_profile.clone().unwrap_or_else(|| format!("não mexer ({})", nb::platform_profile().unwrap_or_default())))
+                        .selected_text(m.platform_profile.clone().unwrap_or_else(|| crate::tf!("não mexer ({})", "leave as is ({})", nb::platform_profile().unwrap_or_default())))
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut m.platform_profile, None, "não mexer");
+                            ui.selectable_value(&mut m.platform_profile, None, crate::i18n::tr("não mexer"));
                             for c in &ch {
                                 ui.selectable_value(&mut m.platform_profile, Some(c.clone()), c);
                             }
@@ -378,10 +378,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ui.end_row();
                 }
                 for g in topo.gpus.iter().filter(|g| !g.is_integrated()) {
-                    ui.label(format!("Placa dedicada {}", g.alias));
+                    ui.label(crate::tf!("Placa dedicada {}", "Dedicated card {}", g.alias));
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(nb::dgpu_state(&g.pci)).weak());
-                        tri(ui, &format!("dpm{}", g.pci), &mut m.dgpu_autosuspend, "dormir quando ninguém usa", "sempre ligada");
+                        tri(ui, &format!("dpm{}", g.pci), &mut m.dgpu_autosuspend, crate::i18n::tr("dormir quando ninguém usa"), crate::i18n::tr("sempre ligada"));
                     });
                     ui.end_row();
                     if !nb::dgpu_state(&g.pci).starts_with("dormindo") {
@@ -395,18 +395,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             names.dedup();
                             ui.label("");
                             ui.label(
-                                RichText::new(format!("Acordada por: {}", names.join(", ")))
+                                RichText::new(crate::tf!("Acordada por: {}", "Woken by: {}", names.join(", ")))
                                     .small()
                                     .color(Color32::from_rgb(230, 160, 40)),
                             )
-                            .on_hover_text("Esses programas abriram a placa dedicada; enquanto estiverem abertos ela não dorme e gasta bateria. Abra-os na integrada (perfil do programa → placa) para economizar.");
+                            .on_hover_text(crate::i18n::tr("Esses programas abriram a placa dedicada; enquanto estiverem abertos ela não dorme e gasta bateria. Abra-os na integrada (perfil do programa → placa) para economizar."));
                             ui.end_row();
                         }
                     }
                 }
                 if nb::has_nvidia_powerd() {
-                    ui.label("Dynamic Boost da NVIDIA").on_hover_text("Passa potência do processador para a placa de vídeo em jogos (nvidia-powerd).");
-                    tri(ui, "powerd", &mut m.nvidia_powerd, "ligado", "desligado");
+                    ui.label(crate::i18n::tr("Dynamic Boost da NVIDIA")).on_hover_text(crate::i18n::tr("Passa potência do processador para a placa de vídeo em jogos (nvidia-powerd)."));
+                    tri(ui, "powerd", &mut m.nvidia_powerd, crate::i18n::tr("ligado"), crate::i18n::tr("desligado"));
                     ui.end_row();
                 }
             });
@@ -415,11 +415,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         // ---------------- Ryzen de notebook (ryzenadj) ----------------
         if numapilot::ryzen::applicable() {
             ui.add_space(8.0);
-            ui.heading("Limites de potência do Ryzen");
+            ui.heading(crate::i18n::tr("Limites de potência do Ryzen"));
             if !numapilot::ryzen::available() {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Instale o ryzenadj para ajustar STAPM/PPT (o equivalente do PL1/PL2 da Intel).").weak());
-                    if ui.small_button("instalar (AUR)").clicked() {
+                    ui.label(RichText::new(crate::i18n::tr("Instale o ryzenadj para ajustar STAPM/PPT (o equivalente do PL1/PL2 da Intel).")).weak());
+                    if ui.small_button(crate::i18n::tr("instalar (AUR)")).clicked() {
                         let helper = if numapilot::containers::which("paru") { "paru" } else { "yay" };
                         if let Err(e) = crate::jobs::in_terminal(&[helper.into(), "-S".into(), "ryzenadj".into()]) {
                             app_toast = Some(e);
@@ -432,10 +432,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 egui::Grid::new("ryzen").num_columns(3).spacing([14.0, 6.0]).show(ui, |ui| {
                     type Row<'a> = (&'a str, &'a str, &'a str, &'a mut Option<f64>, f64, f64);
                     let rows: [Row; 4] = [
-                        ("Sustentado (STAPM)", "STAPM LIMIT", " W", &mut r.stapm_w, 5.0, 120.0),
-                        ("Média curta (PPT lento)", "PPT LIMIT SLOW", " W", &mut r.slow_w, 5.0, 150.0),
-                        ("Picos (PPT rápido)", "PPT LIMIT FAST", " W", &mut r.fast_w, 5.0, 150.0),
-                        ("Temperatura máxima", "THM LIMIT CORE", " °C", &mut r.tctl_c, 60.0, 105.0),
+                        (crate::i18n::tr("Sustentado (STAPM)"), "STAPM LIMIT", " W", &mut r.stapm_w, 5.0, 120.0),
+                        (crate::i18n::tr("Média curta (PPT lento)"), "PPT LIMIT SLOW", " W", &mut r.slow_w, 5.0, 150.0),
+                        (crate::i18n::tr("Picos (PPT rápido)"), "PPT LIMIT FAST", " W", &mut r.fast_w, 5.0, 150.0),
+                        (crate::i18n::tr("Temperatura máxima"), "THM LIMIT CORE", " °C", &mut r.tctl_c, 60.0, 105.0),
                     ];
                     for (label, key, unit, v, lo, hi) in rows {
                         ui.label(label);
@@ -447,7 +447,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             ui.add_enabled(on, egui::DragValue::new(&mut x).range(lo..=hi).suffix(unit).speed(0.5).fixed_decimals(0));
                         });
                         *v = on.then_some(x);
-                        ui.label(RichText::new(cur.map(|c| format!("agora {c:.0}{unit}")).unwrap_or_else(|| "agora ? (serviço)".into())).weak());
+                        ui.label(RichText::new(cur.map(|c| crate::tf!("agora {c:.0}{unit}", "now {c:.0}{unit}")).unwrap_or_else(|| crate::i18n::tr("agora ? (serviço)").into())).weak());
                         ui.end_row();
                     }
                 });
@@ -455,7 +455,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     m.ryzen = None;
                 }
                 ui.label(
-                    RichText::new("Baixar o STAPM e a temperatura deixa o notebook frio e silencioso; o serviço reaplica se o firmware voltar os valores ao trocar tomada/bateria.")
+                    RichText::new(crate::i18n::tr("Baixar o STAPM e a temperatura deixa o notebook frio e silencioso; o serviço reaplica se o firmware voltar os valores ao trocar tomada/bateria."))
                         .small()
                         .weak(),
                 );
@@ -470,8 +470,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             let knobs = acer::knobs();
             if knobs.is_empty() && acer::kb_dir().is_none() {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Ventoinhas, limite de carga em 80% e RGB precisam do módulo da comunidade Linuwu-Sense.").weak());
-                    if ui.small_button("página").clicked() {
+                    ui.label(RichText::new(crate::i18n::tr("Ventoinhas, limite de carga em 80% e RGB precisam do módulo da comunidade Linuwu-Sense.")).weak());
+                    if ui.small_button(crate::i18n::tr("página")).clicked() {
                         let _ = crate::jobs::open_url("https://github.com/0x7375646F/Linuwu-Sense");
                     }
                 });
@@ -496,7 +496,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 _ => 3,
                             };
                             ui.horizontal(|ui| {
-                                for (i, l) in ["não mexer", "automático", "máximo", "manual"].iter().enumerate() {
+                                for (i, l) in [crate::i18n::tr("não mexer"), crate::i18n::tr("automático"), crate::i18n::tr("máximo"), "manual"].iter().enumerate() {
                                     ui.selectable_value(&mut mode, i, *l);
                                 }
                                 if mode == 3 {
@@ -506,7 +506,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                     ui.add(egui::DragValue::new(&mut c).range(20..=100).prefix("CPU ").suffix("%"));
                                     ui.add(egui::DragValue::new(&mut g).range(20..=100).prefix("GPU ").suffix("%"));
                                 }
-                                ui.label(RichText::new(format!("agora {cur}")).weak());
+                                ui.label(RichText::new(crate::tf!("agora {cur}", "now {cur}")).weak());
                             });
                             match mode {
                                 0 => {
@@ -526,11 +526,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         "usb_charging" => {
                             let mut v = m.acer.get(*key).cloned();
                             egui::ComboBox::from_id_salt("usbc")
-                                .selected_text(v.clone().map(|x| if x == "0" { "não".into() } else { format!("até {x}%") }).unwrap_or_else(|| format!("não mexer ({cur})")))
+                                .selected_text(v.clone().map(|x| if x == "0" { crate::i18n::tr("não").into() } else { crate::tf!("até {x}%", "up to {x}%") }).unwrap_or_else(|| crate::tf!("não mexer ({cur})", "leave as is ({cur})")))
                                 .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut v, None, "não mexer");
+                                    ui.selectable_value(&mut v, None, crate::i18n::tr("não mexer"));
                                     for x in ["0", "10", "20", "30"] {
-                                        ui.selectable_value(&mut v, Some(x.to_string()), if x == "0" { "não".to_string() } else { format!("até {x}%") });
+                                        ui.selectable_value(&mut v, Some(x.to_string()), if x == "0" { crate::i18n::tr("não").to_string() } else { crate::tf!("até {x}%", "up to {x}%") });
                                     }
                                 });
                             match v {
@@ -541,8 +541,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         _ => {
                             let mut v = m.acer.get(*key).map(|x| x == "1");
                             ui.horizontal(|ui| {
-                                tri(ui, &format!("acer{key}"), &mut v, "ligado", "desligado");
-                                ui.label(RichText::new(format!("agora {}", if cur == "1" { "ligado" } else { "desligado" })).weak());
+                                tri(ui, &format!("acer{key}"), &mut v, crate::i18n::tr("ligado"), crate::i18n::tr("desligado"));
+                                ui.label(RichText::new(crate::tf!("agora {}", "now {}", if cur == "1" { crate::i18n::tr("ligado") } else { crate::i18n::tr("desligado") })).weak());
                             });
                             match v {
                                 Some(b) => m.acer.insert(key.to_string(), if b { "1" } else { "0" }.into()),
@@ -553,7 +553,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ui.end_row();
                 }
                 if acer::kb_dir().is_some() {
-                    ui.label("Teclado RGB");
+                    ui.label(crate::i18n::tr("Teclado RGB"));
                     ui.horizontal(|ui| {
                         let cur = m.acer.get("kb_effect").cloned();
                         let parts: Vec<u32> = cur.as_deref().unwrap_or("0,1,100,0,255,40,0").split(',').filter_map(|x| x.parse().ok()).collect();
@@ -586,18 +586,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- horários ----------------
         ui.add_space(8.0);
-        ui.heading("Modos por horário");
+        ui.heading(crate::i18n::tr("Modos por horário"));
         ui.label(
-            RichText::new("Ex.: Silencioso das 23:00 às 07:00. Programa com \"modo da máquina\" no perfil (Ajustar…) tem prioridade; trocar o modo à mão vale até a regra mudar.")
+            RichText::new(crate::i18n::tr("Ex.: Silencioso das 23:00 às 07:00. Programa com \"modo da máquina\" no perfil (Ajustar…) tem prioridade; trocar o modo à mão vale até a regra mudar."))
                 .small()
                 .weak(),
         );
         let mut del = None;
         for (i, s) in m.schedule.iter_mut().enumerate() {
             ui.horizontal(|ui| {
-                ui.label("das");
+                ui.label(crate::i18n::tr("das"));
                 ui.add(egui::TextEdit::singleline(&mut s.from).desired_width(48.0));
-                ui.label("às");
+                ui.label(crate::i18n::tr("às"));
                 ui.add(egui::TextEdit::singleline(&mut s.to).desired_width(48.0));
                 egui::ComboBox::from_id_salt(format!("sch{i}")).selected_text(s.mode.clone()).show_ui(ui, |ui| {
                     for k in ["silencioso", "normal", "ia", "jogo"] {
@@ -605,9 +605,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                 });
                 if !s.valid() {
-                    ui.label(RichText::new("horário inválido (use HH:MM)").color(Color32::from_rgb(229, 83, 75)));
+                    ui.label(RichText::new(crate::i18n::tr("horário inválido (use HH:MM)")).color(Color32::from_rgb(229, 83, 75)));
                 }
-                if ui.small_button("remover").clicked() {
+                if ui.small_button(crate::i18n::tr("remover")).clicked() {
                     del = Some(i);
                 }
             });
@@ -615,13 +615,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         if let Some(i) = del {
             m.schedule.remove(i);
         }
-        if ui.small_button("+ horário").clicked() {
+        if ui.small_button(crate::i18n::tr("+ horário")).clicked() {
             m.schedule.push(machine::Sched { from: "23:00".into(), to: "07:00".into(), mode: "silencioso".into() });
         }
 
         // ---------------- energia ----------------
         ui.add_space(8.0);
-        ui.heading("Energia");
+        ui.heading(crate::i18n::tr("Energia"));
         {
             let e = numapilot::energy::Energy::load();
             let today = numapilot::energy::today();
@@ -630,24 +630,24 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             let price = m.price_kwh;
             let money = |k: f64| price.map(|p| format!(" (R$ {:.2})", k * p)).unwrap_or_default();
             let w = mu.hw["watts"].as_f64();
-            ui.label(format!(
-                "Agora {} · hoje {kwh_today:.2} kWh{} · este mês {month:.1} kWh{}{}",
+            ui.label(crate::tf!(
+                "Agora {} · hoje {kwh_today:.2} kWh{} · este mês {month:.1} kWh{}{}", "Now {} · today {kwh_today:.2} kWh{} · this month {month:.1} kWh{}{}",
                 w.map(|w| format!("{w:.0} W")).unwrap_or("? W".into()),
                 money(kwh_today),
                 money(month),
                 e.avg_days(30)
-                    .map(|a| format!(" · média {a:.2} kWh/dia, ~{:.0} kWh/mês{}", a * 30.0, money(a * 30.0)))
+                    .map(|a| crate::tf!(" · média {a:.2} kWh/dia, ~{:.0} kWh/mês{}", " · average {a:.2} kWh/day, ~{:.0} kWh/month{}", a * 30.0, money(a * 30.0)))
                     .unwrap_or_default()
             ));
             ui.horizontal(|ui| {
-                ui.label("Preço do kWh (R$):");
+                ui.label(crate::i18n::tr("Preço do kWh (R$):"));
                 let mut on = m.price_kwh.is_some();
                 let mut v = m.price_kwh.unwrap_or(0.9);
                 ui.checkbox(&mut on, "");
                 ui.add_enabled(on, egui::DragValue::new(&mut v).range(0.05..=5.0).speed(0.01).fixed_decimals(2));
                 m.price_kwh = on.then_some(v);
                 ui.add_space(12.0);
-                ui.label("Resto do PC (W):").on_hover_text("O serviço mede processadores e placas de vídeo. Placa-mãe, memória, discos, ventoinhas e a perda da fonte somam uns 30-80 W; informe para a conta ficar perto da tomada (ou meça com um medidor de tomada).");
+                ui.label(crate::i18n::tr("Resto do PC (W):")).on_hover_text(crate::i18n::tr("O serviço mede processadores e placas de vídeo. Placa-mãe, memória, discos, ventoinhas e a perda da fonte somam uns 30-80 W; informe para a conta ficar perto da tomada (ou meça com um medidor de tomada)."));
                 let mut b = m.base_w.unwrap_or(0.0);
                 ui.add(egui::DragValue::new(&mut b).range(0.0..=500.0).suffix(" W"));
                 m.base_w = (b > 0.0).then_some(b);
@@ -666,22 +666,22 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         );
                         ui.interact(r, ui.next_auto_id(), egui::Sense::hover()).on_hover_text(format!("{d}: {v:.2} kWh{}", money(**v)));
                     }
-                    ui.label(RichText::new("últimos 14 dias").small().weak());
+                    ui.label(RichText::new(crate::i18n::tr("últimos 14 dias")).small().weak());
                 });
             }
         }
 
         // ---------------- saúde ----------------
         ui.add_space(8.0);
-        ui.heading("Saúde do hardware");
+        ui.heading(crate::i18n::tr("Saúde do hardware"));
         match &mu.health {
             None => {
-                ui.label(RichText::new("O serviço coleta 1 min depois de iniciar e depois a cada 30 min.").weak());
+                ui.label(RichText::new(crate::i18n::tr("O serviço coleta 1 min depois de iniciar e depois a cada 30 min.")).weak());
             }
             Some(r) => {
                 let probs = numapilot::health::problems(r);
                 if probs.is_empty() {
-                    ui.label(RichText::new("Nenhum problema encontrado.").color(Color32::from_rgb(110, 190, 120)));
+                    ui.label(RichText::new(crate::i18n::tr("Nenhum problema encontrado.")).color(Color32::from_rgb(110, 190, 120)));
                 }
                 for (lvl, p) in &probs {
                     ui.label(RichText::new(format!("• {p}")).color(if *lvl >= 2 {
@@ -691,17 +691,17 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }));
                 }
                 if !r.smartctl {
-                    ui.label(RichText::new("Para ver os discos: sudo pacman -S smartmontools").small().weak());
+                    ui.label(RichText::new(crate::i18n::tr("Para ver os discos: sudo pacman -S smartmontools")).small().weak());
                 }
                 if !r.dimms.is_empty() {
                     let total: f64 = r.dimms.iter().map(|d| d.size_gb).sum();
                     let conf = r.dimms.iter().filter_map(|d| d.configured).min();
                     let sup = r.dimms.iter().filter_map(|d| d.speed).min();
-                    ui.label(format!(
-                        "Memória: {} pente(s), {total:.0} GB{}{}",
+                    ui.label(crate::tf!(
+                        "Memória: {} pente(s), {total:.0} GB{}{}", "Memory: {} module(s), {total:.0} GB{}{}",
                         r.dimms.len(),
-                        conf.map(|c| format!(", rodando a {c} MT/s")).unwrap_or_default(),
-                        sup.map(|s| format!(" (os pentes suportam {s})")).unwrap_or_default()
+                        conf.map(|c| crate::tf!(", rodando a {c} MT/s", ", running at {c} MT/s")).unwrap_or_default(),
+                        sup.map(|s| crate::tf!(" (os pentes suportam {s})", " (the modules support {s})")).unwrap_or_default()
                     ))
                     .on_hover_text(
                         r.dimms
@@ -716,46 +716,46 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
                 for e in &r.disk_errors {
-                    ui.label(RichText::new(format!("disco não lido: {e}")).small().color(Color32::from_rgb(230, 160, 40)));
+                    ui.label(RichText::new(crate::tf!("disco não lido: {e}", "disk not read: {e}")).small().color(Color32::from_rgb(230, 160, 40)));
                 }
                 egui::Grid::new("health").striped(true).num_columns(5).spacing([14.0, 4.0]).show(ui, |ui| {
                     for d in &r.disks {
                         ui.label(format!("{} {}", d.dev, d.model));
                         ui.label(match d.passed {
                             Some(true) => "SMART ok",
-                            Some(false) => "SMART FALHOU",
+                            Some(false) => crate::i18n::tr("SMART FALHOU"),
                             None => "?",
                         });
                         ui.label(d.temp_c.map(|t| format!("{t:.0} °C")).unwrap_or_default());
                         ui.label(match (d.used_pct, d.hours) {
-                            (Some(u), Some(h)) => format!("{u}% usado · {h} h ligado"),
-                            (None, Some(h)) => format!("{h} h ligado"),
+                            (Some(u), Some(h)) => crate::tf!("{u}% usado · {h} h ligado", "{u}% used · {h} h powered on"),
+                            (None, Some(h)) => crate::tf!("{h} h ligado", "{h} h powered on"),
                             _ => String::new(),
                         });
-                        ui.label(d.written_tb.map(|w| format!("{w:.1} TB escritos")).unwrap_or_default());
+                        ui.label(d.written_tb.map(|w| crate::tf!("{w:.1} TB escritos", "{w:.1} TB written")).unwrap_or_default());
                         ui.end_row();
                     }
                     for m in &r.mem {
-                        ui.label(format!("memória {}", m.name));
-                        ui.label(if m.ue > 0 { "ERROS" } else { "ECC ok" });
-                        ui.label(format!("{} corrigidos", m.ce));
-                        ui.label(format!("{} não corrigidos", m.ue));
+                        ui.label(crate::tf!("memória {}", "memory {}", m.name));
+                        ui.label(if m.ue > 0 { crate::i18n::tr("ERROS") } else { "ECC ok" });
+                        ui.label(crate::tf!("{} corrigidos", "{} corrected", m.ce));
+                        ui.label(crate::tf!("{} não corrigidos", "{} uncorrected", m.ue));
                         ui.label("");
                         ui.end_row();
                     }
                     for g in r.gpu.iter().filter(|g| g.block == "umc" || g.ce > 0 || g.ue > 0) {
                         let alias = topo.gpus.iter().find(|x| x.pci == g.pci).map(|x| x.alias.clone()).unwrap_or(g.pci.clone());
-                        ui.label(format!("{alias} ({})", if g.block == "umc" { "memória" } else { g.block.as_str() }));
-                        ui.label(if g.ue > 0 { "ERROS" } else { "ECC ok" });
-                        ui.label(format!("{} corrigidos", g.ce));
-                        ui.label(format!("{} não corrigidos", g.ue));
+                        ui.label(format!("{alias} ({})", if g.block == "umc" { crate::i18n::tr("memória") } else { g.block.as_str() }));
+                        ui.label(if g.ue > 0 { crate::i18n::tr("ERROS") } else { "ECC ok" });
+                        ui.label(crate::tf!("{} corrigidos", "{} corrected", g.ce));
+                        ui.label(crate::tf!("{} não corrigidos", "{} uncorrected", g.ue));
                         ui.label("");
                         ui.end_row();
                     }
                     for b in &r.batteries {
-                        ui.label(format!("bateria {}", b.name));
-                        ui.label(b.health_pct.map(|h| format!("{h:.0}% da original")).unwrap_or_default());
-                        ui.label(b.cycles.map(|c| format!("{c} ciclos")).unwrap_or_default());
+                        ui.label(crate::tf!("bateria {}", "battery {}", b.name));
+                        ui.label(b.health_pct.map(|h| crate::tf!("{h:.0}% da original", "{h:.0}% of original")).unwrap_or_default());
+                        ui.label(b.cycles.map(|c| crate::tf!("{c} ciclos", "{c} cycles")).unwrap_or_default());
                         ui.label("");
                         ui.label("");
                         ui.end_row();
@@ -766,16 +766,16 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     .map(|d| d.as_secs())
                     .unwrap_or(0)
                     .saturating_sub(r.time);
-                ui.label(RichText::new(format!("coletado há {} min", age / 60)).small().weak());
+                ui.label(RichText::new(crate::tf!("coletado há {} min", "collected {} min ago", age / 60)).small().weak());
             }
         }
 
         // ---------------- rede: ligar pela rede ----------------
         if !mu.nics.is_empty() {
             ui.add_space(8.0);
-            ui.heading("Ligar pela rede (Wake-on-LAN)");
+            ui.heading(crate::i18n::tr("Ligar pela rede (Wake-on-LAN)"));
             ui.label(
-                RichText::new("Deixa este PC ser ligado pelo painel de outro (Meus PCs → Ligar). Precisa também da opção na BIOS (Wake on LAN / Power on by PCI-E) e do cabo de rede.")
+                RichText::new(crate::i18n::tr("Deixa este PC ser ligado pelo painel de outro (Meus PCs → Ligar). Precisa também da opção na BIOS (Wake on LAN / Power on by PCI-E) e do cabo de rede."))
                     .small()
                     .weak(),
             );
@@ -791,15 +791,15 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                     ui.label(
                         RichText::new(match n.wol.as_deref() {
-                            Some("g") => "agora: ligado".to_string(),
-                            Some("d") => "agora: desligado".to_string(),
-                            Some(o) => format!("agora: {o}"),
-                            None => "agora: ? (instale o ethtool)".to_string(),
+                            Some("g") => crate::i18n::tr("agora: ligado").to_string(),
+                            Some("d") => crate::i18n::tr("agora: desligado").to_string(),
+                            Some(o) => crate::tf!("agora: {o}", "now: {o}"),
+                            None => crate::i18n::tr("agora: ? (instale o ethtool)").to_string(),
                         })
                         .weak(),
                     );
                     if !supports {
-                        ui.label(RichText::new("esta placa não suporta").small().weak());
+                        ui.label(RichText::new(crate::i18n::tr("esta placa não suporta")).small().weak());
                     }
                 });
             }
@@ -807,12 +807,12 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- processadores ----------------
         ui.add_space(8.0);
-        ui.heading("Processadores");
+        ui.heading(crate::i18n::tr("Processadores"));
         ui.horizontal(|ui| {
             ui.label("Turbo:");
-            tri(ui, "turbo", &mut m.turbo, "ligado", "desligado");
+            tri(ui, "turbo", &mut m.turbo, crate::i18n::tr("ligado"), crate::i18n::tr("desligado"));
             if let Some(t) = cpuctl::turbo() {
-                ui.label(RichText::new(format!("agora {}", if t { "ligado" } else { "desligado" })).weak());
+                ui.label(RichText::new(crate::tf!("agora {}", "now {}", if t { crate::i18n::tr("ligado") } else { crate::i18n::tr("desligado") })).weak());
             }
         });
         let unc = cpuctl::uncores();
@@ -821,10 +821,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         egui::Grid::new("sockets").striped(true).num_columns(topo.nodes.len() + 1).spacing([18.0, 6.0]).show(ui, |ui| {
             ui.label("");
             for n in &topo.nodes {
-                ui.label(RichText::new(if topo.nodes.len() == 1 { "Processador".to_string() } else { format!("Socket {}", n.id) }).strong());
+                ui.label(RichText::new(if topo.nodes.len() == 1 { crate::i18n::tr("Processador").to_string() } else { format!("Socket {}", n.id) }).strong());
             }
             ui.end_row();
-            ui.label("Agora");
+            ui.label(crate::i18n::tr("Agora"));
             for n in &topo.nodes {
                 let pkg = n.sockets.iter().next().copied().unwrap_or(n.id as u32);
                 let c = n.cpus.first().copied().unwrap_or(0);
@@ -844,42 +844,42 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 let t = m.socket_mut(n.id);
                 let cur = cpuctl::governor(c).unwrap_or_default();
                 egui::ComboBox::from_id_salt(format!("gov{}", n.id))
-                    .selected_text(t.governor.clone().unwrap_or_else(|| format!("não mexer ({cur})")))
+                    .selected_text(t.governor.clone().unwrap_or_else(|| crate::tf!("não mexer ({cur})", "leave as is ({cur})")))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut t.governor, None, "não mexer");
+                        ui.selectable_value(&mut t.governor, None, crate::i18n::tr("não mexer"));
                         for g in cpuctl::governors_available(c) {
                             ui.selectable_value(&mut t.governor, Some(g.clone()), g);
                         }
                     });
             }
             ui.end_row();
-            ui.label("Viés de energia (EPB)");
+            ui.label(crate::i18n::tr("Viés de energia (EPB)"));
             for n in &topo.nodes {
                 let c = n.cpus.first().copied().unwrap_or(0);
                 let t = m.socket_mut(n.id);
-                let name = |v: u8| EPB.iter().find(|e| e.0 == v).map(|e| e.1.to_string()).unwrap_or(v.to_string());
+                let name = |v: u8| EPB.iter().find(|e| e.0 == v).map(|e| crate::i18n::tr(e.1).to_string()).unwrap_or(v.to_string());
                 egui::ComboBox::from_id_salt(format!("epb{}", n.id))
-                    .selected_text(t.epb.map(name).unwrap_or_else(|| format!("não mexer ({})", cpuctl::epb(c).map(name).unwrap_or("?".into()))))
+                    .selected_text(t.epb.map(name).unwrap_or_else(|| crate::tf!("não mexer ({})", "leave as is ({})", cpuctl::epb(c).map(name).unwrap_or("?".into()))))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut t.epb, None, "não mexer");
+                        ui.selectable_value(&mut t.epb, None, crate::i18n::tr("não mexer"));
                         for (v, l) in EPB {
-                            ui.selectable_value(&mut t.epb, Some(*v), *l);
+                            ui.selectable_value(&mut t.epb, Some(*v), crate::i18n::tr(l));
                         }
                     });
             }
             ui.end_row();
             let c0 = topo.nodes.first().and_then(|n| n.cpus.first().copied()).unwrap_or(0);
             if !cpuctl::epp_available(c0).is_empty() {
-                ui.label("Preferência de energia (EPP)").on_hover_text(
-                    "O ajuste principal do Ryzen (amd-pstate): de performance a power. Com o governor performance o driver fixa em performance.",
+                ui.label(crate::i18n::tr("Preferência de energia (EPP)")).on_hover_text(
+                    crate::i18n::tr("O ajuste principal do Ryzen (amd-pstate): de performance a power. Com o governor performance o driver fixa em performance."),
                 );
                 for n in &topo.nodes {
                     let c = n.cpus.first().copied().unwrap_or(0);
                     let t = m.socket_mut(n.id);
                     egui::ComboBox::from_id_salt(format!("epp{}", n.id))
-                        .selected_text(t.epp.clone().unwrap_or_else(|| format!("não mexer ({})", cpuctl::epp(c).unwrap_or_default())))
+                        .selected_text(t.epp.clone().unwrap_or_else(|| crate::tf!("não mexer ({})", "leave as is ({})", cpuctl::epp(c).unwrap_or_default())))
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut t.epp, None, "não mexer");
+                            ui.selectable_value(&mut t.epp, None, crate::i18n::tr("não mexer"));
                             for e in cpuctl::epp_available(c) {
                                 if !["default", "custom", "dynamic"].contains(&e.as_str()) {
                                     ui.selectable_value(&mut t.epp, Some(e.clone()), e);
@@ -889,7 +889,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
                 ui.end_row();
             }
-            ui.label("Frequência mín. / máx.");
+            ui.label(crate::i18n::tr("Frequência mín. / máx."));
             for n in &topo.nodes {
                 let c = n.cpus.first().copied().unwrap_or(0);
                 let f = cpuctl::freq(c).unwrap_or_default();
@@ -901,7 +901,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 });
             }
             ui.end_row();
-            ui.label("Uncore (L3 + memória)").on_hover_text("Uncore mais alto = menor latência de memória e do cache L3, à custa de alguns watts.");
+            ui.label(crate::i18n::tr("Uncore (L3 + memória)")).on_hover_text(crate::i18n::tr("Uncore mais alto = menor latência de memória e do cache L3, à custa de alguns watts."));
             for n in &topo.nodes {
                 let pkg = n.sockets.iter().next().copied().unwrap_or(n.id as u32);
                 let t = m.socket_mut(n.id);
@@ -912,17 +912,17 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             opt_mhz(ui, &mut t.uncore_min_mhz, hi, lo, hi);
                             opt_mhz(ui, &mut t.uncore_max_mhz, hi, lo, hi);
                             if let Some(cur) = u.cur_khz {
-                                ui.label(RichText::new(format!("agora {}", cur / 1000)).weak());
+                                ui.label(RichText::new(crate::tf!("agora {}", "now {}", cur / 1000)).weak());
                             }
                         });
                     }
                     None => {
-                        ui.label(RichText::new("indisponível (sudo modprobe intel_uncore_frequency)").weak());
+                        ui.label(RichText::new(crate::i18n::tr("indisponível (sudo modprobe intel_uncore_frequency)")).weak());
                     }
                 }
             }
             ui.end_row();
-            ui.label("Limite de potência");
+            ui.label(crate::i18n::tr("Limite de potência"));
             for n in &topo.nodes {
                 let pkg = n.sockets.iter().next().copied().unwrap_or(n.id as u32);
                 let t = m.socket_mut(n.id);
@@ -938,13 +938,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         });
                     }
                     None => {
-                        ui.label(RichText::new("indisponível (RAPL)").weak());
+                        ui.label(RichText::new(crate::i18n::tr("indisponível (RAPL)")).weak());
                     }
                 }
             }
             ui.end_row();
             if rapl.iter().any(|r| r.limit2_w.is_some()) {
-                ui.label("Pico de potência (PL2)").on_hover_text("Quanto o processador pode puxar por alguns segundos antes de cair para o limite acima.");
+                ui.label(crate::i18n::tr("Pico de potência (PL2)")).on_hover_text(crate::i18n::tr("Quanto o processador pode puxar por alguns segundos antes de cair para o limite acima."));
                 for n in &topo.nodes {
                     let pkg = n.sockets.iter().next().copied().unwrap_or(n.id as u32);
                     let t = m.socket_mut(n.id);
@@ -969,20 +969,20 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- latência ----------------
         ui.add_space(8.0);
-        ui.heading("Latência em jogos");
+        ui.heading(crate::i18n::tr("Latência em jogos"));
         ui.label(
             RichText::new(
-                "Vale enquanto roda um programa com \"Baixa latência\" (o perfil Jogo liga): nos núcleos dele, o processador não entra \
-                 nos estados de economia profundos (acordar deles causa travadinhas) e o uncore do socket fica no máximo. Ao fechar, volta tudo.",
+                crate::i18n::tr("Vale enquanto roda um programa com \"Baixa latência\" (o perfil Jogo liga): nos núcleos dele, o processador não entra \
+                 nos estados de economia profundos (acordar deles causa travadinhas) e o uncore do socket fica no máximo. Ao fechar, volta tudo."),
             )
             .weak(),
         );
         let cs = cpuctl::cstates(topo.nodes.first().and_then(|n| n.cpus.first().copied()).unwrap_or(0));
         ui.horizontal(|ui| {
-            ui.label("Estados permitidos:");
+            ui.label(crate::i18n::tr("Estados permitidos:"));
             let label = |us: u64| {
                 let allowed: Vec<String> = cs.iter().filter(|s| s.index > 0 && s.latency_us <= us).map(|s| s.name.clone()).collect();
-                if allowed.is_empty() { format!("nenhum (≤ {us} µs)") } else { format!("{} (≤ {us} µs)", allowed.join(", ")) }
+                if allowed.is_empty() { crate::tf!("nenhum (≤ {us} µs)", "none (≤ {us} µs)") } else { format!("{} (≤ {us} µs)", allowed.join(", ")) }
             };
             egui::ComboBox::from_id_salt("lat").selected_text(label(m.game_latency_us)).show_ui(ui, |ui| {
                 let mut opts: Vec<u64> = cs.iter().filter(|s| s.index > 0).map(|s| s.latency_us).collect();
@@ -994,42 +994,42 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ui.selectable_value(&mut m.game_latency_us, us, label(us));
                 }
             });
-            ui.checkbox(&mut m.game_uncore_max, "uncore no máximo");
+            ui.checkbox(&mut m.game_uncore_max, crate::i18n::tr("uncore no máximo"));
         });
         if let Some(l) = mu.hw["lowlat"].as_str().filter(|s| !s.is_empty()) {
-            ui.label(RichText::new(format!("Ativo agora nos núcleos {l}")).color(GREEN));
+            ui.label(RichText::new(crate::tf!("Ativo agora nos núcleos {l}", "Active now on cores {l}")).color(GREEN));
         }
 
         // ---------------- memória ----------------
         ui.add_space(8.0);
-        ui.heading("Memória");
+        ui.heading(crate::i18n::tr("Memória"));
         egui::Grid::new("mem").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
             let multi = topo.nodes.len() > 1;
             if multi {
-            ui.label("Balanceamento NUMA do kernel")
-                .on_hover_text("O kernel move páginas sozinho para perto de quem usa. Com o numapilot cuidando do lugar dos programas, desligar evita migrações que causam travadinhas.");
-            tri(ui, "nb", &mut m.numa_balancing, "ligado", "desligado");
+            ui.label(crate::i18n::tr("Balanceamento NUMA do kernel"))
+                .on_hover_text(crate::i18n::tr("O kernel move páginas sozinho para perto de quem usa. Com o numapilot cuidando do lugar dos programas, desligar evita migrações que causam travadinhas."));
+            tri(ui, "nb", &mut m.numa_balancing, crate::i18n::tr("ligado"), crate::i18n::tr("desligado"));
             ui.end_row();
-            ui.label("Recuperar memória no próprio nó (zone_reclaim)")
-                .on_hover_text("Ligado: prefere liberar cache do mesmo nó a usar memória do outro. Bom para latência, ruim para cache de disco.");
-            tri(ui, "zr", &mut m.zone_reclaim, "ligado", "desligado");
+            ui.label(crate::i18n::tr("Recuperar memória no próprio nó (zone_reclaim)"))
+                .on_hover_text(crate::i18n::tr("Ligado: prefere liberar cache do mesmo nó a usar memória do outro. Bom para latência, ruim para cache de disco."));
+            tri(ui, "zr", &mut m.zone_reclaim, crate::i18n::tr("ligado"), crate::i18n::tr("desligado"));
             ui.end_row();
             }
             ui.label("Transparent Huge Pages")
-                .on_hover_text("always: menos falhas de TLB (bom para IA e render na CPU); madvise: só quem pede (padrão).");
+                .on_hover_text(crate::i18n::tr("always: menos falhas de TLB (bom para IA e render na CPU); madvise: só quem pede (padrão)."));
             egui::ComboBox::from_id_salt("thp")
-                .selected_text(m.thp.clone().unwrap_or_else(|| format!("não mexer ({})", machine::thp().unwrap_or("?".into()))))
+                .selected_text(m.thp.clone().unwrap_or_else(|| crate::tf!("não mexer ({})", "leave as is ({})", machine::thp().unwrap_or("?".into()))))
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut m.thp, None, "não mexer");
+                    ui.selectable_value(&mut m.thp, None, crate::i18n::tr("não mexer"));
                     for t in ["always", "madvise", "never"] {
                         ui.selectable_value(&mut m.thp, Some(t.to_string()), t);
                     }
                 });
             ui.end_row();
             for n in &topo.nodes {
-                ui.label(if multi { format!("Hugepages reservadas no socket {}", n.id) } else { "Hugepages reservadas".to_string() }).on_hover_text(
-                    "Páginas de 2 MB separadas no boot, para programas que usam hugetlbfs (máquinas virtuais, DPDK, alguns bancos de dados). \
-                     O llama.cpp e o PyTorch não usam: para eles valem THP e a memória no socket certo.",
+                ui.label(if multi { crate::tf!("Hugepages reservadas no socket {}", "Hugepages reserved on socket {}", n.id) } else { crate::i18n::tr("Hugepages reservadas").to_string() }).on_hover_text(
+                    crate::i18n::tr("Páginas de 2 MB separadas no boot, para programas que usam hugetlbfs (máquinas virtuais, DPDK, alguns bancos de dados). \
+                     O llama.cpp e o PyTorch não usam: para eles valem THP e a memória no socket certo."),
                 );
                 ui.horizontal(|ui| {
                     let k = n.id.to_string();
@@ -1043,7 +1043,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         m.hugepages_mb.remove(&k);
                     }
                     if let Some(h) = machine::hugepages(n.id) {
-                        ui.label(RichText::new(format!("agora {:.1} GB", h as f64 * 2.0 / 1024.0)).weak());
+                        ui.label(RichText::new(crate::tf!("agora {:.1} GB", "now {:.1} GB", h as f64 * 2.0 / 1024.0)).weak());
                     }
                 });
                 ui.end_row();
@@ -1052,20 +1052,20 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- escalonador ----------------
         ui.add_space(8.0);
-        ui.heading("Escalonador (sched_ext)");
+        ui.heading(crate::i18n::tr("Escalonador (sched_ext)"));
         match &mu.scx {
             Some((cur, list)) => {
                 ui.horizontal(|ui| {
-                    ui.label(format!("Agora: {}", if cur.is_empty() { "padrão do kernel" } else { cur }));
+                    ui.label(crate::tf!("Agora: {}", "Now: {}", if cur.is_empty() { crate::i18n::tr("padrão do kernel") } else { cur }));
                     egui::ComboBox::from_id_salt("scx")
                         .selected_text(match m.scx.as_deref() {
-                            None => "não mexer".to_string(),
-                            Some("none") => "padrão do kernel (desligar sched_ext)".to_string(),
+                            None => crate::i18n::tr("não mexer").to_string(),
+                            Some("none") => crate::i18n::tr("padrão do kernel (desligar sched_ext)").to_string(),
                             Some(s) => s.to_string(),
                         })
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut m.scx, None, "não mexer");
-                            ui.selectable_value(&mut m.scx, Some("none".into()), "padrão do kernel");
+                            ui.selectable_value(&mut m.scx, None, crate::i18n::tr("não mexer"));
+                            ui.selectable_value(&mut m.scx, Some("none".into()), crate::i18n::tr("padrão do kernel"));
                             for s in list {
                                 ui.selectable_value(&mut m.scx, Some(s.clone()), s);
                             }
@@ -1080,18 +1080,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 });
             }
             None => {
-                ui.label(RichText::new("scx_loader não instalado (sudo pacman -S scx-scheds scx-tools).").weak());
+                ui.label(RichText::new(crate::i18n::tr("scx_loader não instalado (sudo pacman -S scx-scheds scx-tools).")).weak());
             }
         }
 
         // IPMI (Supermicro)
         if fans::is_supermicro() {
             ui.horizontal(|ui| {
-                ui.label("Ventoinhas pelo BMC (IPMI):");
+                ui.label(crate::i18n::tr("Ventoinhas pelo BMC (IPMI):"));
                 egui::ComboBox::from_id_salt("ipmi")
-                    .selected_text(m.ipmi_fan_mode.map(fans::ipmi_mode_name).unwrap_or("não mexer"))
+                    .selected_text(m.ipmi_fan_mode.map(fans::ipmi_mode_name).unwrap_or(crate::i18n::tr("não mexer")))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut m.ipmi_fan_mode, None, "não mexer");
+                        ui.selectable_value(&mut m.ipmi_fan_mode, None, crate::i18n::tr("não mexer"));
                         for x in [0u8, 2, 4, 1] {
                             ui.selectable_value(&mut m.ipmi_fan_mode, Some(x), fans::ipmi_mode_name(x));
                         }
@@ -1108,7 +1108,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         };
         let changed = mu.edit.as_ref().is_some_and(|e| norm(e) != norm(&mu.saved));
         ui.horizontal(|ui| {
-            if ui.add_enabled(changed, egui::Button::new(RichText::new("Aplicar ajustes da máquina").strong())).clicked()
+            if ui.add_enabled(changed, egui::Button::new(RichText::new(crate::i18n::tr("Aplicar ajustes da máquina")).strong())).clicked()
                 && let Some(mut m) = mu.edit.clone()
             {
                 m.sockets.retain(|_, t| !t.is_empty());
@@ -1116,20 +1116,20 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 mu.edit = Some(m.clone());
                 send_machine = Some(m);
             }
-            if ui.add_enabled(changed, egui::Button::new("Desfazer")).clicked() {
+            if ui.add_enabled(changed, egui::Button::new(crate::i18n::tr("Desfazer"))).clicked() {
                 mu.edit = Some(mu.saved.clone());
             }
-            ui.label(RichText::new("Quem aplica é o serviço; se ele parar, tudo volta ao que era.").small().weak());
+            ui.label(RichText::new(crate::i18n::tr("Quem aplica é o serviço; se ele parar, tudo volta ao que era.")).small().weak());
         });
 
         // ---------------- ventoinhas da placa-mãe ----------------
         ui.add_space(10.0);
-        ui.heading("Ventoinhas da placa-mãe");
+        ui.heading(crate::i18n::tr("Ventoinhas da placa-mãe"));
         if mu.fans.is_empty() && mu.ipmi.is_empty() {
             ui.label(
                 RichText::new(
-                    "Nenhuma ventoinha controlável encontrada. Placas comuns precisam do driver do chip de sensores \
-                     (ex.: sudo modprobe nct6775; o sensors-detect diz qual); placas de servidor usam o IPMI (sudo pacman -S ipmitool).",
+                    crate::i18n::tr("Nenhuma ventoinha controlável encontrada. Placas comuns precisam do driver do chip de sensores \
+                     (ex.: sudo modprobe nct6775; o sensors-detect diz qual); placas de servidor usam o IPMI (sudo pacman -S ipmitool)."),
                 )
                 .weak(),
             );
@@ -1150,10 +1150,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     .weak());
                 });
                 ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut e.label).hint_text("nome (ex.: frente, CPU 0)").desired_width(180.0));
-                    ui.radio_value(&mut e.fan, FanMode::Auto, "da placa");
-                    ui.radio_value(&mut e.fan, FanMode::Curve, "curva");
-                    ui.radio_value(&mut e.fan, FanMode::Fixed, "fixa");
+                    ui.add(egui::TextEdit::singleline(&mut e.label).hint_text(crate::i18n::tr("nome (ex.: frente, CPU 0)")).desired_width(180.0));
+                    ui.radio_value(&mut e.fan, FanMode::Auto, crate::i18n::tr("da placa"));
+                    ui.radio_value(&mut e.fan, FanMode::Curve, crate::i18n::tr("curva"));
+                    ui.radio_value(&mut e.fan, FanMode::Fixed, crate::i18n::tr("fixa"));
                 });
                 match e.fan {
                     FanMode::Fixed => {
@@ -1161,9 +1161,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                     FanMode::Curve => {
                         ui.horizontal(|ui| {
-                            ui.label("Seguir:");
+                            ui.label(crate::i18n::tr("Seguir:"));
                             egui::ComboBox::from_id_salt(format!("src{}", f.id)).selected_text(&e.source).show_ui(ui, |ui| {
-                                for (s, l) in [("cpu", "CPU mais quente"), ("cpu0", "CPU 0"), ("cpu1", "CPU 1"), ("gpu", "GPU mais quente"), ("max", "o mais quente de tudo")] {
+                                for (s, l) in [("cpu", crate::i18n::tr("CPU mais quente")), ("cpu0", "CPU 0"), ("cpu1", "CPU 1"), ("gpu", crate::i18n::tr("GPU mais quente")), ("max", crate::i18n::tr("o mais quente de tudo"))] {
                                     ui.selectable_value(&mut e.source, s.to_string(), l);
                                 }
                             });
@@ -1177,13 +1177,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     FanMode::Auto => {}
                 }
                 let ch = *e != saved;
-                if ui.add_enabled(ch, egui::Button::new("Aplicar")).clicked() {
+                if ui.add_enabled(ch, egui::Button::new(crate::i18n::tr("Aplicar"))).clicked() {
                     send_fan = Some((f.id.clone(), e.clone()));
                 }
             });
         }
         if !mu.ipmi.is_empty() {
-            ui.label(RichText::new("Pelo IPMI (só leitura):").strong());
+            ui.label(RichText::new(crate::i18n::tr("Pelo IPMI (só leitura):")).strong());
             ui.horizontal_wrapped(|ui| {
                 for (n, r) in &mu.ipmi {
                     ui.label(format!("{n}: {}", r.map(|r| format!("{r} RPM")).unwrap_or("-".into())));
@@ -1191,23 +1191,23 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             });
         }
         if !mu.fans.is_empty() {
-            ui.label(RichText::new(format!("Acima de {:.0} °C na CPU as ventoinhas controladas vão a 100%.", fans::EMERGENCY_CPU_C)).small().weak());
+            ui.label(RichText::new(crate::tf!("Acima de {:.0} °C na CPU as ventoinhas controladas vão a 100%.", "Above {:.0} °C on the CPU the controlled fans go to 100%.", fans::EMERGENCY_CPU_C)).small().weak());
         }
 
         // ---------------- mitigações ----------------
         ui.add_space(10.0);
-        ui.heading("Mitigações do processador");
+        ui.heading(crate::i18n::tr("Mitigações do processador"));
         ui.label(
             RichText::new(
-                "Proteções contra ataques de canal lateral. Desligar devolve desempenho, mas deixa programas maliciosos lerem \
-                 dados de outros programas ou do kernel. Valem depois de reiniciar.",
+                crate::i18n::tr("Proteções contra ataques de canal lateral. Desligar devolve desempenho, mas deixa programas maliciosos lerem \
+                 dados de outros programas ou do kernel. Valem depois de reiniciar."),
             )
             .weak(),
         );
         let relevant = cmdline::relevant_mitigations(&mu.vulns);
         let all_off = mu.sel.contains("mitigations=off");
         ui.horizontal_wrapped(|ui| {
-            if ui.button("Desligar as leves (mantém Spectre e Meltdown)").clicked() {
+            if ui.button(crate::i18n::tr("Desligar as leves (mantém Spectre e Meltdown)")).clicked() {
                 mu.sel.remove("mitigations=off");
                 for g in cmdline::MITIGATIONS {
                     let on = !g.heavy && relevant.iter().any(|r| r.title == g.title);
@@ -1220,10 +1220,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
             }
-            if ui.button("Desligar todas").clicked() {
+            if ui.button(crate::i18n::tr("Desligar todas")).clicked() {
                 mu.sel.insert("mitigations=off".into());
             }
-            if ui.button("Todas ligadas (padrão)").clicked() {
+            if ui.button(crate::i18n::tr("Todas ligadas (padrão)")).clicked() {
                 mu.sel.remove("mitigations=off");
                 for g in cmdline::MITIGATIONS {
                     for p in g.params {
@@ -1233,7 +1233,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         let mut all = all_off;
-        if ui.checkbox(&mut all, RichText::new("Desligar todas (mitigations=off)").strong()).changed() {
+        if ui.checkbox(&mut all, RichText::new(crate::i18n::tr("Desligar todas (mitigations=off)")).strong()).changed() {
             if all {
                 mu.sel.insert("mitigations=off".into());
             } else {
@@ -1241,7 +1241,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         }
         egui::Grid::new("mitig").striped(true).num_columns(4).spacing([12.0, 4.0]).show(ui, |ui| {
-            for h in ["Desligar", "Situação no seu processador", "Risco sem ela", "Ganho"] {
+            for h in [crate::i18n::tr("Desligar"), crate::i18n::tr("Situação no seu processador"), crate::i18n::tr("Risco sem ela"), crate::i18n::tr("Ganho")] {
                 ui.label(RichText::new(h).strong());
             }
             ui.end_row();
@@ -1273,16 +1273,16 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         if relevant.is_empty() {
-            ui.label(RichText::new("O kernel não informou vulnerabilidades (ou este processador não é afetado).").weak());
+            ui.label(RichText::new(crate::i18n::tr("O kernel não informou vulnerabilidades (ou este processador não é afetado).")).weak());
         }
 
         // ---------------- outros parâmetros ----------------
         ui.add_space(10.0);
-        ui.heading("Parâmetros do kernel");
+        ui.heading(crate::i18n::tr("Parâmetros do kernel"));
         ui.label(
             RichText::new(match &mu.loader {
-                Some(l) => format!("Bootloader: {l}. O numapilot edita esse arquivo (com backup) e regrava as entradas; atualizações do kernel mantêm."),
-                None => "Bootloader não reconhecido (Limine, systemd-boot/sdboot-manage, GRUB ou rEFInd): não dá para editar daqui.".into(),
+                Some(l) => crate::tf!("Bootloader: {l}. O numapilot edita esse arquivo (com backup) e regrava as entradas; atualizações do kernel mantêm.", "Bootloader: {l}. numapilot edits this file (with a backup) and rewrites the entries; kernel updates keep them."),
+                None => crate::i18n::tr("Bootloader não reconhecido (Limine, systemd-boot/sdboot-manage, GRUB ou rEFInd): não dá para editar daqui.").into(),
             })
             .weak(),
         );
@@ -1297,9 +1297,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         }
         ui.horizontal(|ui| {
-            ui.label("Outro:");
-            ui.add(egui::TextEdit::singleline(&mut mu.custom).hint_text("ex.: amd_iommu=on").desired_width(220.0));
-            if ui.small_button("adicionar").clicked() {
+            ui.label(crate::i18n::tr("Outro:"));
+            ui.add(egui::TextEdit::singleline(&mut mu.custom).hint_text(crate::i18n::tr("ex.: amd_iommu=on")).desired_width(220.0));
+            if ui.small_button(crate::i18n::tr("adicionar")).clicked() {
                 let c = mu.custom.trim().to_string();
                 if !c.is_empty() && !c.contains(char::is_whitespace) {
                     mu.sel.insert(c);
@@ -1311,11 +1311,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         let before: BTreeSet<String> = mu.configured.split_whitespace().map(String::from).collect();
         let add: Vec<String> = mu.sel.difference(&before).cloned().collect();
         let rm: Vec<String> = before.difference(&mu.sel).cloned().collect();
-        ui.label(RichText::new(format!("Configurado: {}", mu.configured)).small().monospace());
+        ui.label(RichText::new(crate::tf!("Configurado: {}", "Configured: {}", mu.configured)).small().monospace());
         if !add.is_empty() || !rm.is_empty() {
             ui.label(
-                RichText::new(format!(
-                    "Vai mudar: {}{}",
+                RichText::new(crate::tf!(
+                    "Vai mudar: {}{}", "Will change: {}{}",
                     add.iter().map(|a| format!("+{a} ")).collect::<String>(),
                     rm.iter().map(|a| format!("-{a} ")).collect::<String>()
                 ))
@@ -1324,26 +1324,26 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(mu.loader.is_some() && (!add.is_empty() || !rm.is_empty()), egui::Button::new(RichText::new("Aplicar no boot").strong()))
-                .on_hover_text("Pede a senha, faz backup do arquivo do bootloader e regrava as entradas. Vale depois de reiniciar.")
+                .add_enabled(mu.loader.is_some() && (!add.is_empty() || !rm.is_empty()), egui::Button::new(RichText::new(crate::i18n::tr("Aplicar no boot")).strong()))
+                .on_hover_text(crate::i18n::tr("Pede a senha, faz backup do arquivo do bootloader e regrava as entradas. Vale depois de reiniciar."))
                 .clicked()
             {
                 let mut argv = vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "boot".into(), "cmdline".into(), "apply".into()];
                 argv.extend(add.iter().map(|a| format!("+{a}")));
                 argv.extend(rm.iter().map(|a| format!("-{a}")));
-                job = Some(("Parâmetros do kernel".into(), argv));
+                job = Some((crate::i18n::tr("Parâmetros do kernel").into(), argv));
                 mu.boot_loaded = false;
             }
-            if ui.button("Recarregar").clicked() {
+            if ui.button(crate::i18n::tr("Recarregar")).clicked() {
                 mu.boot_loaded = false;
                 mu.read_at = None;
             }
         });
         let od = numapilot::bootcfg::overdrive_state();
         ui.label(
-            RichText::new(format!(
-                "OverDrive das placas AMD: {} (fica em Configurações e na aba Placas de vídeo).",
-                if od.on_next_boot { "ligado" } else { "desligado" }
+            RichText::new(crate::tf!(
+                "OverDrive das placas AMD: {} (fica em Configurações e na aba Placas de vídeo).", "OverDrive of the AMD cards: {} (found in Settings and in the Graphics cards tab).",
+                if od.on_next_boot { crate::i18n::tr("ligado") } else { crate::i18n::tr("desligado") }
             ))
             .small()
             .weak(),

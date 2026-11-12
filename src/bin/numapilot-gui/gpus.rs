@@ -18,9 +18,9 @@ fn temp_color(t: f64) -> Color32 {
 
 fn temps(ui: &mut egui::Ui, s: &Sensors) {
     for (label, v) in [
-        ("borda", s.edge_c),
+        (crate::i18n::tr("borda"), s.edge_c),
         ("hotspot", s.junction_c),
-        ("memória", s.mem_c),
+        (crate::i18n::tr("memória"), s.mem_c),
     ] {
         if let Some(t) = v {
             ui.label(label.to_string());
@@ -111,7 +111,7 @@ fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f6
         p.text(
             r.center(),
             egui::Align2::CENTER_CENTER,
-            "sem histórico ainda (o serviço grava a cada 30 s)",
+            crate::i18n::tr("sem histórico ainda (o serviço grava a cada 30 s)"),
             small,
             weak,
         );
@@ -160,21 +160,28 @@ fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f6
     p.text(
         full.left_bottom() + egui::vec2(2.0, 0.0),
         egui::Align2::LEFT_BOTTOM,
-        format!("temperatura (máx {maxt:.0} °C)"),
+        crate::tf!(
+            "temperatura (máx {maxt:.0} °C)",
+            "temperature (max {maxt:.0} °C)"
+        ),
         small.clone(),
         Color32::from_rgb(230, 120, 60),
     );
     p.text(
         full.center_bottom(),
         egui::Align2::CENTER_BOTTOM,
-        format!("linha vermelha = 90 °C · últimas {} h", secs / 3600),
+        crate::tf!(
+            "linha vermelha = 90 °C · últimas {} h",
+            "red line = 90 °C · last {} h",
+            secs / 3600
+        ),
         small.clone(),
         weak,
     );
     p.text(
         full.right_bottom() + egui::vec2(-2.0, 0.0),
         egui::Align2::RIGHT_BOTTOM,
-        format!("potência (máx {maxp:.0} W)"),
+        crate::tf!("potência (máx {maxp:.0} W)", "power (max {maxp:.0} W)"),
         small,
         Color32::from_rgb(90, 140, 220),
     );
@@ -194,8 +201,9 @@ fn rebar_ui(ui: &mut egui::Ui, pci: &str) {
     };
     if b.full() {
         ui.label(
-            RichText::new(format!(
+            RichText::new(crate::tf!(
                 "Resizable BAR: ativo ({} visíveis pela CPU)",
+                "Resizable BAR: active ({} visible to the CPU)",
                 gb(b.bar_bytes)
             ))
             .color(Color32::from_rgb(110, 190, 120)),
@@ -203,29 +211,40 @@ fn rebar_ui(ui: &mut egui::Ui, pci: &str) {
         return;
     }
     let nv = numapilot::nvctl::is_nvidia(pci);
-    let mut txt = format!(
+    let mut txt = crate::tf!(
         "Resizable BAR: inativo (a CPU vê {} da VRAM",
+        "Resizable BAR: inactive (the CPU sees {} of the VRAM",
         gb(b.bar_bytes)
     );
     if let Some(v) = b.vram_bytes {
-        txt.push_str(&format!(" de {}", gb(v)));
+        txt.push_str(&crate::tf!(" de {}", " of {}", gb(v)));
     }
     txt.push(')');
     ui.label(RichText::new(txt).color(Color32::from_rgb(230, 160, 40)));
     let advice = if !b.above_4g {
-        "Primeiro passo, na BIOS: ligar \"Above 4G Decoding\" (às vezes chamado de \"64-bit PCI\" ou \"MMIO above 4G\"). Sem isso não dá."
+        crate::i18n::tr(
+            "Primeiro passo, na BIOS: ligar \"Above 4G Decoding\" (às vezes chamado de \"64-bit PCI\" ou \"MMIO above 4G\"). Sem isso não dá.",
+        )
     } else if nv {
-        "Na NVIDIA o driver só usa o BAR grande se a BIOS ligar o Resizable BAR (e a placa for RTX 30 ou mais nova)."
+        crate::i18n::tr(
+            "Na NVIDIA o driver só usa o BAR grande se a BIOS ligar o Resizable BAR (e a placa for RTX 30 ou mais nova).",
+        )
     } else {
-        "Placas AMD: o driver já tenta aumentar sozinho no boot, mesmo com a opção desligada na BIOS. Se não conseguiu, faltou espaço \
-         na janela da ponte PCI: o parâmetro pci=realloc (Máquina → Parâmetros do kernel) pede ao Linux para reorganizar."
+        crate::i18n::tr(
+            "Placas AMD: o driver já tenta aumentar sozinho no boot, mesmo com a opção desligada na BIOS. Se não conseguiu, faltou espaço \
+         na janela da ponte PCI: o parâmetro pci=realloc (Máquina → Parâmetros do kernel) pede ao Linux para reorganizar.",
+        )
     };
     ui.label(RichText::new(advice).small().weak());
     if let Some(m) = b.max_bytes {
         ui.label(
-            RichText::new(format!("A placa aceita até {}.", gb(m)))
-                .small()
-                .weak(),
+            RichText::new(crate::tf!(
+                "A placa aceita até {}.",
+                "The card accepts up to {}.",
+                gb(m)
+            ))
+            .small()
+            .weak(),
         );
     }
 }
@@ -237,14 +256,14 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
         let st = numapilot::bootcfg::overdrive_state();
         ui.horizontal_wrapped(|ui| {
             if st.on_next_boot {
-                ui.label(RichText::new("Clock/voltagem: o OverDrive liga quando você reiniciar o computador.").color(Color32::from_rgb(230, 160, 40)));
+                ui.label(RichText::new(crate::i18n::tr("Clock/voltagem: o OverDrive liga quando você reiniciar o computador.")).color(Color32::from_rgb(230, 160, 40)));
             } else {
-                ui.label(RichText::new("Clock/voltagem (undervolt/overclock): o OverDrive do driver está desligado.").weak());
+                ui.label(RichText::new(crate::i18n::tr("Clock/voltagem (undervolt/overclock): o OverDrive do driver está desligado.")).weak());
                 if ui
-                    .button("Ativar OverDrive")
+                    .button(crate::i18n::tr("Ativar OverDrive"))
                     .on_hover_text(
-                        "Grava a opção do driver amdgpu em /etc/modprobe.d e refaz a imagem de boot. \
-                         Vale para qualquer kernel, inclusive depois de atualizar. Pede a senha; depois é só reiniciar.",
+                        crate::i18n::tr("Grava a opção do driver amdgpu em /etc/modprobe.d e refaz a imagem de boot. \
+                         Vale para qualquer kernel, inclusive depois de atualizar. Pede a senha; depois é só reiniciar."),
                     )
                     .clicked()
                 {
@@ -255,14 +274,18 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
         return;
     };
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Clock e voltagem:").strong());
+        ui.label(RichText::new(crate::i18n::tr("Clock e voltagem:")).strong());
         let mut on = edit.od.is_some();
-        if ui.checkbox(&mut on, "personalizar").changed() {
+        if ui
+            .checkbox(&mut on, crate::i18n::tr("personalizar"))
+            .changed()
+        {
             edit.od = on.then(gpuctl::OdSettings::default);
         }
         ui.label(
-            RichText::new(format!(
+            RichText::new(crate::tf!(
                 "atual: GPU até {} MHz, memória {} MHz, curva {}",
+                "current: GPU up to {} MHz, memory {} MHz, curve {}",
                 od.sclk.iter().map(|x| x.1).max().unwrap_or(0),
                 od.mclk.iter().map(|x| x.1).max().unwrap_or(0),
                 od.curve
@@ -297,7 +320,7 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
             &mut s.sclk_max,
             od.sclk.iter().map(|x| x.1).max().unwrap_or(1801),
             od.range_sclk,
-            "GPU máx.",
+            crate::i18n::tr("GPU máx."),
         );
         ui.add_space(10.0);
         opt(
@@ -305,14 +328,14 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
             &mut s.mclk_max,
             od.mclk.iter().map(|x| x.1).max().unwrap_or(1000),
             od.range_mclk,
-            "memória máx.",
+            crate::i18n::tr("memória máx."),
         );
     });
     if let Some(cur) = od.vddgfx_offset {
         // RDNA2/3/4: undervolt por deslocamento
         ui.horizontal(|ui| {
             let mut on = s.voltage_offset_mv.is_some();
-            ui.checkbox(&mut on, "deslocar a voltagem");
+            ui.checkbox(&mut on, crate::i18n::tr("deslocar a voltagem"));
             let (lo, hi) = od.range_vo.unwrap_or((-200, 0));
             let mut v = s.voltage_offset_mv.unwrap_or(cur);
             ui.add_enabled(
@@ -322,17 +345,21 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
                     .step_by(5.0),
             );
             s.voltage_offset_mv = on.then_some(v);
-            ui.label(RichText::new("negativo = undervolt").small().weak());
+            ui.label(
+                RichText::new(crate::i18n::tr("negativo = undervolt"))
+                    .small()
+                    .weak(),
+            );
         });
     }
     if !od.curve.is_empty() {
         ui.horizontal(|ui| {
         let mut custom = !s.curve.is_empty();
-        if ui.checkbox(&mut custom, "curva de voltagem").changed() {
+        if ui.checkbox(&mut custom, crate::i18n::tr("curva de voltagem")).changed() {
             s.curve = if custom { od.curve.iter().map(|c| (c.1, c.2)).collect() } else { vec![] };
         }
         for mv in [25u32, 50] {
-            if ui.small_button(format!("reduzir {mv} mV")).on_hover_text("Undervolt: mesma frequência com menos voltagem (menos calor e consumo). Teste a estabilidade.").clicked() {
+            if ui.small_button(crate::tf!("reduzir {mv} mV", "reduce {mv} mV")).on_hover_text(crate::i18n::tr("Undervolt: mesma frequência com menos voltagem (menos calor e consumo). Teste a estabilidade.")).clicked() {
                 s.curve = od
                     .curve
                     .iter()
@@ -350,7 +377,7 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
                 .num_columns(3)
                 .show(ui, |ui| {
                     for (i, pt) in s.curve.iter_mut().enumerate() {
-                        ui.label(format!("ponto {}", i + 1));
+                        ui.label(crate::tf!("ponto {}", "point {}", i + 1));
                         let rs = od.range_curve_sclk.get(i).copied().unwrap_or((500, 2500));
                         let rv = od.range_curve_volt.get(i).copied().unwrap_or((700, 1250));
                         ui.add(
@@ -372,7 +399,7 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
         auto_undervolt_button(ui, pci);
     }
     ui.label(
-        RichText::new("Se a placa travar ou o jogo fechar sozinho, volte um passo. Ao reiniciar o PC o serviço reaplica; desmarcar \"personalizar\" volta ao padrão.")
+        RichText::new(crate::i18n::tr("Se a placa travar ou o jogo fechar sozinho, volte um passo. Ao reiniciar o PC o serviço reaplica; desmarcar \"personalizar\" volta ao padrão."))
             .small()
             .color(Color32::from_rgb(230, 160, 40)),
     );
@@ -384,14 +411,14 @@ fn auto_undervolt_button(ui: &mut egui::Ui, pci: &str) {
     ui.horizontal(|ui| {
         let have = numapilot::undervolt::stress_cmd().is_some();
         if ui
-            .add_enabled(have, egui::Button::new("Achar o undervolt sozinho"))
-            .on_hover_text("Testa passo a passo com carga (1 min cada) e grava o último estável com 1 passo de margem. Deixe o PC parado; leva de 10 a 30 min.")
+            .add_enabled(have, egui::Button::new(crate::i18n::tr("Achar o undervolt sozinho")))
+            .on_hover_text(crate::i18n::tr("Testa passo a passo com carga (1 min cada) e grava o último estável com 1 passo de margem. Deixe o PC parado; leva de 10 a 30 min."))
             .clicked()
         {
             let _ = crate::jobs::in_terminal(&[crate::jobs::sibling_abs("numapilot"), "undervolt".into(), pci.to_string()]);
         }
         if !have {
-            ui.label(RichText::new("precisa do vkmark: sudo pacman -S vkmark").small().weak());
+            ui.label(RichText::new(crate::i18n::tr("precisa do vkmark: sudo pacman -S vkmark")).small().weak());
         }
     });
 }
@@ -403,23 +430,29 @@ fn nv_clock_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
         return;
     };
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Clock máximo:").strong());
+        ui.label(RichText::new(crate::i18n::tr("Clock máximo:")).strong());
         let mut on = edit.clock_max_mhz.is_some();
         let hi = g.clock_max_mhz.unwrap_or(2500.0) as u32;
-        if ui.checkbox(&mut on, "travar").changed() {
+        if ui.checkbox(&mut on, crate::i18n::tr("travar")).changed() {
             edit.clock_max_mhz = on.then_some((hi as f64 * 0.85) as u32);
         }
         if let Some(m) = edit.clock_max_mhz.as_mut() {
             ui.add(egui::Slider::new(m, 300..=hi).suffix(" MHz").step_by(15.0));
         } else {
-            ui.label(RichText::new(format!("normal (até {hi} MHz)")).weak());
+            ui.label(
+                RichText::new(crate::tf!(
+                    "normal (até {hi} MHz)",
+                    "normal (up to {hi} MHz)"
+                ))
+                .weak(),
+            );
         }
     });
     ui.horizontal(|ui| {
         ui.label(RichText::new("Undervolt:").strong())
-            .on_hover_text("Desloca a curva clock/voltagem para cima: com o clock máximo travado, a placa chega nele com voltagem menor. Suba de 15 em 15 MHz e teste em jogo; se travar ou der artefato, volte um passo.");
+            .on_hover_text(crate::i18n::tr("Desloca a curva clock/voltagem para cima: com o clock máximo travado, a placa chega nele com voltagem menor. Suba de 15 em 15 MHz e teste em jogo; se travar ou der artefato, volte um passo."));
         let mut on = edit.nv_gpc_offset_mhz.is_some();
-        if ui.checkbox(&mut on, "deslocar a curva").changed() {
+        if ui.checkbox(&mut on, crate::i18n::tr("deslocar a curva")).changed() {
             edit.nv_gpc_offset_mhz = on.then_some(75);
         }
         if let Some(v) = edit.nv_gpc_offset_mhz.as_mut() {
@@ -427,9 +460,9 @@ fn nv_clock_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
         }
     });
     ui.horizontal(|ui| {
-        ui.label("Memória:");
+        ui.label(crate::i18n::tr("Memória:"));
         let mut on = edit.nv_mem_offset_mhz.is_some();
-        if ui.checkbox(&mut on, "deslocar").changed() {
+        if ui.checkbox(&mut on, crate::i18n::tr("deslocar")).changed() {
             edit.nv_mem_offset_mhz = on.then_some(0);
         }
         if let Some(v) = edit.nv_mem_offset_mhz.as_mut() {
@@ -443,14 +476,14 @@ fn nv_clock_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
     auto_undervolt_button(ui, pci);
     if edit.nv_gpc_offset_mhz.is_some_and(|v| v > 0) && edit.clock_max_mhz.is_none() {
         ui.label(
-            RichText::new("Sem travar o clock máximo, o deslocamento vira overclock (mais clock, mesma voltagem). Para undervolt, trave o clock também.")
+            RichText::new(crate::i18n::tr("Sem travar o clock máximo, o deslocamento vira overclock (mais clock, mesma voltagem). Para undervolt, trave o clock também."))
                 .small()
                 .color(Color32::from_rgb(230, 160, 40)),
         );
     }
     ui.label(
         RichText::new(
-            "Undervolt na NVIDIA: trave o clock (ex.: 1800 MHz) e desloque a curva (+100 a +200 MHz): mesmo FPS gastando e esquentando menos. O botão \"Achar sozinho\" testa os passos por você.",
+            crate::i18n::tr("Undervolt na NVIDIA: trave o clock (ex.: 1800 MHz) e desloque a curva (+100 a +200 MHz): mesmo FPS gastando e esquentando menos. O botão \"Achar sozinho\" testa os passos por você."),
         )
         .small()
         .weak(),
@@ -477,45 +510,45 @@ fn nv_driver_panel(app: &mut App, ui: &mut egui::Ui) {
     egui::Frame::group(ui.style()).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Driver NVIDIA").strong());
+            ui.label(RichText::new(crate::i18n::tr("Driver NVIDIA")).strong());
             if let Some(b) = &st.branch {
-                ui.label(RichText::new(format!("indicado para a sua placa: {}", b.label())).weak());
+                ui.label(RichText::new(crate::tf!("indicado para a sua placa: {}", "recommended for your card: {}", b.label())).weak());
             }
         });
-        ui.label(format!(
-            "Carregado: {}   Instalado: {}   No repositório: {}",
+        ui.label(crate::tf!(
+            "Carregado: {}   Instalado: {}   No repositório: {}", "Loaded: {}   Installed: {}   In the repository: {}",
             st.loaded.clone().unwrap_or("nenhum".into()),
-            st.installed.clone().unwrap_or("não".into()),
+            st.installed.clone().unwrap_or(crate::i18n::tr("não").into()),
             st.available.clone().unwrap_or("?".into())
         ));
         if st.nouveau {
-            ui.label(RichText::new("Usando o nouveau (driver aberto da comunidade): sem desempenho para jogos.").color(Color32::from_rgb(230, 160, 40)));
+            ui.label(RichText::new(crate::i18n::tr("Usando o nouveau (driver aberto da comunidade): sem desempenho para jogos.")).color(Color32::from_rgb(230, 160, 40)));
         }
         if st.needs_reboot {
-            ui.label(RichText::new("O driver instalado é mais novo que o carregado: reinicie.").color(Color32::from_rgb(230, 160, 40)));
+            ui.label(RichText::new(crate::i18n::tr("O driver instalado é mais novo que o carregado: reinicie.")).color(Color32::from_rgb(230, 160, 40)));
         }
         let newer = matches!((&st.installed, &st.available), (Some(i), Some(a)) if i != a);
         ui.horizontal(|ui| {
-            let label = if st.installed.is_some() { "Reinstalar driver oficial" } else { "Instalar driver oficial" };
+            let label = if st.installed.is_some() { crate::i18n::tr("Reinstalar driver oficial") } else { crate::i18n::tr("Instalar driver oficial") };
             if ui
                 .button(RichText::new(label).strong())
-                .on_hover_text("Atualiza o sistema e instala o driver certo para a geração da placa (pelo chwd do CachyOS). Pede a senha; depois reinicie.")
+                .on_hover_text(crate::i18n::tr("Atualiza o sistema e instala o driver certo para a geração da placa (pelo chwd do CachyOS). Pede a senha; depois reinicie."))
                 .clicked()
             {
-                app.start_job("Driver NVIDIA", vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "driver".into(), "install".into()]);
+                app.start_job(crate::i18n::tr("Driver NVIDIA"), vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "driver".into(), "install".into()]);
                 app.nv_status = None;
             }
             if st.installed.is_some()
                 && ui
-                    .add_enabled(newer, egui::Button::new("Atualizar"))
-                    .on_hover_text("No CachyOS o driver atualiza junto com o sistema (pacman -Syu). Pede a senha.")
+                    .add_enabled(newer, egui::Button::new(crate::i18n::tr("Atualizar")))
+                    .on_hover_text(crate::i18n::tr("No CachyOS o driver atualiza junto com o sistema (pacman -Syu). Pede a senha."))
                     .clicked()
             {
-                app.start_job("Atualizando sistema e driver", vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "driver".into(), "update".into()]);
+                app.start_job(crate::i18n::tr("Atualizando sistema e driver"), vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "driver".into(), "update".into()]);
                 app.nv_status = None;
             }
             if !newer && st.installed.is_some() {
-                ui.label(RichText::new("em dia").color(Color32::from_rgb(90, 180, 110)));
+                ui.label(RichText::new(crate::i18n::tr("em dia")).color(Color32::from_rgb(90, 180, 110)));
             }
         });
     });
@@ -531,26 +564,27 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
             .iter()
             .map(|u| match u.as_str() {
                 "fsr4" => "FSR 4",
-                "fsr4-rdna3" => "FSR 4 (via vkd3d-proton)",
+                "fsr4-rdna3" => crate::i18n::tr("FSR 4 (via vkd3d-proton)"),
                 "fsr4-int8-experimental" => "FSR 4 INT8 (experimental)",
                 "fsr3" => "FSR 3.1 (OptiScaler)",
                 "xess" => "XeSS",
                 "dlss" => "DLSS",
                 "fsr1-gamescope" => "FSR 1 (gamescope)",
-                "lsfg" => "geração de quadros (lsfg-vk)",
+                "lsfg" => crate::i18n::tr("geração de quadros (lsfg-vk)"),
                 o => o,
             })
             .collect();
         let compute = match a.compute.as_str() {
-            "rocm" => "ROCm oficial",
-            "rocm-comunidade" => "ROCm da comunidade",
+            "rocm" => crate::i18n::tr("ROCm oficial"),
+            "rocm-comunidade" => crate::i18n::tr("ROCm da comunidade"),
             "vulkan" => "Vulkan (llama.cpp)",
             "cuda" => "CUDA",
             o => o,
         };
         ui.label(
-            RichText::new(format!(
+            RichText::new(crate::tf!(
                 "{} · IA: {compute} · upscaling: {}",
+                "{} · AI: {compute} · upscaling: {}",
                 a.family,
                 up.join(", ")
             ))
@@ -564,7 +598,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
     if b.notes.is_empty() && b.governor_services.is_empty() {
         return;
     }
-    egui::CollapsingHeader::new(RichText::new(format!("{}: ajustes da comunidade", b.name)).strong())
+    egui::CollapsingHeader::new(RichText::new(crate::tf!("{}: ajustes da comunidade", "{}: community tweaks", b.name)).strong())
         .id_salt(format!("board-{}", g.pci))
         .default_open(!b.governor_services.is_empty())
         .show(ui, |ui| {
@@ -576,20 +610,20 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                 let sv = numapilot::boards::services(&b);
                 match sv.iter().find(|s| s.active) {
                     Some(s) => {
-                        ui.label(RichText::new(format!("Governor de clock: {} rodando", s.name)).color(Color32::from_rgb(110, 190, 120)));
+                        ui.label(RichText::new(crate::tf!("Governor de clock: {} rodando", "Clock governor: {} running", s.name)).color(Color32::from_rgb(110, 190, 120)));
                     }
                     None => {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Nenhum governor rodando: a GPU fica com clock fixo.").color(Color32::from_rgb(230, 160, 40)));
+                            ui.label(RichText::new(crate::i18n::tr("Nenhum governor rodando: a GPU fica com clock fixo.")).color(Color32::from_rgb(230, 160, 40)));
                             if let Some(s) = sv.iter().find(|s| s.installed) {
-                                if ui.button(format!("Ligar {}", s.name)).clicked() {
+                                if ui.button(crate::tf!("Ligar {}", "Enable {}", s.name)).clicked() {
                                     app.start_job(
                                         "Governor",
                                         vec!["pkexec".into(), "systemctl".into(), "enable".into(), "--now".into(), format!("{}.service", s.name)],
                                     );
                                 }
                             } else if let Some(pkg) = b.governor_aur.first()
-                                && ui.button("Instalar o governor (AUR)").on_hover_text("Abre um terminal com o paru/yay").clicked()
+                                && ui.button(crate::i18n::tr("Instalar o governor (AUR)")).on_hover_text(crate::i18n::tr("Abre um terminal com o paru/yay")).clicked()
                             {
                                 let helper = if numapilot::containers::which("paru") { "paru" } else { "yay" };
                                 if let Err(e) = crate::jobs::in_terminal(&[helper.into(), "-S".into(), pkg.clone()]) {
@@ -605,7 +639,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                         app.board_edit = numapilot::boards::fields(&text).ok().map(|f| (path.clone(), text.clone(), f));
                     }
                     if let Some((_, orig, fields)) = app.board_edit.as_mut() {
-                        ui.label(RichText::new(format!("Configuração: {path}")).small().weak());
+                        ui.label(RichText::new(crate::tf!("Configuração: {path}", "Configuration: {path}")).small().weak());
                         let before = numapilot::boards::fields(orig).unwrap_or_default();
                         egui::Grid::new(format!("gov-{}", g.pci)).num_columns(2).show(ui, |ui| {
                             for f in fields.iter_mut() {
@@ -637,18 +671,18 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                         let mut save = None;
                         ui.horizontal(|ui| {
                             if ui
-                                .add_enabled(changed, egui::Button::new("Salvar e reiniciar o governor"))
-                                .on_hover_text("Faz backup da configuração, grava a nova e reinicia o serviço; se ele não subir, volta a anterior. Pede a senha.")
+                                .add_enabled(changed, egui::Button::new(crate::i18n::tr("Salvar e reiniciar o governor")))
+                                .on_hover_text(crate::i18n::tr("Faz backup da configuração, grava a nova e reinicia o serviço; se ele não subir, volta a anterior. Pede a senha."))
                                 .clicked()
                             {
                                 save = numapilot::boards::apply_fields(orig, fields).ok();
                             }
-                            if ui.add_enabled(changed, egui::Button::new("Desfazer")).clicked() {
+                            if ui.add_enabled(changed, egui::Button::new(crate::i18n::tr("Desfazer"))).clicked() {
                                 *fields = before.clone();
                             }
                         });
                         ui.label(
-                            RichText::new("Suba o clock e a voltagem aos poucos e teste a estabilidade (ex.: Unigine Superposition) a cada passo.")
+                            RichText::new(crate::i18n::tr("Suba o clock e a voltagem aos poucos e teste a estabilidade (ex.: Unigine Superposition) a cada passo."))
                                 .small()
                                 .color(Color32::from_rgb(230, 160, 40)),
                         );
@@ -657,7 +691,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                             match std::fs::write(&tmp, newtext) {
                                 Ok(()) => {
                                     app.start_job(
-                                        "Governor da GPU",
+                                        crate::i18n::tr("Governor da GPU"),
                                         vec![
                                             "pkexec".into(),
                                             crate::jobs::sibling_abs("numapilot"),
@@ -685,12 +719,12 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                             .map(|m| format!(" · {:.2} GHz", m as f64 / 1000.0))
                             .unwrap_or_default();
                         ui.label(RichText::new("CPU").strong());
-                        ui.label(RichText::new(format!("{n} de {full} núcleos{mhz}")).color(if n >= full { ok } else { ui.visuals().text_color() }));
+                        ui.label(RichText::new(crate::tf!("{n} de {full} núcleos{mhz}", "{n} of {full} cores{mhz}")).color(if n >= full { ok } else { ui.visuals().text_color() }));
                         ui.end_row();
                         ui.label("");
                         let txt = match numapilot::boards::core_unlock_persistence(n, full, numapilot::boards::efi_core_unlock()) {
-                            Some(p) => format!("desbloqueados: {p}"),
-                            None => format!("de fábrica: {stock}; dá para desbloquear pelo BC250 Control Center"),
+                            Some(p) => crate::tf!("desbloqueados: {p}", "unlocked: {p}"),
+                            None => crate::tf!("de fábrica: {stock}; dá para desbloquear pelo BC250 Control Center", "factory: {stock}; can be unlocked with BC250 Control Center"),
                         };
                         ui.label(RichText::new(txt).small().weak());
                         ui.end_row();
@@ -703,19 +737,19 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                         ui.label(RichText::new("GPU").strong());
                         match numapilot::boards::cu_now() {
                             Some((n, src)) => {
-                                ui.label(RichText::new(format!("{n} de {full} CUs{clock}")).color(if n >= full { ok } else { ui.visuals().text_color() }));
+                                ui.label(RichText::new(crate::tf!("{n} de {full} CUs{clock}", "{n} of {full} CUs{clock}")).color(if n >= full { ok } else { ui.visuals().text_color() }));
                                 ui.end_row();
                                 ui.label("");
                                 let mut txt = src.text().to_string();
                                 if src == numapilot::boards::CuSource::Kernel {
                                     txt.push_str(" (bc250_cc_write_mode=3): não use o desbloqueio ao vivo junto");
                                 } else if src == numapilot::boards::CuSource::Boot && n < full {
-                                    txt.push_str(&format!(" (de fábrica: {stock}); desbloqueio ao vivo aparece aqui depois de uma leitura no BC250 Control Center"));
+                                    txt.push_str(&crate::tf!(" (de fábrica: {stock}); desbloqueio ao vivo aparece aqui depois de uma leitura no BC250 Control Center", " (factory: {stock}); the live unlock shows up here after a reading in BC250 Control Center"));
                                 }
                                 ui.label(RichText::new(txt).small().weak());
                             }
                             None => {
-                                ui.label(format!("CUs desconhecidos{clock}"));
+                                ui.label(crate::tf!("CUs desconhecidos{clock}", "CUs unknown{clock}"));
                             }
                         }
                         ui.end_row();
@@ -739,17 +773,17 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new(format!("★ {}", a.name)).strong().size(15.0));
-                                ui.label(RichText::new("recomendado").small().color(ok));
+                                ui.label(RichText::new(crate::i18n::tr("recomendado")).small().color(ok));
                             });
                             ui.label(RichText::new(&a.about).small());
                             app_buttons(app, ui, a, helper, &mut run, true);
                         });
                 }
                 if !rest.is_empty() {
-                    egui::CollapsingHeader::new(format!("Outros programas da comunidade ({})", rest.len()))
+                    egui::CollapsingHeader::new(crate::tf!("Outros programas da comunidade ({})", "Other community programs ({})", rest.len()))
                         .id_salt(format!("outros-{}", g.pci))
                         .show(ui, |ui| {
-                            ui.label(RichText::new("Instalados do código mais novo de quem mantém (AUR -git ou git); \"Atualizar\" baixa de novo.").small().weak());
+                            ui.label(RichText::new(crate::i18n::tr("Instalados do código mais novo de quem mantém (AUR -git ou git); \"Atualizar\" baixa de novo.")).small().weak());
                             for a in &rest {
                                 ui.add_space(4.0);
                                 ui.label(RichText::new(&a.name).strong());
@@ -759,7 +793,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                         });
                 }
                 if let Some((name, cmd)) = run {
-                    numapilot::log::info(&format!("programa da comunidade {name}: {}", cmd.join(" ")));
+                    numapilot::log::info(&crate::tf!("programa da comunidade {name}: {}", "community program {name}: {}", cmd.join(" ")));
                     if let Err(e) = crate::jobs::in_terminal(&cmd) {
                         app.toast(e, false);
                     }
@@ -767,7 +801,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                 ui.add_space(4.0);
             }
             if let Some(d) = &b.docs
-                && ui.small_button("Guia da comunidade").clicked()
+                && ui.small_button(crate::i18n::tr("Guia da comunidade")).clicked()
             {
                 let _ = crate::jobs::open_url(d);
             }
@@ -802,8 +836,9 @@ fn first_setup_ui(
     let p = crate::theme::pal(ui);
     let todo = steps.iter().any(|s| s.state == StepState::Todo);
     egui::CollapsingHeader::new(
-        RichText::new(format!(
+        RichText::new(crate::tf!(
             "Primeira configuração: {}",
+            "First setup: {}",
             numapilot::boards::setup_summary(&steps)
         ))
         .color(if todo { p.warn } else { p.ok }),
@@ -820,7 +855,7 @@ fn first_setup_ui(
             ui.horizontal_wrapped(|ui| {
                 let (tag, c) = match s.state {
                     StepState::Ok => ("pronto", p.ok),
-                    StepState::Todo => ("falta", p.warn),
+                    StepState::Todo => (crate::i18n::tr("falta"), p.warn),
                     StepState::Opcional => ("opcional", p.weak),
                 };
                 crate::theme::chip(ui, tag, c);
@@ -828,7 +863,10 @@ fn first_setup_ui(
                 ui.label(RichText::new(&s.detail).small().weak());
                 match &s.action {
                     Some(StepAction::EnableService(name)) => {
-                        if ui.small_button("Ligar (pede a senha)").clicked() {
+                        if ui
+                            .small_button(crate::i18n::tr("Ligar (pede a senha)"))
+                            .clicked()
+                        {
                             app.start_job(
                                 "Governor",
                                 vec![
@@ -842,7 +880,7 @@ fn first_setup_ui(
                         }
                     }
                     Some(StepAction::InstallAur(pkg)) => {
-                        if ui.small_button("Instalar (AUR)").clicked()
+                        if ui.small_button(crate::i18n::tr("Instalar (AUR)")).clicked()
                             && let Err(e) =
                                 crate::jobs::in_terminal(&[helper.into(), "-S".into(), pkg.clone()])
                         {
@@ -850,7 +888,7 @@ fn first_setup_ui(
                         }
                     }
                     Some(StepAction::InstallApp(name)) => {
-                        if ui.small_button("Instalar").clicked()
+                        if ui.small_button(crate::i18n::tr("Instalar")).clicked()
                             && let Some(cmd) = b
                                 .apps
                                 .iter()
@@ -863,7 +901,7 @@ fn first_setup_ui(
                     }
                     Some(StepAction::GpuMemory) => {
                         ui.label(
-                            RichText::new("(seção mais abaixo nesta aba)")
+                            RichText::new(crate::i18n::tr("(seção mais abaixo nesta aba)"))
                                 .small()
                                 .weak(),
                         );
@@ -873,9 +911,11 @@ fn first_setup_ui(
             });
         }
         ui.label(
-            RichText::new("Na linha de comando: numapilot board setup")
-                .small()
-                .weak(),
+            RichText::new(crate::i18n::tr(
+                "Na linha de comando: numapilot board setup",
+            ))
+            .small()
+            .weak(),
         );
     });
     ui.add_space(4.0);
@@ -894,9 +934,9 @@ fn app_buttons(
         let installed = bin.is_some() || a.installed();
         if let Some(bin) = &bin {
             let b = egui::Button::new(if big {
-                "⚙ Gerenciar núcleos, CUs, frequências e voltagens".to_string()
+                crate::i18n::tr("⚙ Gerenciar núcleos, CUs, frequências e voltagens").to_string()
             } else {
-                format!("Abrir {}", a.name)
+                crate::tf!("Abrir {}", "Open {}", a.name)
             });
             if ui.add(if big { b.min_size(egui::vec2(0.0, 28.0)) } else { b }).clicked()
                 && let Err(e) = std::process::Command::new(bin).spawn()
@@ -906,13 +946,13 @@ fn app_buttons(
         }
         if a.installable() {
             let (label, hover) = if installed {
-                ("Atualizar", "Baixa e instala a versão mais nova de quem mantém (num terminal; pode pedir a senha)")
+                (crate::i18n::tr("Atualizar"), crate::i18n::tr("Baixa e instala a versão mais nova de quem mantém (num terminal; pode pedir a senha)"))
             } else if big {
-                ("Instalar o BC250 Control Center", "Instala pelo AUR (pacote -git do autor) num terminal; pode pedir a senha. Depois este botão vira \"Gerenciar núcleos, CUs, frequências\"")
+                (crate::i18n::tr("Instalar o BC250 Control Center"), crate::i18n::tr("Instala pelo AUR (pacote -git do autor) num terminal; pode pedir a senha. Depois este botão vira \"Gerenciar núcleos, CUs, frequências\""))
             } else if a.aur.is_some() {
-                ("Instalar", "Instala pelo AUR (paru/yay) num terminal; pode pedir a senha")
+                (crate::i18n::tr("Instalar"), crate::i18n::tr("Instala pelo AUR (paru/yay) num terminal; pode pedir a senha"))
             } else {
-                ("Instalar", "Baixa o código (git) em ~/.local/share/numapilot/comunidade e cria os comandos em ~/.local/bin, num terminal")
+                (crate::i18n::tr("Instalar"), crate::i18n::tr("Baixa o código (git) em ~/.local/share/numapilot/comunidade e cria os comandos em ~/.local/bin, num terminal"))
             };
             let b = egui::Button::new(label);
             if ui.add(if big && !installed { b.min_size(egui::vec2(0.0, 28.0)) } else { b }).on_hover_text(hover).clicked()
@@ -922,12 +962,12 @@ fn app_buttons(
             }
         }
         if let Some(u) = &a.url
-            && ui.small_button("página").clicked()
+            && ui.small_button(crate::i18n::tr("página")).clicked()
         {
             let _ = crate::jobs::open_url(u);
         }
         if !installed && !a.installable() {
-            ui.label(RichText::new("instalação manual (veja a página)").small().weak());
+            ui.label(RichText::new(crate::i18n::tr("instalação manual (veja a página)")).small().weak());
         }
     });
 }
@@ -939,13 +979,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     }
     ui.label(
         RichText::new(
-            "Temperatura, ventoinha e potência de cada placa. Quem aplica é o serviço numapilot; \
-             se ele parar, as ventoinhas voltam para o controle da própria placa. Acima de 95 °C a ventoinha vai a 100%.",
+            crate::i18n::tr("Temperatura, ventoinha e potência de cada placa. Quem aplica é o serviço numapilot; \
+             se ele parar, as ventoinhas voltam para o controle da própria placa. Acima de 95 °C a ventoinha vai a 100%."),
         )
         .weak(),
     );
     ui.horizontal(|ui| {
-        ui.label("Histórico:");
+        ui.label(crate::i18n::tr("Histórico:"));
         for (s, l) in [(3600u64, "1 h"), (6 * 3600, "6 h"), (24 * 3600, "24 h")] {
             ui.selectable_value(&mut app.hist_secs, s, l);
         }
@@ -977,8 +1017,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     );
                     if topo_n > 1
                         && ui
-                            .small_button("Testar a escolha desta placa")
-                            .on_hover_text("Roda o vulkaninfo e o glxinfo como um jogo rodaria nesta placa e mostra qual placa respondeu (Vulkan/DirectX e OpenGL).")
+                            .small_button(crate::i18n::tr("Testar a escolha desta placa"))
+                            .on_hover_text(crate::i18n::tr("Roda o vulkaninfo e o glxinfo como um jogo rodaria nesta placa e mostra qual placa respondeu (Vulkan/DirectX e OpenGL)."))
                             .clicked()
                     {
                         test_gpu = Some(g.alias.clone());
@@ -988,7 +1028,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     temps(ui, &s);
                     ui.separator();
                     if let Some(rpm) = s.fan_rpm {
-                        ui.label(format!("ventoinha {rpm} RPM"));
+                        ui.label(crate::tf!("ventoinha {rpm} RPM", "fan {rpm} RPM"));
                     }
                     if let Some(p) = s.fan_pct {
                         ui.label(format!("({p:.0}%)"));
@@ -1001,10 +1041,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.label(format!("{c:.0} MHz"));
                     }
                     if let Some(c) = s.power_cap_w {
-                        ui.label(RichText::new(format!("limite {c:.0} W")).weak());
+                        ui.label(RichText::new(crate::tf!("limite {c:.0} W", "limit {c:.0} W")).weak());
                     }
                     ui.separator();
-                    ui.label(format!("uso {}%", g.busy_percent().unwrap_or(0)));
+                    ui.label(crate::tf!("uso {}%", "usage {}%", g.busy_percent().unwrap_or(0)));
                     if let Some((u, t)) = g.vram_used_total() {
                         ui.label(format!("VRAM {:.1}/{:.0} GB", u as f64 / 1073741824.0, t as f64 / 1073741824.0));
                     }
@@ -1013,18 +1053,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 apu_memory_ui(app, ui, g);
                 ui.horizontal_wrapped(|ui| {
                     if let Some(l) = gpuctl::pcie_link(&g.pci) {
-                        let txt = format!("PCIe Gen{} x{} (máx. Gen{} x{})", l.generation, l.width, l.max_gen, l.max_width);
+                        let txt = crate::tf!("PCIe Gen{} x{} (máx. Gen{} x{})", "PCIe Gen{} x{} (max Gen{} x{})", l.generation, l.width, l.max_gen, l.max_width);
                         if l.width < l.max_width {
-                            ui.label(RichText::new(format!("{txt}: link mais estreito que o possível; confira o slot e a BIOS")).color(Color32::from_rgb(230, 160, 40)));
+                            ui.label(RichText::new(crate::tf!("{txt}: link mais estreito que o possível; confira o slot e a BIOS", "{txt}: link narrower than possible; check the slot and the BIOS")).color(Color32::from_rgb(230, 160, 40)));
                         } else {
-                            ui.label(RichText::new(txt).weak()).on_hover_text("A geração cai quando a placa está parada (economia); confira com ela em uso.");
+                            ui.label(RichText::new(txt).weak()).on_hover_text(crate::i18n::tr("A geração cai quando a placa está parada (economia); confira com ela em uso."));
                         }
                     }
                     if let Some((list, Some(a))) = gpuctl::power_profiles(&g.pci)
                         && let Some((_, n)) = list.iter().find(|(i, _)| *i == a)
                     {
-                        ui.label(RichText::new(format!("· perfil de energia {n}")).weak())
-                            .on_hover_text("Muda sozinho conforme o programa (Ajustar… → Perfil de energia da placa).");
+                        ui.label(RichText::new(crate::tf!("· perfil de energia {n}", "· power profile {n}")).weak())
+                            .on_hover_text(crate::i18n::tr("Muda sozinho conforme o programa (Ajustar… → Perfil de energia da placa)."));
                     }
                 });
                 if let Some(h) = &hist
@@ -1034,36 +1074,36 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
                 if g.is_nvidia() {
                     if numapilot::nvctl::driver_version().is_none() {
-                        ui.label(RichText::new("O driver oficial da NVIDIA não está carregado: sem sensores nem controles.").color(Color32::from_rgb(230, 160, 40)));
+                        ui.label(RichText::new(crate::i18n::tr("O driver oficial da NVIDIA não está carregado: sem sensores nem controles.")).color(Color32::from_rgb(230, 160, 40)));
                         return;
                     }
                     if numapilot::nvctl::asleep(&g.pci) {
                         ui.label(
-                            RichText::new("Dormindo para economizar energia: acorda sozinha quando um programa usa a placa. Os controles aparecem com ela ligada.")
+                            RichText::new(crate::i18n::tr("Dormindo para economizar energia: acorda sozinha quando um programa usa a placa. Os controles aparecem com ela ligada."))
                                 .weak(),
                         );
                         return;
                     }
                 }
                 if !s.fan_controllable && !s.fw_fan_curve && s.power_cap_max_w.is_none() && gpuctl::read_od(&g.pci).is_none() && !g.is_nvidia() && gpuctl::intel_freq(&g.pci).is_none() {
-                    ui.label(RichText::new("O driver não expõe controles de ventoinha/potência para esta placa.").weak());
+                    ui.label(RichText::new(crate::i18n::tr("O driver não expõe controles de ventoinha/potência para esta placa.")).weak());
                     return;
                 }
                 let edit = app.gpu_edit.entry(g.pci.clone()).or_insert_with(|| saved.clone());
                 ui.add_space(4.0);
                 if s.fan_controllable || s.fw_fan_curve {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Ventoinha:").strong());
+                        ui.label(RichText::new(crate::i18n::tr("Ventoinha:")).strong());
                         if s.fw_fan_curve {
-                            ui.label(RichText::new("(curva gravada no firmware da placa)").small().weak());
+                            ui.label(RichText::new(crate::i18n::tr("(curva gravada no firmware da placa)")).small().weak());
                         }
-                        ui.radio_value(&mut edit.fan, FanMode::Auto, "da placa (automática)");
-                        ui.radio_value(&mut edit.fan, FanMode::Curve, "curva");
-                        ui.radio_value(&mut edit.fan, FanMode::Fixed, "fixa");
+                        ui.radio_value(&mut edit.fan, FanMode::Auto, crate::i18n::tr("da placa (automática)"));
+                        ui.radio_value(&mut edit.fan, FanMode::Curve, crate::i18n::tr("curva"));
+                        ui.radio_value(&mut edit.fan, FanMode::Fixed, crate::i18n::tr("fixa"));
                     });
                     match edit.fan {
                         FanMode::Fixed => {
-                            ui.add(egui::Slider::new(&mut edit.fixed_pct, 0.0..=100.0).suffix("%").text("velocidade"));
+                            ui.add(egui::Slider::new(&mut edit.fixed_pct, 0.0..=100.0).suffix("%").text(crate::i18n::tr("velocidade")));
                         }
                         FanMode::Curve => {
                             ui.horizontal(|ui| {
@@ -1085,11 +1125,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                         }
                                     });
                                     ui.horizontal(|ui| {
-                                        if ui.small_button("+ ponto").clicked() {
+                                        if ui.small_button(crate::i18n::tr("+ ponto")).clicked() {
                                             let last = edit.curve.last().copied().unwrap_or((70.0, 60.0));
                                             edit.curve.push(((last.0 + 5.0).min(100.0), last.1));
                                         }
-                                        if ui.small_button("curva padrão").clicked() {
+                                        if ui.small_button(crate::i18n::tr("curva padrão")).clicked() {
                                             edit.curve = default_curve();
                                         }
                                     });
@@ -1101,15 +1141,15 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
                 if let (Some(lo), Some(hi)) = (s.power_cap_min_w, s.power_cap_max_w) {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Potência:").strong());
+                        ui.label(RichText::new(crate::i18n::tr("Potência:")).strong());
                         let mut on = edit.power_cap_w.is_some();
-                        if ui.checkbox(&mut on, "limitar").changed() {
+                        if ui.checkbox(&mut on, crate::i18n::tr("limitar")).changed() {
                             edit.power_cap_w = if on { Some(s.power_cap_w.unwrap_or(hi).round()) } else { None };
                         }
                         if let Some(w) = edit.power_cap_w.as_mut() {
                             ui.add(egui::Slider::new(w, lo.round()..=hi.round()).suffix(" W").step_by(5.0));
                         } else {
-                            ui.label(RichText::new("padrão da placa").weak());
+                            ui.label(RichText::new(crate::i18n::tr("padrão da placa")).weak());
                         }
                     });
                 }
@@ -1118,32 +1158,32 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     nv_clock_ui(ui, &g.pci, edit);
                 } else if let Some((cur, _, _, lo, hi)) = gpuctl::intel_freq(&g.pci) {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Frequência máxima:").strong());
+                        ui.label(RichText::new(crate::i18n::tr("Frequência máxima:")).strong());
                         let mut on = edit.clock_max_mhz.is_some();
-                        if ui.checkbox(&mut on, "limitar").changed() {
+                        if ui.checkbox(&mut on, crate::i18n::tr("limitar")).changed() {
                             edit.clock_max_mhz = on.then_some(hi * 3 / 4);
                         }
                         if let Some(m) = edit.clock_max_mhz.as_mut() {
                             ui.add(egui::Slider::new(m, lo.max(100)..=hi).suffix(" MHz").step_by(50.0));
                         } else {
-                            ui.label(RichText::new(format!("de fábrica (até {hi} MHz)")).weak());
+                            ui.label(RichText::new(crate::tf!("de fábrica (até {hi} MHz)", "factory (up to {hi} MHz)")).weak());
                         }
-                        ui.label(RichText::new(format!("agora {cur} MHz")).weak());
+                        ui.label(RichText::new(crate::tf!("agora {cur} MHz", "now {cur} MHz")).weak());
                     });
                 } else {
                     od_ui(ui, &g.pci, edit, &mut boot_job);
                 }
                 if g.vendor == 0x1002 && !g.is_integrated() {
-                    ui.checkbox(&mut edit.idle_save, "Economia quando parada")
-                        .on_hover_text("Parada há 1 min, a placa fica no nível mais baixo de clock e voltagem até voltar a ser usada. Ajuda nas MI50, que gastam bastante paradas; o primeiro pedido depois demora uma fração de segundo a mais.");
+                    ui.checkbox(&mut edit.idle_save, crate::i18n::tr("Economia quando parada"))
+                        .on_hover_text(crate::i18n::tr("Parada há 1 min, a placa fica no nível mais baixo de clock e voltagem até voltar a ser usada. Ajuda nas MI50, que gastam bastante paradas; o primeiro pedido depois demora uma fração de segundo a mais."));
                 }
                 let changed = *edit != saved;
                 let edit_c = edit.clone();
                 ui.horizontal(|ui| {
-                    if ui.add_enabled(changed, egui::Button::new("Aplicar")).clicked() {
+                    if ui.add_enabled(changed, egui::Button::new(crate::i18n::tr("Aplicar"))).clicked() {
                         app.pending_gpu = Some((g.pci.clone(), edit_c.clone()));
                     }
-                    if ui.add_enabled(changed, egui::Button::new("Desfazer")).clicked() {
+                    if ui.add_enabled(changed, egui::Button::new(crate::i18n::tr("Desfazer"))).clicked() {
                         app.gpu_edit.insert(g.pci.clone(), saved.clone());
                     }
                 });
@@ -1152,7 +1192,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
         if let Some(alias) = test_gpu {
             app.start_job(
-                "Testar a escolha da placa",
+                crate::i18n::tr("Testar a escolha da placa"),
                 vec![
                     crate::jobs::sibling_abs("numapilot"),
                     "gpu-test".into(),
@@ -1164,9 +1204,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     if let Some(on) = boot_job {
         app.start_job(
             if on {
-                "Ativando o OverDrive"
+                crate::i18n::tr("Ativando o OverDrive")
             } else {
-                "Desativando o OverDrive"
+                crate::i18n::tr("Desativando o OverDrive")
             },
             vec![
                 "pkexec".into(),
@@ -1208,36 +1248,36 @@ fn apu_memory_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
     let now = bootcfg::ttm_now().map(gib);
     let saved = bootcfg::saved_ttm().map(gib);
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Memória para a GPU (IA):").strong())
-            .on_hover_text("Quanto da RAM a GPU integrada pode usar. O padrão do kernel é a metade, o que impede modelos grandes de carregar. Deixe 1-2 GiB para o sistema.");
+        ui.label(RichText::new(crate::i18n::tr("Memória para a GPU (IA):")).strong())
+            .on_hover_text(crate::i18n::tr("Quanto da RAM a GPU integrada pode usar. O padrão do kernel é a metade, o que impede modelos grandes de carregar. Deixe 1-2 GiB para o sistema."));
         let id = ui.scope_id().with(("apumem", &g.pci));
         let mut v: f64 = ui.data(|d| d.get_temp(id)).unwrap_or(saved.or(now).unwrap_or(total / 2.0).min(total - 1.0));
         ui.add(egui::Slider::new(&mut v, 2.0..=(total - 1.0).max(2.0)).suffix(" GiB").step_by(0.5).fixed_decimals(1));
         ui.data_mut(|d| d.insert_temp(id, v));
-        if ui.button("Aplicar").on_hover_text("Grava para os próximos boots e aplica agora (pede a senha)").clicked() {
+        if ui.button(crate::i18n::tr("Aplicar")).on_hover_text(crate::i18n::tr("Grava para os próximos boots e aplica agora (pede a senha)")).clicked() {
             app.start_job(
-                "Memória da GPU",
+                crate::i18n::tr("Memória da GPU"),
                 vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "boot".into(), "gpu-memory".into(), format!("{v:.1}")],
             );
         }
-        if saved.is_some() && ui.small_button("padrão").clicked() {
+        if saved.is_some() && ui.small_button(crate::i18n::tr("padrão")).clicked() {
             app.start_job(
-                "Memória da GPU",
+                crate::i18n::tr("Memória da GPU"),
                 vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "boot".into(), "gpu-memory".into(), "padrao".into()],
             );
         }
         ui.label(
-            RichText::new(format!(
-                "agora {} · no boot {}",
+            RichText::new(crate::tf!(
+                "agora {} · no boot {}", "now {} · at boot {}",
                 now.map(|x| format!("{x:.1} GiB")).unwrap_or("?".into()),
-                saved.map(|x| format!("{x:.1} GiB")).unwrap_or("padrão".into())
+                saved.map(|x| format!("{x:.1} GiB")).unwrap_or(crate::i18n::tr("padrão").into())
             ))
             .weak(),
         );
     });
     if bc {
         ui.label(
-            RichText::new("BC-250: com 16 GB, 14 GiB deixa os modelos de até ~14B carregarem (BIOS com UMA em 512 MB). O servidor de IA usa o Vulkan e já liga o GGML_VK_PREFER_HOST_MEMORY (+5 a 12% na geração).")
+            RichText::new(crate::i18n::tr("BC-250: com 16 GB, 14 GiB deixa os modelos de até ~14B carregarem (BIOS com UMA em 512 MB). O servidor de IA usa o Vulkan e já liga o GGML_VK_PREFER_HOST_MEMORY (+5 a 12% na geração)."))
                 .small()
                 .weak(),
         );

@@ -50,52 +50,60 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.label(
-                RichText::new(format!("{} serviços · {running} rodando", t.list.len()))
-                    .size(20.0)
-                    .strong(),
+                RichText::new(crate::tf!(
+                    "{} serviços · {running} rodando",
+                    "{} services · {running} running",
+                    t.list.len()
+                ))
+                .size(20.0)
+                .strong(),
             );
             ui.label(
                 RichText::new(if t.user {
-                    "Do seu usuário: rodam a partir do login, sem pedir senha."
+                    crate::i18n::tr("Do seu usuário: rodam a partir do login, sem pedir senha.")
                 } else {
-                    "Do sistema: rodam desde o boot. Iniciar, parar e reiniciar pedem a senha."
+                    crate::i18n::tr(
+                        "Do sistema: rodam desde o boot. Iniciar, parar e reiniciar pedem a senha.",
+                    )
                 })
                 .weak(),
             );
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Atualizar").clicked() {
+            if ui.button(crate::i18n::tr("Atualizar")).clicked() {
                 t.at = None;
             }
             ui.add(
                 egui::TextEdit::singleline(&mut t.filter)
-                    .hint_text("🔍 Buscar")
+                    .hint_text(crate::i18n::tr("🔍 Buscar"))
                     .desired_width(160.0),
             );
         });
     });
     ui.horizontal(|ui| {
-        ui.selectable_value(&mut t.user, false, "Do sistema");
-        ui.selectable_value(&mut t.user, true, "Do usuário");
+        ui.selectable_value(&mut t.user, false, crate::i18n::tr("Do sistema"));
+        ui.selectable_value(&mut t.user, true, crate::i18n::tr("Do usuário"));
         ui.separator();
-        ui.selectable_value(&mut t.show, Show::Running, "Rodando");
-        ui.selectable_value(&mut t.show, Show::Stopped, "Parados");
+        ui.selectable_value(&mut t.show, Show::Running, crate::i18n::tr("Rodando"));
+        ui.selectable_value(&mut t.show, Show::Stopped, crate::i18n::tr("Parados"));
         let fl = if failed > 0 {
-            format!("Com falha ({failed})")
+            crate::tf!("Com falha ({failed})", "Failed ({failed})")
         } else {
-            "Com falha".into()
+            crate::i18n::tr("Com falha").into()
         };
         ui.selectable_value(
             &mut t.show,
             Show::Failed,
             RichText::new(fl).color(if failed > 0 { p.err } else { p.text }),
         );
-        ui.selectable_value(&mut t.show, Show::All, "Todos");
+        ui.selectable_value(&mut t.show, Show::All, crate::i18n::tr("Todos"));
     });
     ui.label(
-        RichText::new("Para escolher o que abre no boot, use a aba Inicialização.")
-            .small()
-            .weak(),
+        RichText::new(crate::i18n::tr(
+            "Para escolher o que abre no boot, use a aba Inicialização.",
+        ))
+        .small()
+        .weak(),
     );
     ui.add_space(4.0);
 
@@ -122,14 +130,20 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         .auto_shrink([false, false])
         .show(ui, |ui| {
             if list.is_empty() {
-                ui.label(RichText::new("Nenhum serviço nesse filtro.").weak());
+                ui.label(RichText::new(crate::i18n::tr("Nenhum serviço nesse filtro.")).weak());
             }
             egui::Grid::new("services")
                 .striped(true)
                 .num_columns(5)
                 .spacing([16.0, 6.0])
                 .show(ui, |ui| {
-                    for h in ["Serviço", "Estado", "No boot", "Memória", ""] {
+                    for h in [
+                        crate::i18n::tr("Serviço"),
+                        crate::i18n::tr("Estado"),
+                        crate::i18n::tr("No boot"),
+                        crate::i18n::tr("Memória"),
+                        "",
+                    ] {
                         ui.label(RichText::new(h).small().color(p.weak));
                     }
                     ui.end_row();
@@ -153,8 +167,8 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                         };
                         ui.label(RichText::new(s.state_text()).color(c));
                         ui.label(match s.at_boot() {
-                            Some(true) => RichText::new("sim"),
-                            Some(false) => RichText::new("não").color(p.weak),
+                            Some(true) => RichText::new(crate::i18n::tr("sim")),
+                            Some(false) => RichText::new(crate::i18n::tr("não")).color(p.weak),
                             None => RichText::new("—").color(p.weak),
                         });
                         ui.label(
@@ -169,7 +183,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 if ui
                                     .add_enabled(
                                         s.protected.is_none(),
-                                        egui::Button::new("Parar").small(),
+                                        egui::Button::new(crate::i18n::tr("Parar")).small(),
                                     )
                                     .on_disabled_hover_text(why)
                                     .clicked()
@@ -179,7 +193,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 if ui
                                     .add_enabled(
                                         s.protected.is_none(),
-                                        egui::Button::new("Reiniciar").small(),
+                                        egui::Button::new(crate::i18n::tr("Reiniciar")).small(),
                                     )
                                     .on_disabled_hover_text(why)
                                     .clicked()
@@ -187,7 +201,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                                     act = Some((s.clone(), Verb::Restart));
                                 }
                             } else if s.file_state != "masked"
-                                && ui.small_button("Iniciar").clicked()
+                                && ui.small_button(crate::i18n::tr("Iniciar")).clicked()
                             {
                                 act = Some((s.clone(), Verb::Start));
                             }
@@ -232,13 +246,17 @@ fn log_window(app: &mut App, ctx: &egui::Context) {
         .default_size([760.0, 440.0])
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Atualizar").clicked() {
+                if ui.button(crate::i18n::tr("Atualizar")).clicked() {
                     refresh = true;
                 }
-                if ui.button("Copiar").clicked() {
+                if ui.button(crate::i18n::tr("Copiar")).clicked() {
                     ui.ctx().copy_text(text.clone());
                 }
-                ui.label(RichText::new("últimas 200 linhas").small().weak());
+                ui.label(
+                    RichText::new(crate::i18n::tr("últimas 200 linhas"))
+                        .small()
+                        .weak(),
+                );
             });
             egui::ScrollArea::both()
                 .stick_to_bottom(true)

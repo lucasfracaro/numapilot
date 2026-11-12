@@ -69,31 +69,31 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         Err(_) => return,
     };
     ui.horizontal(|ui| {
-        ui.heading("Streaming de jogos (Sunshine)");
+        ui.heading(crate::i18n::tr("Streaming de jogos (Sunshine)"));
         if sun.install.is_some() {
             let (t, c) = if sun.active {
-                ("ligado", Color32::from_rgb(90, 180, 110))
+                (crate::i18n::tr("ligado"), Color32::from_rgb(90, 180, 110))
             } else {
-                ("desligado", Color32::GRAY)
+                (crate::i18n::tr("desligado"), Color32::GRAY)
             };
             ui.label(RichText::new(t).color(c));
         }
     });
     ui.label(
         RichText::new(
-            "Jogue no celular, notebook ou TV pelo Moonlight. O jogo roda aqui e uma GPU (ou a CPU) \
-             codifica o vídeo.",
+            crate::i18n::tr("Jogue no celular, notebook ou TV pelo Moonlight. O jogo roda aqui e uma GPU (ou a CPU) \
+             codifica o vídeo."),
         )
         .weak(),
     );
     ui.separator();
 
     let Some(how) = sun.install.clone() else {
-        ui.label("O Sunshine não está instalado.");
+        ui.label(crate::i18n::tr("O Sunshine não está instalado."));
         ui.horizontal(|ui| {
-            if ui.button("Instalar (Flatpak)").clicked() {
+            if ui.button(crate::i18n::tr("Instalar (Flatpak)")).clicked() {
                 app.start_job(
-                    "Instalando o Sunshine",
+                    crate::i18n::tr("Instalando o Sunshine"),
                     vec![
                         "flatpak".into(),
                         "install".into(),
@@ -104,35 +104,40 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     ],
                 );
             }
-            ui.label(RichText::new("ou pelo AUR: paru -S sunshine (ou o seu fork)").weak());
+            ui.label(
+                RichText::new(crate::i18n::tr(
+                    "ou pelo AUR: paru -S sunshine (ou o seu fork)",
+                ))
+                .weak(),
+            );
         });
         return;
     };
 
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("instalado ({how})")).weak());
+        ui.label(RichText::new(crate::tf!("instalado ({how})", "installed ({how})")).weak());
         if sun.active {
-            if ui.button("Desligar").clicked()
+            if ui.button(crate::i18n::tr("Desligar")).clicked()
                 && let Some(a) = ctl_args(&sun, "stop")
             {
-                app.start_job("Desligando o Sunshine", a);
+                app.start_job(crate::i18n::tr("Desligando o Sunshine"), a);
             }
-            if ui.button("Reiniciar").clicked()
+            if ui.button(crate::i18n::tr("Reiniciar")).clicked()
                 && let Some(a) = ctl_args(&sun, "restart").or_else(|| ctl_args(&sun, "start"))
             {
-                app.start_job("Reiniciando o Sunshine", a);
+                app.start_job(crate::i18n::tr("Reiniciando o Sunshine"), a);
             }
-        } else if ui.button("Ligar").clicked()
+        } else if ui.button(crate::i18n::tr("Ligar")).clicked()
             && let Some(a) = ctl_args(&sun, "start")
         {
             if sun.unit.is_some() {
-                app.start_job("Ligando o Sunshine", a);
+                app.start_job(crate::i18n::tr("Ligando o Sunshine"), a);
             } else {
                 let _ = crate::jobs::spawn_detached(&a);
-                app.toast("Ligando o Sunshine", true);
+                app.toast(crate::i18n::tr("Ligando o Sunshine"), true);
             }
         }
-        if ui.button("Painel do Sunshine").clicked() {
+        if ui.button(crate::i18n::tr("Painel do Sunshine")).clicked() {
             let _ = open_url("https://localhost:47990");
         }
     });
@@ -140,15 +145,15 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
     let Some(conf) = sun.conf.clone() else { return };
     let cur = read_adapter(&conf);
-    ui.label(RichText::new("GPU que codifica o vídeo").strong());
+    ui.label(RichText::new(crate::i18n::tr("GPU que codifica o vídeo")).strong());
     egui::Grid::new("enc")
         .num_columns(3)
         .striped(true)
         .spacing([14.0, 6.0])
         .show(ui, |ui| {
             let mut sel = cur.clone();
-            ui.radio_value(&mut sel, None, "Automático");
-            ui.label("o Sunshine escolhe");
+            ui.radio_value(&mut sel, None, crate::i18n::tr("Automático"));
+            ui.label(crate::i18n::tr("o Sunshine escolhe"));
             ui.label("");
             ui.end_row();
             for g in &app.topo.gpus {
@@ -163,7 +168,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 );
                 ui.label(
                     RichText::new(if g.display_connected {
-                        "monitor ligado"
+                        crate::i18n::tr("monitor ligado")
                     } else {
                         ""
                     })
@@ -175,19 +180,25 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 match write_adapter(&conf, sel.as_deref()) {
                     Ok(()) => {
                         app.toast(
-                            "GPU de codificação salva; reinicie o Sunshine para valer",
+                            crate::i18n::tr(
+                                "GPU de codificação salva; reinicie o Sunshine para valer",
+                            ),
                             true,
                         );
                     }
                     Err(e) => app.toast(
-                        format!("Não consegui salvar {}: {e}", conf.display()),
+                        crate::tf!(
+                            "Não consegui salvar {}: {e}",
+                            "Could not save {}: {e}",
+                            conf.display()
+                        ),
                         false,
                     ),
                 }
             }
         });
     ui.add_space(8.0);
-    ui.label(RichText::new("Codificador").strong());
+    ui.label(RichText::new(crate::i18n::tr("Codificador")).strong());
     let rec = numapilot::recipes::load();
     let no_enc: Vec<String> = rec
         .boards(&app.topo)
@@ -197,8 +208,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         .collect();
     if !no_enc.is_empty() {
         ui.label(
-            RichText::new(format!(
-                "{}: não tem codificador de vídeo funcionando. Use o codificador por software (CPU) abaixo, ou instale o driver VA-API da comunidade pelo BC250 Control Center (H.264 na GPU).",
+            RichText::new(crate::tf!(
+                "{}: não tem codificador de vídeo funcionando. Use o codificador por software (CPU) abaixo, ou instale o driver VA-API da comunidade pelo BC250 Control Center (H.264 na GPU).", "{}: has no working video encoder. Use the software encoder (CPU) below, or install the community VA-API driver through BC250 Control Center (H.264 on the GPU).",
                 no_enc.join(", ")
             ))
             .color(Color32::from_rgb(230, 160, 40)),
@@ -210,7 +221,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         let mut e = enc.clone();
         egui::ComboBox::from_id_salt("sunenc")
             .selected_text(match e.as_deref() {
-                None => "automático",
+                None => crate::i18n::tr("automático"),
                 Some("software") => "software (CPU, x264)",
                 Some("vaapi") => "VA-API (AMD/Intel)",
                 Some("nvenc") => "NVENC (NVIDIA)",
@@ -218,7 +229,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 Some(o) => o,
             })
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut e, None, "automático");
+                ui.selectable_value(&mut e, None, crate::i18n::tr("automático"));
                 ui.selectable_value(&mut e, Some("vaapi".into()), "VA-API (AMD/Intel)");
                 ui.selectable_value(&mut e, Some("nvenc".into()), "NVENC (NVIDIA)");
                 ui.selectable_value(&mut e, Some("quicksync".into()), "Quick Sync (Intel)");
@@ -226,17 +237,23 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             });
         if e != enc {
             match write_key(&conf, "encoder", e.as_deref()) {
-                Ok(()) => app.toast("Codificador salvo; reinicie o Sunshine", true),
+                Ok(()) => app.toast(
+                    crate::i18n::tr("Codificador salvo; reinicie o Sunshine"),
+                    true,
+                ),
                 Err(err) => app.toast(err.to_string(), false),
             }
         }
         if e.as_deref() == Some("software") {
             let mut p = preset.clone();
-            ui.label("velocidade:");
+            ui.label(crate::i18n::tr("velocidade:"));
             egui::ComboBox::from_id_salt("sunpreset")
-                .selected_text(p.clone().unwrap_or_else(|| "padrão (superfast)".into()))
+                .selected_text(
+                    p.clone()
+                        .unwrap_or_else(|| crate::i18n::tr("padrão (superfast)").into()),
+                )
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut p, None, "padrão (superfast)");
+                    ui.selectable_value(&mut p, None, crate::i18n::tr("padrão (superfast)"));
                     for x in ["ultrafast", "superfast", "veryfast", "faster", "fast"] {
                         ui.selectable_value(&mut p, Some(x.to_string()), x);
                     }
@@ -244,20 +261,23 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             if p != preset {
                 let _ = write_key(&conf, "sw_preset", p.as_deref());
                 let _ = write_key(&conf, "sw_tune", Some("zerolatency"));
-                app.toast("Velocidade salva; reinicie o Sunshine", true);
+                app.toast(
+                    crate::i18n::tr("Velocidade salva; reinicie o Sunshine"),
+                    true,
+                );
             }
         }
     });
     ui.label(
-        RichText::new("Software: ultrafast gasta menos CPU (imagem pior); veryfast fica mais bonito mas pesa. Comece em superfast a 1080p60.")
+        RichText::new(crate::i18n::tr("Software: ultrafast gasta menos CPU (imagem pior); veryfast fica mais bonito mas pesa. Comece em superfast a 1080p60."))
             .small()
             .weak(),
     );
     ui.add_space(6.0);
     ui.label(
         RichText::new(
-            "Dica: escolha a GPU que tem o monitor do jogo, se ela codificar H.264/HEVC. Para jogos na MI50 \
-             a imagem é capturada dela; para menos atraso, deixe o jogo e a codificação na mesma placa.",
+            crate::i18n::tr("Dica: escolha a GPU que tem o monitor do jogo, se ela codificar H.264/HEVC. Para jogos na MI50 \
+             a imagem é capturada dela; para menos atraso, deixe o jogo e a codificação na mesma placa."),
         )
         .small()
         .weak(),

@@ -1,108 +1,25 @@
-//! Tradução da interface. O português é o idioma do código; o inglês cobre por enquanto a
-//! navegação (menu, títulos, barra da aba Programas). O que não está na tabela aparece em
-//! português. Para traduzir mais: acrescente pares em `EN` e use `tr("texto")` no lugar do texto.
+//! Tradução da interface. O português é o idioma do código. Texto fixo: `tr("texto")` com o par
+//! em `i18n_en.rs`; texto com valores: `tf!("texto {}", "text {}", valor)`. O que não tem tradução
+//! aparece em português (as mensagens que vêm do serviço e da linha de comando, por exemplo).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static ENGLISH: AtomicBool = AtomicBool::new(false);
 
-const EN: &[(&str, &str)] = &[
-    // menu
-    ("Programas", "Programs"),
-    ("Inicialização", "Startup"),
-    ("Serviços", "Services"),
-    ("Mapa e medições", "Map & measurements"),
-    ("Escolhas salvas", "Saved choices"),
-    ("Placas de vídeo", "Graphics cards"),
-    ("Máquina", "Machine"),
-    ("Laboratório", "Lab"),
-    ("Servidor de IA", "AI server"),
-    ("Streaming", "Streaming"),
-    ("Configurações", "Settings"),
-    ("Testes", "Tests"),
-    // descrições das abas
-    (
-        "O que está aberto agora e em qual processador e placa cada um roda",
-        "What is open now and which processor and card each one runs on",
-    ),
-    (
-        "Tudo que abre quando o sistema liga: programas do login e serviços",
-        "Everything that starts with the system: login programs and services",
-    ),
-    (
-        "Serviços do sistema e do usuário: iniciar, parar, reiniciar e ver o log",
-        "System and user services: start, stop, restart and read the log",
-    ),
-    (
-        "Núcleos, memória por socket e medições de desempenho",
-        "Cores, memory per socket and performance measurements",
-    ),
-    (
-        "Escolhas por programa que valem toda vez que ele abrir",
-        "Per-program choices applied every time it starts",
-    ),
-    (
-        "Ventoinha, potência, clock e undervolt de cada placa",
-        "Fan, power, clock and undervolt of each card",
-    ),
-    (
-        "Modo de energia, processador, notebook e saúde do hardware",
-        "Power mode, processor, laptop and hardware health",
-    ),
-    (
-        "Containers com ROCm, Jupyter e IDEs",
-        "Containers with ROCm, Jupyter and IDEs",
-    ),
-    (
-        "Modelos locais com llama.cpp",
-        "Local models with llama.cpp",
-    ),
-    (
-        "Sunshine e Moonlight: jogar de outro aparelho",
-        "Sunshine and Moonlight: play from another device",
-    ),
-    (
-        "Outros PCs, avisos, atualização e máquina virtual",
-        "Other PCs, notifications, updates and virtual machine",
-    ),
-    (
-        "Roteiro para testar o programa, autoteste e relatório para enviar",
-        "Manual test script, self-test and a report to send",
-    ),
-    // topo e tema
-    ("Serviço ativo", "Service running"),
-    ("Serviço parado", "Service stopped"),
-    ("Ativar o serviço", "Start the service"),
-    (
-        "O serviço do numapilot não está rodando: as escolhas não são aplicadas.",
-        "The numapilot service is not running: choices are not applied.",
-    ),
-    ("Último comando", "Last command"),
-    ("Tema", "Theme"),
-    ("Sistema", "System"),
-    ("Claro", "Light"),
-    ("Escuro", "Dark"),
-    ("Memória", "Memory"),
-    // aba Programas
-    ("Nome", "Name"),
-    ("Disco", "Disk"),
-    ("Memória da GPU", "GPU memory"),
-    ("Placa", "Card"),
-    ("Ajustar…", "Adjust…"),
-    ("Encerrar", "End"),
-    ("Forçar parada", "Force stop"),
-    ("Abrir tudo", "Expand all"),
-    ("Fechar tudo", "Collapse all"),
-    ("Só os meus", "Only mine"),
-    ("🔍 Buscar app instalado…", "🔍 Find installed app…"),
-    ("Buscar app instalado", "Find installed app"),
-    ("Aplicativos", "Applications"),
-    ("Sessão e sistema", "Session and system"),
-    ("programas em execução", "programs running"),
-    // Configurações
-    ("Abas do menu", "Menu tabs"),
-    ("Idioma", "Language"),
-];
+#[path = "i18n_en.rs"]
+mod en;
+
+/// `format!` nos dois idiomas: `tf!("texto {}", "text {}", valor)`.
+#[macro_export]
+macro_rules! tf {
+    ($pt:literal, $en:literal $(, $($arg:tt)*)?) => {
+        if $crate::i18n::english() {
+            format!($en $(, $($arg)*)?)
+        } else {
+            format!($pt $(, $($arg)*)?)
+        }
+    };
+}
 
 fn file() -> std::path::PathBuf {
     std::env::var_os("XDG_CONFIG_HOME")
@@ -146,15 +63,55 @@ pub fn tr(s: &'static str) -> &'static str {
     if !english() {
         return s;
     }
-    EN.iter()
-        .find(|(pt, _)| *pt == s)
-        .map(|(_, en)| *en)
+    static MAP: std::sync::OnceLock<std::collections::HashMap<&'static str, &'static str>> =
+        std::sync::OnceLock::new();
+    MAP.get_or_init(|| en::EN.iter().copied().collect())
+        .get(s)
+        .copied()
         .unwrap_or(s)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::en::EN;
+
+    /// Todo `tr("…")` do código precisa ter o par na tabela (senão o inglês mostra português).
+    #[test]
+    fn every_tr_has_a_pair() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/numapilot-gui");
+        let mut missing = Vec::new();
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if !name.ends_with(".rs") || name.starts_with("i18n") {
+                continue;
+            }
+            let text = std::fs::read_to_string(e.path()).unwrap();
+            let mut rest = text.as_str();
+            while let Some(i) = rest.find("i18n::tr(") {
+                rest = rest[i + 9..].trim_start();
+                if !rest.starts_with('"') {
+                    continue;
+                }
+                let mut end = 1;
+                let b = rest.as_bytes();
+                while b[end] != b'"' {
+                    end += if b[end] == b'\\' { 2 } else { 1 };
+                }
+                let lit = &rest[1..end];
+                // a tabela guarda o texto já interpretado; compara sem as continuações de linha
+                let norm = |s: &str| {
+                    s.replace("\\n", "")
+                        .split_whitespace()
+                        .collect::<String>()
+                        .replace('\\', "")
+                };
+                if !EN.iter().any(|(k, _)| norm(k) == norm(lit)) {
+                    missing.push(format!("{name}: {lit}"));
+                }
+            }
+        }
+        assert!(missing.is_empty(), "sem tradução:\n{}", missing.join("\n"));
+    }
 
     #[test]
     fn no_duplicate_keys() {

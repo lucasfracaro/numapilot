@@ -2,6 +2,9 @@
 
 ## Ainda não lançado
 
+- **Interface em inglês completa** (Configurações → Idioma): todas as abas, botões, dicas, a
+  janela Ajustar… e o roteiro da aba Testes. Continuam em português as mensagens que vêm do
+  serviço e da linha de comando (diagnóstico, autoteste, erros do serviço).
 - **Latência do cache por núcleo** (`numapilot bench-cores` e botão "Medir núcleos" no Mapa):
   mede o acesso ao cache L3 a partir de cada núcleo e, quando a diferença é maior que o ruído da
   medição, a escolha de núcleos (perfis com número de núcleos e o turbo máximo) passa a preferir

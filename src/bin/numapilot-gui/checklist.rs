@@ -528,8 +528,8 @@ fn applies(w: When, f: &Flags) -> bool {
 fn st_label(st: &str) -> &'static str {
     match st {
         "ok" => "OK",
-        "falhou" => "FALHOU",
-        "pulei" => "PULEI",
+        "falhou" => crate::i18n::tr("FALHOU"),
+        "pulei" => crate::i18n::tr("PULEI"),
         _ => "—",
     }
 }
@@ -601,7 +601,11 @@ fn report(app: &App) -> Result<PathBuf, String> {
         &d[..16.min(d.len())]
     ));
     std::fs::write(&out, s).map_err(|e| format!("{}: {e}", out.display()))?;
-    numapilot::log::info(&format!("relatório de testes gerado: {}", out.display()));
+    numapilot::log::info(&crate::tf!(
+        "relatório de testes gerado: {}",
+        "test report generated: {}",
+        out.display()
+    ));
     Ok(out)
 }
 
@@ -629,13 +633,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
     ui.horizontal_wrapped(|ui| {
         if ui
-            .button("Rodar o autoteste")
-            .on_hover_text("Testa todas as partes pela linha de comando (só lê, não muda nada). Leva um ou dois minutos.")
+            .button(crate::i18n::tr("Rodar o autoteste"))
+            .on_hover_text(crate::i18n::tr("Testa todas as partes pela linha de comando (só lê, não muda nada). Leva um ou dois minutos."))
             .clicked()
         {
             let exe = crate::jobs::sibling_abs("numapilot");
             app.start_job(
-                "Autoteste",
+                crate::i18n::tr("Autoteste"),
                 vec![
                     exe,
                     "autoteste".into(),
@@ -645,25 +649,25 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             );
         }
         if ui
-            .button("Gerar relatório")
-            .on_hover_text("Um arquivo com suas respostas, o último autoteste e o final dos registros, para enviar.")
+            .button(crate::i18n::tr("Gerar relatório"))
+            .on_hover_text(crate::i18n::tr("Um arquivo com suas respostas, o último autoteste e o final dos registros, para enviar."))
             .clicked()
         {
             match report(app) {
                 Ok(pth) => {
-                    app.toast(format!("Relatório: {}", pth.display()), true);
+                    app.toast(crate::tf!("Relatório: {}", "Report: {}", pth.display()), true);
                     app.checklist.last_report = Some(pth);
                 }
-                Err(e) => app.toast(format!("Não consegui gerar o relatório: {e}"), false),
+                Err(e) => app.toast(crate::tf!("Não consegui gerar o relatório: {e}", "Could not generate the report: {e}"), false),
             }
         }
-        if ui.button("Limpar respostas").clicked() {
+        if ui.button(crate::i18n::tr("Limpar respostas")).clicked() {
             app.checklist.res.clear();
             app.checklist.save();
         }
         ui.label(
-            RichText::new(format!(
-                "{answered} de {} respondidos · {failed} falharam",
+            RichText::new(crate::tf!(
+                "{answered} de {} respondidos · {failed} falharam", "{answered} of {} answered · {failed} failed",
                 items.len()
             ))
             .color(if failed > 0 { p.err } else { p.weak }),
@@ -671,14 +675,18 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     });
     if let Some(pth) = &app.checklist.last_report {
         ui.label(
-            RichText::new(format!("Último relatório: {}", pth.display()))
-                .small()
-                .weak(),
+            RichText::new(crate::tf!(
+                "Último relatório: {}",
+                "Last report: {}",
+                pth.display()
+            ))
+            .small()
+            .weak(),
         );
     }
     ui.label(
         RichText::new(
-            "Só aparecem os testes que valem para esta máquina. As respostas ficam salvas; marque e escreva uma nota quando algo der errado.",
+            crate::i18n::tr("Só aparecem os testes que valem para esta máquina. As respostas ficam salvas; marque e escreva uma nota quando algo der errado."),
         )
         .small()
         .weak(),
@@ -695,7 +703,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     area = i.area;
                     ui.add_space(6.0);
                     ui.label(
-                        RichText::new(area)
+                        RichText::new(crate::i18n::tr(area))
                             .size(15.0)
                             .family(egui::FontFamily::Name(theme::BOLD.into())),
                     );
@@ -717,15 +725,15 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.set_min_width(ui.available_width() - 12.0);
                         ui.horizontal(|ui| {
                             ui.label(
-                                RichText::new(i.title)
+                                RichText::new(crate::i18n::tr(i.title))
                                     .family(egui::FontFamily::Name(theme::BOLD.into())),
                             );
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
                                     for (v, l, c) in [
-                                        ("pulei", "Pulei", p.weak),
-                                        ("falhou", "Falhou", p.err),
+                                        ("pulei", crate::i18n::tr("Pulei"), p.weak),
+                                        ("falhou", crate::i18n::tr("Falhou"), p.err),
                                         ("ok", "OK", p.ok),
                                     ] {
                                         let sel = st == v;
@@ -748,8 +756,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                                     .or_default();
                                                 e.st = v.to_string();
                                                 e.quando = numapilot::log::now();
-                                                numapilot::log::info(&format!(
+                                                numapilot::log::info(&crate::tf!(
                                                     "teste \"{}\": {}",
+                                                    "test \"{}\": {}",
                                                     i.title,
                                                     st_label(v)
                                                 ));
@@ -761,18 +770,29 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             );
                         });
                         ui.label(
-                            RichText::new(format!("Como: {}", i.how))
-                                .size(12.5)
-                                .color(p.weak),
+                            RichText::new(crate::tf!(
+                                "Como: {}",
+                                "How: {}",
+                                crate::i18n::tr(i.how)
+                            ))
+                            .size(12.5)
+                            .color(p.weak),
                         );
-                        ui.label(RichText::new(format!("Esperado: {}", i.expect)).size(12.5));
+                        ui.label(
+                            RichText::new(crate::tf!(
+                                "Esperado: {}",
+                                "Expected: {}",
+                                crate::i18n::tr(i.expect)
+                            ))
+                            .size(12.5),
+                        );
                         if let Some(e) = app.checklist.res.get_mut(i.id) {
                             let r = ui.add(
                                 egui::TextEdit::singleline(&mut e.nota)
                                     .hint_text(if e.st == "falhou" {
-                                        "O que aconteceu? (aparece no relatório)"
+                                        crate::i18n::tr("O que aconteceu? (aparece no relatório)")
                                     } else {
-                                        "nota (opcional)"
+                                        crate::i18n::tr("nota (opcional)")
                                     })
                                     .desired_width(f32::INFINITY),
                             );

@@ -147,15 +147,19 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
 - 2026-11-11: `Profile.turbo_max` (reserva o socket inteiro via `cgroup::set_reserved`, só com
   >1 nó e nunca todos os sockets) e `cpu_max_pct` (`CPUQuota`); `src/proghist.rs` (histórico por
   programa em /run/numapilot/prog-history.json); `health::parse_dimms`/`mem_notes` (dmidecode
-  pelo serviço); `profiles::export_text`/`import_text`; `i18n.rs` na interface (`tr()`, inglês
-  parcial: só navegação). O Otimizador de FPS já compara escolhas (não foi feito outro).
+  pelo serviço); `profiles::export_text`/`import_text`; `i18n.rs` na interface (ver abaixo). O Otimizador de FPS já compara escolhas (não foi feito outro).
 - `src/corebench.rs` (`numapilot bench-cores`, botão no Mapa): corrida de ponteiros num bloco
   entre o L2 e o L3, preso em cada núcleo; guarda em `state_dir()/core-rank.json` pelo
   `Request::SetCoreRank`. `topo::select_cpus` ordena os núcleos por essa medição
   (`corebench::sort_units`, degraus de 1%) só se `useful` (diferença ≥ 2% e ≥ 3× o ruído) e se o
   modelo da CPU for o mesmo. Ainda não medido em hardware real (no servidor a diferença esperada
   é de poucos %).
-- Falta: traduzir o resto da interface para inglês; testar tudo isso em hardware real.
+- Inglês (2026-11-12): a interface inteira. Texto fixo = `crate::i18n::tr("pt")` com o par em
+  `src/bin/numapilot-gui/i18n_en.rs`; texto com valores = `crate::tf!("pt {}", "en {}", v)`;
+  tabelas `const` guardam o português e o `tr()` fica onde o texto é mostrado. O teste
+  `every_tr_has_a_pair` falha se um `tr()` novo ficar sem par. Texto novo na interface: sempre
+  nos dois idiomas. Biblioteca, serviço e CLI (doctor, autoteste, erros) seguem só em português.
+- Falta: inglês nas mensagens do serviço/CLI; testar tudo isso em hardware real.
 
 ## Capturas do README
 
