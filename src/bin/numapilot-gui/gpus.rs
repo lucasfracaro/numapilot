@@ -573,7 +573,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
             .collect();
         let compute = match a.compute.as_str() {
             "rocm" => crate::i18n::tr("Official ROCm"),
-            "rocm-comunidade" => crate::i18n::tr("Community ROCm"),
+            "rocm-community" | "rocm-comunidade" => crate::i18n::tr("Community ROCm"),
             "vulkan" => "Vulkan (llama.cpp)",
             "cuda" => "CUDA",
             o => o,
@@ -601,7 +601,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
         .show(ui, |ui| {
             first_setup_ui(app, ui, &b, g);
             for n in &b.notes {
-                ui.label(RichText::new(format!("• {n}")).small());
+                ui.label(RichText::new(format!("• {}", numapilot::i18n::tr_text(n))).small());
             }
             if !b.governor_services.is_empty() {
                 let sv = numapilot::boards::services(&b);
@@ -772,7 +772,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                                 ui.label(RichText::new(format!("★ {}", a.name)).strong().size(15.0));
                                 ui.label(RichText::new(crate::i18n::tr("recommended")).small().color(ok));
                             });
-                            ui.label(RichText::new(&a.about).small());
+                            ui.label(RichText::new(numapilot::i18n::tr_text(&a.about)).small());
                             app_buttons(app, ui, a, helper, &mut run, true);
                         });
                 }
@@ -784,7 +784,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                             for a in &rest {
                                 ui.add_space(4.0);
                                 ui.label(RichText::new(&a.name).strong());
-                                ui.label(RichText::new(&a.about).small().weak());
+                                ui.label(RichText::new(numapilot::i18n::tr_text(&a.about)).small().weak());
                                 app_buttons(app, ui, a, helper, &mut run, false);
                             }
                         });

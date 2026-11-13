@@ -174,8 +174,10 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   dos PCs. Níveis do registro agora `ERROR`/`WARN` (a leitura aceita os antigos).
 - `README.md` é o inglês (principal) e `README.pt-BR.md` a tradução: mudou um, mude o outro.
 - Já em inglês: comentários e nomes internos do código, `install.sh`, `uninstall.sh`.
-- Falta passar para inglês: `packaging/gfx906-rocm` (~1500 linhas), textos de
-  `recipes/default.toml`, comentários de `packaging/numapilot.toml` e `gfx906-rocm.conf`,
+- `recipes/default.toml` é só em inglês (versão 2); o português dos textos (`about`, `notes`)
+  fica em `src/i18n_pt.rs` e é aplicado por `i18n::tr_text()` onde o texto é mostrado. O teste
+  `recipe_texts_have_a_portuguese_pair` falha se um texto novo ficar sem par.
+- Falta passar para inglês: `packaging/gfx906-rocm` (~1500 linhas), comentários de `packaging/numapilot.toml` e `gfx906-rocm.conf`,
   `container/lab-start`, `docs/TESTES.md`, `tools/capturas/README.md`, entradas antigas do
   CHANGELOG, este arquivo; e testar tudo isso em hardware real.
 

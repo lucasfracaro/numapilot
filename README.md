@@ -577,7 +577,7 @@ teach numapilot about special boards.
   measuring with and without.
 - RAM frequency and timings can only be changed in the BIOS.
 - Network per program is not shown (the kernel does not report it without eBPF).
-- Still in Portuguese, being translated: `gfx906-rocm`, the community recipes' notes, the
+- Still in Portuguese, being translated: `gfx906-rocm`, the
   comments in the sample config files, the test guide and the older changelog entries.
 
 ## Development

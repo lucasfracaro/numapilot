@@ -143,17 +143,27 @@ pub fn has_pair(s: &str) -> bool {
     pt::PT.iter().any(|(k, _)| *k == s)
 }
 
+fn map() -> &'static std::collections::HashMap<&'static str, &'static str> {
+    static MAP: std::sync::OnceLock<std::collections::HashMap<&'static str, &'static str>> =
+        std::sync::OnceLock::new();
+    MAP.get_or_init(|| pt::PT.iter().copied().collect())
+}
+
 /// The text in the language in use (the text itself when there is no translation).
 pub fn tr(s: &'static str) -> &'static str {
     if !portuguese() {
         return s;
     }
-    static MAP: std::sync::OnceLock<std::collections::HashMap<&'static str, &'static str>> =
-        std::sync::OnceLock::new();
-    MAP.get_or_init(|| pt::PT.iter().copied().collect())
-        .get(s)
-        .copied()
-        .unwrap_or(s)
+    map().get(s).copied().unwrap_or(s)
+}
+
+/// Like `tr`, for text that comes from data (the community recipes): the Portuguese version
+/// when the table has one, otherwise the text as it is.
+pub fn tr_text(s: &str) -> &str {
+    if !portuguese() {
+        return s;
+    }
+    map().get(s).copied().unwrap_or(s)
 }
 
 #[cfg(test)]

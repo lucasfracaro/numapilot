@@ -873,7 +873,7 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             add(
                 &a.name,
                 StepState::Opcional,
-                a.about.clone(),
+                crate::i18n::tr_text(&a.about).to_string(),
                 a.installable()
                     .then(|| StepAction::InstallApp(a.name.clone())),
             );

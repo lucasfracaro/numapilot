@@ -719,10 +719,14 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 crate::tf!(
                     "not installed (recommended): {}",
                     "não instalado (recomendado): {}",
-                    a.about
+                    crate::i18n::tr_text(&a.about)
                 )
             } else {
-                crate::tf!("not installed: {}", "não instalado: {}", a.about)
+                crate::tf!(
+                    "not installed: {}",
+                    "não instalado: {}",
+                    crate::i18n::tr_text(&a.about)
+                )
             };
             let hint = if ok {
                 None
@@ -742,7 +746,13 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             );
         }
         for n in &b.notes {
-            add(&area, crate::i18n::tr("tip"), Level::Info, n.clone(), None);
+            add(
+                &area,
+                crate::i18n::tr("tip"),
+                Level::Info,
+                crate::i18n::tr_text(n).to_string(),
+                None,
+            );
         }
     }
     for n in rec.cpu_notes(&crate::recipes::cpu_model()) {
@@ -750,7 +760,7 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             crate::i18n::tr("Processor"),
             crate::i18n::tr("tip"),
             Level::Info,
-            n,
+            crate::i18n::tr_text(&n).to_string(),
             None,
         );
     }

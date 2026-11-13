@@ -1368,4 +1368,109 @@ pub const PT: &[(&str, &str)] = &[
     ("turning on", "ligando"),
     ("exclusive", "exclusivo"),
     ("asleep", "dormindo"),
+    // recipes/default.toml (community programs and tips)
+    (
+        "does everything on the BC-250: GPU governor and voltage lab, CPU overclock, fan, 40 CUs live, 8 cores, GPU memory (TTM), telemetry. The author's own -git package: updating rebuilds from the newest code",
+        "faz tudo da BC-250: governor e laboratório de voltagem da GPU, overclock da CPU, ventoinha, 40 CUs ao vivo, 8 núcleos, memória da GPU (TTM), telemetria. Pacote -git do próprio autor: atualizar recompila do código mais novo",
+    ),
+    (
+        "access to the GPU registers, used to enable the 40 CUs without a patched kernel",
+        "acesso aos registradores da GPU, usado para ligar os 40 CUs sem kernel com patch",
+    ),
+    (
+        "turns CUs/WGPs on and off live through umr, with a table saved for boot; do not use it with the kernel that already unlocks the 40 CUs (bc250_cc_write_mode=3)",
+        "liga e desliga CUs/WGPs ao vivo pelo umr, com tabela salva para o boot; não use com o kernel que já libera os 40 CUs (bc250_cc_write_mode=3)",
+    ),
+    (
+        "enables the 2 extra cores through the SMU with the system running; lost when unplugged from the wall (a reboot keeps them)",
+        "liga os 2 núcleos extras pela SMU com o sistema rodando; some ao desligar da tomada (reinício não perde)",
+    ),
+    (
+        "scripts for the 8 cores and the 40 CUs (status/apply/install), 8-core ACPI tables and a per-core test",
+        "scripts dos 8 núcleos e dos 40 CUs (status/apply/install), tabelas ACPI de 8 núcleos e teste por núcleo",
+    ),
+    (
+        "CPU overclock and undervolt through the SMU (bc250-detect finds the stable point, bc250-apply applies it and installs the service)",
+        "overclock e undervolt da CPU pela SMU (bc250-detect acha o estável, bc250-apply aplica e instala o serviço)",
+    ),
+    (
+        "APU telemetry service and web panel (temperature, power, clocks, memory temperature), with MangoHud integration",
+        "serviço e painel web de telemetria da APU (temperatura, potência, clocks, temperatura da memória), com integração ao MangoHud",
+    ),
+    (
+        "EFI that enables the 8 cores before every boot (not lost when unplugged). Installing it changes the boot order: follow its README (numapilot does not install it)",
+        "EFI que liga os 8 núcleos antes de cada boot (não some ao desligar). A instalação mexe na ordem de boot: siga o README dele (o numapilot não instala)",
+    ),
+    (
+        "reads the GDDR6 memory temperature through the SMU (BC250-Telemetry already includes it)",
+        "lê a temperatura da memória GDDR6 pela SMU (o BC250-Telemetry já inclui)",
+    ),
+    (
+        "The GPU clock needs a community governor (the -smu one needs no patched kernel); without it the GPU stays stuck at ~1000-1500 MHz and draws ~20 W more when idle.",
+        "O clock da GPU precisa de um governor da comunidade (o -smu dispensa kernel com patch); sem ele a GPU fica parada em ~1000-1500 MHz e gasta ~20 W a mais parada.",
+    ),
+    (
+        "The IOMMU causes freezes on the BC-250: use amd_iommu=off (Machine tab, Kernel parameters).",
+        "O IOMMU causa travamentos na BC-250: use amd_iommu=off (aba Máquina, Parâmetros do kernel).",
+    ),
+    (
+        "CPU overclock through the SMU (bc250_smu_oc): even at the factory frequency it applies a large undervolt.",
+        "Overclock da CPU pela SMU (bc250_smu_oc): mesmo na frequência de fábrica ele aplica um undervolt grande.",
+    ),
+    (
+        "With the current CachyOS kernel a patched kernel is no longer needed: the 40 CUs and the 8 cores are unlocked by the programs below.",
+        "Com o kernel atual do CachyOS não precisa mais de kernel com patch: os 40 CUs e os 8 núcleos se desbloqueiam pelos programas abaixo.",
+    ),
+    (
+        "After unlocking cores or CUs, an overclock/undervolt that was stable may stop being so: redo the tests (CPU and GPU share the same power and the same heat).",
+        "Depois de desbloquear núcleos ou CUs, o overclock/undervolt que era estável pode deixar de ser: refaça os testes (CPU e GPU dividem a mesma energia e o mesmo calor).",
+    ),
+    (
+        "8 cores through bc250-core-unlock are lost when unplugged from the wall (they only survive a reboot); through the biosmod or bc250-efi-core-unlock they stay. The VRAM (UMA) is changed in the BIOS.",
+        "8 núcleos pelo bc250-core-unlock se perdem ao desligar da tomada (só sobrevivem a reinício); pelo biosmod ou pelo bc250-efi-core-unlock ficam. A VRAM (UMA) se muda na BIOS.",
+    ),
+    (
+        "With the linux-cachyos-bc250 kernel and amdgpu.bc250_cc_write_mode=3, the 40 CUs are already unlocked from boot: do not use the live unlock (umr) together with it.",
+        "Com o kernel linux-cachyos-bc250 e amdgpu.bc250_cc_write_mode=3, os 40 CUs já vêm liberados do boot: não use o desbloqueio ao vivo (umr) junto.",
+    ),
+    (
+        "GPU clock: trust hwmon (freq1_input). With 8 cores and the wrong SMU table, pp_dpm_sclk, temperature and power come out wrong; Cyan Skillfish's pp_dpm_fclk repeats the memory clock, it is not a separate FCLK.",
+        "Clock da GPU: confie no hwmon (freq1_input). Com 8 núcleos sem a tabela certa da SMU, pp_dpm_sclk, temperatura e potência vêm erradas; o pp_dpm_fclk da Cyan Skillfish repete o clock da memória, não é um FCLK separado.",
+    ),
+    (
+        "If the GPU hangs with the governor running, stop the governor before problematic games.",
+        "Se a GPU travar com o governor rodando, pare o governor antes de jogos problemáticos.",
+    ),
+    (
+        "Card without a video output: render on it and show the image through the other card (like the MI50s).",
+        "Placa sem saída de vídeo: renderiza nela e mostra a imagem pela outra placa (como as MI50).",
+    ),
+    (
+        "Clock and voltage through the 3-point curve (like Vega20/RDNA1), blower fan through hwmon.",
+        "Clock e voltagem pela curva de 3 pontos (como Vega20/RDNA1), ventoinha blower pelo hwmon.",
+    ),
+    (
+        "No official ROCm (gfx1011): for AI, use llama.cpp with Vulkan.",
+        "Sem ROCm oficial (gfx1011): para IA, use o llama.cpp com Vulkan.",
+    ),
+    (
+        "ROCm from the community (mixa3607/ML-gfx906), with validation before each update (gfx906-rocm).",
+        "ROCm pela comunidade (mixa3607/ML-gfx906), com validação antes de cada atualização (gfx906-rocm).",
+    ),
+    (
+        "Broadwell with 128 MB of eDRAM (works as an L4 cache) and Iris Pro 6200.",
+        "Broadwell com 128 MB de eDRAM (funciona como cache L4) e Iris Pro 6200.",
+    ),
+    (
+        "Undervolt through the intel-undervolt tool (AUR), if the BIOS does not block it.",
+        "Undervolt pela ferramenta intel-undervolt (AUR), se a BIOS não bloquear.",
+    ),
+    (
+        "8-core/16-thread Comet Lake with a locked multiplier: what can be tuned are the power limits (PL1/PL2) in the Machine tab.",
+        "Comet Lake de 8 núcleos/16 threads com multiplicador travado: o que dá para ajustar são os limites de potência (PL1/PL2) na aba Máquina.",
+    ),
+    (
+        "Broadwell-EP: uncore at maximum and games on a single socket make the biggest difference; mitigations are expensive on this generation.",
+        "Broadwell-EP: uncore no máximo e jogos num socket só fazem a maior diferença; mitigações custam caro nesta geração.",
+    ),
 ];

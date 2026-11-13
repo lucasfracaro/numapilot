@@ -192,7 +192,7 @@ pub struct CpuRecipe {
 pub struct Arch {
     pub prefix: String,
     pub family: String,
-    /// rocm | rocm-comunidade | vulkan | cuda
+    /// rocm | rocm-community | vulkan | cuda
     pub compute: String,
     pub upscale: Vec<String>,
 }
@@ -425,6 +425,30 @@ mod app_tests {
 
 #[cfg(test)]
 mod tests {
+    /// Every text of the built-in recipes (program descriptions and tips) is in English and
+    /// has its Portuguese pair in the translation table.
+    #[test]
+    fn recipe_texts_have_a_portuguese_pair() {
+        let r: super::Recipes = toml::from_str(super::EMBEDDED).unwrap();
+        let mut texts: Vec<&str> = Vec::new();
+        for b in &r.board {
+            texts.extend(b.apps.iter().map(|a| a.about.as_str()));
+            texts.extend(b.notes.iter().map(|n| n.as_str()));
+        }
+        for c in &r.cpu {
+            texts.extend(c.notes.iter().map(|n| n.as_str()));
+        }
+        let missing: Vec<&str> = texts
+            .into_iter()
+            .filter(|t| !crate::i18n::has_pair(t))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "no Portuguese pair for:\n{}",
+            missing.join("\n")
+        );
+    }
+
     use super::*;
 
     #[test]
@@ -468,7 +492,7 @@ mod tests {
         assert_eq!(
             r.arch_for(&mk(Some("gfx906"), 0x1002))
                 .map(|a| a.compute.as_str()),
-            Some("rocm-comunidade")
+            Some("rocm-community")
         );
         assert_eq!(
             r.arch_for(&mk(None, 0x10de)).map(|a| a.compute.as_str()),

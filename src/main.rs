@@ -498,7 +498,7 @@ fn real_main() -> Result<()> {
                             );
                         }
                         for n in &b.notes {
-                            println!("  - {n}");
+                            println!("  - {}", numapilot::i18n::tr_text(n));
                         }
                     }
                     Ok(())
@@ -553,7 +553,7 @@ fn real_main() -> Result<()> {
                     }
                 }
                 for n in r.cpu_notes(&numapilot::recipes::cpu_model()) {
-                    println!("  - {n}");
+                    println!("  - {}", numapilot::i18n::tr_text(&n));
                 }
                 Ok(())
             }
