@@ -970,6 +970,38 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                 ),
             )
         });
+        r.t(
+            crate::t2!("Community programs", "Programas da comunidade"),
+            || {
+                let broken = crate::boards::broken_apps_here(&topo);
+                if broken.is_empty() {
+                    (
+                        St::Ok,
+                        crate::t2!(
+                            "none broken by system updates",
+                            "nenhum quebrado por atualização do sistema"
+                        )
+                        .into(),
+                    )
+                } else {
+                    (
+                        St::Failed,
+                        broken
+                            .iter()
+                            .map(|a| {
+                                crate::tf!(
+                                    "{}: missing {} (rebuild: Graphics cards → First setup)",
+                                    "{}: falta {} (recompile: Placas → Primeira configuração)",
+                                    a.name,
+                                    a.missing.join(", ")
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("; "),
+                    )
+                }
+            },
+        );
         r.t(crate::i18n::tr("GPU CUs"), || {
             match crate::boards::cu_now() {
                 Some((c, crate::boards::CuSource::Kernel)) => (

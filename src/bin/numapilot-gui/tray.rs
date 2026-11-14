@@ -139,10 +139,78 @@ struct Alerts {
     streak: std::collections::HashMap<String, u32>,
     last: std::collections::HashMap<String, std::time::Instant>,
     battery_warned: bool,
+    /// Last check for community programs broken by a system update, and the ones already
+    /// notified (once per tray session each).
+    broken_at: Option<std::time::Instant>,
+    broken_told: std::collections::HashSet<String>,
 }
 
 impl Alerts {
+    /// Every 30 min (the first right after login): community programs of the board that a
+    /// system update broke (e.g. umr without its LLVM). Notifies with a "Rebuild" button
+    /// that opens a terminal with the fix.
+    fn check_broken_apps(&mut self, topo: &Topology) {
+        if self
+            .broken_at
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(30 * 60))
+        {
+            return;
+        }
+        self.broken_at = Some(std::time::Instant::now());
+        let helper = if numapilot::containers::which("paru") {
+            "paru"
+        } else {
+            "yay"
+        };
+        for a in numapilot::boards::broken_apps_here(topo) {
+            if !self.broken_told.insert(a.name.clone()) {
+                continue;
+            }
+            let Some(fix) = a.fix_command(helper) else {
+                continue;
+            };
+            let title = crate::tf!(
+                "{} broke after an update",
+                "{} quebrou depois de uma atualização",
+                a.name
+            );
+            let body = crate::tf!(
+                "Missing {}. {}",
+                "Falta {}. {}",
+                a.missing.join(", "),
+                if a.impact().is_empty() {
+                    crate::t2!("It needs to be rebuilt.", "Precisa ser recompilado.").to_string()
+                } else {
+                    format!("{}.", a.impact())
+                }
+            );
+            let label = crate::t2!("Rebuild", "Recompilar");
+            // notify-send --wait prints the chosen action; in a thread so the tray goes on
+            std::thread::spawn(move || {
+                let out = std::process::Command::new("notify-send")
+                    .args([
+                        "-a",
+                        "numapilot",
+                        "-i",
+                        "dialog-warning",
+                        "-u",
+                        "critical",
+                        "--wait",
+                        "-A",
+                        &format!("rebuild={label}"),
+                        &title,
+                        &body,
+                    ])
+                    .output();
+                if out.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "rebuild") {
+                    let _ = crate::jobs::in_terminal(&fix);
+                }
+            });
+        }
+    }
+
     fn check(&mut self, topo: &Topology) {
+        self.check_broken_apps(topo);
         // "NVIDIA only when needed": display connected to the NVIDIA output after login
         // NVIDIA mode: notifies once when it could not be turned off because a program uses the card.
         if let Some(st) = numapilot::hybrid::load_state() {

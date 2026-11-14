@@ -886,13 +886,16 @@ fn first_setup_ui(
                             app.toast(e, false);
                         }
                     }
-                    Some(StepAction::RebuildAur(pkg)) => {
+                    Some(StepAction::RebuildAur(name)) => {
                         if ui
                             .small_button(crate::i18n::tr("Rebuild (AUR)"))
                             .on_hover_text(crate::i18n::tr("Rebuilds the package against the current system libraries, in a terminal (may ask for the password)"))
                             .clicked()
-                            && let Err(e) =
-                                crate::jobs::in_terminal(&[helper.into(), "-S".into(), "--rebuild".into(), pkg.clone()])
+                            && let Some(cmd) = numapilot::boards::broken_apps(b)
+                                .into_iter()
+                                .find(|a| &a.name == name)
+                                .and_then(|a| a.fix_command(helper))
+                            && let Err(e) = crate::jobs::in_terminal(&cmd)
                         {
                             app.toast(e, false);
                         }

@@ -463,6 +463,8 @@ pub enum CuSource {
     ControlCenter,
     /// The kernel unlocked them at boot (bc250_cc_write_mode=3).
     Kernel,
+    /// bc250-cu-live-manager.service applied its saved table this boot (it succeeded).
+    LiveManager,
     /// What the driver counted at boot (kernel log or KFD).
     Boot,
 }
@@ -473,6 +475,7 @@ impl CuSource {
             CuSource::ControlCenterLive => "ao vivo, pelo BC250 Control Center",
             CuSource::ControlCenter => "última leitura do BC250 Control Center",
             CuSource::Kernel => "liberados pelo kernel no boot",
+            CuSource::LiveManager => "tabela salva aplicada neste boot pelo bc250-cu-live-manager",
             CuSource::Boot => "no boot",
         }
     }
@@ -520,6 +523,15 @@ fn read_cu_now() -> Option<(u32, CuSource)> {
     {
         return Some((n, CuSource::ControlCenter));
     }
+    // the community service applies the saved WGP table at boot; when it succeeded this boot,
+    // that table is what is routed now
+    if live_manager_applied()
+        && let Some(n) = std::fs::read_to_string("/etc/bc250-cu-live-manager.conf")
+            .ok()
+            .and_then(|t| parse_live_manager_conf(&t))
+    {
+        return Some((n, CuSource::LiveManager));
+    }
     let n = active_cu()?;
     Some((
         n,
@@ -529,6 +541,39 @@ fn read_cu_now() -> Option<(u32, CuSource)> {
             CuSource::Boot
         },
     ))
+}
+
+/// bc250-cu-live-manager.service (oneshot, RemainAfterExit) ran and succeeded this boot.
+fn live_manager_applied() -> bool {
+    Command::new("systemctl")
+        .args([
+            "show",
+            "bc250-cu-live-manager.service",
+            "-p",
+            "ActiveState,Result",
+        ])
+        .output()
+        .map(|o| {
+            let t = String::from_utf8_lossy(&o.stdout);
+            t.contains("ActiveState=active") && t.contains("Result=success")
+        })
+        .unwrap_or(false)
+}
+
+/// CUs routed by the saved table: `BC250_WGP_MASKS=0x1f,0x1f,0x1f,0x1f` (one 5-bit WGP mask per
+/// shader array, 2 CUs per WGP).
+pub fn parse_live_manager_conf(text: &str) -> Option<u32> {
+    let v = text
+        .lines()
+        .map(str::trim)
+        .find_map(|l| l.strip_prefix("BC250_WGP_MASKS="))?
+        .trim_matches('"');
+    let masks: Vec<u32> = v
+        .split(',')
+        .map(|m| u32::from_str_radix(m.trim().trim_start_matches("0x"), 16).ok())
+        .collect::<Option<_>>()?;
+    let n: u32 = masks.iter().map(|m| (m & 0x1f).count_ones() * 2).sum();
+    (masks.len() == 4 && (24..=40).contains(&n)).then_some(n)
 }
 
 /// Boot time (btime from /proc/stat).
@@ -672,6 +717,17 @@ mod unlock_tests {
         );
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].0, "bc250-cu-live-manager");
+        assert_eq!(
+            super::parse_live_manager_conf(
+                "# x\nBC250_WGP_MASKS=0x1f,0x1f,0x1f,0x1f\nUMR=/usr/bin/umr\n"
+            ),
+            Some(40)
+        );
+        assert_eq!(
+            super::parse_live_manager_conf("BC250_WGP_MASKS=0x07,0x07,0x1f,0x1f"),
+            Some(32)
+        );
+        assert_eq!(super::parse_live_manager_conf("nada"), None);
         let l = "\tlinux-vdso.so.1 (0x00007ff)\n\tlibLLVM.so.22.1 => not found\n\tlibc.so.6 => /usr/lib/libc.so.6 (0x1)\n";
         assert_eq!(
             super::parse_ldd_missing(l),
@@ -768,7 +824,8 @@ pub enum StepAction {
     InstallAur(String),
     /// Install a community program (by its name in the recipe).
     InstallApp(String),
-    /// Rebuild an AUR package whose program lost a library in a system update.
+    /// Rebuild a community program (by its name in the recipe) that lost a library in a
+    /// system update: `BrokenApp::fix_command`.
     RebuildAur(String),
     /// Open the GPU memory section (further down in the same tab).
     GpuMemory,
@@ -949,32 +1006,23 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
     }
     // community programs broken by a system update (e.g. umr built against an LLVM that is
     // gone: bc250-cu-live-manager then fails at boot and the extra CUs stay off)
-    for a in &b.apps {
-        let Some(bin) = a.installed_bin() else {
-            continue;
-        };
-        let Some(path) = resolve_bin(&bin) else {
-            continue;
-        };
-        let missing = missing_libs(&path);
-        if missing.is_empty() {
-            continue;
-        }
-        let owner = pacman_owner(&path);
+    for a in broken_apps(b) {
         add(
             &a.name,
             StepState::Todo,
             format!(
                 "quebrado depois de uma atualização do sistema: falta {} ({}). Precisa ser recompilado{}",
-                missing.join(", "),
-                path.display(),
-                if a.name == "umr" {
-                    "; sem ele o bc250-cu-live-manager falha e as CUs extras não são liberadas"
+                a.missing.join(", "),
+                a.path.display(),
+                if a.impact().is_empty() {
+                    String::new()
                 } else {
-                    ""
+                    format!("; {}", a.impact())
                 }
             ),
-            owner.map(StepAction::RebuildAur),
+            a.package
+                .clone()
+                .map(|_| StepAction::RebuildAur(a.name.clone())),
         );
     }
     // community boot services that failed this boot (they apply CUs, overclock, memory...)
@@ -1029,6 +1077,79 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             );
         }
     }
+    v
+}
+
+/// A community program that a system update broke (a shared library it was built against is
+/// gone, e.g. umr after CachyOS moved from LLVM 22 to 23).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BrokenApp {
+    pub name: String,
+    pub path: std::path::PathBuf,
+    pub missing: Vec<String>,
+    /// Package that owns it (pacman -Qo): what to rebuild.
+    pub package: Option<String>,
+}
+
+impl BrokenApp {
+    /// What stops working because of it.
+    pub fn impact(&self) -> &'static str {
+        if self.name == "umr" {
+            "sem ele o bc250-cu-live-manager falha no boot e as CUs extras não são liberadas"
+        } else {
+            ""
+        }
+    }
+
+    /// Terminal command that fixes it: rebuild the package with the AUR helper and, for umr,
+    /// apply the saved CU table again (bc250-cu-live-manager), so no reboot is needed.
+    pub fn fix_command(&self, helper: &str) -> Option<Vec<String>> {
+        let pkg = self.package.as_ref()?;
+        let mut sc = format!("{helper} -S --rebuild {}", sh_quote(pkg));
+        if self.name == "umr" && unit_enabled("bc250-cu-live-manager.service") {
+            sc.push_str(" && sudo systemctl restart bc250-cu-live-manager.service");
+        }
+        Some(vec!["sh".into(), "-c".into(), sc])
+    }
+}
+
+fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+fn unit_enabled(unit: &str) -> bool {
+    Command::new("systemctl")
+        .args(["is-enabled", unit])
+        .output()
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "enabled")
+}
+
+/// Installed community programs of the board that a system update broke.
+pub fn broken_apps(b: &Board) -> Vec<BrokenApp> {
+    b.apps
+        .iter()
+        .filter_map(|a| {
+            let path = resolve_bin(&a.installed_bin()?)?;
+            let missing = missing_libs(&path);
+            (!missing.is_empty()).then(|| BrokenApp {
+                name: a.name.clone(),
+                package: pacman_owner(&path),
+                path,
+                missing,
+            })
+        })
+        .collect()
+}
+
+/// Broken community programs of every special board in this machine.
+pub fn broken_apps_here(topo: &crate::topo::Topology) -> Vec<BrokenApp> {
+    let rc = crate::recipes::load();
+    let mut v: Vec<BrokenApp> = rc
+        .boards(topo)
+        .iter()
+        .flat_map(|(b, _)| broken_apps(b))
+        .collect();
+    v.dedup_by(|a, b| a.name == b.name);
     v
 }
 

@@ -586,6 +586,33 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 None => {}
             }
         }
+        for a in crate::boards::broken_apps(b) {
+            let helper = if crate::containers::which("paru") {
+                "paru"
+            } else {
+                "yay"
+            };
+            let fix = a
+                .fix_command(helper)
+                .and_then(|c| c.last().cloned())
+                .unwrap_or_default();
+            add(
+                &area,
+                &a.name,
+                Level::Fail,
+                crate::tf!(
+                    "broken by a system update: {} is missing{}",
+                    "quebrado por uma atualização do sistema: falta {}{}",
+                    a.missing.join(", "),
+                    if a.impact().is_empty() {
+                        String::new()
+                    } else {
+                        format!("; {}", a.impact())
+                    }
+                ),
+                (!fix.is_empty()).then_some(fix.as_str()),
+            );
+        }
         if b.id == "bc250"
             && let Some(why) = crate::boards::smu_table_mismatch(&g.pci)
         {
