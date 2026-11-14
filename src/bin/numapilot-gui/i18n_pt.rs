@@ -1037,8 +1037,17 @@ pub const PT: &[(&str, &str)] = &[
     ("~/lab folder", "Pasta ~/lab"),
     ("Opening PyCharm", "Abrindo o PyCharm"),
     (
-        "Needs LAB_PYCHARM=1 in the image (Lab settings)",
-        "Precisa de LAB_PYCHARM=1 na imagem (Configurações do laboratório)",
+        "Opens the PyCharm installed in the lab",
+        "Abre o PyCharm instalado no laboratório",
+    ),
+    ("PyCharm (install)", "PyCharm (instalar)"),
+    (
+        "PyCharm is not in the lab yet. Click to add it: the lab image is rebuilt (a large download, takes several minutes) and the lab restarts.",
+        "O PyCharm ainda não está no laboratório. Clique para adicionar: a imagem do laboratório é refeita (download grande, leva vários minutos) e o laboratório reinicia.",
+    ),
+    (
+        "Installing PyCharm in the lab",
+        "Instalando o PyCharm no laboratório",
     ),
     (
         "Opening VS Code connected to the lab",

@@ -191,8 +191,23 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             Err(e) => app.toast(e, false),
                         }
                     }
-                    if ui.button("PyCharm").on_hover_text(crate::i18n::tr("Needs LAB_PYCHARM=1 in the image (Lab settings)")).clicked() {
-                        app.start_job(crate::i18n::tr("Opening PyCharm"), gfx(&["lab", "pycharm"]));
+                    // PyCharm is optional in the image (LAB_PYCHARM): without it the button
+                    // offers to add it instead of running a command that can only fail.
+                    if st.get("LAB_PYCHARM").trim().starts_with('1') {
+                        if ui.button("PyCharm").on_hover_text(crate::i18n::tr("Opens the PyCharm installed in the lab")).clicked() {
+                            app.start_job(crate::i18n::tr("Opening PyCharm"), gfx(&["lab", "pycharm"]));
+                        }
+                    } else if ui
+                        .button(crate::i18n::tr("PyCharm (install)"))
+                        .on_hover_text(crate::i18n::tr("PyCharm is not in the lab yet. Click to add it: the lab image is rebuilt (a large download, takes several minutes) and the lab restarts."))
+                        .clicked()
+                    {
+                        let mut s = st.clone();
+                        s.set("LAB_PYCHARM", "1");
+                        match s.save_keys(&["LAB_PYCHARM"]) {
+                            Ok(()) => app.start_job(crate::i18n::tr("Installing PyCharm in the lab"), gfx(&["lab", "update", "--force"])),
+                            Err(e) => app.toast(e.to_string(), false),
+                        }
                     }
                     if ui.button("Terminal").clicked()
                         && let Err(e) = open_terminal(&st.get("LAB_NAME"))

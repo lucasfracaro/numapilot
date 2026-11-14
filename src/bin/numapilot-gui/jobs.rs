@@ -210,7 +210,13 @@ pub fn spawn_detached(argv: &[String]) -> std::io::Result<()> {
             Ok(())
         });
     }
-    c.spawn().map(|_| ())
+    // Wait for it in the background: a child nobody waits for stays as a zombie until the
+    // interface closes (one per link opened).
+    let mut child = c.spawn()?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }
 
 pub fn open_url(url: &str) -> std::io::Result<()> {

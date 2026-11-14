@@ -15,6 +15,9 @@
   already on (MI50): no more advice to turn OverDrive on.
 - `boot status` says when its file was not created yet and which other file sets OverDrive.
 - `selftest`: core and CU unlock checks only on boards that have them (BC-250), not on MI50s.
+- Lab: when the image has no PyCharm the button is **PyCharm (install)**: it saves
+  `LAB_PYCHARM=1` and rebuilds the image, instead of running a command that could only fail.
+- Interface: links and programs it opens no longer stay behind as zombie processes.
 - Installer: the final diagnosis waits for the service that has just restarted (it could report
   one failure in its first seconds) and shows the failed lines, which the 25-line tail hid.
 - Service: no more empty "GPU …:" log lines; it exits right after restoring everything (it
