@@ -264,6 +264,28 @@ curva do firmware, clock/voltagem até -200 mV. Autoteste logo depois do boot ag
 aviso) na coleta de saúde se o serviço iniciou há menos de 3 min.
 Falta: testar à mão ventoinha (curva), clock/voltagem e undervolt automático; aba Testes.
 
+Servidor (2026-11-14): 2× E5-2696 v4, 2× MI50 + RX 470, kernel 7.3.4, schedutil + scx_lavd.
+Doctor 0 falhas, autoteste 36 OK. Testado de verdade: `run` (cpu/mem/gpu, as duas MI50 se
+distinguem pelo barramento PCI), `pin`, modo automático, modos da máquina, perfis (cgroup,
+núcleos sem HT, limite de memória), ventoinha/curva/limite de potência da RX 470 pelo socket,
+painel web, backup, inicialização, `gfx906-rocm lab test` (PyTorch nas duas MI50). Achados:
+- **schedutil + scx_lavd rende a metade** em carga pesada com afinidade ampla (≈200 contra ≈400
+  M iter/s por thread); com `performance` (modos Jogo/IA) roda cheio. Por isso o turbo máximo
+  passou a pôr o socket em `performance` enquanto o programa roda (`turbo_governor`).
+- `cpu.max` (limite de processador do perfil) **não é aplicado com sched_ext** (LAVD).
+- O `time` do cpuidle só soma quando o núcleo acorda: `turbo::deep_time` guarda também o
+  idle do /proc/stat (chaves a partir de `IDLE_KEY`) para o núcleo que dormiu o intervalo todo.
+- A medição de CPU por processo usa o intervalo de cada processo (`last_at`); o `dt` do laço
+  oscilava ±17% e atrasava a expansão para 2 sockets (47 s em vez de 10).
+- RX 470 (Polaris): depois de usar ventoinha fixa/curva, voltar ao automático não devolve o
+  modo parado (fica ~2150 rpm) até reiniciar; MI50 sem tabela de OverDrive mesmo com ele ligado.
+- A regra `jogos` manda os jogos para a RX 470 (placa "de vídeo"), não para as MI50, que são
+  bem mais fortes e também têm monitor: para jogar nelas, `--gpu gfx906-0 --use graphics`.
+- O `sudo` bloqueia a conta por 10 min depois de 3 senhas erradas (faillock); o KDE dele tem os
+  layouts `us(intl)` e `br` (Meta+Alt+K alterna), o que já causou senha "errada".
+Falta no servidor: aba por aba na interface, undervolt, Steam com `numapilot steam enable`,
+medir um jogo (Skyrim instalado) com o perfil Jogo e com o turbo máximo.
+
 Aba Programas (2026-11-09) virou tabela no estilo do Mission Center (`programs.rs` na interface):
 colunas ordenáveis com totais, seções Aplicativos / Sessão e sistema, linha que abre com os
 processos e os controles, Encerrar/Forçar parada. Proteção e GPU por processo (fdinfo do DRM;
