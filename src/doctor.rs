@@ -1309,6 +1309,18 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 },
                 None,
             ),
+            // OverDrive already on and still no table: it is the driver/firmware of this card
+            // (seen on MI50s), so asking to turn OverDrive on would be wrong.
+            None if crate::bootcfg::overdrive_state().active => add(
+                &a,
+                crate::i18n::tr("clock/voltage (OD)"),
+                Level::Info,
+                crate::i18n::tr(
+                    "unavailable: OverDrive is on, but the driver gives no table for this card",
+                )
+                .into(),
+                None,
+            ),
             None => add(
                 &a,
                 crate::i18n::tr("clock/voltage (OD)"),

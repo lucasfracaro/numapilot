@@ -1134,7 +1134,9 @@ validate_llm_image() {
         out=$("$eng" run --rm "${args[@]}" --entrypoint sh "$img" -c \
             '$(command -v llama-server || echo /app/llama-server) --list-devices' 2>&1) || { echo "$out" | tail -n 10; return 1; }
         local n
-        n=$(echo "$out" | grep -ci 'gfx906' || true)
+        # O llama.cpp lista as placas pelo nome comercial ("ROCm0: AMD Radeon Pro VII"), não
+        # pela arquitetura: aceita os nomes das Vega 20 além de "gfx906".
+        n=$(echo "$out" | grep -ciE 'gfx906|Radeon (Pro )?VII|Vega ?20|Instinct MI[56]0' || true)
         echo "$out" | grep -i 'rocm\|gfx' | head -n 4
         ((n >= 1)) || { echo "FALHOU: o llama.cpp não listou nenhuma gfx906"; return 1; }
         echo "METRICS {\"gpus\": $n}"

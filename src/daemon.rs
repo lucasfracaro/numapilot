@@ -477,6 +477,9 @@ struct Tracked {
     fixed: bool,
     reserve: bool,
     last_ticks: u64,
+    /// When `last_ticks` was read. Each process is read at a different moment of the tick, so
+    /// its usage is divided by its own interval, not by the loop's.
+    last_at: Instant,
     cores: f64,
     active: u32,
     hi: u32,
@@ -886,7 +889,6 @@ pub fn run(cfg: Config) -> Result<()> {
     let me = std::process::id() as i32;
     let mut procs: HashMap<i32, Tracked> = HashMap::new();
     let mut prev_cpu = procfs::cpu_times();
-    let mut prev_t = Instant::now();
     let mut last_save = Instant::now();
     let mut tick: u64 = 0;
     let tick_dur = Duration::from_millis(cfg.daemon.tick_ms);
@@ -934,8 +936,6 @@ pub fn run(cfg: Config) -> Result<()> {
             std::thread::sleep(Duration::from_millis(25));
         }
         tick += 1;
-        let dt = prev_t.elapsed().as_secs_f64().max(0.001);
-        prev_t = Instant::now();
         let cur_cpu = procfs::cpu_times();
         let loads = node_loads(&topo, &prev_cpu, &cur_cpu);
         prev_cpu = cur_cpu;
@@ -978,7 +978,10 @@ pub fn run(cfg: Config) -> Result<()> {
             }
             let delta = st.cpu_ticks.saturating_sub(t.last_ticks) as f64;
             t.last_ticks = st.cpu_ticks;
-            t.cores = delta / tck / dt;
+            let now = Instant::now();
+            let own_dt = now.duration_since(t.last_at).as_secs_f64().max(0.001);
+            t.last_at = now;
+            t.cores = delta / tck / own_dt;
             // GPUs in use (for the interface), every 5 samples.
             let visible = !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual"));
             if visible && tick.is_multiple_of(10) && (t.state == St::Placed || t.cores >= 0.05) {
@@ -1338,8 +1341,14 @@ pub fn run(cfg: Config) -> Result<()> {
     let _ = learned.save();
     let _ = std::fs::remove_file(state_path());
     let _ = std::fs::remove_file(ctl::sock_path());
-    crate::nlog!("daemon encerrado.");
-    Ok(())
+    crate::nlog!("daemon stopped.");
+    // Everything is restored and saved. Leave right here, without running destructors or
+    // atexit handlers: on the server the process once stayed alive after this line until
+    // systemd killed it 10 s later (a helper thread still busy), and the restart waited for it.
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    unsafe { libc::_exit(0) }
 }
 
 /// Who may change the whole machine (modes, fans, clock/voltage, notifications): root or a
@@ -1939,7 +1948,9 @@ fn handle_gpu(
             "não consegui salvar: {e}"
         ));
     }
-    crate::nlog!("GPU {pci}: {}", msg.join(", "));
+    if !msg.is_empty() {
+        crate::nlog!("GPU {pci}: {}", msg.join(", "));
+    }
     Response::ok(if msg.is_empty() {
         crate::i18n::tr("nothing changed").to_string()
     } else {
@@ -2065,6 +2076,7 @@ fn classify(
         fixed: false,
         reserve: false,
         last_ticks: st.cpu_ticks,
+        last_at: Instant::now(),
         cores: 0.0,
         active: 0,
         hi: 0,

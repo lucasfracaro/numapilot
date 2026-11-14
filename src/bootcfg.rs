@@ -58,9 +58,13 @@ pub struct OverdriveState {
 
 /// ppfeaturemask set in any modprobe.d file (ours or another).
 pub fn any_modprobe_mask() -> Option<u64> {
-    if let Some(m) = saved_mask() {
-        return Some(m);
-    }
+    saved_mask().or_else(|| other_modprobe_mask().map(|(m, _)| m))
+}
+
+/// ppfeaturemask set by a modprobe.d file that is not ours (another tool, or by hand), and
+/// which file it is.
+pub fn other_modprobe_mask() -> Option<(u64, PathBuf)> {
+    let ours = conf_path();
     for dir in ["/etc/modprobe.d", "/usr/lib/modprobe.d", "/run/modprobe.d"] {
         let Ok(rd) = std::fs::read_dir(dir) else {
             continue;
@@ -68,6 +72,9 @@ pub fn any_modprobe_mask() -> Option<u64> {
         let mut files: Vec<_> = rd.flatten().map(|e| e.path()).collect();
         files.sort();
         for f in files {
+            if f == ours {
+                continue;
+            }
             let s = std::fs::read_to_string(&f).unwrap_or_default();
             if let Some(m) = s
                 .lines()
@@ -76,7 +83,7 @@ pub fn any_modprobe_mask() -> Option<u64> {
                 .find_map(|w| w.strip_prefix("ppfeaturemask="))
                 .and_then(parse_hex)
             {
-                return Some(m);
+                return Some((m, f));
             }
         }
     }

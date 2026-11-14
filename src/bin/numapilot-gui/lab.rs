@@ -60,13 +60,20 @@ pub fn open_code_app(st: &LabSettings) -> Result<(), String> {
 }
 
 pub fn open_terminal(container: &str) -> Result<(), String> {
+    open_terminal_cmd(container, "bash")
+}
+
+/// Opens a host terminal running `cmd` inside the container (terminal apps: htop, vim...).
+pub fn open_terminal_cmd(container: &str, cmd: &str) -> Result<(), String> {
     let eng = containers::engine().ok_or(crate::i18n::tr("no podman/docker"))?;
     let inner = vec![
         eng,
         "exec".to_string(),
         "-it".to_string(),
         container.to_string(),
-        "bash".to_string(),
+        "sh".to_string(),
+        "-c".to_string(),
+        cmd.to_string(),
     ];
     let term: Vec<String> = if containers::which("konsole") {
         vec!["konsole".into(), "-e".into()]
@@ -280,13 +287,34 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             }
                             ui.horizontal_wrapped(|ui| {
                                 for (name, exec) in &a.desktop {
-                                    let b = ui.add_enabled(can_open, egui::Button::new(name)).on_hover_text(exec);
-                                    let b = if can_open { b } else { b.on_disabled_hover_text(crate::i18n::tr("only apps from the lab and from distrobox containers (which have display access) can be opened")) };
-                                    if b.clicked()
-                                        && let Some(cmd) = containers::open_command(c, exec)
-                                    {
-                                        let _ = spawn_detached(&cmd);
-                                        app.toast(crate::tf!("Opening {name}", "Abrindo {name}"), true);
+                                    // Terminal apps (htop, vim) need a terminal on the host, and the
+                                    // lab's Jupyter is a page of the server that is already running:
+                                    // neither shows anything when started detached in the container.
+                                    let in_terminal = a.terminal.iter().any(|t| t == name);
+                                    let jupyter = c.kind == Kind::Lab && containers::is_jupyter_exec(exec);
+                                    let enabled = can_open || in_terminal || jupyter;
+                                    let b = ui.add_enabled(enabled, egui::Button::new(name)).on_hover_text(exec);
+                                    let b = if enabled { b } else { b.on_disabled_hover_text(crate::i18n::tr("only apps from the lab and from distrobox containers (which have display access) can be opened")) };
+                                    if !b.clicked() {
+                                        continue;
+                                    }
+                                    let r = if jupyter {
+                                        let url = if exec.contains("notebook") {
+                                            jupyter_url(&st).replacen("/lab?", "/tree?", 1)
+                                        } else {
+                                            jupyter_url(&st)
+                                        };
+                                        open_url(&url).map_err(|e| e.to_string())
+                                    } else if in_terminal {
+                                        open_terminal_cmd(&c.name, &containers::clean_exec(exec))
+                                    } else if let Some(cmd) = containers::open_command(c, exec) {
+                                        spawn_detached(&cmd).map_err(|e| e.to_string())
+                                    } else {
+                                        continue;
+                                    };
+                                    match r {
+                                        Ok(()) => app.toast(crate::tf!("Opening {name}", "Abrindo {name}"), true),
+                                        Err(e) => app.toast(e, false),
                                     }
                                 }
                             });

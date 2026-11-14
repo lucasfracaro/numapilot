@@ -2,6 +2,21 @@
 
 ## Ainda não lançado
 
+- **Automatic mode expands to both sockets on time.** Each program's CPU usage is now divided
+  by its own sampling interval. Before, every ~10 samples the reading swung by ±17% (70 then 50
+  cores for a steady 60-core load), which reset the saturation counter: on the 2× Xeon server a
+  program at 99% of a socket took 47 s to expand instead of the configured 10.
+- **Lab → apps inside the container now open.** Terminal apps (htop, nvtop, vim, python) open in
+  a terminal on the PC, and the lab's JupyterLab/Jupyter Notebook shortcuts open the server that
+  is already running in the browser; before, they were started detached and showed nothing.
+- `gfx906-rocm llm update`: the validation accepts the cards by their commercial name ("AMD
+  Radeon Pro VII"), which is how llama.cpp lists the MI50s; it failed with "listed no gfx906".
+- `doctor` and `selftest` agree on cards whose driver gives no clock/voltage table with OverDrive
+  already on (MI50): no more advice to turn OverDrive on.
+- `boot status` says when its file was not created yet and which other file sets OverDrive.
+- `selftest`: core and CU unlock checks only on boards that have them (BC-250), not on MI50s.
+- Service: no more empty "GPU …:" log lines; it exits right after restoring everything (it
+  once stayed alive until systemd killed it 10 s later).
 - **English is now the project's language**, to make collaboration easier. The code's texts, the
   command line, `--help`, logs and reports are in English; the interface (and the messages it
   shows) is available in English and Portuguese (Settings → Language, or `NUMAPILOT_LANG=pt`;

@@ -2745,10 +2745,34 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
                         .unwrap_or(numapilot::i18n::tr("default (half the RAM)").into())
                 )
             );
-            println!(
-                "{}",
-                numapilot::tf!("File: {}", "Arquivo: {}", bootcfg::conf_path().display())
-            );
+            let conf = bootcfg::conf_path();
+            if conf.exists() {
+                println!(
+                    "{}",
+                    numapilot::tf!("File: {}", "Arquivo: {}", conf.display())
+                );
+            } else {
+                println!(
+                    "{}",
+                    numapilot::tf!(
+                        "File: {} (not created yet: numapilot has saved nothing)",
+                        "Arquivo: {} (ainda não criado: o numapilot não salvou nada)",
+                        conf.display()
+                    )
+                );
+            }
+            if bootcfg::saved_mask().is_none()
+                && let Some((_, f)) = bootcfg::other_modprobe_mask()
+            {
+                println!(
+                    "{}",
+                    numapilot::tf!(
+                        "OverDrive is set by another file: {}",
+                        "O OverDrive é definido por outro arquivo: {}",
+                        f.display()
+                    )
+                );
+            }
             match bootcfg::initramfs_tool() {
                 Some(t) => println!(
                     "{}",

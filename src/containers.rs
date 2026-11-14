@@ -36,6 +36,8 @@ pub struct Container {
 pub struct Apps {
     /// Apps with a shortcut (.desktop): (name, command)
     pub desktop: Vec<(String, String)>,
+    /// Names of the shortcuts that run in a terminal (Terminal=true): htop, vim...
+    pub terminal: Vec<String>,
     /// Known IDEs / tools found: (name, path)
     pub tools: Vec<(String, String)>,
     /// Python packages: (name, version)
@@ -187,7 +189,8 @@ for f in /usr/share/applications/*.desktop /usr/local/share/applications/*.deskt
   [ -f "$f" ] || continue
   grep -q '^NoDisplay=true' "$f" && continue
   n=$(grep -m1 '^Name=' "$f" | cut -d= -f2-); e=$(grep -m1 '^Exec=' "$f" | cut -d= -f2-)
-  [ -n "$n" ] && [ -n "$e" ] && printf '%s\t%s\n' "$n" "$e"
+  t=; grep -q '^Terminal=true' "$f" && t=terminal
+  [ -n "$n" ] && [ -n "$e" ] && printf '%s\t%s\t%s\n' "$n" "$e" "$t"
 done
 echo '##TOOLS'
 for b in jupyter-lab jupyter code-server code codium pycharm pycharm.sh spyder rstudio nvtop htop python3 R julia; do
@@ -220,7 +223,15 @@ pub fn parse_apps(out: &str) -> Apps {
         match sec {
             "d" => {
                 if let Some((n, e)) = line.split_once('\t') {
+                    // optional third column: "terminal" for Terminal=true shortcuts
+                    let (e, term) = match e.split_once('\t') {
+                        Some((e, t)) => (e, t.trim() == "terminal"),
+                        None => (e, false),
+                    };
                     a.desktop.push((n.to_string(), e.to_string()));
+                    if term && !a.terminal.iter().any(|t| t == n) {
+                        a.terminal.push(n.to_string());
+                    }
                 }
             }
             "t" => {
@@ -278,6 +289,14 @@ pub fn clean_exec(exec: &str) -> String {
         .filter(|t| !(t.len() == 2 && t.starts_with('%')))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// A shortcut that starts the Jupyter server (jupyter-lab, jupyter-notebook). In the lab the
+/// server is already running and the container has no browser, so the host opens its address.
+pub fn is_jupyter_exec(exec: &str) -> bool {
+    let first = exec.split_whitespace().next().unwrap_or("");
+    let bin = first.rsplit('/').next().unwrap_or("");
+    matches!(bin, "jupyter-lab" | "jupyter-notebook" | "jupyter")
 }
 
 /// Command (on the host) that opens a graphical app from inside the container, if possible.
@@ -354,5 +373,14 @@ mod tests {
         assert_eq!(a.python.len(), 3);
         assert_eq!(a.system, vec!["git", "htop"]);
         assert_eq!(clean_exec("gimp %U --new"), "gimp --new");
+        // third column (newer inspect script): Terminal=true shortcuts
+        let a = parse_apps("##DESKTOP\nGIMP\tgimp %U\t\nHtop\thtop\tterminal\n");
+        assert_eq!(a.desktop.len(), 2);
+        assert_eq!(a.desktop[0].1, "gimp %U");
+        assert_eq!(a.terminal, vec!["Htop"]);
+        assert!(
+            is_jupyter_exec("jupyter-lab %f") && is_jupyter_exec("/usr/local/bin/jupyter-notebook")
+        );
+        assert!(!is_jupyter_exec("htop"));
     }
 }

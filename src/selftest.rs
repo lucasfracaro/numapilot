@@ -707,11 +707,8 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                     ),
                 }
             } else {
-                let od = std::path::Path::new(&crate::util::sys(&format!(
-                    "bus/pci/devices/{}/pp_od_clk_voltage",
-                    g.pci
-                )))
-                .exists();
+                let od = crate::gpuctl::read_od(&g.pci).is_some();
+                let od_on = crate::bootcfg::overdrive_state().active;
                 let pl = crate::gpuctl::read_sensors(&g.pci).power_cap_w;
                 (
                     St::Ok,
@@ -719,6 +716,10 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                         "{}{}",
                         if od {
                             crate::i18n::tr("clock/voltage available (OverDrive on)")
+                        } else if od_on {
+                            crate::i18n::tr(
+                                "clock/voltage unavailable (OverDrive on, but the driver gives no table for this card)",
+                            )
                         } else {
                             crate::i18n::tr("clock/voltage unavailable (OverDrive off)")
                         },
@@ -954,22 +955,25 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             .iter()
             .find_map(|(b, _)| b.cores)
             .map(|c| c.1);
-        r.t(crate::i18n::tr("Active cores"), || {
-            let n = crate::boards::active_cores();
-            let efi = crate::boards::efi_core_unlock();
-            let keep = full_cores
-                .and_then(|f| crate::boards::core_unlock_persistence(n, f, efi))
-                .map(|p| format!(" · {p}"))
-                .unwrap_or_default();
-            (
-                St::Ok,
-                crate::tf!(
-                    "{n} physical cores online ({} threads){keep}",
-                    "{n} núcleos físicos online ({} threads){keep}",
-                    std::thread::available_parallelism().map_or(0, |n| n.get())
-                ),
-            )
-        });
+        // Only boards with unlockable cores/CUs (BC-250); an MI50 is a board without them.
+        if full_cores.is_some() {
+            r.t(crate::i18n::tr("Active cores"), || {
+                let n = crate::boards::active_cores();
+                let efi = crate::boards::efi_core_unlock();
+                let keep = full_cores
+                    .and_then(|f| crate::boards::core_unlock_persistence(n, f, efi))
+                    .map(|p| format!(" · {p}"))
+                    .unwrap_or_default();
+                (
+                    St::Ok,
+                    crate::tf!(
+                        "{n} physical cores online ({} threads){keep}",
+                        "{n} núcleos físicos online ({} threads){keep}",
+                        std::thread::available_parallelism().map_or(0, |n| n.get())
+                    ),
+                )
+            });
+        }
         r.t(
             crate::t2!("Community programs", "Programas da comunidade"),
             || {
@@ -1002,26 +1006,30 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                 }
             },
         );
-        r.t(crate::i18n::tr("GPU CUs"), || {
-            match crate::boards::cu_now() {
-                Some((c, crate::boards::CuSource::Kernel)) => (
-                    St::Ok,
-                    crate::tf!(
-                        "{c} CUs active (unlocked by the kernel: bc250_cc_write_mode=3)",
-                        "{c} CUs ativas (liberadas pelo kernel: bc250_cc_write_mode=3)"
+        if rc.boards(&topo).iter().any(|(b, _)| b.cus.is_some()) {
+            r.t(crate::i18n::tr("GPU CUs"), || {
+                match crate::boards::cu_now() {
+                    Some((c, crate::boards::CuSource::Kernel)) => (
+                        St::Ok,
+                        crate::tf!(
+                            "{c} CUs active (unlocked by the kernel: bc250_cc_write_mode=3)",
+                            "{c} CUs ativas (liberadas pelo kernel: bc250_cc_write_mode=3)"
+                        ),
                     ),
-                ),
-                Some((c, src)) => (
-                    St::Ok,
-                    crate::tf!("{c} CUs active ({})", "{c} CUs ativas ({})", src.text()),
-                ),
-                None => (
-                    St::Warn,
-                    crate::i18n::tr("could not find active_cu_number in the kernel log or in KFD")
+                    Some((c, src)) => (
+                        St::Ok,
+                        crate::tf!("{c} CUs active ({})", "{c} CUs ativas ({})", src.text()),
+                    ),
+                    None => (
+                        St::Warn,
+                        crate::i18n::tr(
+                            "could not find active_cu_number in the kernel log or in KFD",
+                        )
                         .into(),
-                ),
-            }
-        });
+                    ),
+                }
+            });
+        }
         r.t(crate::i18n::tr("GPU memory (TTM)"), || {
             let now = crate::bootcfg::ttm_now();
             let saved = crate::bootcfg::saved_ttm();

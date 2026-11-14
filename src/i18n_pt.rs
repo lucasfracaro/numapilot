@@ -369,6 +369,14 @@ pub const PT: &[(&str, &str)] = &[
         "sudo numapilot boot overdrive on (ou o botão na aba Placas de vídeo) e reinicie",
     ),
     ("unavailable", "indisponível"),
+    (
+        "unavailable: OverDrive is on, but the driver gives no table for this card",
+        "indisponível: o OverDrive está ligado, mas o driver não dá a tabela desta placa",
+    ),
+    (
+        "clock/voltage unavailable (OverDrive on, but the driver gives no table for this card)",
+        "clock/voltagem indisponíveis (OverDrive ligado, mas o driver não dá a tabela desta placa)",
+    ),
     ("clock/voltage (OD)", "clock/voltagem (OD)"),
     ("power limit", "limite de potência"),
     (
