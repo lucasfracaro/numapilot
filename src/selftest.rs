@@ -595,19 +595,23 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
             if let Some(f) = s.fan_rpm {
                 v.push(crate::tf!("fan {f} RPM", "ventoinha {f} RPM"));
             }
-            if s.edge_c.is_none()
-                && s.junction_c.is_none()
-                && s.power_w.is_none()
-                && let Some(why) = crate::boards::smu_table_mismatch(&g.pci)
-            {
-                let clk = s
-                    .clock_mhz
-                    .map(|c| format!("clock {c:.0} MHz · "))
-                    .unwrap_or_default();
-                return (St::Warn, format!("{clk}{why}"));
-            }
             if let Some(c) = s.clock_mhz {
                 v.push(format!("{c:.0} MHz"));
+            }
+            if let Some(mv) = s.voltage_mv {
+                v.push(format!("{mv:.0} mV"));
+            }
+            if let Some(t) = s.apu_c {
+                v.push(crate::tf!("APU {t:.0} °C", "APU {t:.0} °C"));
+            }
+            if let Some(t) = s.vrm_c {
+                v.push(format!("VRM {t:.0} °C"));
+            }
+            if s.edge_c.is_none()
+                && s.junction_c.is_none()
+                && let Some(why) = crate::boards::smu_table_mismatch(&g.pci)
+            {
+                return (St::Warn, format!("{} · {why}", v.join(" · ")));
             }
             if g.is_nvidia() && crate::nvctl::asleep(&g.pci) {
                 return (

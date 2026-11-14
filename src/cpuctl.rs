@@ -443,6 +443,12 @@ impl PowerMeter {
             }
             self.last.insert(z.package, (e, now));
         }
+        // BC-250: no RAPL, but the VRM reports the CPU rail
+        if out.is_empty()
+            && let Some(w) = crate::boards::vrm().and_then(|v| v.cpu_w)
+        {
+            out.insert(0, w);
+        }
         out
     }
 }

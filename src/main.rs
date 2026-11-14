@@ -1792,15 +1792,15 @@ fn cmd_topo(cfg: &Config) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "  node {}  socket(s) {:?}  CPUs {}  ({} logical / {} physical)  RAM {} (free {})  distances {:?}",
-                "  nó {}  socket(s) {:?}  CPUs {}  ({} lógicos / {} físicos)  RAM {} (livre {})  distâncias {:?}",
+                "  node {}  socket(s) {:?}  CPUs {}  ({} logical / {} physical)  RAM {} (available {}, cache included)  distances {:?}",
+                "  nó {}  socket(s) {:?}  CPUs {}  ({} lógicos / {} físicos)  RAM {} (disponível {}, contando o cache)  distâncias {:?}",
                 n.id,
                 n.sockets,
                 format_cpulist(&n.cpus),
                 n.cpus.len(),
                 n.physical_cores,
                 gib(n.mem_total_kb),
-                gib(n.mem_free_kb()),
+                gib(n.mem_total_kb.saturating_sub(n.mem_used_kb())),
                 n.distances
             )
         );
@@ -2410,6 +2410,21 @@ fn cmd_tune(cfg: &Config, action: &str, key: Option<String>) -> Result<()> {
     }
 }
 
+/// Text or, when empty, a fallback (for lists that may be empty on some machines).
+trait OrIfEmpty {
+    fn or_if_empty(self, fallback: &str) -> String;
+}
+
+impl OrIfEmpty for String {
+    fn or_if_empty(self, fallback: &str) -> String {
+        if self.is_empty() {
+            fallback.to_string()
+        } else {
+            self
+        }
+    }
+}
+
 fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
     use numapilot::{cpuctl, machine::Machine};
     let topo = Topology::load(cfg);
@@ -2425,7 +2440,10 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
                     } else {
                         numapilot::i18n::tr("off")
                     })
-                    .unwrap_or("?")
+                    .unwrap_or(numapilot::t2!(
+                        "not controllable here (no cpufreq boost)",
+                        "sem controle aqui (sem boost no cpufreq)"
+                    ))
             );
             let hw: serde_json::Value =
                 std::fs::read_to_string(numapilot::learned::run_dir().join("hw.json"))
@@ -2438,7 +2456,31 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
             for n in &topo.nodes {
                 let pkg = n.sockets.iter().next().copied().unwrap_or(n.id as u32);
                 let c = n.cpus.first().copied().unwrap_or(0);
-                let f = cpuctl::freq(c).unwrap_or_default();
+                let power = hw["power"][pkg.to_string()]
+                    .as_f64()
+                    .map(|w| numapilot::tf!("power draw {w:.1} W", "consumo {w:.1} W"))
+                    .unwrap_or_default();
+                let temp = temps
+                    .get(&pkg)
+                    .map(|t| format!("{t:.0} °C"))
+                    .unwrap_or("-".into());
+                // no cpufreq (BC-250): only the measured clock, read-only
+                let Some(f) = cpuctl::freq(c) else {
+                    let mhz = cpuctl::cur_mhz_all();
+                    let now = n.cpus.iter().filter_map(|c| mhz.get(c)).max();
+                    println!(
+                        "{}",
+                        numapilot::tf!(
+                            "Socket {}: no cpufreq (read-only) · now {} MHz (highest core, /proc/cpuinfo) · {} · {}",
+                            "Socket {}: sem cpufreq (só leitura) · agora {} MHz (núcleo mais rápido, /proc/cpuinfo) · {} · {}",
+                            n.id,
+                            now.map(|m| m.to_string()).unwrap_or("?".into()),
+                            temp,
+                            power
+                        )
+                    );
+                    continue;
+                };
                 println!(
                     "{}",
                     numapilot::tf!(
@@ -2493,6 +2535,10 @@ fn cmd_machine(cfg: &Config, action: &str, value: Option<&str>) -> Result<()> {
                         ))
                         .collect::<Vec<_>>()
                         .join(", ")
+                        .or_if_empty(numapilot::t2!(
+                            "none (cpuidle is off on this system)",
+                            "nenhum (cpuidle desligado neste sistema)"
+                        ))
                 )
             );
             if let Some(l) = hw["lowlat"].as_str().filter(|s| !s.is_empty()) {
@@ -2691,6 +2737,11 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
                         .unwrap_or("?".into()),
                     bootcfg::saved_ttm()
                         .map(|p| format!("{:.1} GiB", gib(p)))
+                        .or_else(|| bootcfg::cc_ttm().map(|p| numapilot::tf!(
+                            "{:.1} GiB (set by BC250 Control Center)",
+                            "{:.1} GiB (pelo BC250 Control Center)",
+                            gib(p)
+                        )))
                         .unwrap_or(numapilot::i18n::tr("default (half the RAM)").into())
                 )
             );

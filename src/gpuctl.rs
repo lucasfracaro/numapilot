@@ -45,12 +45,22 @@ pub struct Sensors {
     /// Current GPU core clock (MHz), from hwmon (freq1_input / sclk).
     #[serde(default)]
     pub clock_mhz: Option<f64>,
+    /// GPU core voltage (mV) from the board's VRM (BC-250).
+    #[serde(default)]
+    pub voltage_mv: Option<f64>,
+    /// Temperature of the GPU's voltage regulator (°C, BC-250).
+    #[serde(default)]
+    pub vrm_c: Option<f64>,
+    /// Die temperature of an APU whose GPU sensor is unusable (k10temp Tctl: CPU and GPU
+    /// share the chip). Shown as "APU".
+    #[serde(default)]
+    pub apu_c: Option<f64>,
 }
 
 impl Sensors {
     /// Temperature used for the curve: junction (hotspot) if present, otherwise edge.
     pub fn control_temp(&self) -> Option<f64> {
-        self.junction_c.or(self.edge_c)
+        self.junction_c.or(self.edge_c).or(self.apu_c)
     }
 }
 
@@ -120,6 +130,20 @@ pub fn read_sensors(pci: &str) -> Sensors {
         // BC-250 (1002:13fe): the most any kernel offers is 2230 MHz; with the SMU table
         // read wrong, 3882 and 4764 MHz have shown up
         .filter(|&mhz| mhz <= 3000.0 || !is_bc250(pci));
+    // BC-250: power and voltage from the VRM; temperature from the APU die when the SMU
+    // table is unusable
+    if read_trim(sys(&format!("bus/pci/devices/{pci}/device"))).as_deref() == Some("0x13fe") {
+        if let Some(v) = crate::boards::vrm() {
+            if s.power_w.is_none() {
+                s.power_w = v.gpu_w.and_then(plausible_power);
+            }
+            s.voltage_mv = v.gpu_mv;
+            s.vrm_c = v.gpu_vrm_c;
+        }
+        if s.edge_c.is_none() && s.junction_c.is_none() {
+            s.apu_c = crate::cpuctl::package_temps().values().next().copied();
+        }
+    }
     s.power_cap_w = w("power1_cap");
     s.power_cap_min_w = w("power1_cap_min");
     s.power_cap_max_w = w("power1_cap_max");

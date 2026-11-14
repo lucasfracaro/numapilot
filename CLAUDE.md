@@ -84,6 +84,21 @@ Partes:
   (`/run/bc250-control-center/cu-live-state.json` do helper do Decky, conferindo boot_id e
   máscaras; `~/.local/share/bc250-control-center/Data/cu_dashboard_live.txt` se for deste boot,
   "CUs active & routed : N / 40"), senão kernel (`bc250_cc_write_mode=3`), senão o boot.
+  Driver e RADV (`num_cu`) contam só as do boot; as liberadas ao vivo pelo SPI (umr) só aparecem
+  lendo registradores como root. Se o `bc250-cu-live-manager.service` falhou no boot, a tabela
+  salva não foi aplicada: `boards::failed_board_services` avisa no first_setup.
+- Telemetria certa sem a tabela da SMU (2026-11-14): hwmon **`bc250_vrm`** (driver do kernel
+  linux-cachyos-bc250, I2C nos reguladores): potência/tensão/corrente de CPU e GPU, entrada 12 V
+  e temperatura dos VRMs (`boards::vrm`). `gpuctl::read_sensors` usa ele na 1002:13fe
+  (`power_w`, `voltage_mv`, `vrm_c`) e o `k10temp` como temperatura do chip (`apu_c`, CPU e GPU
+  no mesmo die; vale para a curva de ventoinha). Sem RAPL, o `PowerMeter` usa a potência da CPU
+  do VRM. A ventoinha é do chip nct6687 da placa (Máquina → ventoinhas), não da GPU.
+- Serviços do BC250 Control Center que mexem no mesmo que o numapilot: `bc250-memory-setup`
+  (TTM a cada boot, estado em `/var/lib/bc250-control-center/system-setup/memory.json`,
+  `bootcfg::cc_ttm`: a interface manda mudar por ele), `bc250-smu-oc` (overclock da CPU),
+  `bc250-cu-live-manager` (CUs). Control Center instalado por usuário (`~/.local/share/...`):
+  "Atualizar" roda o `scripts/install-local.sh` dele (`local_dir`/`local_setup` na receita), não
+  o AUR (que criava uma segunda cópia em /usr).
 - Programas da comunidade (`CommunityApp` na receita): `aur` (preferir `-git`), ou `git` +
   `scripts` (links em ~/.local/bin) + `aur_deps` + `setup`; clones em
   ~/.local/share/numapilot/comunidade/<nome>; Instalar/Atualizar roda no terminal. O AUR do

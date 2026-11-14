@@ -141,7 +141,11 @@ pub fn pick_gpus(
             Kind::Graphics,
         ),
         GpuSpec::Compute(n) => {
-            let g = least_busy(*n);
+            let mut g = least_busy(*n);
+            // No ROCm card (e.g. BC-250, gfx1013): compute goes through Vulkan on the only/video GPU
+            if g.is_empty() && topo.gpus.len() == 1 {
+                g = topo.gpus.clone();
+            }
             if g.is_empty() {
                 bail!(
                     "{}",

@@ -311,25 +311,94 @@ pub fn mismatch_fix(d: MetricsDecode) -> &'static str {
     }
 }
 
-/// BC-250 with 8 cores and scrambled GPU temperature/power (0 °C, ~1470 W): the metrics table
-/// the SMU writes does not match the one the kernel reads. The clocks are still right.
-/// Returns the explanation when that is the case.
+/// BC-250 VRM telemetry (hwmon `bc250_vrm`, in the linux-cachyos-bc250 kernel): read from the
+/// voltage regulators over I2C, so it is right even when the SMU metrics table is not.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Vrm {
+    pub cpu_w: Option<f64>,
+    pub gpu_w: Option<f64>,
+    pub cpu_mv: Option<f64>,
+    pub gpu_mv: Option<f64>,
+    pub vin_mv: Option<f64>,
+    pub cpu_a: Option<f64>,
+    pub gpu_a: Option<f64>,
+    pub cpu_vrm_c: Option<f64>,
+    pub gpu_vrm_c: Option<f64>,
+}
+
+pub fn vrm() -> Option<Vrm> {
+    let rd = std::fs::read_dir(crate::util::sys("class/hwmon")).ok()?;
+    let d = rd
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| crate::util::read_trim(p.join("name")).as_deref() == Some("bc250_vrm"))?;
+    Some(parse_vrm(|f| crate::util::read_trim(d.join(f))))
+}
+
+/// `read(file)` gives the content of a file of the hwmon folder.
+pub fn parse_vrm(read: impl Fn(&str) -> Option<String>) -> Vrm {
+    let mut v = Vrm::default();
+    let num = |f: &str| read(f).and_then(|s| s.parse::<f64>().ok());
+    for (kind, n, div) in [
+        ("power", 4, 1_000_000.0),
+        ("in", 4, 1.0),
+        ("curr", 4, 1000.0),
+        ("temp", 4, 1000.0),
+    ] {
+        let first = if kind == "in" { 0 } else { 1 };
+        for i in first..first + n {
+            let Some(label) = read(&format!("{kind}{i}_label")) else {
+                continue;
+            };
+            let Some(x) = num(&format!("{kind}{i}_input")).map(|x| x / div) else {
+                continue;
+            };
+            let l = label.to_lowercase();
+            let gpu = l.contains("gpu");
+            let cpu = l.contains("cpu");
+            let slot = match kind {
+                "power" if gpu => &mut v.gpu_w,
+                "power" if cpu => &mut v.cpu_w,
+                "in" if gpu => &mut v.gpu_mv,
+                "in" if cpu => &mut v.cpu_mv,
+                "in" if l.contains("vin") || l.contains("12v") => &mut v.vin_mv,
+                "curr" if gpu => &mut v.gpu_a,
+                "curr" if cpu => &mut v.cpu_a,
+                "temp" if gpu => &mut v.gpu_vrm_c,
+                "temp" if cpu => &mut v.cpu_vrm_c,
+                _ => continue,
+            };
+            *slot = Some(x);
+        }
+    }
+    v
+}
+
+/// BC-250 with 8 cores and a scrambled amdgpu temperature (0 °C, ~1470 W): the metrics table
+/// the SMU writes does not match the one the kernel reads. The clocks are still right, and the
+/// power comes from the VRM (`bc250_vrm`). Returns the explanation when that is the case.
 pub fn smu_table_mismatch(pci: &str) -> Option<String> {
     if active_cores() != 8 {
         return None;
     }
     let s = crate::gpuctl::read_sensors(pci);
-    if s.edge_c.is_some() || s.power_w.is_some() {
+    if s.edge_c.is_some() || s.junction_c.is_some() {
         return None;
     }
     let param = |n: &str| crate::util::sys(&format!("module/amdgpu/parameters/{n}"));
     let legacy = crate::util::read_trim(param("cs_legacy_8core_metrics"));
     let d = metrics_decode(legacy.as_deref(), param("cs_eight_core_map").exists());
     Some(format!(
-        "8 núcleos com a tabela de métricas da SMU diferente da que o kernel lê: temperatura e \
-         potência da GPU vêm embaralhadas (os clocks estão certos). Para corrigir, {}. Com o \
+        "8 núcleos com a tabela de métricas da SMU diferente da que o kernel lê: a temperatura \
+         da GPU pelo amdgpu vem embaralhada (os clocks estão certos{}; a temperatura mostrada \
+         é a do chip, pelo k10temp, que a CPU e a GPU dividem). Para corrigir, {}. Com o \
          cyan-skillfish-governor rodando (fix-metrics), o MangoHud lê o gpu_metrics corrigido \
          por ele.",
+        if vrm().is_some_and(|v| v.gpu_w.is_some()) {
+            "; potência e tensão vêm do VRM (bc250_vrm)"
+        } else {
+            ""
+        },
         mismatch_fix(d)
     ))
 }
@@ -598,6 +667,30 @@ mod unlock_tests {
         let l = "amdgpu 0000:01:00.0: amdgpu: SE 1, SH per SE 2, CU per SH 12, active_cu_number 24\nfoo\n";
         assert_eq!(super::parse_active_cu(l), Some(24));
         assert_eq!(super::parse_active_cu("nada"), None);
+        let f = super::parse_failed_units(
+            "bc250-cu-live-manager.service loaded failed failed BC-250 CU saved enumeration\n",
+        );
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].0, "bc250-cu-live-manager");
+        let files: std::collections::HashMap<&str, &str> = [
+            ("power1_label", "CPU Power"),
+            ("power1_input", "1393200"),
+            ("power2_label", "GPU Power"),
+            ("power2_input", "29478400"),
+            ("in0_label", "VIN (12V Input)"),
+            ("in0_input", "11930"),
+            ("in2_label", "GPU Core Voltage"),
+            ("in2_input", "896"),
+            ("temp2_label", "GPU VRM Temp"),
+            ("temp2_input", "45000"),
+        ]
+        .into();
+        let v = super::parse_vrm(|f| files.get(f).map(|s| s.to_string()));
+        assert_eq!(v.gpu_w, Some(29.4784));
+        assert_eq!(v.cpu_w, Some(1.3932));
+        assert_eq!(v.gpu_mv, Some(896.0));
+        assert_eq!(v.vin_mv, Some(11930.0));
+        assert_eq!(v.gpu_vrm_c, Some(45.0));
         let kfd = "cpu_cores_count 0\nsimd_count 48\nsimd_per_cu 2\n";
         assert_eq!(super::parse_kfd_cu(kfd), Some(24));
         assert_eq!(super::parse_kfd_cu("simd_count 0\nsimd_per_cu 0\n"), None);
@@ -847,10 +940,30 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             ),
         }
     }
+    // community boot services that failed this boot (they apply CUs, overclock, memory...)
+    for (unit, what) in failed_board_services() {
+        add(
+            &format!("Serviço {unit}"),
+            StepState::Todo,
+            format!(
+                "falhou neste boot, então isto não foi aplicado: {what}. Veja o motivo com: sudo journalctl -b -u {unit}"
+            ),
+            None,
+        );
+    }
     // 6. memory for the GPU
     if b.cus.is_some() {
         let gib = |p: u64| p as f64 * 4096.0 / 1073741824.0;
         match crate::bootcfg::saved_ttm().or_else(crate::bootcfg::ttm_now) {
+            _ if crate::bootcfg::saved_ttm().is_none() && crate::bootcfg::cc_ttm().is_some() => add(
+                "Memória para a GPU (IA e jogos pesados)",
+                StepState::Ok,
+                format!(
+                    "limite de {:.0} GB configurado pelo BC250 Control Center (aplicado a cada boot pelo bc250-memory-setup); mude por ele",
+                    gib(crate::bootcfg::cc_ttm().unwrap_or(0))
+                ),
+                None,
+            ),
             Some(p) if crate::bootcfg::saved_ttm().is_some() => add(
                 "Memória para a GPU (IA e jogos pesados)",
                 StepState::Ok,
@@ -880,6 +993,47 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
         }
     }
     v
+}
+
+/// BC-250 community system services (bc250-*, cyan-skillfish-*, oberon-*) in the failed
+/// state, with what each one applies at boot.
+pub fn failed_board_services() -> Vec<(String, &'static str)> {
+    let out = Command::new("systemctl")
+        .args([
+            "list-units",
+            "--state=failed",
+            "--plain",
+            "--no-legend",
+            "--no-pager",
+            "bc250*",
+            "cyan-skillfish*",
+            "oberon*",
+        ])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+    parse_failed_units(&out)
+}
+
+pub fn parse_failed_units(out: &str) -> Vec<(String, &'static str)> {
+    out.lines()
+        .filter_map(|l| l.split_whitespace().next())
+        .filter(|u| u.ends_with(".service"))
+        .map(|u| {
+            let what = if u.contains("cu-live") || u.contains("cu-") {
+                "a tabela de CUs salva (as CUs liberadas ao vivo)"
+            } else if u.contains("smu-oc") {
+                "o overclock/undervolt da CPU"
+            } else if u.contains("memory") {
+                "a memória da GPU"
+            } else if u.contains("governor") {
+                "o governor de clock da GPU"
+            } else {
+                "o que ele configura"
+            };
+            (u.trim_end_matches(".service").to_string(), what)
+        })
+        .collect()
 }
 
 /// "3 of 5 ready, 1 to do"

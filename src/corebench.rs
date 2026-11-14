@@ -14,6 +14,7 @@ use std::time::Instant;
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct CoreRank {
     /// first CPU of the core → nanoseconds per access (lower = better)
+    #[serde(deserialize_with = "usize_keys")]
     pub ns: BTreeMap<usize, f32>,
     /// difference between the best and the worst core, in % (the largest value among the processors)
     pub spread_pct: f32,
@@ -25,6 +26,20 @@ pub struct CoreRank {
     /// model of the measured processor (if it changes, the measurement no longer holds)
     #[serde(default)]
     pub cpu: String,
+}
+
+/// JSON object keys are text ("0"). Inside an internally tagged enum (the control socket's
+/// requests) serde buffers the map and no longer turns them into numbers, so the service
+/// rejected `numapilot bench-cores`: parse the keys here.
+fn usize_keys<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<usize, f32>, D::Error> {
+    let m: BTreeMap<String, f32> = Deserialize::deserialize(d)?;
+    m.into_iter()
+        .map(|(k, v)| {
+            k.parse::<usize>()
+                .map(|k| (k, v))
+                .map_err(serde::de::Error::custom)
+        })
+        .collect()
 }
 
 pub fn path() -> PathBuf {
@@ -213,6 +228,19 @@ pub fn sort_units(units: &mut [Vec<usize>], ns: &dyn Fn(usize) -> Option<f32>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn rank_through_the_control_socket() {
+        let mut r = super::CoreRank::default();
+        r.ns.insert(6, 10.5);
+        let req = crate::ctl::Request::SetCoreRank { rank: r.clone() };
+        let back: crate::ctl::Request =
+            serde_json::from_str(&serde_json::to_string(&req).unwrap()).unwrap();
+        match back {
+            crate::ctl::Request::SetCoreRank { rank } => assert_eq!(rank, r),
+            _ => panic!(),
+        }
+    }
+
     use super::*;
 
     #[test]

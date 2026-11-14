@@ -82,7 +82,7 @@ pub fn state(topo: &Topology) -> Value {
             json!({
                 "alias": g.alias, "name": g.name, "node": g.numa_node,
                 "temp": t, "hot": t.is_some_and(|t| t >= 90.0),
-                "power": s.power_w, "clock": s.clock_mhz, "cap": s.power_cap_w, "fan": s.fan_pct, "rpm": s.fan_rpm,
+                "power": s.power_w, "clock": s.clock_mhz, "mv": s.voltage_mv, "apu": s.apu_c, "vrm": s.vrm_c, "cap": s.power_cap_w, "fan": s.fan_pct, "rpm": s.fan_rpm,
                 "busy": g.busy_percent(),
                 "vram": g.vram_used_total().map(|(u, t)| [u as f64 / 1073741824.0, t as f64 / 1073741824.0]),
             })

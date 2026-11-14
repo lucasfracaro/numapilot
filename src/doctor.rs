@@ -1182,7 +1182,15 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         let s = gpuctl::read_sensors(&g.pci);
         // integrated and laptop cards: fan and power belong to the laptop itself
         let laptop = crate::notebook::is_laptop();
-        let soft = if g.is_integrated() || laptop {
+        // BC-250: the fan is on the board's sensor chip (nct6687) and the power is set by the
+        // SMU, not by amdgpu
+        let bc250 = crate::util::read_trim(crate::util::sys(&format!(
+            "bus/pci/devices/{}/device",
+            g.pci
+        )))
+        .as_deref()
+            == Some("0x13fe");
+        let soft = if g.is_integrated() || laptop || bc250 {
             Level::Info
         } else {
             Level::Warn
@@ -1209,6 +1217,11 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     "controllable ({} RPM)",
                     "controlável ({} RPM)",
                     s.fan_rpm.unwrap_or(0)
+                )
+            } else if bc250 {
+                crate::tf!(
+                    "on the board, not on the GPU: Machine → fans (nct6687 chip)",
+                    "é da placa, não da GPU: Máquina → ventoinhas (chip nct6687)"
                 )
             } else if laptop || g.is_integrated() {
                 crate::i18n::tr("controlled by the laptop (power profile)").into()

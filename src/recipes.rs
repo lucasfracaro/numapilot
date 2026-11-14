@@ -60,6 +60,12 @@ pub struct CommunityApp {
     pub aur_deps: Vec<String>,
     /// Command run in the repository folder after downloading or updating (build, install).
     pub setup: Option<String>,
+    /// Folder under ~/.local/share of the program's own per-user installer (not a package).
+    /// When it exists and the AUR package is not installed, "Update" downloads the newest code
+    /// into a temporary folder and runs `local_setup` there, updating that copy in place
+    /// instead of installing a second one through the AUR.
+    pub local_dir: Option<String>,
+    pub local_setup: Option<String>,
 }
 
 fn home() -> PathBuf {
@@ -128,6 +134,42 @@ impl CommunityApp {
             })
     }
 
+    /// Installed by the program's own per-user installer (in ~/.local/share/<local_dir>) and
+    /// not by the AUR package.
+    pub fn local_install(&self) -> bool {
+        self.local_dir
+            .as_ref()
+            .is_some_and(|d| home().join(".local/share").join(d).is_dir())
+            && !self.aur.as_ref().is_some_and(|p| {
+                std::process::Command::new("pacman")
+                    .args(["-Q", p])
+                    .output()
+                    .is_ok_and(|o| o.status.success())
+            })
+    }
+
+    /// Update of a per-user install: newest code in a temporary folder + its own installer.
+    pub fn local_update_command(&self) -> Option<Vec<String>> {
+        if !self.local_install() {
+            return None;
+        }
+        let url = self.git.as_ref()?;
+        let setup = self.local_setup.as_ref()?;
+        let sc = [
+            "set -e".to_string(),
+            "tmp=$(mktemp -d)".into(),
+            "trap 'rm -rf \"$tmp\"' EXIT".into(),
+            format!(
+                "echo \"Updating {} (per-user install)\"",
+                self.name.replace('"', "")
+            ),
+            format!("git clone --depth 1 {} \"$tmp/src\"", sh_quote(url)),
+            "cd \"$tmp/src\"".into(),
+            setup.clone(),
+        ];
+        Some(vec!["sh".into(), "-c".into(), sc.join("\n")])
+    }
+
     /// Can it be installed/updated through numapilot?
     pub fn installable(&self) -> bool {
         self.aur.is_some() || self.git.is_some()
@@ -136,6 +178,9 @@ impl CommunityApp {
     /// Command that installs or updates to the newest version (run in a terminal: asks for the
     /// password and shows progress). `helper` = paru or yay.
     pub fn install_command(&self, helper: &str) -> Option<Vec<String>> {
+        if let Some(cmd) = self.local_update_command() {
+            return Some(cmd);
+        }
         if let Some(pkg) = &self.aur {
             // -git: paru/yay rebuilds from the current code
             let mut v = vec![helper.to_string(), "-S".into()];
@@ -396,7 +441,7 @@ mod app_tests {
 
     #[test]
     fn instalar_pelo_git_ou_aur() {
-        let a = CommunityApp {
+        let a = super::CommunityApp {
             name: "bc250 cu live-manager".into(),
             git: Some("https://github.com/x/y".into()),
             scripts: vec!["y.sh".into()],
@@ -508,6 +553,18 @@ mod tests {
 
 #[cfg(test)]
 mod install_real {
+    #[test]
+    fn local_update_only_for_user_installs() {
+        let a = super::CommunityApp {
+            name: "X".into(),
+            git: Some("https://example.invalid/x".into()),
+            local_dir: Some("numapilot-test-surely-missing-dir".into()),
+            local_setup: Some("true".into()),
+            ..Default::default()
+        };
+        assert!(a.local_update_command().is_none());
+    }
+
     /// Really runs the git install and update in a temporary HOME (needs network):
     /// `cargo test --release real_git_install -- --ignored`.
     #[test]

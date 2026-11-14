@@ -132,6 +132,22 @@ pub fn saved_ttm() -> Option<u64> {
         .and_then(|v| v.parse().ok())
 }
 
+/// TTM limit (4 KiB pages) that BC250 Control Center applies at every boot (its
+/// bc250-memory-setup service, state in /var/lib/bc250-control-center/system-setup/memory.json).
+pub fn cc_ttm() -> Option<u64> {
+    let t =
+        std::fs::read_to_string("/var/lib/bc250-control-center/system-setup/memory.json").ok()?;
+    parse_cc_memory(&t)
+}
+
+pub fn parse_cc_memory(text: &str) -> Option<u64> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    (v.get("phase")?.as_str()? == "configured")
+        .then(|| v.get("ttm_pages")?.as_u64())
+        .flatten()
+        .filter(|p| *p > 0)
+}
+
 /// Limit in use now (4 KiB pages).
 pub fn ttm_now() -> Option<u64> {
     crate::util::read_u64(crate::util::sys("module/ttm/parameters/pages_limit"))
@@ -310,6 +326,16 @@ pub fn set_overdrive(on: bool, log: &mut dyn FnMut(&str)) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn control_center_memory() {
+        let t = r#"{"phase": "configured", "ttm_original": "1945875", "ttm_pages": 3145728}"#;
+        assert_eq!(super::parse_cc_memory(t), Some(3145728));
+        assert_eq!(
+            super::parse_cc_memory(r#"{"phase": "restored", "ttm_pages": 1}"#),
+            None
+        );
+    }
+
     use super::*;
 
     #[test]

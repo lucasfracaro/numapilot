@@ -139,6 +139,13 @@ pub fn check(topo: &Topology, gpu: Option<&Gpu>) -> Vec<Check> {
             crate::i18n::tr(
                 "enable VT-d in the BIOS; numapilot vm prepare adds intel_iommu=on iommu=pt",
             )
+        } else if crate::util::read_trim(sys("bus/pci/devices/0000:01:00.0/device")).as_deref()
+            == Some("0x13fe")
+        {
+            crate::t2!(
+                "BC-250: the IOMMU makes it freeze (the community uses amd_iommu=off), and its only GPU is the APU's: a VM with a card of its own is not possible here",
+                "BC-250: o IOMMU trava a placa (a comunidade usa amd_iommu=off) e a única GPU é a do APU: VM com placa própria não dá aqui"
+            )
         } else {
             crate::i18n::tr("enable IOMMU/AMD-Vi in the BIOS")
         }),

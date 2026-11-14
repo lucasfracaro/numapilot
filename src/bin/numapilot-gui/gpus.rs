@@ -21,6 +21,8 @@ fn temps(ui: &mut egui::Ui, s: &Sensors) {
         (crate::i18n::tr("edge"), s.edge_c),
         ("hotspot", s.junction_c),
         (crate::i18n::tr("memory"), s.mem_c),
+        ("APU", s.apu_c),
+        ("VRM", s.vrm_c),
     ] {
         if let Some(t) = v {
             ui.label(label.to_string());
@@ -1037,6 +1039,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     if let Some(c) = s.clock_mhz {
                         ui.label(format!("{c:.0} MHz"));
                     }
+                    if let Some(mv) = s.voltage_mv {
+                        ui.label(format!("{mv:.0} mV"));
+                    }
                     if let Some(c) = s.power_cap_w {
                         ui.label(RichText::new(crate::tf!("limit {c:.0} W", "limite {c:.0} W")).weak());
                     }
@@ -1244,6 +1249,21 @@ fn apu_memory_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
     let gib = |p: u64| p as f64 * 4096.0 / 1073741824.0;
     let now = bootcfg::ttm_now().map(gib);
     let saved = bootcfg::saved_ttm().map(gib);
+    // BC250 Control Center applies its own limit at every boot: two tools on the same setting
+    // would undo each other
+    if saved.is_none()
+        && let Some(cc) = bootcfg::cc_ttm().map(gib)
+    {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(crate::i18n::tr("Memory for the GPU (AI):")).strong());
+            ui.label(crate::tf!(
+                "{:.1} GiB, set by BC250 Control Center (its bc250-memory-setup service applies it at every boot). Change it there so the two programs do not undo each other.",
+                "{:.1} GiB, configurado pelo BC250 Control Center (o serviço bc250-memory-setup dele aplica a cada boot). Mude por ele, para os dois programas não desfazerem um ao outro.",
+                cc
+            ));
+        });
+        return;
+    }
     ui.horizontal(|ui| {
         ui.label(RichText::new(crate::i18n::tr("Memory for the GPU (AI):")).strong())
             .on_hover_text(crate::i18n::tr("How much RAM the integrated GPU may use. The kernel default is half, which keeps large models from loading. Leave 1-2 GiB for the system."));
