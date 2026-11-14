@@ -565,6 +565,10 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                     .fixed_decimals(0),
                             );
                             ui.label(RichText::new(crate::tf!("= {:.1} core(s)", "= {:.1} núcleo(s)", *c / 100.0)).small().weak());
+                            if numapilot::machine::sched_ext_active() {
+                                ui.label(RichText::new(crate::i18n::tr("⚠ may not hold with the sched_ext scheduler on")).small().color(Color32::from_rgb(220, 160, 60)))
+                                    .on_hover_text(crate::i18n::tr("With a sched_ext scheduler running (Machine → Scheduler) the kernel only enforces this limit if that scheduler supports it; with LAVD it was not enforced. Limiting the number of cores always works."));
+                            }
                         }
                     });
                     ui.end_row();

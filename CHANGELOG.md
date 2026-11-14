@@ -2,6 +2,19 @@
 
 ## Ainda não lançado
 
+- **Maximum turbo now delivers the clock.** While a program with this profile runs, its socket
+  goes to the `performance` governor (and back afterwards). Measured on the 2× Xeon server
+  (schedutil + scx_lavd), the same 4 reserved cores did 256 M iterations/s per thread before
+  and 419 with `performance`.
+- **Awake-core count (Turbo line, `numapilot turbo`)**: a core that slept through the whole
+  interval was counted as awake (a socket with 4 busy cores and 18 asleep read "21 awake"),
+  because the kernel only credits idle time when the core wakes up.
+- Profiles with **exclusive cores, maximum turbo or a machine mode** now need the same
+  permission as changing the machine (`admin_groups`): they affect every user of the PC.
+- Adjust…: the **processor limit** warns when a sched_ext scheduler is running; with scx_lavd
+  the kernel did not enforce it (`cpu.max` at 25%, program at 400%, never throttled).
+- `profile rm` answers "profile deleted" (it said "saved"); `web --bind 127.0.0.1 --url` gives a
+  link with that address, not the LAN one; the last Portuguese words left `startup --help`.
 - **Automatic mode expands to both sockets on time.** Each program's CPU usage is now divided
   by its own sampling interval. Before, every ~10 samples the reading swung by ±17% (70 then 50
   cores for a steady 60-core load), which reset the saturation counter: on the 2× Xeon server a

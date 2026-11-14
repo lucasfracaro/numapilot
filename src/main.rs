@@ -149,13 +149,13 @@ enum Cmd {
     Startup {
         action: Option<String>,
         args: Vec<String>,
-        /// desinstalar: also delete the program's settings and data
+        /// uninstall: also delete the program's settings and data
         #[arg(long)]
         config: bool,
-        /// desinstalar: do not ask
+        /// uninstall: do not ask
         #[arg(long = "yes", alias = "sim")]
         yes: bool,
-        /// Seconds to wait before starting (comando, arquivo, app)
+        /// Seconds to wait before starting (command, file, app)
         #[arg(long = "delay", alias = "atraso", default_value_t = 0)]
         delay: u32,
     },
@@ -1730,7 +1730,8 @@ fn real_main() -> Result<()> {
             if url {
                 println!(
                     "{}",
-                    numapilot::web::url(port).context(numapilot::i18n::tr("no network"))?
+                    numapilot::web::url_for(&bind, port)
+                        .context(numapilot::i18n::tr("no network"))?
                 );
                 return Ok(());
             }

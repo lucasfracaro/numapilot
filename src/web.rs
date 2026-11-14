@@ -60,7 +60,19 @@ pub fn lan_ip() -> Option<String> {
 }
 
 pub fn url(port: u16) -> Option<String> {
-    Some(format!("http://{}:{port}/?t={}", lan_ip()?, token().ok()?))
+    url_for("0.0.0.0", port)
+}
+
+/// Link for a panel listening on `bind`: the LAN address when it listens on every interface,
+/// otherwise the address it is bound to (a link with the LAN address would not open a panel
+/// bound to 127.0.0.1).
+pub fn url_for(bind: &str, port: u16) -> Option<String> {
+    let host = match bind {
+        "0.0.0.0" | "::" | "" => lan_ip()?,
+        b if b.contains(':') => format!("[{b}]"),
+        b => b.to_string(),
+    };
+    Some(format!("http://{host}:{port}/?t={}", token().ok()?))
 }
 
 fn gfx906() -> String {
@@ -381,7 +393,7 @@ pub fn serve(cfg: &Config, bind: &str, port: u16) -> anyhow::Result<()> {
     let topo = Topology::load(cfg);
     let server = tiny_http::Server::http(format!("{bind}:{port}"))
         .map_err(|e| anyhow::anyhow!("{}", crate::tf!("port {port}: {e}", "porta {port}: {e}")))?;
-    match url(port) {
+    match url_for(bind, port) {
         Some(u) => eprintln!("{}", crate::tf!("Panel: {u}", "Painel: {u}")),
         None => eprintln!(
             "{}",

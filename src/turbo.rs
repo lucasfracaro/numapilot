@@ -165,8 +165,36 @@ pub fn deep_time(cpus: &[usize]) -> BTreeMap<usize, u64> {
         }
         m.insert(c, sum);
     }
+    // The kernel only adds to `time` when the CPU leaves the state: a core that slept through
+    // the whole interval shows no change and would count as awake (on the 2× Xeon server, a
+    // socket with 4 busy cores and 18 asleep read "21 awake"). /proc/stat's idle time does
+    // include the sleep still going on, so it is kept beside it for `awake_cores`. Only where
+    // deep states are enabled: without them an idle core really is awake (C1).
+    if let Ok(stat) = std::fs::read_to_string("/proc/stat") {
+        for l in stat.lines() {
+            let mut f = l.split_whitespace();
+            let Some(c) = f
+                .next()
+                .and_then(|n| n.strip_prefix("cpu"))
+                .and_then(|n| n.parse::<usize>().ok())
+            else {
+                continue;
+            };
+            if !m.contains_key(&c) || deep_enabled(c) != Some(true) {
+                continue;
+            }
+            // user nice system idle iowait: idle + iowait, in USER_HZ (100/s) → µs
+            let v: Vec<u64> = f.take(5).filter_map(|x| x.parse().ok()).collect();
+            if v.len() == 5 {
+                m.insert(IDLE_KEY + c, (v[3] + v[4]) * 10_000);
+            }
+        }
+    }
     m
 }
+
+/// Keys from here up hold each CPU's idle time (µs) from /proc/stat, beside its deep time.
+const IDLE_KEY: usize = 1 << 20;
 
 /// Is there any deep state and is it enabled? None: no cpuidle (VM, BC-250).
 pub fn deep_enabled(cpu: usize) -> Option<bool> {
@@ -201,11 +229,19 @@ pub fn awake_cores(
             let deep = threads
                 .iter()
                 .map(|c| {
-                    let d = cur
-                        .get(c)
-                        .copied()
-                        .unwrap_or(0)
-                        .saturating_sub(prev.get(c).copied().unwrap_or(0));
+                    let delta = |k: usize| {
+                        cur.get(&k)
+                            .copied()
+                            .unwrap_or(0)
+                            .saturating_sub(prev.get(&k).copied().unwrap_or(0))
+                    };
+                    let d = delta(*c);
+                    // no deep time credited yet and idle all along: still in the same sleep
+                    let d = if d == 0 && cur.contains_key(&(IDLE_KEY + c)) {
+                        delta(IDLE_KEY + c)
+                    } else {
+                        d
+                    };
                     (d as f64 / dt_us).clamp(0.0, 1.0)
                 })
                 .fold(1.0f64, f64::min);
@@ -261,6 +297,13 @@ mod tests {
             [(0, 900_000), (2, 100_000), (1, 1_000_000), (3, 1_000_000)].into();
         let a = awake_cores(&prev, &cur, 1_000_000.0, &[vec![0, 2], vec![1, 3]]);
         assert!((a - 0.9).abs() < 0.01);
+        // A core asleep through the whole interval has no deep time credited yet; its idle
+        // time from /proc/stat says it slept. A busy core has neither: awake.
+        let k = IDLE_KEY;
+        let prev: BTreeMap<usize, u64> = [(0, 5), (1, 5), (k, 0), (k + 1, 0)].into();
+        let cur: BTreeMap<usize, u64> = [(0, 5), (1, 5), (k, 1_000_000), (k + 1, 0)].into();
+        let a = awake_cores(&prev, &cur, 1_000_000.0, &[vec![0], vec![1]]);
+        assert!((a - 1.0).abs() < 0.01, "{a}");
         assert!(deep_name("C6") && deep_name("C3_ACPI") && !deep_name("C1E") && !deep_name("POLL"));
     }
 }

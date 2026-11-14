@@ -843,6 +843,14 @@ fn apply_scx(sched: Option<&str>, mode: Option<&str>, had: bool) -> Result<(), S
     }
 }
 
+/// A sched_ext scheduler is running. Its tasks are not under the kernel's CPU bandwidth
+/// control unless the scheduler implements it: measured on the 2× Xeon server with scx_lavd, a
+/// control group with `cpu.max` of 25% ran at 400% with `nr_throttled 0`.
+pub fn sched_ext_active() -> bool {
+    std::fs::read_to_string(crate::util::sys("kernel/sched_ext/state"))
+        .is_ok_and(|s| s.trim() == "enabled")
+}
+
 /// (current scheduler, list of available ones) through scxctl.
 pub fn scx_status() -> Option<(String, Vec<String>)> {
     if !crate::containers::which("scxctl") {

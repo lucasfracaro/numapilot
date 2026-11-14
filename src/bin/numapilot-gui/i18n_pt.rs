@@ -1042,6 +1042,14 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("PyCharm (install)", "PyCharm (instalar)"),
     (
+        "⚠ may not hold with the sched_ext scheduler on",
+        "⚠ pode não valer com o escalonador sched_ext ligado",
+    ),
+    (
+        "With a sched_ext scheduler running (Machine → Scheduler) the kernel only enforces this limit if that scheduler supports it; with LAVD it was not enforced. Limiting the number of cores always works.",
+        "Com um escalonador sched_ext rodando (Máquina → Escalonador) o kernel só aplica este limite se esse escalonador der suporte; com o LAVD ele não foi aplicado. Limitar o número de núcleos sempre funciona.",
+    ),
+    (
         "PyCharm is not in the lab yet. Click to add it: the lab image is rebuilt (a large download, takes several minutes) and the lab restarts.",
         "O PyCharm ainda não está no laboratório. Clique para adicionar: a imagem do laboratório é refeita (download grande, leva vários minutos) e o laboratório reinicia.",
     ),

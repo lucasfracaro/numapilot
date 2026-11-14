@@ -701,6 +701,12 @@ impl Ctx<'_> {
             match cgroup::apply(&t.pkey, &t.label, pids, &limits) {
                 Ok(name) => {
                     crate::nlog!("{} → {name} {:?}", t.comm, limits);
+                    if limits.cpu_quota_pct.is_some() && crate::machine::sched_ext_active() {
+                        crate::nlog!(
+                            "warning: {}: the CPU limit may not hold while a sched_ext scheduler is running",
+                            t.comm
+                        );
+                    }
                     status_update(|s| s.cgroup_ok_count += 1);
                 }
                 Err(e) => {
@@ -831,6 +837,8 @@ pub fn run(cfg: Config) -> Result<()> {
         let _ = std::fs::remove_file(&reserved_flag);
     }
     let mut reserved_now: Vec<usize> = vec![];
+    // Governor each CPU had before a "maximum turbo" program put its socket in performance.
+    let mut turbo_gov: BTreeMap<usize, String> = BTreeMap::new();
     if cfg.daemon.gpu_irq {
         gpu_irqs(&ctx);
     }
@@ -1205,9 +1213,16 @@ pub fn run(cfg: Config) -> Result<()> {
                 .collect();
             socks.sort_unstable();
             socks.dedup();
-            if socks.len() < topo.nodes.len() {
-                want.extend(topo.cpus_of(&socks));
-            }
+            let turbo_cpus = if socks.len() < topo.nodes.len() {
+                topo.cpus_of(&socks)
+            } else {
+                vec![]
+            };
+            want.extend(turbo_cpus.iter().copied());
+            // The point of this profile is the highest clock, and a governor that follows the
+            // load does not give it: on the 2× Xeon server (schedutil + scx_lavd) the same 4
+            // cores did 256 M iterations/s per thread, against 419 in performance.
+            turbo_governor(&turbo_cpus, &mut turbo_gov);
         }
         want.sort_unstable();
         want.dedup();
@@ -1294,6 +1309,7 @@ pub fn run(cfg: Config) -> Result<()> {
             procfs::set_affinity_all(*pid, &ctx.all_cpus);
         }
     }
+    turbo_governor(&[], &mut turbo_gov);
     if !reserved_now.is_empty() {
         let _ = cgroup::set_reserved(&ctx.all_cpus, &[]);
         let _ = std::fs::remove_file(&reserved_flag);
@@ -1432,7 +1448,7 @@ fn handle(
     profiles: &mut Profiles,
     tick: u64,
 ) -> Response {
-    let (key, profile, pid) = match req {
+    let (key, profile, pid, deleting) = match req {
         Request::Ping => return Response::ok("pong"),
         Request::Adopt {
             pid,
@@ -1508,11 +1524,19 @@ fn handle(
         | Request::SetBoardFan { .. } => {
             return Response::err(crate::i18n::tr("request in the wrong place"));
         }
-        Request::SetProfile { key, profile, pid } => (key, profile, pid),
-        Request::DeleteProfile { key, pid } => (key, Profile::default(), pid),
+        Request::SetProfile { key, profile, pid } => (key, profile, pid, false),
+        Request::DeleteProfile { key, pid } => (key, Profile::default(), pid, true),
     };
     if uid != 0 && uid < ctx.cfg.daemon.min_uid {
         return Response::err(crate::i18n::tr("no permission"));
+    }
+    // Profiles are shared by every user of the PC, and these options reach beyond the
+    // program: they take cores (or a whole socket) from everyone else or change the machine
+    // mode. Same permission as changing the machine directly.
+    if (profile.exclusive || profile.turbo_max || profile.machine_mode.is_some())
+        && let Some(e) = admin_denied(uid, ctx)
+    {
+        return Response::err(e);
     }
     if let Err(e) = profile.validate() {
         return Response::err(e);
@@ -1560,6 +1584,12 @@ fn handle(
     // Priority and control group apply to the whole program.
     if let Some((t, prev)) = sample {
         ctx.apply_extras(&pids, &t, &profile, prev.as_ref());
+    }
+    if deleting {
+        return Response::ok(crate::tf!(
+            "profile deleted; {n} process(es) back to automatic",
+            "perfil apagado; {n} processo(s) de volta ao automático"
+        ));
     }
     Response::ok(crate::tf!(
         "profile saved; {n} process(es) adjusted now",
@@ -2333,6 +2363,52 @@ fn step(
                 }
             }
         }
+    }
+}
+
+/// Puts `cpus` (the socket of a "maximum turbo" program) in the performance governor and
+/// gives back the previous one to the CPUs that left the list. `saved` remembers what each
+/// CPU had; a CPU whose governor was changed by someone else in the meantime is left alone.
+fn turbo_governor(cpus: &[usize], saved: &mut BTreeMap<usize, String>) {
+    let leaving: Vec<usize> = saved
+        .keys()
+        .copied()
+        .filter(|c| !cpus.contains(c))
+        .collect();
+    let mut restored = 0;
+    for c in leaving {
+        if let Some(prev) = saved.remove(&c)
+            && crate::cpuctl::governor(c).as_deref() == Some("performance")
+            && crate::cpuctl::set_governor(&[c], &prev).is_ok()
+        {
+            restored += 1;
+        }
+    }
+    if restored > 0 {
+        crate::nlog!("maximum turbo ended: previous governor back on {restored} CPUs");
+    }
+    let mut switched = 0;
+    for &c in cpus {
+        if saved.contains_key(&c) {
+            continue;
+        }
+        let Some(cur) = crate::cpuctl::governor(c) else {
+            continue;
+        };
+        if cur == "performance"
+            || !crate::cpuctl::governors_available(c)
+                .iter()
+                .any(|g| g == "performance")
+        {
+            continue;
+        }
+        if crate::cpuctl::set_governor(&[c], "performance").is_ok() {
+            saved.insert(c, cur);
+            switched += 1;
+        }
+    }
+    if switched > 0 {
+        crate::nlog!("maximum turbo: performance governor on {switched} CPUs while it runs");
     }
 }
 
