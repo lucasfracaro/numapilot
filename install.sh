@@ -311,8 +311,20 @@ fi
 
 # ------------------------------------------------------------------ 8. diagnosis
 step "Diagnosis"
-sleep 2
-numapilot doctor | tail -n 25 || true
+# The service has just restarted: a doctor run in its first seconds can fail the service
+# checks. Try again a few times before believing a failure, and never let `tail` hide one.
+report=""
+for _ in 1 2 3 4; do
+    sleep 2
+    report=$(numapilot doctor 2>&1 || true)
+    grep -qE '^\[(FAIL|FALHA|FALHOU)\]' <<<"$report" || break
+done
+fails=$(grep -A1 -E '^\[(FAIL|FALHA|FALHOU)\]' <<<"$report" || true)
+if [[ -n $fails ]]; then
+    echo "$fails"
+    echo "  ..."
+fi
+tail -n 25 <<<"$report"
 
 echo
 echo "${B}Done.${N} Open \"numapilot\" from the menu."

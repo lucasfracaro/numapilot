@@ -15,6 +15,8 @@
   already on (MI50): no more advice to turn OverDrive on.
 - `boot status` says when its file was not created yet and which other file sets OverDrive.
 - `selftest`: core and CU unlock checks only on boards that have them (BC-250), not on MI50s.
+- Installer: the final diagnosis waits for the service that has just restarted (it could report
+  one failure in its first seconds) and shows the failed lines, which the 25-line tail hid.
 - Service: no more empty "GPU …:" log lines; it exits right after restoring everything (it
   once stayed alive until systemd killed it 10 s later).
 - **English is now the project's language**, to make collaboration easier. The code's texts, the
