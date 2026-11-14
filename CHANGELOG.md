@@ -6,6 +6,10 @@
   goes to the `performance` governor (and back afterwards). Measured on the 2× Xeon server
   (schedutil + scx_lavd), the same 4 reserved cores did 256 M iterations/s per thread before
   and 419 with `performance`.
+- A program with exclusive cores or maximum turbo **reopened right after closing** (or started
+  while another one held the cores) lost its profile: the kernel refused the affinity while the
+  process was still in the rest of the system's control group, and the service gave up. It now
+  goes into its own group first.
 - **Awake-core count (Turbo line, `numapilot turbo`)**: a core that slept through the whole
   interval was counted as awake (a socket with 4 busy cores and 18 asleep read "21 awake"),
   because the kernel only credits idle time when the core wakes up.

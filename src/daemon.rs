@@ -1609,6 +1609,7 @@ fn admit(
 ) {
     let parent = procs.get(&st.ppid).cloned();
     let mut t = classify(ctx, learned, profiles, pid, st, parent.as_ref());
+    let mut scoped = false;
     if t.state == St::Placed {
         let cpus = if t.cpus.is_empty() {
             ctx.topo.cpus_of(&t.nodes)
@@ -1616,9 +1617,19 @@ fn admit(
             t.cpus.clone()
         };
         let why = t.origin.clone();
+        // A program with a scope of its own goes into it first. While another program holds
+        // cores (exclusive, maximum turbo) the rest of the system's control group excludes
+        // them, and the kernel refuses that affinity for a process still in there: the
+        // program was then left alone, without its cores. Seen when a maximum turbo program
+        // was reopened right after closing.
+        if let Some(p) = t.profile.clone().filter(|p| p.needs_scope()) {
+            ctx.apply_extras(&[pid], &t, &p, None);
+            scoped = true;
+        }
         ctx.apply_cpus(pid, &mut t, cpus, true, &why, tick);
     }
-    if !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual"))
+    if !scoped
+        && !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual"))
         && let Some(p) = t.profile.clone()
         && (p.needs_daemon() || p.priority != "normal")
     {

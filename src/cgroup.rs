@@ -142,7 +142,12 @@ pub fn apply(key: &str, label: &str, pids: &[i32], limits: &Limits) -> Result<St
         out = extra;
     }
     for u in scopes_of(&name) {
-        run(&set_props_argv(&u, limits))?;
+        // A scope of a previous run may be on its way out ("No such process"): only the one
+        // these processes are in has to take the limits.
+        let r = run(&set_props_argv(&u, limits));
+        if u == out {
+            r?;
+        }
     }
     Ok(out)
 }
