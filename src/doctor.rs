@@ -1278,6 +1278,17 @@ pub fn run(cfg: &Config) -> Vec<Check> {
         );
         match gpuctl::read_od(&g.pci) {
             _ if g.is_nvidia() => {}
+            _ if gpuctl::od_by_governor(&g.pci) => add(
+                &a,
+                crate::i18n::tr("clock/voltage (OD)"),
+                Level::Info,
+                crate::t2!(
+                    "left to the community governor (the driver's OverDrive table is not valid on the BC-250)",
+                    "fica com o governor da comunidade (a tabela de OverDrive do driver não vale na BC-250)"
+                )
+                .into(),
+                None,
+            ),
             Some(od) => add(
                 &a,
                 crate::i18n::tr("clock/voltage (OD)"),

@@ -78,6 +78,13 @@ pub fn method(g: &Gpu, base: &GpuControl, clock: Option<u32>) -> Result<Method, 
             limit: 300,
         });
     }
+    if gpuctl::od_by_governor(&g.pci) {
+        return Err(crate::t2!(
+            "on the BC-250 the GPU voltage belongs to the community governor (cyan-skillfish-governor safe points, or BC250 Control Center's voltage lab)",
+            "na BC-250 a tensão da GPU é do governor da comunidade (pontos seguros do cyan-skillfish-governor, ou o laboratório de voltagem do BC250 Control Center)"
+        )
+        .into());
+    }
     let od = gpuctl::read_od(&g.pci).ok_or(crate::i18n::tr(
         "OverDrive is off: turn it on in Settings → Boot options (amdgpu.ppfeaturemask) and reboot",
     ))?;

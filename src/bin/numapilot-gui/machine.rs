@@ -1134,7 +1134,31 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 .weak(),
             );
         }
-        for f in mu.fans.clone() {
+        // channels with nothing plugged in (0 RPM and not controlled) go to a folded group
+        let (connected, empty): (Vec<BoardFan>, Vec<BoardFan>) = mu.fans.clone().into_iter().partition(|f| {
+            f.rpm.is_some_and(|r| r > 0) || mu.fans_saved.map.get(&f.id).is_some_and(|c| c.fan != FanMode::Auto)
+        });
+        let mut shown = connected;
+        let show_empty = !empty.is_empty()
+            && ui
+            .collapsing(
+                crate::tf!(
+                    "{} channel(s) with no fan spinning",
+                    "{} canal(is) sem ventoinha girando",
+                    empty.len()
+                ),
+                |ui| {
+                    ui.label(RichText::new(crate::t2!(
+                        "Shown here so they can be named or forced; a fan that is stopped by the board's curve also shows 0 RPM.",
+                        "Aparecem aqui para dar nome ou forçar; uma ventoinha parada pela curva da placa também mostra 0 RPM."
+                    )).small().weak());
+                },
+            )
+            .fully_open();
+        if show_empty {
+            shown.extend(empty);
+        }
+        for f in shown {
             let saved = mu.fans_saved.map.get(&f.id).cloned().unwrap_or_default();
             let e = mu.fan_edit.entry(f.id.clone()).or_insert_with(|| saved.clone());
             egui::Frame::group(ui.style()).show(ui, |ui| {
@@ -1163,7 +1187,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.horizontal(|ui| {
                             ui.label(crate::i18n::tr("Follow:"));
                             egui::ComboBox::from_id_salt(format!("src{}", f.id)).selected_text(&e.source).show_ui(ui, |ui| {
-                                for (s, l) in [("cpu", crate::i18n::tr("Hottest CPU")), ("cpu0", "CPU 0"), ("cpu1", "CPU 1"), ("gpu", crate::i18n::tr("Hottest GPU")), ("max", crate::i18n::tr("the hottest of all"))] {
+                                for (s, l) in [("cpu", crate::i18n::tr("Hottest CPU")), ("cpu0", "CPU 0"), ("cpu1", "CPU 1"), ("gpu", crate::i18n::tr("Hottest GPU")), ("vrm", crate::t2!("Voltage regulators (VRM)", "Reguladores de tensão (VRM)")), ("max", crate::i18n::tr("the hottest of all"))] {
                                     ui.selectable_value(&mut e.source, s.to_string(), l);
                                 }
                             });

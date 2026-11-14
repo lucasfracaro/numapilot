@@ -99,6 +99,17 @@ Partes:
   `bc250-cu-live-manager` (CUs). Control Center instalado por usuário (`~/.local/share/...`):
   "Atualizar" roda o `scripts/install-local.sh` dele (`local_dir`/`local_setup` na receita), não
   o AUR (que criava uma segunda cópia em /usr).
+- **Não ler `pp_od_clk_voltage` na BC-250** (`gpuctl::od_by_governor`): cada leitura gera 4
+  linhas "Unsupported clock type" no kernel; a interface lia por quadro (~4500/min, 59 mil num
+  boot) e o journal rotacionava, apagando o log dos serviços. Clock/tensão da GPU ficam com o
+  governor da comunidade; undervolt e "economia quando parada" ficam desligados nela.
+- Ventoinha da BC-250: canal do nct6687 (no Lucas, `pwm2` "Pump Fan"). Testado pelo socket:
+  fixa e curva (cpu/gpu/max) mudam o PWM e o RPM. A aba Placas mostra a ventoinha e leva para
+  Máquina → Ventoinhas; fonte "vrm" (`fans::vrm_temp`). Canais a 0 RPM ficam num grupo dobrado.
+- `umr` do AUR quebra quando o LLVM do sistema muda (22 → 23 em 2026-11): o
+  bc250-cu-live-manager falha e as CUs voltam a 24. `boards::broken_apps` (ldd) avisa no
+  first_setup, doctor, autoteste e bandeja, com "Recompilar" (+ reaplica as CUs).
+  CUs ao vivo também vêm do `/etc/bc250-cu-live-manager.conf` quando o serviço deu certo no boot.
 - Programas da comunidade (`CommunityApp` na receita): `aur` (preferir `-git`), ou `git` +
   `scripts` (links em ~/.local/bin) + `aur_deps` + `setup`; clones em
   ~/.local/share/numapilot/comunidade/<nome>; Instalar/Atualizar roda no terminal. O AUR do

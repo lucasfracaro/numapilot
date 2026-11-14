@@ -458,8 +458,20 @@ pub fn od_path(pci: &str) -> PathBuf {
     sys(&format!("bus/pci/devices/{pci}/pp_od_clk_voltage"))
 }
 
-/// None = OverDrive off (amdgpu.ppfeaturemask is missing the 0x4000 bit).
+/// BC-250: clock and voltage belong to the community governor (through the SMU). Its OverDrive
+/// table is garbage (4764 MHz, 59789 mV) and every read of pp_od_clk_voltage makes amdgpu log
+/// "Unsupported clock type" 4 times: read every frame by the interface, that was ~4500 kernel
+/// log lines a minute, enough to rotate the journal. numapilot does not touch it there.
+pub fn od_by_governor(pci: &str) -> bool {
+    is_bc250(pci)
+}
+
+/// None = OverDrive off (amdgpu.ppfeaturemask is missing the 0x4000 bit), or a card whose
+/// clock/voltage numapilot leaves to its governor (`od_by_governor`).
 pub fn read_od(pci: &str) -> Option<Od> {
+    if od_by_governor(pci) {
+        return None;
+    }
     let s = fs::read_to_string(od_path(pci)).ok()?;
     let od = parse_od(&s);
     if od.sclk.is_empty() && od.curve.is_empty() && od.vddgfx_offset.is_none() {

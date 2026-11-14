@@ -92,7 +92,8 @@ pub struct BoardFanControl {
     pub fan: FanMode,
     pub curve: Vec<(f64, f64)>,
     pub fixed_pct: f64,
-    /// Temperature that drives the curve: "cpu" (hottest socket), "cpu0", "cpu1", "gpu" (hottest GPU), "max"
+    /// Temperature that drives the curve: "cpu" (hottest socket), "cpu0", "cpu1", "gpu" (hottest
+    /// GPU), "vrm" (voltage regulators: BC-250 bc250_vrm, or a board chip channel named VRM), "max"
     pub source: String,
     pub label: String,
 }
@@ -117,7 +118,7 @@ impl Default for BoardFanControl {
 
 impl BoardFanControl {
     pub fn validate(&mut self) -> Result<(), String> {
-        if !["cpu", "cpu0", "cpu1", "gpu", "max"].contains(&self.source.as_str()) {
+        if !["cpu", "cpu0", "cpu1", "gpu", "vrm", "max"].contains(&self.source.as_str()) {
             return Err(crate::tf!(
                 "invalid temperature source: {}",
                 "fonte de temperatura inválida: {}",
@@ -171,6 +172,7 @@ pub fn source_temp(source: &str, topo: &crate::topo::Topology) -> Option<f64> {
         .copied()
         .fold(None, |a: Option<f64>, t| Some(a.map_or(t, |a| a.max(t))));
     match source {
+        "vrm" => vrm_temp(),
         "cpu0" => cpu.get(&0).copied(),
         "cpu1" => cpu.get(&1).copied(),
         "gpu" => gpu(),
@@ -180,6 +182,39 @@ pub fn source_temp(source: &str, topo: &crate::topo::Topology) -> Option<f64> {
         },
         _ => cmax,
     }
+}
+
+/// Hottest voltage regulator: the BC-250's bc250_vrm (CPU and GPU rails) or, on other boards,
+/// a sensor-chip channel labelled VRM (e.g. "VRM MOS").
+pub fn vrm_temp() -> Option<f64> {
+    if let Some(v) = crate::boards::vrm() {
+        let t = [v.cpu_vrm_c, v.gpu_vrm_c]
+            .into_iter()
+            .flatten()
+            .fold(None, |a: Option<f64>, t| Some(a.map_or(t, |a| a.max(t))));
+        if t.is_some() {
+            return t;
+        }
+    }
+    let rd = fs::read_dir(sys("class/hwmon")).ok()?;
+    let mut best: Option<f64> = None;
+    for d in rd.flatten().map(|e| e.path()) {
+        for i in 1..=12 {
+            let Some(l) = read_trim(d.join(format!("temp{i}_label"))) else {
+                continue;
+            };
+            if !l.to_lowercase().contains("vrm") {
+                continue;
+            }
+            if let Some(t) = read_u64(d.join(format!("temp{i}_input")))
+                .map(|m| m as f64 / 1000.0)
+                .filter(|t| *t > 1.0 && *t < 150.0)
+            {
+                best = Some(best.map_or(t, |b| b.max(t)));
+            }
+        }
+    }
+    best
 }
 
 /// Above this (CPU) the controlled fans go to 100%, whatever the mode.

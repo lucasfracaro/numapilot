@@ -254,6 +254,16 @@ fn rebar_ui(ui: &mut egui::Ui, pci: &str) {
 /// OverDrive (clock and voltage) and Resizable BAR.
 fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Option<bool>) {
     rebar_ui(ui, pci);
+    if gpuctl::od_by_governor(pci) {
+        ui.label(
+            RichText::new(crate::t2!(
+                "Clock and voltage: on the BC-250 they belong to the community governor (cyan-skillfish-governor, through the SMU), with its own safe points; the driver's OverDrive table is not valid on this board.",
+                "Clock e tensão: na BC-250 quem cuida é o governor da comunidade (cyan-skillfish-governor, pela SMU), com os pontos seguros dele; a tabela de OverDrive do driver não vale nesta placa."
+            ))
+            .weak(),
+        );
+        return;
+    }
     let Some(od) = gpuctl::read_od(pci) else {
         let st = numapilot::bootcfg::overdrive_state();
         ui.horizontal_wrapped(|ui| {
@@ -1101,9 +1111,50 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         return;
                     }
                 }
-                if !s.fan_controllable && !s.fw_fan_curve && s.power_cap_max_w.is_none() && gpuctl::read_od(&g.pci).is_none() && !g.is_nvidia() && gpuctl::intel_freq(&g.pci).is_none() {
+                if !s.fan_controllable && !s.fw_fan_curve && s.power_cap_max_w.is_none() && !gpuctl::od_by_governor(&g.pci) && gpuctl::read_od(&g.pci).is_none() && !g.is_nvidia() && gpuctl::intel_freq(&g.pci).is_none() {
                     ui.label(RichText::new(crate::i18n::tr("The driver does not expose fan/power controls for this card.")).weak());
                     return;
+                }
+                // BC-250 (and other boards without a GPU fan output): the fan is plugged into
+                // the board's sensor chip, so its curve lives with the board fans
+                if !s.fan_controllable && !s.fw_fan_curve && (g.vendor, g.device) == (0x1002, 0x13fe) {
+                    let board: Vec<numapilot::fans::BoardFan> = numapilot::fans::list()
+                        .into_iter()
+                        .filter(|f| f.rpm.is_some_and(|r| r > 0))
+                        .collect();
+                    let saved_fans = numapilot::fans::BoardFans::load();
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new(crate::i18n::tr("Fan:")).strong());
+                        if board.is_empty() {
+                            ui.label(RichText::new(crate::t2!(
+                                "no fan spinning on the board's sensor chip (nct6687); load its driver (nct6687d) to control it",
+                                "nenhuma ventoinha girando no chip de sensores da placa (nct6687); carregue o driver dele (nct6687d) para controlar"
+                            )).weak());
+                        }
+                        for f in &board {
+                            let mode = match saved_fans.map.get(&f.id).map(|c| (c.fan, c.source.clone())) {
+                                Some((FanMode::Curve, src)) => crate::tf!("curve ({})", "curva ({})", src),
+                                Some((FanMode::Fixed, _)) => crate::t2!("fixed", "fixa").to_string(),
+                                _ => crate::t2!("board's own", "da própria placa").to_string(),
+                            };
+                            ui.label(format!(
+                                "{} · {} RPM · {}",
+                                f.label,
+                                f.rpm.unwrap_or(0),
+                                mode
+                            ));
+                        }
+                        if ui
+                            .button(crate::t2!("Fan curve…", "Curva da ventoinha…"))
+                            .on_hover_text(crate::t2!(
+                                "On the BC-250 the fan is on the board (nct6687 chip), not on the GPU: its curve is in Machine → Motherboard fans. Use \"Hottest GPU\" (the chip's temperature) or \"VRM\" as the source.",
+                                "Na BC-250 a ventoinha é da placa (chip nct6687), não da GPU: a curva fica em Máquina → Ventoinhas da placa-mãe. Use \"GPU mais quente\" (a temperatura do chip) ou \"VRM\" como fonte."
+                            ))
+                            .clicked()
+                        {
+                            app.tab = crate::Tab::Machine;
+                        }
+                    });
                 }
                 let edit = app.gpu_edit.entry(g.pci.clone()).or_insert_with(|| saved.clone());
                 ui.add_space(4.0);
@@ -1189,7 +1240,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 } else {
                     od_ui(ui, &g.pci, edit, &mut boot_job);
                 }
-                if g.vendor == 0x1002 && !g.is_integrated() {
+                if g.vendor == 0x1002 && !g.is_integrated() && !gpuctl::od_by_governor(&g.pci) {
                     ui.checkbox(&mut edit.idle_save, crate::i18n::tr("Power saving when idle"))
                         .on_hover_text(crate::i18n::tr("After 1 min idle, the card stays at the lowest clock and voltage level until it is used again. Helps on the MI50s, which draw a lot when idle; the first request afterwards takes a fraction of a second longer."));
                 }
