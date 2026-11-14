@@ -127,6 +127,17 @@ pub fn error(msg: &str) {
 }
 
 /// Level from the message text: the service's messages do not state a level, but say "could not"…
+/// `k` appears at the start of a word ("erros" counts; "steamerrorreporter", a program name,
+/// does not).
+fn starts_word(m: &str, k: &str) -> bool {
+    m.match_indices(k).any(|(i, _)| {
+        m[..i]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric())
+    })
+}
+
 pub fn level_of(msg: &str) -> &'static str {
     // "(0 error(s))" is not an error; "10 error(s)" is
     let mut m = msg.to_lowercase();
@@ -149,7 +160,7 @@ pub fn level_of(msg: &str) -> &'static str {
         "crashed",
     ]
     .iter()
-    .any(|k| m.contains(k))
+    .any(|k| starts_word(&m, k))
     {
         "ERROR"
     } else if m.contains("aviso")
@@ -224,6 +235,11 @@ mod tests {
         assert_eq!(level_of("machine mode: custom (0 error(s))"), "INFO");
         assert_eq!(level_of("machine mode: game with 2 error(s): x"), "ERROR");
         assert_eq!(level_of("applied (10 error(s))"), "ERROR");
+        assert_eq!(
+            level_of("daemon: steamerrorrepor (pid 2800) → node(s) [0] [0-15]: inherited"),
+            "INFO"
+        );
+        assert_eq!(level_of("2 erros ao aplicar"), "ERROR");
     }
 
     #[test]
