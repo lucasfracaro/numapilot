@@ -886,6 +886,17 @@ fn first_setup_ui(
                             app.toast(e, false);
                         }
                     }
+                    Some(StepAction::RebuildAur(pkg)) => {
+                        if ui
+                            .small_button(crate::i18n::tr("Rebuild (AUR)"))
+                            .on_hover_text(crate::i18n::tr("Rebuilds the package against the current system libraries, in a terminal (may ask for the password)"))
+                            .clicked()
+                            && let Err(e) =
+                                crate::jobs::in_terminal(&[helper.into(), "-S".into(), "--rebuild".into(), pkg.clone()])
+                        {
+                            app.toast(e, false);
+                        }
+                    }
                     Some(StepAction::InstallApp(name)) => {
                         if ui.small_button(crate::i18n::tr("Install")).clicked()
                             && let Some(cmd) = b

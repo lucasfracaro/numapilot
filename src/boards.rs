@@ -672,6 +672,11 @@ mod unlock_tests {
         );
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].0, "bc250-cu-live-manager");
+        let l = "\tlinux-vdso.so.1 (0x00007ff)\n\tlibLLVM.so.22.1 => not found\n\tlibc.so.6 => /usr/lib/libc.so.6 (0x1)\n";
+        assert_eq!(
+            super::parse_ldd_missing(l),
+            vec!["libLLVM.so.22.1".to_string()]
+        );
         let files: std::collections::HashMap<&str, &str> = [
             ("power1_label", "CPU Power"),
             ("power1_input", "1393200"),
@@ -763,6 +768,8 @@ pub enum StepAction {
     InstallAur(String),
     /// Install a community program (by its name in the recipe).
     InstallApp(String),
+    /// Rebuild an AUR package whose program lost a library in a system update.
+    RebuildAur(String),
     /// Open the GPU memory section (further down in the same tab).
     GpuMemory,
 }
@@ -940,6 +947,36 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
             ),
         }
     }
+    // community programs broken by a system update (e.g. umr built against an LLVM that is
+    // gone: bc250-cu-live-manager then fails at boot and the extra CUs stay off)
+    for a in &b.apps {
+        let Some(bin) = a.installed_bin() else {
+            continue;
+        };
+        let Some(path) = resolve_bin(&bin) else {
+            continue;
+        };
+        let missing = missing_libs(&path);
+        if missing.is_empty() {
+            continue;
+        }
+        let owner = pacman_owner(&path);
+        add(
+            &a.name,
+            StepState::Todo,
+            format!(
+                "quebrado depois de uma atualização do sistema: falta {} ({}). Precisa ser recompilado{}",
+                missing.join(", "),
+                path.display(),
+                if a.name == "umr" {
+                    "; sem ele o bc250-cu-live-manager falha e as CUs extras não são liberadas"
+                } else {
+                    ""
+                }
+            ),
+            owner.map(StepAction::RebuildAur),
+        );
+    }
     // community boot services that failed this boot (they apply CUs, overclock, memory...)
     for (unit, what) in failed_board_services() {
         add(
@@ -993,6 +1030,61 @@ pub fn first_setup(b: &Board, pci: &str) -> Vec<SetupStep> {
         }
     }
     v
+}
+
+/// Full path of a command (as given, or found in PATH).
+fn resolve_bin(bin: &str) -> Option<std::path::PathBuf> {
+    let p = std::path::Path::new(bin);
+    if p.is_absolute() {
+        return p.is_file().then(|| p.to_path_buf());
+    }
+    std::env::var_os("PATH")?
+        .to_string_lossy()
+        .split(':')
+        .map(|d| std::path::Path::new(d).join(bin))
+        .find(|p| p.is_file())
+}
+
+/// Shared libraries an executable needs that no longer exist (`ldd`: "=> not found"). Scripts
+/// give an empty list.
+pub fn missing_libs(path: &std::path::Path) -> Vec<String> {
+    let Ok(head) = std::fs::read(path).map(|b| b.into_iter().take(4).collect::<Vec<u8>>()) else {
+        return vec![];
+    };
+    if head != b"\x7fELF" {
+        return vec![];
+    }
+    Command::new("ldd")
+        .arg(path)
+        .output()
+        .map(|o| parse_ldd_missing(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default()
+}
+
+pub fn parse_ldd_missing(out: &str) -> Vec<String> {
+    out.lines()
+        .filter(|l| l.contains("=> not found"))
+        .filter_map(|l| l.split_whitespace().next().map(str::to_string))
+        .collect()
+}
+
+/// Package that owns a file (pacman -Qo), e.g. "umr".
+fn pacman_owner(path: &std::path::Path) -> Option<String> {
+    let o = Command::new("pacman")
+        .args(["-Qoq"])
+        .arg(path)
+        .output()
+        .ok()?;
+    o.status
+        .success()
+        .then(|| {
+            String::from_utf8_lossy(&o.stdout)
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_string()
+        })
+        .filter(|s| !s.is_empty())
 }
 
 /// BC-250 community system services (bc250-*, cyan-skillfish-*, oberon-*) in the failed

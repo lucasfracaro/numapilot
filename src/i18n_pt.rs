@@ -380,6 +380,11 @@ pub const PT: &[(&str, &str)] = &[
                  (precisa reiniciar)",
     ),
     ("no control from the driver", "sem controle pelo driver"),
+    ("Rebuild (AUR)", "Recompilar (AUR)"),
+    (
+        "Rebuilds the package against the current system libraries, in a terminal (may ask for the password)",
+        "Recompila o pacote com as bibliotecas atuais do sistema, num terminal (pode pedir a senha)",
+    ),
     (
         "no control: OverDrive is off",
         "sem controle: OverDrive desligado",
