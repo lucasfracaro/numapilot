@@ -29,16 +29,15 @@ pub enum Request {
         key: String,
         pid: Option<i32>,
     },
-    /// `numapilot run` asks to apply to its own process what requires root.
     /// Machine settings (modes, processors, memory, scheduler).
     SetMachine {
         machine: crate::machine::Machine,
     },
-    /// Phone notifications (ntfy).
     /// Stores the cache latency per core measurement (`numapilot bench-cores`).
     SetCoreRank {
         rank: crate::corebench::CoreRank,
     },
+    /// Phone notifications (ntfy).
     SetNotify {
         notify: crate::notify::Notify,
     },
@@ -47,6 +46,7 @@ pub enum Request {
         id: String,
         control: crate::fans::BoardFanControl,
     },
+    /// `numapilot run` asks to apply to its own process what requires root.
     Adopt {
         pid: i32,
         /// Profile to use only on this process (FPS optimizer); None = the saved one.

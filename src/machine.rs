@@ -560,8 +560,10 @@ pub fn apply(
             errs.push(format!("{what}: {x}"));
         }
     };
+    // Each setting only where the system exposes it (a reading of None): the BC-250 has no
+    // cpufreq at all, and the game mode logged 16 governor errors plus one for turbo.
     if let Some(t) = m.turbo.or(orig.turbo)
-        && cpuctl::turbo() != Some(t)
+        && cpuctl::turbo().is_some_and(|now| now != t)
     {
         e(cpuctl::set_turbo(t), "turbo");
     }
@@ -574,13 +576,13 @@ pub fn apply(
                 .or_else(|| base_gov.get(&n.id).cloned())
                 .or_else(|| orig.gov.get(&c).cloned());
             if let Some(g) = g
-                && cpuctl::governor(c).as_deref() != Some(g.as_str())
+                && cpuctl::governor(c).is_some_and(|now| now != g)
             {
                 e(cpuctl::set_governor(&[c], &g), &format!("governor cpu{c}"));
             }
             let ep = t.and_then(|t| t.epb).or_else(|| orig.epb.get(&c).copied());
             if let Some(ep) = ep
-                && cpuctl::epb(c) != Some(ep)
+                && cpuctl::epb(c).is_some_and(|now| now != ep)
             {
                 e(cpuctl::set_epb(&[c], ep), &format!("EPB cpu{c}"));
             }
@@ -588,7 +590,7 @@ pub fn apply(
                 .and_then(|t| t.epp.clone())
                 .or_else(|| orig.epp.get(&c).cloned());
             if let Some(pp) = pp
-                && cpuctl::epp(c).as_deref() != Some(pp.as_str())
+                && cpuctl::epp(c).is_some_and(|now| now != pp)
             {
                 e(cpuctl::set_epp(&[c], &pp), &format!("EPP cpu{c}"));
             }

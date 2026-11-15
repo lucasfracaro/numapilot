@@ -2,6 +2,21 @@
 
 ## Ainda não lançado
 
+- QA round on the BC-250:
+  - A profile saved with an exact CPU list (`profile set KEY --cpu cpus:4-7`) got the whole
+    socket: the service turned the list into its node. It now keeps the list.
+  - Machine modes on a PC without cpufreq (BC-250) no longer log 16 governor errors and a turbo
+    warning: each setting is only applied where the system exposes it.
+  - `run --cpu cpus:0-99` on a 16-thread PC is cut to the CPUs that exist (and fails when none do).
+  - `run --compute` on a PC with no ROCm card and a single GPU uses that GPU, as `--gpu compute`
+    already did.
+  - Tools that only name a game (`pgrep -f Game.exe`, `pkill`, `strace`...) no longer match the
+    games rule through its `*.exe` glob.
+  - Free RAM in the web panel and in the automatic node choice counts the file cache as free
+    (the panel showed "1 of 15 GB free" with 10 GB available).
+  - `profile list` shows cores, exclusive, limits, priority and mode; `vm check` suggests a card
+    of this PC (it named the server's `rx470-0` everywhere) and nothing when there is only one.
+
 - **Maximum turbo now delivers the clock.** While a program with this profile runs, its socket
   goes to the `performance` governor (and back afterwards). Measured on the 2× Xeon server
   (schedutil + scx_lavd), the same 4 reserved cores did 256 M iterations/s per thread before

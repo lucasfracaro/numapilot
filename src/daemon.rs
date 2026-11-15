@@ -651,8 +651,18 @@ impl Ctx<'_> {
 
     /// CPUs the profile asks for (None = leave on automatic).
     fn plan_cpus(&self, p: &Profile, current_nodes: &[usize]) -> Option<Vec<usize>> {
-        if let Some(l) = &p.cpu_list {
-            let v: Vec<usize> = crate::util::parse_cpulist(l)
+        // An exact list: the interface's field, or "cpus:LIST" (`profile set --cpu cpus:4-7`),
+        // which used to be turned into its node and lost (the program got the whole socket)
+        let exact = p
+            .cpu_list
+            .as_deref()
+            .map(crate::util::parse_cpulist)
+            .or_else(|| match CpuSpec::parse(&p.cpu) {
+                Ok(CpuSpec::Cpus(c)) => Some(c),
+                _ => None,
+            });
+        if let Some(l) = exact {
+            let v: Vec<usize> = l
                 .into_iter()
                 .filter(|c| self.all_cpus.contains(c))
                 .collect();
@@ -2509,4 +2519,44 @@ fn nv_offsets(pci: &str, c: &gpuctl::GpuControl) -> Result<(), String> {
         crate::nvml::set_mem_offset(pci, crate::nvml::clamp(v, o.mem_range, 1500))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_with_exact_cpu_list_keeps_it() {
+        let topo = Topology {
+            nodes: vec![crate::topo::Node {
+                id: 0,
+                cpus: (0..16).collect(),
+                cores: (0..8).map(|c| vec![c, c + 8]).collect(),
+                physical_cores: 8,
+                sockets: Default::default(),
+                mem_total_kb: 0,
+                distances: vec![10],
+            }],
+            gpus: vec![],
+            default_graphics: None,
+        };
+        let cfg = Config::default();
+        let ctx = Ctx {
+            cfg: &cfg,
+            topo: &topo,
+            all_cpus: topo.all_cpus(),
+            node_sets: topo.nodes.iter().map(|n| n.cpus.clone()).collect(),
+        };
+        let p = Profile {
+            cpu: "cpus:4-7,40".into(),
+            ..Default::default()
+        };
+        assert_eq!(ctx.plan_cpus(&p, &[]), Some(vec![4, 5, 6, 7]));
+        // nothing that exists → falls back to the node instead of an empty affinity
+        let p = Profile {
+            cpu: "cpus:40-50".into(),
+            ..Default::default()
+        };
+        assert_eq!(ctx.plan_cpus(&p, &[]).map(|v| v.len()), Some(16));
+    }
 }

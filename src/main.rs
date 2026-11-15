@@ -774,12 +774,23 @@ fn real_main() -> Result<()> {
                             }
                         );
                     }
-                    if g.is_none() {
+                    // Example with a real card of this PC, and none when there is only one
+                    // (it said "rx470-0", the server's card, on every PC)
+                    let t = Topology::load(&cfg);
+                    let example = t
+                        .gpus
+                        .iter()
+                        .find(|x| x.role != numapilot::topo::GpuRole::Display)
+                        .filter(|_| t.gpus.len() > 1);
+                    if g.is_none()
+                        && let Some(x) = example
+                    {
                         println!(
                             "{}",
                             numapilot::tf!(
-                                "(name the card to check it too: numapilot vm check rx470-0)",
-                                "(diga a placa para conferir ela também: numapilot vm check rx470-0)"
+                                "(name the card to check it too: numapilot vm check {})",
+                                "(diga a placa para conferir ela também: numapilot vm check {})",
+                                x.alias
                             )
                         );
                     }
@@ -1801,7 +1812,7 @@ fn cmd_topo(cfg: &Config) -> Result<()> {
                 n.cpus.len(),
                 n.physical_cores,
                 gib(n.mem_total_kb),
-                gib(n.mem_total_kb.saturating_sub(n.mem_used_kb())),
+                gib(n.mem_free_kb()),
                 n.distances
             )
         );
@@ -2190,15 +2201,53 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
                 );
             }
             for (k, v) in &p.map {
+                // The interface's options too: a profile with 2 exclusive cores at 50% read
+                // "cpu=auto gpu=auto use=auto", as if it were empty
+                let mut extra = Vec::new();
+                if let Some(c) = v.cores {
+                    extra.push(numapilot::tf!("cores={c}", "núcleos={c}"));
+                }
+                if let Some(l) = &v.cpu_list {
+                    extra.push(format!("cpus={l}"));
+                }
+                if !v.smt {
+                    extra.push("smt=off".into());
+                }
+                if v.exclusive {
+                    extra.push(numapilot::tf!("exclusive", "exclusivos"));
+                }
+                if v.turbo_max {
+                    extra.push(numapilot::tf!("maximum turbo", "turbo máximo"));
+                }
+                if let Some(pct) = v.cpu_max_pct {
+                    extra.push(numapilot::tf!("cpu limit={pct}%", "limite cpu={pct}%"));
+                }
+                if let Some(gb) = v.mem_max_gb {
+                    extra.push(numapilot::tf!(
+                        "memory limit={gb} GB",
+                        "limite memória={gb} GB"
+                    ));
+                }
+                if v.priority != numapilot::profiles::Profile::default().priority {
+                    extra.push(numapilot::tf!("priority={}", "prioridade={}", v.priority));
+                }
+                if let Some(m) = &v.machine_mode {
+                    extra.push(numapilot::tf!("mode={m}", "modo={m}"));
+                }
                 println!(
-                    "{}",
+                    "{}{}",
                     numapilot::tf!(
                         "{k}\n    cpu={}  gpu={}  use={}",
                         "{k}\n    cpu={}  gpu={}  uso={}",
                         v.cpu,
                         v.gpu,
                         v.usage
-                    )
+                    ),
+                    if extra.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  {}", extra.join("  "))
+                    }
                 );
             }
             Ok(())

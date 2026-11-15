@@ -127,9 +127,17 @@ pub fn idents(comm: &str, exe: Option<&str>, argv: &[String]) -> Vec<String> {
         v.push(basename(e).to_string());
         v.push(e.to_string());
     }
+    // Tools that only name a game (`pgrep -f Game.exe`, `pkill`, `strace`...) are not the game:
+    // the "*.exe" glob of the games rule caught them and reserved cores for a pgrep.
+    const TOOLS: &[&str] = &[
+        "pgrep", "pkill", "pidof", "killall", "kill", "grep", "rg", "ps", "taskset", "strace",
+        "gdb", "file", "ls", "cat", "less", "tail",
+    ];
+    let tool = exe.is_some_and(|e| TOOLS.contains(&basename(e)));
     for (i, a) in argv.iter().enumerate() {
         // The first 3 arguments and any .exe (games through Proton/Wine sit at the end of the line).
-        if !a.starts_with('-') && (i < 3 || a.to_lowercase().ends_with(".exe")) {
+        if !a.starts_with('-') && !(tool && i > 0) && (i < 3 || a.to_lowercase().ends_with(".exe"))
+        {
             v.push(basename(a).to_string());
         }
     }
@@ -350,6 +358,23 @@ pub fn migrate_pages(pid: i32, from: &[usize], to: &[usize]) -> io::Result<i64> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn idents_skip_what_a_tool_names() {
+        let argv = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let id = idents(
+            "pgrep",
+            Some("/usr/bin/pgrep"),
+            &argv(&["pgrep", "-f", "Cuphead.exe"]),
+        );
+        assert!(!id.iter().any(|x| x.ends_with(".exe")), "{id:?}");
+        let id = idents(
+            "wine64-preloade",
+            Some("/opt/proton/bin/wine64-preloader"),
+            &argv(&["wine64-preloader", "a", "b", "c", "C:\\Game\\Game.exe"]),
+        );
+        assert!(id.iter().any(|x| x.ends_with("Game.exe")), "{id:?}");
+    }
 
     #[test]
     fn stat_with_weird_comm() {

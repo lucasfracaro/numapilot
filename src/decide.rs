@@ -126,6 +126,10 @@ pub fn pick_gpus(
 ) -> Result<(Vec<Gpu>, Kind)> {
     let least_busy = |n: usize| -> Vec<Gpu> {
         let mut c: Vec<&Gpu> = topo.compute_gpus();
+        // No ROCm card (e.g. BC-250, gfx1013): compute goes through Vulkan on the only GPU
+        if c.is_empty() && topo.gpus.len() == 1 {
+            c = topo.gpus.iter().collect();
+        }
         c.sort_by(|a, b| {
             a.load_score()
                 .partial_cmp(&b.load_score())
@@ -141,11 +145,7 @@ pub fn pick_gpus(
             Kind::Graphics,
         ),
         GpuSpec::Compute(n) => {
-            let mut g = least_busy(*n);
-            // No ROCm card (e.g. BC-250, gfx1013): compute goes through Vulkan on the only/video GPU
-            if g.is_empty() && topo.gpus.len() == 1 {
-                g = topo.gpus.clone();
-            }
+            let g = least_busy(*n);
             if g.is_empty() {
                 bail!(
                     "{}",
@@ -318,13 +318,27 @@ pub fn decide_launch(
             (n.clone(), topo.cpus_of(n))
         }
         CpuSpec::Cpus(c) => {
+            // Only the CPUs that exist here (cpus:0-99 on a 16-thread PC would hand
+            // sched_setaffinity CPUs it rejects, or a list the user did not mean)
+            let have = topo.all_cpus();
+            let c: Vec<usize> = c.iter().copied().filter(|x| have.contains(x)).collect();
+            if c.is_empty() {
+                bail!(
+                    "{}",
+                    crate::tf!(
+                        "none of those CPUs exist (this PC has {})",
+                        "nenhuma dessas CPUs existe (este PC tem {})",
+                        crate::util::format_cpulist(&have)
+                    )
+                );
+            }
             let nodes: Vec<usize> = topo
                 .nodes
                 .iter()
                 .filter(|n| n.cpus.iter().any(|x| c.contains(x)))
                 .map(|n| n.id)
                 .collect();
-            (nodes, c.clone())
+            (nodes, c)
         }
         CpuSpec::GpuNode | CpuSpec::Auto => {
             if cpu == CpuSpec::Auto && learned_e.is_some_and(|e| e.wide) {

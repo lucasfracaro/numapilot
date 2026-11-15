@@ -18,8 +18,9 @@ pub struct Node {
 }
 
 impl Node {
+    /// Memory a program can still get on the socket (the file cache counts as free).
     pub fn mem_free_kb(&self) -> u64 {
-        node_meminfo(self.id, "MemFree").unwrap_or(0)
+        self.mem_total_kb.saturating_sub(self.mem_used_kb())
     }
     /// Memory really in use on the socket: the file cache (which the system frees by itself)
     /// does not count. With MemFree the bar went up and down as the cache filled and emptied.
