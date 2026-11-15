@@ -257,17 +257,21 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 let (desktop, users): (Vec<String>, Vec<String>) = holders
                     .into_iter()
                     .partition(|n| crate::notebook::is_desktop_holder(n));
-                if !users.is_empty() {
+                // NVIDIA's own services are not programs to move to the other card.
+                let (services, programs): (Vec<String>, Vec<String>) = users
+                    .into_iter()
+                    .partition(|n| n == "nvidia-powerd" || n == "nvidia-persistenced");
+                if !programs.is_empty() {
                     add(
                         "Notebook",
                         &crate::tf!("{} woken by", "{} acordada por", g.alias),
                         Level::Info,
-                        users.join(", "),
+                        programs.join(", "),
                         Some(crate::i18n::tr(
                             "Open these programs on the integrated card so the dedicated one can sleep",
                         )),
                     );
-                    for u in &users {
+                    for u in &programs {
                         if let Some(h) = crate::notebook::holder_hint(u) {
                             add(
                                 "Notebook",
@@ -278,6 +282,29 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                             );
                         }
                     }
+                }
+                for svc in &services {
+                    let (msg, fix) = if svc == "nvidia-powerd" {
+                        (
+                            crate::tf!(
+                                "Dynamic Boost keeps the NVIDIA awake",
+                                "o Dynamic Boost mantém a NVIDIA acordada"
+                            ),
+                            crate::tf!(
+                                "if battery and silence matter more than the extra power in games: Machine → Laptop → NVIDIA Dynamic Boost: off",
+                                "se bateria e silêncio importam mais que a potência extra nos jogos: Máquina → Notebook → Dynamic Boost da NVIDIA: desligado"
+                            ),
+                        )
+                    } else {
+                        (
+                            crate::i18n::tr("keeps the NVIDIA awake").into(),
+                            crate::tf!(
+                                "only CUDA servers need it: sudo systemctl disable --now {svc}",
+                                "só servidores CUDA precisam dele: sudo systemctl disable --now {svc}"
+                            ),
+                        )
+                    };
+                    add("Notebook", svc, Level::Info, msg, Some(&fix));
                 }
                 if !desktop.is_empty() {
                     // KDE: KWin (and Xwayland through it) open every card; KWin can be limited
@@ -318,8 +345,8 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                             Level::Info
                         },
                         crate::tf!(
-                            "{} keeps the dedicated card awake ({})",
-                            "{} mantém a placa dedicada acordada ({})",
+                            "the desktop ({}) keeps the dedicated card awake ({})",
+                            "o desktop ({}) mantém a placa dedicada acordada ({})",
                             desktop.join(", "),
                             crate::notebook::dgpu_state(&g.pci)
                         ),
