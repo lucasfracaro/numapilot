@@ -201,3 +201,40 @@ pub fn inspect(shared: &Shared, c: Container, ctx: eframe::egui::Context) {
         ctx.request_repaint();
     });
 }
+
+/// A value computed in a thread and reused for `every`: the drawing code asks for it on every
+/// frame, gets the last result at once (None before the first one) and, when it is older than
+/// `every`, a thread computes a new one. For readings that call systemctl, the kernel log or
+/// I2C sensors, which made each frame of the GPU tab take ~0.1-0.7 s on the BC-250.
+pub fn cached<T>(
+    key: &str,
+    every: Duration,
+    ctx: &egui::Context,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Option<T>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    type Slot = (
+        Option<Instant>,
+        bool,
+        Option<Arc<dyn std::any::Any + Send + Sync>>,
+    );
+    static SLOTS: std::sync::LazyLock<Mutex<HashMap<String, Slot>>> =
+        std::sync::LazyLock::new(Default::default);
+    let mut slots = SLOTS.lock().ok()?;
+    let slot = slots.entry(key.to_string()).or_insert((None, false, None));
+    let stale = slot.0.is_none_or(|t| t.elapsed() >= every);
+    if stale && !slot.1 {
+        slot.1 = true;
+        let (key, ctx) = (key.to_string(), ctx.clone());
+        std::thread::spawn(move || {
+            let v: Arc<dyn std::any::Any + Send + Sync> = Arc::new(f());
+            if let Ok(mut s) = SLOTS.lock() {
+                s.insert(key, (Some(Instant::now()), false, Some(v)));
+            }
+            ctx.request_repaint();
+        });
+    }
+    slot.2.as_ref()?.downcast_ref::<T>().cloned()
+}

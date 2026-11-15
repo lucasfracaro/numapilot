@@ -46,6 +46,10 @@ pub(crate) struct ProgTable {
     gpu_pct: HashMap<i32, f32>,
     vram: HashMap<i32, u64>,
     pub(crate) pid_mem: HashMap<i32, u64>,
+    /// PSS read by a thread: smaps_rollup of every process took ~70 ms each second
+    /// (browsers, Steam), and the interface stuttered while it ran.
+    pss_shared: std::sync::Arc<std::sync::Mutex<HashMap<i32, u64>>>,
+    pss_busy: std::sync::Arc<std::sync::atomic::AtomicBool>,
     io_prev: HashMap<i32, (u64, Instant)>,
     /// Disk read + write of each process (bytes/s).
     disk_bps: HashMap<i32, f64>,
@@ -72,6 +76,8 @@ impl Default for ProgTable {
             gpu_pct: HashMap::new(),
             vram: HashMap::new(),
             pid_mem: HashMap::new(),
+            pss_shared: Default::default(),
+            pss_busy: Default::default(),
             io_prev: HashMap::new(),
             disk_bps: HashMap::new(),
             finder: None,
@@ -89,12 +95,32 @@ impl ProgTable {
         let mut prev = HashMap::new();
         self.gpu_pct.clear();
         self.vram.clear();
-        self.pid_mem.clear();
         self.disk_bps.clear();
         let mut io_prev = HashMap::new();
         self.blocked.clear();
         self.by_pci.clear();
         let me = unsafe { libc::getuid() };
+        // memory of each process: last reading from the thread, and a new one if none is running
+        if let Ok(m) = self.pss_shared.lock() {
+            self.pid_mem = m.clone();
+        }
+        if !self
+            .pss_busy
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            let pids: Vec<i32> = groups.iter().flat_map(|g| g.pids.iter().copied()).collect();
+            let (out, busy) = (self.pss_shared.clone(), self.pss_busy.clone());
+            std::thread::spawn(move || {
+                let m: HashMap<i32, u64> = pids
+                    .into_iter()
+                    .filter_map(|p| Some((p, crate::pss_bytes(p)?)))
+                    .collect();
+                if let Ok(mut o) = out.lock() {
+                    *o = m;
+                }
+                busy.store(false, std::sync::atomic::Ordering::Release);
+            });
+        }
         for g in groups {
             // only for those with a chosen card (that is what can be checked)
             if g.gpus.len() == 1 {
@@ -112,9 +138,6 @@ impl ProgTable {
                 self.blocked.insert(g.main_pid, why);
             }
             for &pid in &g.pids {
-                if let Some(b) = crate::pss_bytes(pid) {
-                    self.pid_mem.insert(pid, b);
-                }
                 if let Some((r, w)) = numapilot::iostat::proc_io(pid) {
                     let tot = r + w;
                     if let Some((p, t)) = self.io_prev.get(&pid) {

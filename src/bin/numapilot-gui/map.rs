@@ -439,7 +439,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 ui.end_row();
             }
         });
-        if !numapilot::containers::which("irqbalance") || crate::jobs::quick(&["pgrep", "-x", "irqbalance"]).is_empty() {
+        if !crate::bg::cached("irqbalance", std::time::Duration::from_secs(10), ui.ctx(), || numapilot::containers::which("irqbalance") && !crate::jobs::quick(&["pgrep", "-x", "irqbalance"]).is_empty()).unwrap_or(false) {
             ui.label(RichText::new(crate::i18n::tr("GPU interrupts: handled by each card's socket.")).small().weak());
         } else {
             ui.label(

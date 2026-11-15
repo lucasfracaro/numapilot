@@ -158,7 +158,7 @@ fn group_rows(rows: &[Row]) -> Vec<Group> {
     out
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub(crate) enum Tab {
     Programs,
     Map,
@@ -1607,6 +1607,28 @@ impl App {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let frame_start = Instant::now();
+        self.frame(ui);
+        // A slow frame means something read the hardware or ran a command while drawing:
+        // logged (at most once a minute) so `numapilot log` shows which tab.
+        let took = frame_start.elapsed();
+        static LOGGED: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+        if took > Duration::from_millis(150)
+            && let Ok(mut l) = LOGGED.lock()
+            && l.is_none_or(|t| t.elapsed() > Duration::from_secs(60))
+        {
+            *l = Some(Instant::now());
+            numapilot::log::warn(&format!(
+                "slow frame: {} ms on the {:?} tab",
+                took.as_millis(),
+                self.tab
+            ));
+        }
+    }
+}
+
+impl App {
+    fn frame(&mut self, ui: &mut egui::Ui) {
         single::handle(ui.ctx());
         if self.last.elapsed() > Duration::from_secs(1) {
             self.refresh();
@@ -1792,6 +1814,7 @@ fn relaunch(g: &Group, msgs: Arc<Mutex<Vec<(String, bool)>>>) {
 fn main() -> eframe::Result {
     if std::env::args().any(|a| a == "--tray") {
         numapilot::log::init("tray");
+        numapilot::boards::vrm_in_background();
         if let Err(e) = tray::main_loop() {
             numapilot::log::error(&e);
             eprintln!("numapilot: {e}");
@@ -1804,6 +1827,8 @@ fn main() -> eframe::Result {
         return Ok(());
     }
     numapilot::log::init("gui");
+    // BC-250 regulators over I2C take ~0.4 s to read: never inside a frame
+    numapilot::boards::vrm_in_background();
     numapilot::log::info(&crate::tf!(
         "open (version {})",
         "aberto (versão {})",

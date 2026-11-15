@@ -2,6 +2,16 @@
 
 ## Ainda não lançado
 
+- **Interface no longer freezes on the BC-250** (switching tabs took ~2 s, scrolling stuttered).
+  Measured on the board: the voltage regulators (`bc250_vrm`) are read over I2C, 20-47 ms per
+  file and ~0.3-0.5 s for all of them, and the interface read them on screen once a second,
+  plus twice per frame on the GPU tab. Other readings done while drawing: the system services
+  list (~0.8 s every 5 s), the startup list (~0.9 s every 5 s), the board's first setup
+  (~0.15 s), systemctl for the clock governor, the EFI core unlock check and each process's
+  memory (PSS, ~70 ms every second). All of them now run in threads and the screen shows the
+  last result. The service and the command line reuse a VRM reading under 1 s old.
+- The interface logs a frame that took more than 150 ms, with its tab (`numapilot log`).
+
 - Service log: the automatic machine mode line is in English on every system (it came out as
   "regra automática" on a pt_BR one).
 

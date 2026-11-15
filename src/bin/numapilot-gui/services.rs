@@ -20,6 +20,8 @@ pub(crate) struct ServicesTab {
     filter: String,
     list: Vec<Service>,
     at: Option<(Instant, bool)>,
+    /// Listing in progress (systemctl: ~0.8 s for the system's).
+    loading: Option<std::sync::mpsc::Receiver<(bool, Vec<Service>)>>,
     log: Option<(Service, String)>,
 }
 
@@ -31,6 +33,7 @@ impl Default for ServicesTab {
             filter: String::new(),
             list: vec![],
             at: None,
+            loading: None,
             log: None,
         }
     }
@@ -42,8 +45,23 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
     if t.at
         .is_none_or(|(i, u)| u != t.user || i.elapsed() > Duration::from_secs(5))
     {
-        t.list = services::list(t.user);
+        // in a thread: done on screen, the tab froze for ~0.8 s every 5 s
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (user, ctx) = (t.user, ui.ctx().clone());
+        std::thread::spawn(move || {
+            let _ = tx.send((user, services::list(user)));
+            ctx.request_repaint();
+        });
+        t.loading = Some(rx);
         t.at = Some((Instant::now(), t.user));
+    }
+    if let Some(rx) = &t.loading
+        && let Ok((user, v)) = rx.try_recv()
+    {
+        if user == t.user {
+            t.list = v;
+        }
+        t.loading = None;
     }
     let running = t.list.iter().filter(|s| s.running()).count();
     let failed = t.list.iter().filter(|s| s.failed()).count();

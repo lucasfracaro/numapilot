@@ -19,6 +19,8 @@ pub(crate) enum AddMode {
 pub(crate) struct StartupTab {
     items: Vec<Item>,
     at: Option<Instant>,
+    /// Listing in progress (it takes ~0.9 s: systemctl, desktop files, process sizes).
+    loading: Option<std::sync::mpsc::Receiver<Vec<Item>>>,
     filter: String,
     closed: [bool; 4],
     add: Option<AddMode>,
@@ -40,6 +42,7 @@ impl Default for StartupTab {
         StartupTab {
             items: vec![],
             at: None,
+            loading: None,
             filter: String::new(),
             // session components collapsed: hardly anyone touches them
             closed: [false, false, false, true],
@@ -109,8 +112,21 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         .at
         .is_none_or(|t| t.elapsed() > Duration::from_secs(5))
     {
-        app.startup.items = startup::list();
+        // in a thread: done on screen, the tab froze for ~0.9 s every 5 s
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = ui.ctx().clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(startup::list());
+            ctx.request_repaint();
+        });
+        app.startup.loading = Some(rx);
         app.startup.at = Some(Instant::now());
+    }
+    if let Some(rx) = &app.startup.loading
+        && let Ok(v) = rx.try_recv()
+    {
+        app.startup.items = v;
+        app.startup.loading = None;
     }
     let items = app.startup.items.clone();
     let on = items.iter().filter(|i| i.enabled).count();

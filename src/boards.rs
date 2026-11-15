@@ -326,7 +326,67 @@ pub struct Vrm {
     pub gpu_vrm_c: Option<f64>,
 }
 
+/// The regulators are read over I2C: 20-47 ms per file on the BC-250, ~300-500 ms for all
+/// of them. A program that draws on screen (the interface, the tray) calls
+/// [`vrm_in_background`] once: from then on `vrm()` returns the last reading at once and a
+/// thread refreshes it. Elsewhere (service, CLI) it reads, and reuses a reading under 1 s old
+/// (the GPU sensors and the processor power ask for it in the same second).
 pub fn vrm() -> Option<Vrm> {
+    use std::sync::atomic::Ordering;
+    if cfg!(test) {
+        // each test has its own fake sysfs
+        return read_vrm();
+    }
+    let fresh = |at: &std::time::Instant| at.elapsed() < std::time::Duration::from_secs(1);
+    {
+        let c = VRM_CACHE.lock().ok()?;
+        if let Some((at, v)) = &*c
+            && (fresh(at) || VRM_BACKGROUND.load(Ordering::Relaxed))
+        {
+            if !fresh(at) {
+                refresh_vrm_async();
+            }
+            return v.clone();
+        }
+    }
+    if VRM_BACKGROUND.load(Ordering::Relaxed) {
+        // nothing read yet: the first reading comes from the thread too
+        refresh_vrm_async();
+        return None;
+    }
+    let v = read_vrm();
+    if let Ok(mut c) = VRM_CACHE.lock() {
+        *c = Some((std::time::Instant::now(), v.clone()));
+    }
+    v
+}
+
+static VRM_CACHE: std::sync::Mutex<Option<(std::time::Instant, Option<Vrm>)>> =
+    std::sync::Mutex::new(None);
+static VRM_BACKGROUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static VRM_READING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// See [`vrm`]: readings never block the caller from now on.
+pub fn vrm_in_background() {
+    VRM_BACKGROUND.store(true, std::sync::atomic::Ordering::Relaxed);
+    refresh_vrm_async();
+}
+
+fn refresh_vrm_async() {
+    use std::sync::atomic::Ordering;
+    if VRM_READING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    std::thread::spawn(|| {
+        let v = read_vrm();
+        if let Ok(mut c) = VRM_CACHE.lock() {
+            *c = Some((std::time::Instant::now(), v));
+        }
+        VRM_READING.store(false, Ordering::Release);
+    });
+}
+
+fn read_vrm() -> Option<Vrm> {
     let rd = std::fs::read_dir(crate::util::sys("class/hwmon")).ok()?;
     let d = rd
         .flatten()

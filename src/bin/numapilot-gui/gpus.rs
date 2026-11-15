@@ -616,7 +616,10 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                 ui.label(RichText::new(format!("• {}", numapilot::i18n::tr_text(n))).small());
             }
             if !b.governor_services.is_empty() {
-                let sv = numapilot::boards::services(&b);
+                let sv = {
+                    let b2 = b.clone();
+                    crate::bg::cached(&format!("board-services-{}", g.pci), std::time::Duration::from_secs(5), ui.ctx(), move || numapilot::boards::services(&b2)).unwrap_or_default()
+                };
                 match sv.iter().find(|s| s.active) {
                     Some(s) => {
                         ui.label(RichText::new(crate::tf!("Clock governor: {} running", "Governor de clock: {} rodando", s.name)).color(Color32::from_rgb(110, 190, 120)));
@@ -731,7 +734,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                         ui.label(RichText::new(crate::tf!("{n} of {full} cores{mhz}", "{n} de {full} núcleos{mhz}")).color(if n >= full { ok } else { ui.visuals().text_color() }));
                         ui.end_row();
                         ui.label("");
-                        let txt = match numapilot::boards::core_unlock_persistence(n, full, numapilot::boards::efi_core_unlock()) {
+                        let txt = match numapilot::boards::core_unlock_persistence(n, full, crate::bg::cached("efi-core-unlock", std::time::Duration::from_secs(60), ui.ctx(), numapilot::boards::efi_core_unlock).unwrap_or(false)) {
                             Some(p) => crate::tf!("unlocked: {p}", "desbloqueados: {p}"),
                             None => crate::tf!("factory: {stock}; can be unlocked with BC250 Control Center", "de fábrica: {stock}; dá para desbloquear pelo BC250 Control Center"),
                         };
@@ -744,14 +747,14 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                             .map(|c| format!(" · {c:.0} MHz"))
                             .unwrap_or_default();
                         ui.label(RichText::new("GPU").strong());
-                        match numapilot::boards::cu_now() {
+                        match crate::bg::cached("cu-now", std::time::Duration::from_secs(5), ui.ctx(), numapilot::boards::cu_now).flatten() {
                             Some((n, src)) => {
                                 ui.label(RichText::new(crate::tf!("{n} of {full} CUs{clock}", "{n} de {full} CUs{clock}")).color(if n >= full { ok } else { ui.visuals().text_color() }));
                                 ui.end_row();
                                 ui.label("");
                                 let mut txt = src.text().to_string();
                                 if src == numapilot::boards::CuSource::Kernel {
-                                    txt.push_str(" (bc250_cc_write_mode=3): não use o desbloqueio ao vivo junto");
+                                    txt.push_str(&crate::tf!(" (bc250_cc_write_mode=3): do not use the live unlock as well", " (bc250_cc_write_mode=3): não use o desbloqueio ao vivo junto"));
                                 } else if src == numapilot::boards::CuSource::Boot && n < full {
                                     txt.push_str(&crate::tf!(" (factory: {stock}); the live unlock shows up here after a reading in BC250 Control Center", " (de fábrica: {stock}); desbloqueio ao vivo aparece aqui depois de uma leitura no BC250 Control Center"));
                                 }
@@ -826,18 +829,16 @@ fn first_setup_ui(
     g: &numapilot::topo::Gpu,
 ) {
     use numapilot::boards::{StepAction, StepState};
-    // the readings call systemctl and read the kernel log: cached for 5 s
-    let id = egui::Id::unique(("first-setup", &g.pci));
-    let now = std::time::Instant::now();
-    let cached: Option<(std::time::Instant, Vec<numapilot::boards::SetupStep>)> =
-        ui.data(|d| d.get_temp(id));
-    let steps = match cached {
-        Some((t, s)) if now.duration_since(t).as_secs() < 5 => s,
-        _ => {
-            let s = numapilot::boards::first_setup(b, &g.pci);
-            ui.data_mut(|d| d.insert_temp(id, (now, s.clone())));
-            s
-        }
+    // the readings call systemctl and read the kernel log (~150 ms): in a thread, every 5 s
+    let steps = {
+        let (b2, pci) = (b.clone(), g.pci.clone());
+        crate::bg::cached(
+            &format!("first-setup-{}", g.pci),
+            std::time::Duration::from_secs(5),
+            ui.ctx(),
+            move || numapilot::boards::first_setup(&b2, &pci),
+        )
+        .unwrap_or_default()
     };
     if steps.is_empty() {
         return;
