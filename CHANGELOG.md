@@ -1,6 +1,6 @@
 # Mudanças
 
-## Ainda não lançado
+## 0.5.2 — 2026-11-15
 
 - QA round on the Nitro 5 laptop:
   - **Core order: measured cache latency where it matters, the firmware's preferred cores where
