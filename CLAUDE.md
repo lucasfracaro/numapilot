@@ -180,8 +180,11 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   entre o L2 e o L3, preso em cada núcleo; guarda em `state_dir()/core-rank.json` pelo
   `Request::SetCoreRank`. `topo::select_cpus` ordena os núcleos por essa medição
   (`corebench::sort_units`, degraus de 1%) só se `useful` (diferença ≥ 2% e ≥ 3× o ruído) e se o
-  modelo da CPU for o mesmo. Ainda não medido em hardware real (no servidor a diferença esperada
-  é de poucos %).
+  modelo da CPU for o mesmo. Medido no Nitro 5 (2026-11-15): 8,8% entre o melhor e o pior
+  núcleo, ruído 1,2% (`useful`); ordem 14, 8, 6, 0, 2, 12, 10, 4. Conferido: 2 núcleos → 8,14;
+  6 → sem os dois mais lentos (10, 4); com HT → núcleos inteiros dos mais rápidos; o limite de CPU
+  também segue a ordem. Diferenças < 1% contam como empate (fica a ordem do sistema). A lista
+  manual (`cpu_list`) não usa a ordem. No servidor ainda não medido.
 - Idiomas (2026-11-12): **inglês é o idioma base do código**; o português é a tradução.
   Texto fixo mostrado ao usuário = `crate::i18n::tr("text")` com o par em `src/i18n_pt.rs`
   (biblioteca/CLI) ou `src/bin/numapilot-gui/i18n_pt.rs` (interface, que cai na da biblioteca);
