@@ -180,11 +180,17 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   entre o L2 e o L3, preso em cada núcleo; guarda em `state_dir()/core-rank.json` pelo
   `Request::SetCoreRank`. `topo::select_cpus` ordena os núcleos por essa medição
   (`corebench::sort_units`, degraus de 1%) só se `useful` (diferença ≥ 2% e ≥ 3× o ruído) e se o
-  modelo da CPU for o mesmo. Medido no Nitro 5 (2026-11-15): 8,8% entre o melhor e o pior
-  núcleo, ruído 1,2% (`useful`); ordem 14, 8, 6, 0, 2, 12, 10, 4. Conferido: 2 núcleos → 8,14;
-  6 → sem os dois mais lentos (10, 4); com HT → núcleos inteiros dos mais rápidos; o limite de CPU
-  também segue a ordem. Diferenças < 1% contam como empate (fica a ordem do sistema). A lista
-  manual (`cpu_list`) não usa a ordem. No servidor ainda não medido.
+  modelo da CPU for o mesmo. **No Nitro 5 (2026-11-15) não há ordem real**: a primeira medição
+  deu 8,8% (ruído 1,2%) e foi aceita, mas com o PC ocioso o núcleo mais rápido mudava a cada
+  medição (1,7–4,4%), e o ranking de núcleos preferidos do firmware (`amd_pstate_prefcore_ranking`:
+  CPUs 6=10 > 4 > 0 > 8 > 12 > 2 > 14) pôs o "mais rápido" (14) por último. Desde então a ordem
+  só vale se as rodadas pares e ímpares concordarem (Spearman ≥ 0,8, `agreement`), 8 rodadas, e
+  medições automáticas não rodam com o PC ocupado. Perfil que escolhe parte dos núcleos sem
+  medição: o `run` e a interface medem antes, o serviço mede quando ocioso e reaplica
+  (`RANK_WANTED`). Mecânica conferida: com uma ordem útil, 2 núcleos → os 2 mais rápidos, com HT
+  → núcleos inteiros, o limite de CPU também segue. Diferenças < 1% são empate. A lista manual
+  (`cpu_list`) não usa a ordem. No servidor (anel do Broadwell, 22 núcleos) ainda não medido.
+  Ideia não feita: usar o `amd_pstate_prefcore_ranking` (estável, do firmware) nos Ryzen.
 - Idiomas (2026-11-12): **inglês é o idioma base do código**; o português é a tradução.
   Texto fixo mostrado ao usuário = `crate::i18n::tr("text")` com o par em `src/i18n_pt.rs`
   (biblioteca/CLI) ou `src/bin/numapilot-gui/i18n_pt.rs` (interface, que cai na da biblioteca);

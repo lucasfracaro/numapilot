@@ -1365,6 +1365,10 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("Log out…", "Sair da sessão…"),
     (
+        "Measuring the cache latency of each core before applying (first time, a few seconds)…",
+        "Medindo a latência do cache de cada núcleo antes de aplicar (primeira vez, alguns segundos)…",
+    ),
+    (
         "With a sched_ext scheduler running (Machine → Scheduler, e.g. LAVD) the kernel does not enforce a percentage limit, so numapilot limits the number of cores instead, rounded up.",
         "Com um escalonador sched_ext rodando (Máquina → Escalonador, ex.: LAVD) o kernel não aplica um limite em porcentagem; o numapilot limita o número de núcleos, arredondando para cima.",
     ),

@@ -608,6 +608,11 @@ pub fn read_state() -> Option<Vec<Row>> {
     serde_json::from_str(&s).ok()
 }
 
+/// A profile wants some of the cores and this processor's cache order was never measured: the
+/// main loop measures it as soon as the PC is idle (measuring next to a busy program would make
+/// its cores look slow) and applies the order to those programs.
+static RANK_WANTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 struct Ctx<'a> {
     cfg: &'a Config,
     topo: &'a Topology,
@@ -734,9 +739,13 @@ impl Ctx<'_> {
                 return Some(v);
             }
         }
-        let cores = p.cores_for(crate::machine::sched_ext_active());
+        let sx = crate::machine::sched_ext_active();
+        let cores = p.cores_for(sx);
         if !p.has_cpu_choice() && cores.is_none() {
             return None;
+        }
+        if p.picks_subset(sx) && crate::corebench::needs_measure(self.topo) {
+            RANK_WANTED.store(true, std::sync::atomic::Ordering::Relaxed);
         }
         let nodes = self.profile_nodes(p).unwrap_or_else(|| {
             if current_nodes.is_empty() {
@@ -980,6 +989,9 @@ pub fn run(cfg: Config) -> Result<()> {
     let me = std::process::id() as i32;
     let mut procs: HashMap<i32, Tracked> = HashMap::new();
     let mut prev_cpu = procfs::cpu_times();
+    let mut rank_prev = procfs::cpu_times();
+    let mut rank_job: Option<std::thread::JoinHandle<Result<crate::corebench::CoreRank, String>>> =
+        None;
     let mut last_save = Instant::now();
     let mut tick: u64 = 0;
     let tick_dur = Duration::from_millis(cfg.daemon.tick_ms);
@@ -1174,6 +1186,54 @@ pub fn run(cfg: Config) -> Result<()> {
         if tick.is_multiple_of(3) {
             hw.auto_mode_tick(&topo, &procs);
             hw.dgpu_tick();
+        }
+        // Cache order per core wanted by a profile: measure when the PC is idle, then apply.
+        if tick.is_multiple_of(10) {
+            let now = procfs::cpu_times();
+            let (b, t) = now
+                .iter()
+                .zip(&rank_prev)
+                .fold((0u64, 0u64), |(b, t), (n, p)| {
+                    (b + n.1.saturating_sub(p.1), t + n.2.saturating_sub(p.2))
+                });
+            rank_prev = now;
+            let idle = t > 0 && (b as f64) / (t as f64) < 0.10;
+            if rank_job.as_ref().is_some_and(|h| h.is_finished()) {
+                let res = rank_job
+                    .take()
+                    .map(|h| h.join().unwrap_or_else(|_| Err("panicked".into())));
+                match res {
+                    Some(Ok(r)) => {
+                        let _ = serde_json::to_string(&r)
+                            .map(|t| std::fs::write(crate::corebench::path(), t));
+                        crate::nlog!(
+                            "cache latency per core measured while idle: difference {:.1}% (noise {:.1}%)",
+                            r.spread_pct,
+                            r.noise_pct
+                        );
+                        let sx = crate::machine::sched_ext_active();
+                        for (pid, t) in procs.iter_mut() {
+                            if let Some(p) = t.profile.clone()
+                                && t.origin == "perfil"
+                                && p.picks_subset(sx)
+                            {
+                                ctx.apply_profile_live(*pid, t, &p, tick);
+                            }
+                        }
+                    }
+                    Some(Err(e)) => crate::nlog!("cache latency per core: {e}"),
+                    None => {}
+                }
+            } else if rank_job.is_none()
+                && idle
+                && RANK_WANTED.swap(false, std::sync::atomic::Ordering::Relaxed)
+                && crate::corebench::needs_measure(&topo)
+            {
+                let t2 = topo.clone();
+                rank_job = Some(std::thread::spawn(move || {
+                    crate::corebench::measure(&t2, &mut |_| {})
+                }));
+            }
         }
         // irqbalance undoes it from time to time: reapply every 5 min
         if tick.is_multiple_of(300) {

@@ -214,6 +214,12 @@ impl Profile {
         self.smt && self.cores_for(sched_ext) == self.cores
     }
 
+    /// Picks some of the cores by itself (count, no HT, or a processor limit as cores), so the
+    /// measured cache order matters. A list picked by hand does not use the order.
+    pub fn picks_subset(&self, sched_ext: bool) -> bool {
+        self.cpu_list.is_none() && (self.cores_for(sched_ext).is_some() || !self.smt)
+    }
+
     /// Anything in the CPU/memory part that is not automatic?
     pub fn has_cpu_choice(&self) -> bool {
         self.cpu != "auto" || self.cores.is_some() || !self.smt || self.cpu_list.is_some()
@@ -536,5 +542,38 @@ mod quota_tests {
         p.cpu_max_pct = None;
         assert_eq!(p.cores_for(true), Some(8));
         assert!(p.smt_for(true));
+    }
+
+    #[test]
+    fn subset_needs_the_cache_order() {
+        let p = Profile::default();
+        assert!(!p.picks_subset(true), "automatic: all cores");
+        let p = Profile {
+            cores: Some(4),
+            ..Default::default()
+        };
+        assert!(p.picks_subset(false));
+        let p = Profile {
+            smt: false,
+            ..Default::default()
+        };
+        assert!(
+            p.picks_subset(false),
+            "one thread per core is a choice of cores too"
+        );
+        let p = Profile {
+            cpu_max_pct: Some(150.0),
+            ..Default::default()
+        };
+        assert!(p.picks_subset(true) && !p.picks_subset(false));
+        let p = Profile {
+            cores: Some(4),
+            cpu_list: Some("2-5".into()),
+            ..Default::default()
+        };
+        assert!(
+            !p.picks_subset(true),
+            "a list picked by hand does not use the order"
+        );
     }
 }

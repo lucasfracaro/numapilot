@@ -3,6 +3,17 @@
 ## Ainda não lançado
 
 - QA round on the Nitro 5 laptop:
+  - **Cache order per core measured before it is needed.** A profile that picks some of the
+    cores (a count, no hyper-threading, or a processor limit as cores) on a processor never
+    measured: `numapilot run` measures first and then picks the cores (dry-run says it will);
+    the interface measures before saving such a profile; the service measures as soon as the PC
+    is idle and applies the order to the programs it placed. A measurement deleted with
+    `bench-cores --clear` counts as a choice (system order) and is not redone.
+  - **The order must repeat to be used.** On the Nitro 5 a measurement gave 8.8% between cores
+    with 1.2% noise and was accepted, but the fastest core changed at every new measurement (the
+    firmware's preferred-core ranking even put that "fastest" core last). The even and the odd
+    rounds are now judged apart and must agree (rank correlation ≥ 0.8); 8 rounds instead of 4;
+    automatic measurements are skipped while the PC is busy, and `bench-cores` warns about it.
   - **Processor limit works with sched_ext (LAVD).** The kernel ignored `cpu.max` (measured: a
     150% limit ran at 16 cores). Under a sched_ext scheduler the limit now becomes a number of
     physical cores, rounded up (150% → 2 cores; measured: 2 cores' worth), in `run`, in the

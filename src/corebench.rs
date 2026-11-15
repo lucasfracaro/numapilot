@@ -26,6 +26,10 @@ pub struct CoreRank {
     /// model of the measured processor (if it changes, the measurement no longer holds)
     #[serde(default)]
     pub cpu: String,
+    /// how much two independent halves of the measurement agree on the order (Spearman, -1..1);
+    /// an order that does not repeat is noise, not a property of the cores
+    #[serde(default)]
+    pub agreement: f32,
 }
 
 /// JSON object keys are text ("0"). Inside an internally tagged enum (the control socket's
@@ -93,18 +97,30 @@ fn make_cycle(lines: usize) -> Vec<u32> {
     buf
 }
 
-/// Judges the measurements: `rounds[cpu]` = that core's round times.
+/// Judges the measurements: `rounds[cpu]` = that core's round times. Besides the difference
+/// being larger than the noise, the order must repeat: the even and the odd rounds are judged
+/// apart and must agree (on the Nitro 5 an 8.8% "difference" came from load on some cores and
+/// the fastest core changed at every measurement).
 pub fn judge(rounds: &BTreeMap<usize, Vec<f32>>, groups: &[Vec<usize>]) -> CoreRank {
+    let best = |v: &[f32]| v.iter().cloned().fold(f32::MAX, f32::min);
     let mut ns = BTreeMap::new();
     let mut noises = vec![];
+    let mut half_a = BTreeMap::new();
+    let mut half_b = BTreeMap::new();
     for (c, v) in rounds {
         let mut s = v.clone();
         s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        if let Some(best) = s.first() {
-            ns.insert(*c, *best);
+        if let Some(b) = s.first() {
+            ns.insert(*c, *b);
             if let Some(second) = s.get(1) {
-                noises.push((second - best) / best * 100.0);
+                noises.push((second - b) / b * 100.0);
             }
+        }
+        let even: Vec<f32> = v.iter().step_by(2).copied().collect();
+        let odd: Vec<f32> = v.iter().skip(1).step_by(2).copied().collect();
+        if !even.is_empty() && !odd.is_empty() {
+            half_a.insert(*c, best(&even));
+            half_b.insert(*c, best(&odd));
         }
     }
     noises.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -119,13 +135,55 @@ pub fn judge(rounds: &BTreeMap<usize, Vec<f32>>, groups: &[Vec<usize>]) -> CoreR
             (v.len() > 1 && min > 0.0).then(|| (max - min) / min * 100.0)
         })
         .fold(0.0, f32::max);
+    // the worst agreement among the processors with at least 3 cores
+    let agreement = groups
+        .iter()
+        .filter_map(|g| {
+            let a: Vec<f32> = g.iter().filter_map(|c| half_a.get(c).copied()).collect();
+            let b: Vec<f32> = g.iter().filter_map(|c| half_b.get(c).copied()).collect();
+            (a.len() >= 3 && a.len() == b.len()).then(|| spearman(&a, &b))
+        })
+        .fold(1.0, f32::min);
     CoreRank {
-        useful: spread_pct >= 2.0 && spread_pct >= noise_pct * 3.0,
+        useful: spread_pct >= 2.0 && spread_pct >= noise_pct * 3.0 && agreement >= 0.8,
         ns,
         spread_pct,
         noise_pct,
         at: crate::history::now(),
         cpu: crate::recipes::cpu_model(),
+        agreement,
+    }
+}
+
+/// Rank correlation of two series (1 = same order, 0 = unrelated, -1 = reversed).
+fn spearman(a: &[f32], b: &[f32]) -> f32 {
+    let rank = |v: &[f32]| -> Vec<f32> {
+        let mut idx: Vec<usize> = (0..v.len()).collect();
+        idx.sort_by(|&x, &y| v[x].partial_cmp(&v[y]).unwrap_or(std::cmp::Ordering::Equal));
+        let mut r = vec![0.0; v.len()];
+        for (pos, &i) in idx.iter().enumerate() {
+            r[i] = pos as f32;
+        }
+        r
+    };
+    let (ra, rb) = (rank(a), rank(b));
+    let n = a.len() as f32;
+    let d2: f32 = ra.iter().zip(&rb).map(|(x, y)| (x - y) * (x - y)).sum();
+    1.0 - 6.0 * d2 / (n * (n * n - 1.0))
+}
+
+/// Fraction of the processor in use over `ms` (0..1), from /proc/stat.
+pub fn system_busy(ms: u64) -> f32 {
+    let a = crate::procfs::cpu_times();
+    std::thread::sleep(std::time::Duration::from_millis(ms));
+    let b = crate::procfs::cpu_times();
+    let (busy, total) = b.iter().zip(&a).fold((0u64, 0u64), |(x, y), (n, p)| {
+        (x + n.1.saturating_sub(p.1), y + n.2.saturating_sub(p.2))
+    });
+    if total == 0 {
+        0.0
+    } else {
+        busy as f32 / total as f32
     }
 }
 
@@ -180,7 +238,7 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
     Ok(judge(&rounds, &groups))
 }
 
-const ROUNDS: usize = 4;
+const ROUNDS: usize = 8;
 
 /// Saved order (if it exists, is from this processor and the difference is reliable). Rereads
 /// when the file changes.
@@ -203,6 +261,61 @@ pub fn saved() -> Option<CoreRank> {
         .filter(|r: &CoreRank| r.cpu == crate::recipes::cpu_model());
     *g = Some((mtime, r.clone()));
     r
+}
+
+/// No measurement of this processor yet (a deleted one counts as measured: the user chose the
+/// system order). Only on PCs with more than one physical core.
+pub fn needs_measure(topo: &Topology) -> bool {
+    if std::env::var_os("NUMAPILOT_SYSFS").is_some() {
+        return false;
+    }
+    let cores: usize = topo.nodes.iter().map(|n| n.cores.len()).sum();
+    cores >= 2
+        && std::fs::read_to_string(path())
+            .ok()
+            .and_then(|t| serde_json::from_str::<CoreRank>(&t).ok())
+            .is_none_or(|r| r.cpu != crate::recipes::cpu_model())
+}
+
+/// Measures and stores the order through the service (users in its admin groups).
+pub fn measure_and_store(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, String> {
+    // with the PC busy the busy cores look slow: better no order than a wrong one
+    let busy = system_busy(500);
+    if busy > 0.15 {
+        return Err(crate::tf!(
+            "the PC is busy ({:.0}% in use): it measures another time",
+            "o PC está ocupado ({:.0}% em uso): mede outra vez",
+            busy * 100.0
+        ));
+    }
+    let r = measure(topo, out)?;
+    match crate::ctl::send(&crate::ctl::Request::SetCoreRank { rank: r.clone() }) {
+        Ok(resp) if resp.ok => Ok(r),
+        Ok(resp) => Err(resp.message),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// One line about a measurement ("difference 8.8%, noise 1.2%: in use").
+pub fn summary(r: &CoreRank) -> String {
+    crate::tf!(
+        "difference between cores {:.1}%, noise {:.1}%, order repeats {:.0}%: {}",
+        "diferença entre núcleos {:.1}%, ruído {:.1}%, ordem se repete {:.0}%: {}",
+        r.spread_pct,
+        r.noise_pct,
+        r.agreement.max(0.0) * 100.0,
+        if r.useful {
+            crate::t2!(
+                "the fastest cores come first",
+                "os núcleos mais rápidos vêm primeiro"
+            )
+        } else {
+            crate::t2!(
+                "not reliable, system order",
+                "não confiável, ordem do sistema"
+            )
+        }
+    )
 }
 
 /// A core's time for ordering (only when the measurement is reliable).
@@ -257,6 +370,13 @@ mod tests {
         n.insert(0, vec![10.0, 11.0]);
         n.insert(1, vec![10.3, 11.5]);
         assert!(!judge(&n, &[vec![0, 1]]).useful);
+        // a clear spread, but the even and odd rounds disagree on the order: noise
+        let mut f = BTreeMap::new();
+        f.insert(0, vec![10.0, 11.0, 10.0, 11.0]);
+        f.insert(1, vec![10.5, 10.5, 10.5, 10.5]);
+        f.insert(2, vec![11.0, 10.0, 11.0, 10.0]);
+        let jf = judge(&f, &[vec![0, 1, 2]]);
+        assert!(jf.agreement < 0.0 && !jf.useful, "{jf:?}");
 
         let ns = |c: usize| j.ns.get(&c).copied();
         let mut u = vec![vec![1, 5], vec![0, 4], vec![2, 6]];

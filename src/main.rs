@@ -1999,6 +1999,41 @@ fn cmd_run(
         );
         profiles.map.insert(pkey.clone(), v.profile.clone());
     }
+    // The profile picks some of the cores and this processor's cache order was never measured:
+    // measure now, before the program takes the cores (a few seconds), so the fastest come first.
+    if cpu.is_none()
+        && let Some(p) = profiles.get(&pkey)
+        && p.picks_subset(numapilot::machine::sched_ext_active())
+        && numapilot::corebench::needs_measure(&topo)
+    {
+        if dry_run {
+            eprintln!(
+                "{}",
+                numapilot::tf!(
+                    "note     : cache latency per core not measured yet: the real launch measures it first (a few seconds)",
+                    "nota     : latência do cache por núcleo ainda não medida: a abertura de verdade mede antes (alguns segundos)"
+                )
+            );
+        } else {
+            eprintln!(
+                "{}",
+                numapilot::tf!(
+                    "numapilot: measuring the cache latency of each core before choosing them (first time, a few seconds)…",
+                    "numapilot: medindo a latência do cache de cada núcleo antes de escolhê-los (primeira vez, alguns segundos)…"
+                )
+            );
+            match numapilot::corebench::measure_and_store(&topo, &mut |_| {}) {
+                Ok(r) => eprintln!("numapilot: {}", numapilot::corebench::summary(&r)),
+                Err(e) => eprintln!(
+                    "{}",
+                    numapilot::tf!(
+                        "numapilot: measurement not stored ({e}); cores in the system order",
+                        "numapilot: medição não guardada ({e}); núcleos na ordem do sistema"
+                    )
+                ),
+            }
+        }
+    }
     let loads = sample_node_loads(&topo, Duration::from_millis(200));
     let inp = LaunchInput {
         idents: &idents,
@@ -3428,8 +3463,13 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
     use numapilot::corebench;
     let topo = Topology::load(cfg);
     if clear {
+        // keeps the processor model: deleted on purpose counts as a choice (system order), so
+        // nothing measures it again by itself
         let r = ctl::send(&ctl::Request::SetCoreRank {
-            rank: corebench::CoreRank::default(),
+            rank: corebench::CoreRank {
+                cpu: numapilot::recipes::cpu_model(),
+                ..Default::default()
+            },
         })?;
         println!(
             "{}",
@@ -3462,6 +3502,17 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
                 "Deixe o PC parado durante a medição."
             )
         );
+        let busy = corebench::system_busy(500);
+        if busy > 0.15 {
+            println!(
+                "{}",
+                numapilot::tf!(
+                    "Warning: the PC is {:.0}% busy; busy cores look slower and the order may not repeat.",
+                    "Atenção: o PC está {:.0}% ocupado; núcleos ocupados parecem mais lentos e a ordem pode não se repetir.",
+                    busy * 100.0
+                )
+            );
+        }
         corebench::measure(&topo, &mut |l| println!("{l}")).map_err(|e| anyhow::anyhow!(e))?
     };
     for n in &topo.nodes {
@@ -3498,27 +3549,28 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
     println!(
         "{}",
         numapilot::tf!(
-            "Difference between the best and the worst core: {:.1}% · measurement noise: {:.1}%",
-            "Diferença entre o melhor e o pior núcleo: {:.1}% · ruído da medição: {:.1}%",
+            "Difference between the best and the worst core: {:.1}% · measurement noise: {:.1}% · the order repeats between the two halves: {:.0}%",
+            "Diferença entre o melhor e o pior núcleo: {:.1}% · ruído da medição: {:.1}% · a ordem se repete entre as duas metades: {:.0}%",
             rank.spread_pct,
-            rank.noise_pct
+            rank.noise_pct,
+            rank.agreement.max(0.0) * 100.0
         )
     );
     if rank.useful {
         println!(
             "{}",
             numapilot::tf!(
-                "The difference is larger than the noise: core choice now prefers the fastest ones.",
-                "A diferença é maior que o ruído: a escolha de núcleos passa a preferir os mais rápidos."
+                "The difference is larger than the noise and the order repeats: core choice now prefers the fastest ones.",
+                "A diferença é maior que o ruído e a ordem se repete: a escolha de núcleos passa a preferir os mais rápidos."
             )
         );
     } else {
         println!(
             "{}",
             numapilot::tf!(
-                "The difference is too small (or the measurement varied too much) to count as a criterion: \
+                "The difference is too small (or the order did not repeat) to count as a criterion: \
              core choice stays in the system order. If the PC was busy, close everything and measure again.",
-                "A diferença é pequena demais (ou a medição variou muito) para valer como critério: \
+                "A diferença é pequena demais (ou a ordem não se repetiu) para valer como critério: \
              a escolha de núcleos continua na ordem do sistema. Se o PC estava ocupado, feche tudo e meça de novo."
             )
         );

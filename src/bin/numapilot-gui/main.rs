@@ -850,6 +850,45 @@ impl App {
             "pedido ao serviço: {}",
             what.chars().take(300).collect::<String>()
         ));
+        // A profile that picks some of the cores, with this processor's cache order never
+        // measured: measure first (a few seconds, in the background), then save, so the
+        // fastest cores are the ones chosen.
+        if let Request::SetProfile { profile, .. } = &req
+            && profile.picks_subset(numapilot::machine::sched_ext_active())
+            && numapilot::corebench::needs_measure(&self.topo)
+        {
+            self.toast(
+                crate::i18n::tr(
+                    "Measuring the cache latency of each core before applying (first time, a few seconds)…",
+                )
+                .to_string(),
+                true,
+            );
+            let topo = self.topo.clone();
+            let msgs = self.bg_msgs.clone();
+            std::thread::spawn(move || {
+                let push = |m: String, ok: bool| {
+                    if let Ok(mut v) = msgs.lock() {
+                        v.push((m, ok));
+                    }
+                };
+                match numapilot::corebench::measure_and_store(&topo, &mut |_| {}) {
+                    Ok(r) => push(numapilot::corebench::summary(&r), true),
+                    Err(e) => push(
+                        crate::tf!(
+                            "measurement not stored ({e}); cores in the system order",
+                            "medição não guardada ({e}); núcleos na ordem do sistema"
+                        ),
+                        false,
+                    ),
+                }
+                match ctl::send(&req) {
+                    Ok(r) => push(r.message, r.ok),
+                    Err(e) => push(format!("{e:#}"), false),
+                }
+            });
+            return;
+        }
         match ctl::send(&req) {
             Ok(r) => self.toast(r.message, r.ok),
             Err(e) => self.toast(format!("{e:#}"), false),
