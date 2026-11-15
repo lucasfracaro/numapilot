@@ -120,7 +120,61 @@ pub fn alive(pid: i32) -> bool {
     unsafe { libc::kill(pid, 0) == 0 }
 }
 
-/// Names used to match rules: comm, name of the executable and of the first arguments.
+/// Programs that run another one named in their first arguments (`python main.py`,
+/// `env X=1 game`, `flatpak run app`). Only after these do the first arguments count as the
+/// program's name: elsewhere they are files or words (`man make`, `vim steam.cfg`, `which steam`).
+const INTERP: &[&str] = &[
+    "python*",
+    "wine*",
+    "proton*",
+    "java",
+    "node",
+    "bash",
+    "sh",
+    "dash",
+    "zsh",
+    "fish",
+    "perl",
+    "ruby",
+    "ld-linux*",
+    "box64",
+];
+const LAUNCHERS: &[&str] = &[
+    "env",
+    "nice",
+    "ionice",
+    "chrt",
+    "numactl",
+    "prime-run",
+    "gamemoderun",
+    "mangohud",
+    "gamescope",
+    "flatpak",
+    "bwrap",
+    "srt-bwrap",
+    "pressure-vessel*",
+    "reaper",
+    "steam-runtime*",
+    "box86",
+    "fex*",
+    "qemu-*",
+    "mono",
+    "dotnet",
+    "uv",
+    "npx",
+    "xvfb-run",
+    "systemd-run",
+];
+
+fn is_launcher(name: &str) -> bool {
+    INTERP
+        .iter()
+        .chain(LAUNCHERS)
+        .any(|p| crate::util::glob_match(p, name))
+}
+
+/// Names used to match rules: comm, name of the executable and, for launchers and
+/// interpreters, of the first arguments.
 pub fn idents(comm: &str, exe: Option<&str>, argv: &[String]) -> Vec<String> {
     let mut v = vec![comm.to_string()];
     if let Some(e) = exe {
@@ -134,10 +188,15 @@ pub fn idents(comm: &str, exe: Option<&str>, argv: &[String]) -> Vec<String> {
         "gdb", "file", "ls", "cat", "less", "tail",
     ];
     let tool = exe.is_some_and(|e| TOOLS.contains(&basename(e)));
+    let launcher = exe.is_some_and(|e| is_launcher(basename(e)))
+        || argv.first().is_some_and(|a| is_launcher(basename(a)));
     for (i, a) in argv.iter().enumerate() {
-        // The first 3 arguments and any .exe (games through Proton/Wine sit at the end of the line).
-        if !a.starts_with('-') && !(tool && i > 0) && (i < 3 || a.to_lowercase().ends_with(".exe"))
-        {
+        if a.starts_with('-') || (tool && i > 0) {
+            continue;
+        }
+        // argv[0]; the next two only after a launcher; any .exe (games through Proton/Wine sit
+        // at the end of the line).
+        if i == 0 || (launcher && i < 3) || a.to_lowercase().ends_with(".exe") {
             v.push(basename(a).to_string());
         }
     }
@@ -148,22 +207,6 @@ pub fn idents(comm: &str, exe: Option<&str>, argv: &[String]) -> Vec<String> {
 /// Stable "program" key for learning. For interpreters
 /// (python, wine...) it also uses the script/exe passed as an argument.
 pub fn learn_key(exe: Option<&str>, argv: &[String], comm: &str) -> String {
-    const INTERP: &[&str] = &[
-        "python*",
-        "wine*",
-        "proton*",
-        "java",
-        "node",
-        "bash",
-        "sh",
-        "dash",
-        "zsh",
-        "fish",
-        "perl",
-        "ruby",
-        "ld-linux*",
-        "box64",
-    ];
     let Some(exe) = exe else {
         return comm.to_string();
     };
@@ -374,6 +417,63 @@ mod tests {
             &argv(&["wine64-preloader", "a", "b", "c", "C:\\Game\\Game.exe"]),
         );
         assert!(id.iter().any(|x| x.ends_with("Game.exe")), "{id:?}");
+    }
+
+    #[test]
+    fn idents_take_arguments_only_after_launchers() {
+        let argv = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        // Words and files named by ordinary commands are not the program.
+        for (comm, exe, args) in [
+            ("pgrep", "/usr/bin/pgrep", &["pgrep", "-a", "steam"][..]),
+            ("man", "/usr/bin/man", &["man", "make"][..]),
+            ("nvim", "/usr/bin/nvim", &["nvim", "steam"][..]),
+            ("which", "/usr/bin/which", &["which", "blender"][..]),
+            (
+                "systemctl",
+                "/usr/bin/systemctl",
+                &["systemctl", "status", "ollama"][..],
+            ),
+        ] {
+            let id = idents(comm, Some(exe), &argv(args));
+            let last = args.last().unwrap().to_string();
+            assert!(!id.contains(&last), "{comm}: {id:?}");
+        }
+        // Launchers and interpreters still pass the program on.
+        for (comm, exe, args, want) in [
+            (
+                "python3",
+                "/usr/bin/python3.14",
+                &["python3", "main.py"][..],
+                "main.py",
+            ),
+            (
+                "steam",
+                "/usr/bin/bash",
+                &["/bin/bash", "/usr/bin/steam"][..],
+                "steam",
+            ),
+            (
+                "env",
+                "/usr/bin/env",
+                &["env", "X=1", "blender"][..],
+                "blender",
+            ),
+            (
+                "gamemoderun",
+                "/usr/bin/bash",
+                &["gamemoderun", "heroic"][..],
+                "heroic",
+            ),
+            (
+                "flatpak",
+                "/usr/bin/flatpak",
+                &["flatpak", "run", "comfyui"][..],
+                "comfyui",
+            ),
+        ] {
+            let id = idents(comm, Some(exe), &argv(args));
+            assert!(id.iter().any(|x| x == want), "{comm}: {id:?}");
+        }
     }
 
     #[test]

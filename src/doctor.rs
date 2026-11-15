@@ -316,75 +316,51 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                 }
             }
         }
-        // acer_wmi with predator_v4=1: profiles (including Turbo) and fan readings
+        // Acer: what the kernel actually loaded (a modprobe.d line alone is not enough).
         if crate::acer::is_acer() {
-            let pv4 =
-                crate::util::read_trim(crate::util::sys("module/acer_wmi/parameters/predator_v4"));
-            let pv4_conf = std::fs::read_dir("/etc/modprobe.d").ok().is_some_and(|rd| {
-                rd.flatten().any(|e| {
-                    std::fs::read_to_string(e.path())
-                        .unwrap_or_default()
-                        .lines()
-                        .any(|l| {
-                            !l.trim_start().starts_with('#')
-                                && l.contains("acer_wmi")
-                                && l.contains("predator_v4=1")
-                        })
-                })
-            });
-            if matches!(pv4.as_deref(), Some("Y") | Some("1")) || pv4_conf {
-                add(
-                    "Notebook",
-                    "acer_wmi predator_v4",
-                    Level::Ok,
-                    crate::i18n::tr(
-                        "on: power profiles and fans through the kernel (numapilot uses it)",
-                    )
-                    .into(),
-                    None,
-                );
+            for (name, verdict, msg, fix) in crate::acer::findings(&crate::acer::module_state()) {
+                let level = match verdict {
+                    crate::acer::Verdict::Ok => Level::Ok,
+                    crate::acer::Verdict::Info => Level::Info,
+                    crate::acer::Verdict::Warn => Level::Warn,
+                };
+                add("Notebook", name, level, msg, fix.as_deref());
             }
         }
         // Programs that compete with numapilot for fan/power control
         let mut rivals: Vec<String> = vec![];
+        let mut units: Vec<&str> = vec![];
         if let Ok(rd) = std::fs::read_dir("/proc") {
             for e in rd.flatten() {
-                if let Some(c) = crate::util::read_trim(e.path().join("comm")) {
-                    let l = c.to_lowercase();
-                    if [
-                        "nitrosense",
-                        "nitro-sense",
-                        "predatorsense",
-                        "nbfc",
-                        "auto-cpufreq",
-                        "tlp",
-                        "slimbook",
-                        "tuned",
-                    ]
-                    .iter()
-                    .any(|r| l.starts_with(r))
-                        && !rivals.contains(&c)
-                    {
-                        rivals.push(c);
-                    }
-                }
-                if let Ok(cmd) = std::fs::read_to_string(e.path().join("cmdline")) {
-                    let cmd = cmd.replace('\0', " ").to_lowercase();
-                    if cmd.contains("nitrosense") && !rivals.iter().any(|r| r == "nitrosense") {
-                        rivals.push("nitrosense".into());
-                    }
+                let comm = crate::util::read_trim(e.path().join("comm")).unwrap_or_default();
+                let cmd = std::fs::read_to_string(e.path().join("cmdline"))
+                    .unwrap_or_default()
+                    .replace('\0', " ");
+                if let Some((name, unit)) = rival_of(&comm, &cmd)
+                    && !rivals.iter().any(|r| r == name)
+                {
+                    rivals.push(name.into());
+                    units.extend(unit);
                 }
             }
         }
         if !rivals.is_empty() {
+            let mut fix = crate::i18n::tr(
+                "they touch the same fans/profiles: close them and remove them from startup",
+            )
+            .to_string();
+            if !units.is_empty() {
+                fix.push_str(&format!(
+                    " (sudo systemctl disable --now {})",
+                    units.join(" ")
+                ));
+            }
             add(
                 "Notebook",
                 crate::i18n::tr("other controllers running"),
                 Level::Warn,
                 rivals.join(", "),
-                Some(crate::i18n::tr(
-                    "they touch the same fans/profiles: close them and remove them from startup",
-                )),
+                Some(fix.as_str()),
             );
         }
         if crate::util::read_trim(crate::util::sys("module/ec_sys/parameters/write_support"))
@@ -507,29 +483,6 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     Level::Info,
                     crate::i18n::tr("ryzenadj not installed").into(),
                     Some("paru -S ryzenadj"),
-                );
-            }
-        }
-        if crate::acer::is_acer() {
-            if crate::acer::sense_dir().is_some() || crate::acer::kb_dir().is_some() {
-                add(
-                    "Notebook",
-                    "Acer (Linuwu-Sense)",
-                    Level::Ok,
-                    crate::tf!(
-                        "{} settings available",
-                        "{} ajustes disponíveis",
-                        crate::acer::knobs().len()
-                    ),
-                    None,
-                );
-            } else {
-                add(
-                    "Notebook",
-                    "Acer (Linuwu-Sense)",
-                    Level::Info,
-                    crate::i18n::tr("module not loaded: no manual fan, 80% limit or RGB").into(),
-                    Some("https://github.com/0x7375646F/Linuwu-Sense"),
                 );
             }
         }
@@ -1644,4 +1597,63 @@ pub fn report(checks: &[Check]) -> String {
         s.push_str(&out(argv, &[]).unwrap_or_else(|| crate::i18n::tr("(unavailable)\n").into()));
     }
     s
+}
+
+/// A program that controls the same fans, power profiles or GPU clocks as numapilot:
+/// (name to show, systemd unit that starts it). `comm` is the process name, `cmd` its command line.
+fn rival_of(comm: &str, cmd: &str) -> Option<(&'static str, Option<&'static str>)> {
+    let c = comm.to_lowercase();
+    let cmd = cmd.to_lowercase();
+    const BY_COMM: &[(&str, &str, Option<&str>)] = &[
+        ("nitrosense", "nitrosense", None),
+        ("nitro-sense", "nitrosense", None),
+        ("predatorsense", "predatorsense", None),
+        ("nbfc", "nbfc", None),
+        ("auto-cpufreq", "auto-cpufreq", Some("auto-cpufreq")),
+        ("tlp", "tlp", Some("tlp")),
+        ("slimbook", "slimbook", None),
+        ("tuned", "tuned", Some("tuned")),
+        // Div Acer Manager Max: manages Linuwu-Sense and reloads the module by itself
+        ("damx", "DAMX", Some("damx-daemon")),
+        // LACT: GPU fans, power limit and clocks
+        ("lactd", "LACT", Some("lactd")),
+        ("lact", "LACT", Some("lactd")),
+    ];
+    if let Some((_, name, unit)) = BY_COMM.iter().find(|(p, _, _)| c.starts_with(p)) {
+        return Some((name, *unit));
+    }
+    if cmd.contains("nitrosense") {
+        return Some(("nitrosense", None));
+    }
+    if cmd.contains("/opt/damx/") {
+        return Some(("DAMX", Some("damx-daemon")));
+    }
+    None
+}
+
+#[cfg(test)]
+mod rival_tests {
+    use super::rival_of;
+
+    #[test]
+    fn rivals() {
+        assert_eq!(
+            rival_of("DAMX-Daemon", "/opt/damx/daemon/DAMX-Daemon "),
+            Some(("DAMX", Some("damx-daemon")))
+        );
+        assert_eq!(
+            rival_of("python3", "python3 /opt/damx/gui/main.py "),
+            Some(("DAMX", Some("damx-daemon")))
+        );
+        assert_eq!(
+            rival_of("lact", "lact daemon "),
+            Some(("LACT", Some("lactd")))
+        );
+        assert_eq!(
+            rival_of("tlp", "/usr/bin/tlp start "),
+            Some(("tlp", Some("tlp")))
+        );
+        assert_eq!(rival_of("kwin_wayland", "kwin_wayland "), None);
+        assert_eq!(rival_of("plasmashell", "plasmashell "), None);
+    }
 }

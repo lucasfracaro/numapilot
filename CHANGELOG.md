@@ -2,6 +2,18 @@
 
 ## Ainda não lançado
 
+- QA round on the Nitro 5 laptop:
+  - The doctor said "acer_wmi predator_v4: on" because of a `modprobe.d` line, even with
+    acer_wmi blacklisted and not loaded. It now reads what the kernel loaded: acer_wmi and its
+    parameter, linuwu_sense, its model parameter and whether it exposed anything, the blacklist,
+    and whether any power profile exists. When linuwu_sense is loaded but did not recognize the
+    laptop it says so and gives the `nitro_v4=1`/`predator_v4=1` option for the model.
+  - "Other controllers running" now knows DAMX (Div Acer Manager Max, which reloads
+    linuwu_sense by itself) and LACT, and gives the `systemctl disable --now` for their service.
+  - Rules no longer match words that ordinary commands name (`man make`, `nvim steam`,
+    `which blender`): the first arguments only count as the program after a launcher or
+    interpreter (`python`, `env`, `flatpak run`, `gamemoderun`, `bash script`...).
+
 - **Laptop with NVIDIA: `run --gpu nvidia-0` opened Vulkan programs on the integrated card.**
   The NVIDIA branch set `MESA_VK_DEVICE_SELECT*`/`DRI_PRIME` and also listed them to be removed;
   `run` removed after setting, so Mesa's device-select layer left the Radeon first and programs

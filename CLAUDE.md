@@ -240,8 +240,11 @@ NVML segurando a NVIDIA, limite de potência da NVIDIA travado no notebook, scop
 reabrir programa, erros de EPB nos AMD, memória por programa na lista, Broken pipe na CLI.
 
 Em aberto no notebook:
-- **Acer**: sem perfil de energia nem controles depois de instalar o Linuwu-Sense (provável
-  DKMS não compilado para o kernel 7.3.1 ou acer_wmi bloqueado). O autoteste novo mostra o motivo.
+- **Acer** (causa achada em 2026-11-15): DKMS ok e `linuwu_sense` carregado, mas com todos os
+  parâmetros padrão: não reconhece o AN515-46 e não cria `nitro_sense` nem perfil de energia
+  (`acer_wmi` está na blacklist). Falta testar `options linuwu_sense nitro_v4=1` (pede sudo).
+  O `damx-daemon` (DAMX) também está ligado e recarrega o módulo ~20× no boot. O doctor
+  (`acer::findings`) mostra os dois.
 - **Saúde**: discos não aparecem (só a bateria). O relatório agora grava o motivo de cada disco.
 - Telas USB-C/Thunderbolt sem imagem após desligamento forçado: `ucsi_acpi: PPM init failed`
   (firmware; resolver com desligar, tirar o carregador e segurar o power 30–60 s).
