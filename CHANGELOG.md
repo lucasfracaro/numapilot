@@ -3,6 +3,14 @@
 ## Ainda não lançado
 
 - QA round on the Nitro 5 laptop:
+  - **Exclusive cores, maximum turbo and the per-program machine mode did nothing for programs
+    opened by `numapilot run`** (which is how Steam games start with numapilot): the service
+    marks them "manual (numapilot run)" and those features only looked at programs it had placed
+    itself. Measured on the Nitro 5: opened directly, a profile with exclusive cores 0-3 moved
+    the rest of the system to 4-15; through `run`, nothing. They now count both, like low latency
+    already did.
+  - Saving a profile right after the program closed reported "1 process adjusted": the process
+    was still in the service's table. Exited processes are skipped.
   - **The NVIDIA "off" mode hung the laptop card at login.** Right when the old KWin quit, the
     service saw the card free and removed it; the new KWin opened it during the removal and the
     driver waited for it until a reboot (it also froze the service's main loop). The removal now

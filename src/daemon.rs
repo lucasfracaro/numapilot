@@ -184,7 +184,7 @@ impl Hw {
     fn auto_mode_tick(&mut self, topo: &Topology, procs: &HashMap<i32, Tracked>) {
         let progs: Vec<String> = procs
             .values()
-            .filter(|t| t.state == St::Placed)
+            .filter(|t| t.profile_in_effect())
             .filter_map(|t| t.profile.as_ref().and_then(|p| p.machine_mode.clone()))
             .collect();
         let want = machine::auto_mode(&progs, &self.machine.schedule, machine::local_minute());
@@ -448,8 +448,7 @@ impl Hw {
         let mut want: Vec<usize> = procs
             .iter()
             .filter(|(_, t)| {
-                t.profile.as_ref().is_some_and(|p| p.low_latency)
-                    && (t.state == St::Placed || t.origin == "manual")
+                t.profile.as_ref().is_some_and(|p| p.low_latency) && t.profile_in_effect()
             })
             .flat_map(|(pid, t)| {
                 if t.cpus.is_empty() {
@@ -544,6 +543,15 @@ struct Tracked {
     profile: Option<Profile>,
     /// Memory per node (MB), measured through numa_maps.
     mem: Vec<u64>,
+}
+
+impl Tracked {
+    /// Its profile is in effect: placed by the service, or opened by `numapilot run` (which
+    /// decided the cores itself; the service still owns what only root can do: exclusive
+    /// cores, maximum turbo, machine mode, low latency).
+    fn profile_in_effect(&self) -> bool {
+        self.state == St::Placed || self.origin == "manual"
+    }
 }
 
 /// Row of /run/numapilot/state.json (read by `status` and by the graphical interface).
@@ -1259,7 +1267,7 @@ pub fn run(cfg: Config) -> Result<()> {
         // Exclusive cores: union of the programs with "exclusive" running now.
         let mut want: Vec<usize> = procs
             .values()
-            .filter(|t| t.state == St::Placed && t.profile.as_ref().is_some_and(|p| p.exclusive))
+            .filter(|t| t.profile_in_effect() && t.profile.as_ref().is_some_and(|p| p.exclusive))
             .flat_map(|t| t.cpus.iter().copied())
             .collect();
         // Maximum turbo: reserves the whole socket of the program's cores, so its other
@@ -1268,7 +1276,7 @@ pub fn run(cfg: Config) -> Result<()> {
             let mut socks: Vec<usize> = procs
                 .values()
                 .filter(|t| {
-                    t.state == St::Placed && t.profile.as_ref().is_some_and(|p| p.turbo_max)
+                    t.profile_in_effect() && t.profile.as_ref().is_some_and(|p| p.turbo_max)
                 })
                 .flat_map(|t| topo.nodes_of(&t.cpus))
                 .collect();
@@ -1632,7 +1640,12 @@ fn handle(
     for (p, t) in procs.iter_mut() {
         let mine = uid == 0 || t.uid == uid;
         let matches_key = t.pkey == key || Some(*p) == pid;
-        if mine && matches_key && !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual")) {
+        // a process that has just exited stays in the table until the next sweep
+        if mine
+            && matches_key
+            && !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual"))
+            && procfs::alive(*p)
+        {
             let prev = t.profile.clone();
             ctx.apply_profile_live(*p, t, &profile, tick);
             pids.push(*p);
