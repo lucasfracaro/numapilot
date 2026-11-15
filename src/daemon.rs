@@ -215,7 +215,7 @@ impl Hw {
         let _ = self.machine.save();
         self.apply_machine(topo, Some(&prev));
         crate::nlog!(
-            "modo {target} ({})",
+            "mode {target} ({})",
             if self.auto_mode.is_some() {
                 crate::i18n::tr("automatic rule")
             } else {
