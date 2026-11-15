@@ -274,6 +274,15 @@ Em aberto no notebook:
   `numapilot boot cmdline add nvidia_drm.fbdev=0` + reiniciar; o Lucas preferiu **não mexer no
   boot** por enquanto. A NVIDIA parada gasta ~10 W (P8). Driver 620.70.06 (módulos abertos).
 
+Controle por programa (Nitro 5, 2026-11-15), medido com uma carga em C (afinidade, threads por
+núcleo, cgroup, nice): núcleos/lista/sem HT, "o programa vê", prioridade e limite de memória
+(o excesso vai para o swap, não mata) funcionam; perfil aplicado em < 0,3 s a programa aberto
+direto. Corrigido e validado: exclusivo/turbo/modo da máquina não valiam pelo `run` nem em perfil
+sem escolha de núcleos (`Tracked::profile_in_effect`); limite de CPU com sched_ext vira núcleos
+físicos (`Profile::cores_for`/`smt_for`); exclusivo reserva núcleos inteiros
+(`topo::whole_cores`); "limitar a N" começa sem HT na interface. O `ananicy-cpp` roda no
+notebook e mexe no nice de partida (tudo do app nasce com -8: "alta" = -5 fica abaixo).
+
 BC-250 (2026-11-08): instalada pelo `install.sh`, autoteste com 44 testes: 40 OK, 3 avisos,
 0 falhas (antes das correções: falha do Mesa por causa da época `3:` no `pacman -Q`, sensores
 com lixo, CUs não achadas). Avisos que sobram: sem cpufreq, sensores do firmware, e o doctor
