@@ -1340,6 +1340,31 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("NVIDIA Dynamic Boost", "Dynamic Boost da NVIDIA"),
     (
+        "Desktop only on the integrated GPU (the NVIDIA can sleep)",
+        "Desktop só na integrada (a NVIDIA pode dormir)",
+    ),
+    (
+        "KDE keeps the NVIDIA awake all the time (KWin opens it). On: at each login, with no screen on an NVIDIA output (HDMI), the desktop uses only the integrated GPU and the NVIDIA sleeps; games set to the NVIDIA still go to it. To use the HDMI: plug the cable and log out and in (no setting to change). Applies from the next login.",
+        "O KDE mantém a NVIDIA acordada o tempo todo (o KWin abre ela). Ligado: a cada login, sem tela numa saída da NVIDIA (HDMI), o desktop usa só a integrada e a NVIDIA dorme; jogos escolhidos para a NVIDIA continuam indo para ela. Para usar o HDMI: ligue o cabo e saia e entre na sessão (sem mudar nada aqui). Vale a partir do próximo login.",
+    ),
+    (
+        "Desktop on the integrated GPU from the next login",
+        "Desktop na integrada a partir do próximo login",
+    ),
+    (
+        "Desktop on every GPU from the next login",
+        "Desktop em todas as placas a partir do próximo login",
+    ),
+    (
+        "This session still has the desktop on the NVIDIA.",
+        "Esta sessão ainda tem o desktop na NVIDIA.",
+    ),
+    (
+        "This session has the desktop on the integrated GPU only.",
+        "Esta sessão tem o desktop só na integrada.",
+    ),
+    ("Log out…", "Sair da sessão…"),
+    (
         "These programs opened the dedicated card; while they are open it does not sleep and drains the battery. Open them on the integrated GPU (program profile → card) to save power.",
         "Esses programas abriram a placa dedicada; enquanto estiverem abertos ela não dorme e gasta bateria. Abra-os na integrada (perfil do programa → placa) para economizar.",
     ),

@@ -3,6 +3,15 @@
 ## Ainda não lançado
 
 - QA round on the Nitro 5 laptop:
+  - **Desktop only on the integrated GPU** (KDE): Machine → Laptop or
+    `numapilot hybrid desktop integrated|all`. KWin opens `/dev/nvidia0`, `nvidiactl`,
+    `nvidia-modeset`, the render node and the card, so the NVIDIA never sleeps; with the numapilot
+    service stopped and Dynamic Boost off it still stayed awake, and taking it off the PCI bus with
+    KDE open hangs (NVRM waits for KWin forever). A Plasma env script now limits KWin to the
+    integrated GPU at each login unless a screen is connected to an NVIDIA output (HDMI, or the
+    laptop screen with the MUX on the NVIDIA). Cards are found by PCI address at login; turning it
+    off also clears the variable from the systemd user manager (linger). The doctor points to it.
+    The README no longer says KDE carries on after the card is removed with the desktop holding it.
   - **Laptop NVIDIA that never sleeps was reported as "nothing holding it".** KWin runs with
     `cap_sys_nice`, so its `/proc/PID/fd` is hidden from the user: doctor, selftest and
     `hybrid status` (run as the user) could not see that KWin keeps a context with VRAM on the

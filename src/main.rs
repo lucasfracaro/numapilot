@@ -167,7 +167,7 @@ enum Cmd {
         #[arg(long)]
         if_hybrid: bool,
     },
-    /// Laptop with NVIDIA: status | auto | hybrid | integrated | leave | xwayland on|off
+    /// Laptop with NVIDIA: status | auto | hybrid | integrated | leave | xwayland on|off | desktop integrated|all
     Hybrid {
         action: Option<String>,
         arg: Option<String>,
@@ -850,6 +850,74 @@ fn real_main() -> Result<()> {
             let topo = Topology::load(&cfg);
             let act = action.as_deref().unwrap_or("status");
             match act {
+                "desktop" => {
+                    match arg.as_deref().unwrap_or("status") {
+                        "integrated" | "integrada" | "on" => {
+                            hybrid::set_desktop_integrated(&topo, true)
+                                .map_err(|e| anyhow::anyhow!(e))?;
+                            println!(
+                                "{}",
+                                numapilot::tf!(
+                                    "From the next login the desktop uses only the integrated card (the NVIDIA can sleep). With a screen on an NVIDIA output (HDMI) at login it uses both, as usual: to use the HDMI, plug the cable and log out and in.",
+                                    "A partir do próximo login o desktop usa só a integrada (a NVIDIA pode dormir). Com uma tela numa saída da NVIDIA (HDMI) no login ele usa as duas, como sempre: para usar o HDMI, ligue o cabo e saia e entre na sessão."
+                                )
+                            );
+                        }
+                        "all" | "todas" | "off" => {
+                            hybrid::set_desktop_integrated(&topo, false)
+                                .map_err(|e| anyhow::anyhow!(e))?;
+                            println!(
+                                "{}",
+                                numapilot::tf!(
+                                    "From the next login the desktop uses every card (the NVIDIA outputs always work; the NVIDIA stays awake).",
+                                    "A partir do próximo login o desktop usa todas as placas (as saídas da NVIDIA sempre funcionam; a NVIDIA fica acordada)."
+                                )
+                            );
+                        }
+                        _ => {
+                            println!(
+                                "{}",
+                                if hybrid::desktop_integrated() {
+                                    numapilot::tf!(
+                                        "Desktop: only the integrated card at login (both with a screen on the NVIDIA)",
+                                        "Desktop: só a integrada no login (as duas com tela na NVIDIA)"
+                                    )
+                                } else {
+                                    numapilot::tf!(
+                                        "Desktop: every card",
+                                        "Desktop: todas as placas"
+                                    )
+                                }
+                            );
+                            if let Some(e) = hybrid::kwin_drm_elsewhere() {
+                                println!(
+                                    "{}",
+                                    numapilot::tf!(
+                                        "Also set elsewhere: {e}",
+                                        "Também definido em outro lugar: {e}"
+                                    )
+                                );
+                            }
+                            if let Some(st) = hybrid::load_state() {
+                                println!(
+                                    "{}",
+                                    if st.awake_by.iter().any(|n| n.starts_with("kwin")) {
+                                        numapilot::tf!(
+                                            "This session: KWin is using the NVIDIA",
+                                            "Esta sessão: o KWin está usando a NVIDIA"
+                                        )
+                                    } else {
+                                        numapilot::tf!(
+                                            "This session: KWin is not using the NVIDIA",
+                                            "Esta sessão: o KWin não está usando a NVIDIA"
+                                        )
+                                    }
+                                );
+                            }
+                        }
+                    }
+                    Ok(())
+                }
                 "xwayland" => {
                     let on = arg.as_deref() != Some("off");
                     hybrid::set_xwayland_wrapper(on).map_err(|e| anyhow::anyhow!(e))?;

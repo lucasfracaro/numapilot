@@ -461,9 +461,16 @@ gfx906-rocm history           # cada atualização com o resultado e o desempenh
 - **Bateria**: carga, consumo, saúde, parar de carregar em 80%, perfil de energia, modo automático
   na tomada e na bateria.
 - **NVIDIA só quando precisar** (`numapilot hybrid auto|hybrid|integrated|leave`): sempre
-  disponível (dorme quando ninguém usa), desligada (o serviço tira a placa do sistema; o KDE segue na
-  integrada sem sair da sessão) ou automático (tomada/bateria). Mostra quem mantém a placa acordada
-  e em qual placa está cada tela.
+  disponível (dorme quando ninguém usa), desligada (o serviço tira a placa do sistema) ou automático
+  (tomada/bateria). Mostra quem mantém a placa acordada (o serviço também vê o KWin e os serviços do
+  sistema) e em qual placa está cada tela.
+- **Desktop só na integrada** (KDE; Máquina → Notebook, ou
+  `numapilot hybrid desktop integrated|all`): o KWin abre a NVIDIA e a mantém acordada o tempo todo,
+  e a placa não pode sair do sistema enquanto isso. Ligado, a cada login sem tela numa saída da
+  NVIDIA (o HDMI no Nitro 5) o KWin usa só a integrada: a NVIDIA dorme, jogos escolhidos para ela
+  continuam rodando nela e o modo "desligada" consegue tirá-la. Com tela no HDMI no login o desktop
+  usa as duas placas como sempre; para usar o HDMI, ligue o cabo e saia e entre na sessão. Arquivo do
+  usuário, sem senha (`~/.config/plasma-workspace/env`).
 - **Tudo que abre com o sistema na integrada** (`numapilot autostart igpu`), Xwayland só na
   integrada, e programas na integrada que não carregam o driver da NVIDIA.
 - **Ryzen**: limites de potência pelo `ryzenadj` (reaplicados quando o firmware muda). **Acer

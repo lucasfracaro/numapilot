@@ -248,6 +248,130 @@ pub fn remove_login_files() {
     }
 }
 
+// ---------------- desktop on the integrated card (KDE, chosen at login) ----------------
+//
+// KWin keeps a context with VRAM on the laptop's NVIDIA, so it never sleeps (Nitro 5: 26 h without
+// suspending), and taking the card off the bus with the desktop holding it hangs the driver. The
+// only way out is KWin starting without it: KWIN_DRM_DEVICES. A Plasma env script decides at
+// each login: with a screen connected to an NVIDIA output (HDMI, or the laptop's own screen with
+// the MUX on the NVIDIA) the desktop uses both cards as usual; otherwise only the integrated one.
+
+/// Plasma script that limits KWin to the integrated card at login.
+pub fn desktop_env_file() -> PathBuf {
+    config_home().join("plasma-workspace/env/numapilot-kwin-igpu.sh")
+}
+
+/// The choice is on (the script exists).
+pub fn desktop_integrated() -> bool {
+    desktop_env_file().exists()
+}
+
+/// Integrated card and laptop NVIDIA PCI addresses, if this is such a laptop.
+pub fn desktop_pair(topo: &Topology) -> Option<(String, String)> {
+    let i = topo.gpus.iter().find(|g| g.is_integrated())?;
+    let n = topo
+        .gpus
+        .iter()
+        .find(|g| g.is_nvidia() && !g.is_integrated())?;
+    Some((i.pci.clone(), n.pci.clone()))
+}
+
+/// The script. Cards are found by PCI address at login (cardN changes between boots); a
+/// variable left in the systemd user manager by an earlier session (linger) is cleared when the
+/// desktop should use both cards.
+pub fn desktop_script(igpu_pci: &str, dgpu_pci: &str) -> String {
+    format!(
+        "# numapilot: the desktop (KWin) uses only the integrated card so the laptop's NVIDIA can\n\
+         # sleep, unless a screen is connected to an NVIDIA output at login (HDMI...).\n\
+         # Undo: numapilot hybrid desktop all (or Machine -> Laptop in numapilot)\n\
+         _np_i=$(readlink -f /dev/dri/by-path/pci-{igpu_pci}-card 2>/dev/null)\n\
+         _np_d=$(readlink -f /dev/dri/by-path/pci-{dgpu_pci}-card 2>/dev/null)\n\
+         _np_busy=\n\
+         if [ -n \"$_np_d\" ]; then\n\
+         \x20   for _np_s in /sys/class/drm/\"${{_np_d##*/}}\"-*/status; do\n\
+         \x20       [ \"$(cat \"$_np_s\" 2>/dev/null)\" = connected ] && _np_busy=1\n\
+         \x20   done\n\
+         fi\n\
+         if [ -z \"$_np_busy\" ] && [ -n \"$_np_i\" ] && [ -e \"$_np_i\" ]; then\n\
+         \x20   export KWIN_DRM_DEVICES=\"$_np_i\"\n\
+         else\n\
+         \x20   unset KWIN_DRM_DEVICES\n\
+         \x20   systemctl --user unset-environment KWIN_DRM_DEVICES 2>/dev/null\n\
+         fi\n\
+         unset _np_i _np_d _np_busy _np_s\n"
+    )
+}
+
+/// Turns the choice on or off (user files, no password). Applies from the next login.
+pub fn set_desktop_integrated(topo: &Topology, on: bool) -> Result<(), String> {
+    let p = desktop_env_file();
+    if !on {
+        let _ = std::fs::remove_file(&p);
+        // with linger the user manager outlives the session and would keep the variable
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "unset-environment", "KWIN_DRM_DEVICES"])
+            .status();
+        return Ok(());
+    }
+    if nix_is_root() {
+        return Err(crate::i18n::tr("run it as your user, without sudo").into());
+    }
+    let (i, n) = desktop_pair(topo).ok_or_else(|| {
+        crate::i18n::tr("only for a laptop with an integrated card and an NVIDIA").to_string()
+    })?;
+    if let Some(d) = p.parent() {
+        std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+    }
+    std::fs::write(&p, desktop_script(&i, &n)).map_err(|e| format!("{}: {e}", p.display()))
+}
+
+fn nix_is_root() -> bool {
+    unsafe { libc::geteuid() == 0 }
+}
+
+/// KWIN_DRM_DEVICES set somewhere else (it would win or conflict): file and line.
+pub fn kwin_drm_elsewhere() -> Option<String> {
+    let mut files = vec![PathBuf::from("/etc/environment")];
+    for d in [
+        config_home().join("environment.d"),
+        PathBuf::from("/etc/environment.d"),
+        config_home().join("plasma-workspace/env"),
+    ] {
+        if let Ok(rd) = std::fs::read_dir(d) {
+            files.extend(rd.flatten().map(|e| e.path()));
+        }
+    }
+    files
+        .into_iter()
+        .filter(|f| *f != desktop_env_file())
+        .find_map(|f| {
+            let t = std::fs::read_to_string(&f).ok()?;
+            t.lines()
+                .map(str::trim)
+                .find(|l| !l.starts_with('#') && l.contains("KWIN_DRM_DEVICES"))
+                .map(|l| format!("{}: {l}", f.display()))
+        })
+}
+
+/// Asks KDE to show its log out dialog (the user confirms there).
+pub fn prompt_logout() -> Result<(), String> {
+    let ok = std::process::Command::new("dbus-send")
+        .args([
+            "--session",
+            "--type=method_call",
+            "--dest=org.kde.LogoutPrompt",
+            "/LogoutPrompt",
+            "org.kde.LogoutPrompt.promptLogout",
+        ])
+        .status()
+        .is_ok_and(|s| s.success());
+    if ok {
+        Ok(())
+    } else {
+        Err(crate::i18n::tr("could not open the log out dialog: log out from the menu").into())
+    }
+}
+
 /// EGL for a program that goes on the NVIDIA (overrides an inherited restriction).
 pub fn nvidia_egl() -> Option<String> {
     let have: Vec<&str> = [NVIDIA_EGL, MESA_EGL]
@@ -285,5 +409,45 @@ mod tests {
         );
         super::rescan().unwrap();
         let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+#[cfg(test)]
+mod desktop_tests {
+    use super::*;
+
+    #[test]
+    fn login_script() {
+        let s = desktop_script("0000:74:00.0", "0000:01:00.0");
+        assert!(s.contains("/dev/dri/by-path/pci-0000:74:00.0-card"));
+        assert!(s.contains("/dev/dri/by-path/pci-0000:01:00.0-card"));
+        assert!(s.contains("export KWIN_DRM_DEVICES"));
+        assert!(s.contains("systemctl --user unset-environment KWIN_DRM_DEVICES"));
+        // Valid shell, and sourced with no card found (no PATH: readlink/systemctl missing, so
+        // nothing on this machine is touched) it leaves KWIN_DRM_DEVICES unset and no helpers.
+        let dir = std::env::temp_dir().join(format!("np-desk-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("s.sh");
+        std::fs::write(&f, &s).unwrap();
+        let ok = std::process::Command::new("sh")
+            .arg("-n")
+            .arg(&f)
+            .status()
+            .unwrap();
+        assert!(ok.success());
+        let out = std::process::Command::new("/bin/sh")
+            .env_clear()
+            .env("PATH", "/nonexistent")
+            .env("KWIN_DRM_DEVICES", "/dev/dri/card9")
+            .arg("-c")
+            .arg(format!(
+                ". '{}'; echo \"k=${{KWIN_DRM_DEVICES-unset}} i=${{_np_i-unset}} b=${{_np_busy-unset}}\"",
+                f.display()
+            ))
+            .output()
+            .unwrap();
+        let o = String::from_utf8_lossy(&out.stdout);
+        assert_eq!(o.trim(), "k=unset i=unset b=unset", "{o}");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

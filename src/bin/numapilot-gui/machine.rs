@@ -328,6 +328,67 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         }
                     });
                 }
+                // KDE: the desktop on the integrated card only, decided at each login.
+                if std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().contains("KDE")
+                    && hybrid::desktop_pair(&topo).is_some()
+                {
+                    let mut on = hybrid::desktop_integrated();
+                    if ui
+                        .checkbox(&mut on, crate::i18n::tr("Desktop only on the integrated GPU (the NVIDIA can sleep)"))
+                        .on_hover_text(crate::i18n::tr(
+                            "KDE keeps the NVIDIA awake all the time (KWin opens it). On: at each login, with no screen on an NVIDIA output (HDMI), \
+                             the desktop uses only the integrated GPU and the NVIDIA sleeps; games set to the NVIDIA still go to it. \
+                             To use the HDMI: plug the cable and log out and in (no setting to change). Applies from the next login.",
+                        ))
+                        .changed()
+                    {
+                        match hybrid::set_desktop_integrated(&topo, on) {
+                            Ok(()) => {
+                                app_toast_ok2 = Some(
+                                    if on {
+                                        crate::i18n::tr("Desktop on the integrated GPU from the next login")
+                                    } else {
+                                        crate::i18n::tr("Desktop on every GPU from the next login")
+                                    }
+                                    .into(),
+                                )
+                            }
+                            Err(e) => app_toast = Some(e),
+                        }
+                    }
+                    // What this session does, from the service (only while the NVIDIA is awake and
+                    // present; asleep or removed says nothing about KWin).
+                    let kwin_on_nv = hybrid::load_state()
+                        .filter(|st| !st.removed && !st.asleep)
+                        .map(|st| st.awake_by.iter().any(|n| n.starts_with("kwin")));
+                    if kwin_on_nv == Some(on) {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(if on {
+                                    crate::i18n::tr("This session still has the desktop on the NVIDIA.")
+                                } else {
+                                    crate::i18n::tr("This session has the desktop on the integrated GPU only.")
+                                })
+                                .small()
+                                .weak(),
+                            );
+                            if ui.small_button(crate::i18n::tr("Log out…")).clicked()
+                                && let Err(e) = hybrid::prompt_logout()
+                            {
+                                app_toast = Some(e);
+                            }
+                        });
+                    }
+                    if let Some(e) = hybrid::kwin_drm_elsewhere() {
+                        ui.label(
+                            RichText::new(crate::tf!(
+                                "KWIN_DRM_DEVICES is also set in {e}: remove it there so this choice works.",
+                                "KWIN_DRM_DEVICES também está em {e}: tire de lá para esta escolha funcionar."
+                            ))
+                            .color(Color32::from_rgb(230, 160, 40)),
+                        );
+                    }
+                }
             }
             let fans = nb::ec_fans();
             if !fans.is_empty() {

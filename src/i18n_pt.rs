@@ -790,6 +790,18 @@ pub const PT: &[(&str, &str)] = &[
         "normal (pode prender a NVIDIA)",
     ),
     ("Mesa only (EGL)", "só Mesa (EGL)"),
+    (
+        "run it as your user, without sudo",
+        "rode com o seu usuário, sem sudo",
+    ),
+    (
+        "only for a laptop with an integrated card and an NVIDIA",
+        "só para notebook com placa integrada e NVIDIA",
+    ),
+    (
+        "could not open the log out dialog: log out from the menu",
+        "não consegui abrir a janela de sair: saia pelo menu",
+    ),
     ("leave as is", "não mexer"),
     (" [display]", " [tela]"),
     ("normal Xwayland", "Xwayland normal"),

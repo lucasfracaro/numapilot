@@ -478,9 +478,16 @@ gfx906-rocm history           # each update with its result and performance
 - **Battery**: charge, power draw, health, stop charging at 80%, power profile, automatic mode on
   AC power and on battery.
 - **NVIDIA only when needed** (`numapilot hybrid auto|hybrid|integrated|leave`): always
-  available (sleeps when nobody uses it), off (the service removes the card from the system; KDE
-  carries on with the integrated GPU without leaving the session) or automatic (AC power/battery).
-  It shows who keeps the card awake and which card each display is on.
+  available (sleeps when nobody uses it), off (the service removes the card from the system) or
+  automatic (AC power/battery). It shows who keeps the card awake (the service also sees KWin and
+  system services) and which card each display is on.
+- **Desktop only on the integrated GPU** (KDE; Machine → Laptop, or
+  `numapilot hybrid desktop integrated|all`): KWin opens the NVIDIA and keeps it awake all the
+  time, and the card cannot leave the system while it does. With this on, at each login with no
+  screen on an NVIDIA output (HDMI on the Nitro 5) KWin uses only the integrated GPU: the NVIDIA
+  sleeps, games set to it still run on it, and the "off" mode can remove it. With a screen on the
+  HDMI at login the desktop uses both cards as usual, so using the HDMI means plugging the cable
+  and logging out and in. A user file, no password (`~/.config/plasma-workspace/env`).
 - **Everything that starts with the system on the integrated GPU** (`numapilot autostart igpu`),
   Xwayland on the integrated GPU only, and programs on the integrated GPU that do not load the
   NVIDIA driver.

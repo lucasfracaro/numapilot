@@ -322,16 +322,29 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                         .filter(|o| !o.name.starts_with("eDP"))
                         .map(|o| o.name)
                         .collect::<Vec<_>>();
-                    let fix = igpu.filter(|_| kde).map(|c| {
-                        let mut f = crate::tf!(
-                            "echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment and log in again (if the card number changes after an update, redo it)",
-                            "echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment e entre de novo (se o número da placa mudar após atualizar, refaça)"
-                        );
+                    let fix = igpu.filter(|_| kde).map(|_c| {
+                        let mut f = if crate::hybrid::desktop_integrated() {
+                            crate::tf!(
+                                "the desktop is set to the integrated GPU: log out and in (with no screen on the NVIDIA outputs) for it to apply",
+                                "o desktop está configurado na integrada: saia e entre na sessão (sem tela nas saídas da NVIDIA) para valer"
+                            )
+                        } else {
+                            crate::tf!(
+                                "Machine → Laptop → Desktop only on the integrated GPU (or numapilot hybrid desktop integrated), then log out and in",
+                                "Máquina → Notebook → Desktop só na integrada (ou numapilot hybrid desktop integrated), depois saia e entre na sessão"
+                            )
+                        };
                         if !lost.is_empty() {
                             f.push_str(&crate::tf!(
-                                ". The NVIDIA's outputs stop working while this is set: {}",
-                                ". As saídas da NVIDIA param de funcionar enquanto isso estiver ligado: {}",
+                                ". With a screen on {} at login the desktop uses both cards, as usual",
+                                ". Com tela em {} no login o desktop usa as duas placas, como sempre",
                                 lost.join(", ")
+                            ));
+                        }
+                        if let Some(e) = crate::hybrid::kwin_drm_elsewhere() {
+                            f.push_str(&crate::tf!(
+                                ". KWIN_DRM_DEVICES is also set in {e}: remove it there",
+                                ". KWIN_DRM_DEVICES também está em {e}: tire de lá"
                             ));
                         }
                         f
