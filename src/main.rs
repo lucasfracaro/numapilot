@@ -991,10 +991,30 @@ fn real_main() -> Result<()> {
                             );
                         }
                     }
+                    if let Some(st) = st.as_ref().filter(|s| !s.removed) {
+                        let by = numapilot::notebook::awake_by(&st.pci);
+                        println!(
+                            "{}",
+                            if by.is_empty() {
+                                numapilot::tf!(
+                                    "NVIDIA now: {}",
+                                    "NVIDIA agora: {}",
+                                    numapilot::notebook::dgpu_state(&st.pci)
+                                )
+                            } else {
+                                numapilot::tf!(
+                                    "NVIDIA now: {}, held by {}",
+                                    "NVIDIA agora: {}, segurada por {}",
+                                    numapilot::notebook::dgpu_state(&st.pci),
+                                    by.join(", ")
+                                )
+                            }
+                        );
+                    }
                     println!(
                         "Xwayland: {}",
                         if hybrid::xwayland_wrapped() {
-                            numapilot::i18n::tr("Mesa only (does not hold the NVIDIA)")
+                            numapilot::i18n::tr("Mesa only (EGL)")
                         } else {
                             numapilot::i18n::tr("normal (may hold the NVIDIA)")
                         }

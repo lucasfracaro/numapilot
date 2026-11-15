@@ -248,7 +248,12 @@ Em aberto no notebook:
 - **Saúde**: discos não aparecem (só a bateria). O relatório agora grava o motivo de cada disco.
 - Telas USB-C/Thunderbolt sem imagem após desligamento forçado: `ucsi_acpi: PPM init failed`
   (firmware; resolver com desligar, tirar o carregador e segurar o power 30–60 s).
-- Conferir que a NVIDIA desliga na bateria agora que a NVML não segura mais.
+- NVIDIA não dorme (2026-11-15): `runtime_suspended_time=0` em 26 h, na tomada. O
+  `nvidia-smi` mostra o `kwin_wayland` com contexto C+G e 11 MiB na NVIDIA, e o Xwayland segura o
+  `card1`. O KWin tem `cap_sys_nice`, então o `/proc/PID/fd` dele só é visível como root: por isso
+  o serviço publica `awake_by` no `dgpu.json`. Tirar o polling da NVML (deslocamento de clock)
+  por 60 s não fez a placa dormir. Falta testar `KWIN_DRM_DEVICES=/dev/dri/card2` (perde o HDMI,
+  que é ligado na NVIDIA) e ver se o `nvidia-powerd` (root) também aparece em `awake_by`.
 
 BC-250 (2026-11-08): instalada pelo `install.sh`, autoteste com 44 testes: 40 OK, 3 avisos,
 0 falhas (antes das correções: falha do Mesa por causa da época `3:` no `pacman -Q`, sensores

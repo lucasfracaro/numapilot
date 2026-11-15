@@ -878,10 +878,18 @@ pub fn run(cfg: &Config, cli: bool, out: &mut dyn FnMut(&str)) -> Report {
                             } else {
                                 crate::i18n::tr("present")
                             },
-                            if s.blocked_by.is_empty() {
-                                crate::i18n::tr("nothing holding it").to_string()
-                            } else {
+                            if !s.blocked_by.is_empty() {
                                 crate::tf!("held by {}", "segurada por {}", s.blocked_by.join(", "))
+                            } else if s.removed || s.asleep {
+                                crate::t2!("asleep", "dormindo").to_string()
+                            } else if s.awake_by.is_empty() {
+                                crate::t2!("awake", "acordada").to_string()
+                            } else {
+                                crate::tf!(
+                                    "awake, held by {}",
+                                    "acordada, segurada por {}",
+                                    s.awake_by.join(", ")
+                                )
                             },
                             s.last_error
                                 .map(|e| crate::tf!("\nlast error: {e}", "\núltimo erro: {e}"))

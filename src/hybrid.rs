@@ -100,6 +100,11 @@ pub struct State {
     /// Only the video output is open (KWin): we do not remove the card (not safe with the desktop
     /// holding it), but it sleeps by itself.
     pub sleep_only: bool,
+    /// The card is in the system and asleep right now (runtime suspended).
+    pub asleep: bool,
+    /// Who has the card open while it is awake, as the service sees it: as root it also sees
+    /// KWin (its /proc/PID/fd is hidden from the user because of cap_sys_nice) and system services.
+    pub awake_by: Vec<String>,
     pub last_error: Option<String>,
     /// PCI bridge above the card: bringing it back rescans only that, without touching the rest of
     /// the bus (Thunderbolt/USB4, NVMe...).

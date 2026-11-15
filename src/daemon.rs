@@ -307,6 +307,15 @@ impl Hw {
             st.blocked_by.clear();
             st.sleep_only = false;
         }
+        // Who keeps it awake, in every mode and on AC too (doctor, selftest and `hybrid status`
+        // run as the user and cannot see KWin or the system services).
+        let present = crate::hybrid::present(&st.pci);
+        st.asleep = present && crate::nvctl::asleep(&st.pci);
+        st.awake_by = if present && !st.asleep {
+            crate::notebook::holder_names(&crate::notebook::dgpu_holders(&st.pci))
+        } else {
+            vec![]
+        };
         crate::hybrid::save_state(&st);
         self.dgpu = Some(st);
     }

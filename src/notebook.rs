@@ -429,8 +429,10 @@ pub struct Holder {
 /// System processes that only keep a copy of the handle (they do not use the card).
 pub const SYSTEM_HOLDERS: &[&str] = &["systemd", "systemd-logind"];
 
-/// The desktop (compositor) opens every card so it can turn displays on with them. Idle, that
-/// does not keep the NVIDIA from sleeping in the driver's "fine-grained" mode; not counted as use.
+/// The desktop (compositor) opens every card so it can turn displays on with them. Not counted
+/// as a program using the card (closing programs does not let it go), but it can keep the NVIDIA
+/// awake: on the Nitro 5 (KDE 6, driver 620) KWin keeps a context with VRAM on it and the card
+/// never suspended in 26 h even in "fine-grained" mode. The fix is KWIN_DRM_DEVICES (doctor).
 pub const COMPOSITORS: &[&str] = &[
     "kwin_wayland",
     "kwin_x11",
@@ -481,6 +483,39 @@ pub fn dgpu_holders(pci: &str) -> Vec<Holder> {
 }
 
 /// Programs that really use the card and keep it from sleeping (without the system ones).
+/// Names of who has the card open (desktop included), without the system processes that only
+/// keep a copy of the handle. Sorted, no repeats.
+pub fn holder_names(holders: &[Holder]) -> Vec<String> {
+    let mut v: Vec<String> = holders
+        .iter()
+        .filter(|h| !SYSTEM_HOLDERS.contains(&h.name.as_str()))
+        .map(|h| h.name.clone())
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// The desktop itself (compositor or Xwayland): it does not close when the user closes programs.
+pub fn is_desktop_holder(name: &str) -> bool {
+    COMPOSITORS.contains(&name) || name == "Xwayland"
+}
+
+/// Who keeps the laptop's dedicated card awake right now: what this process can see plus what
+/// the service published (it also sees KWin and system services). Empty when it is asleep.
+pub fn awake_by(pci: &str) -> Vec<String> {
+    if crate::nvctl::asleep(pci) {
+        return vec![];
+    }
+    let mut v = holder_names(&dgpu_holders(pci));
+    if let Some(st) = crate::hybrid::load_state().filter(|s| s.pci == pci && !s.asleep) {
+        v.extend(st.awake_by);
+    }
+    v.sort();
+    v.dedup();
+    v
+}
+
 pub fn dgpu_users(pci: &str) -> Vec<(u32, String)> {
     dgpu_holders(pci)
         .into_iter()
@@ -604,5 +639,39 @@ mod tests {
         set_platform_profile("performance").unwrap();
         assert_eq!(platform_profile().as_deref(), Some("performance"));
         assert!(set_platform_profile("turbo").is_err());
+    }
+}
+
+#[cfg(test)]
+mod holder_tests {
+    use super::*;
+
+    #[test]
+    fn names_keep_the_desktop_and_drop_system() {
+        let h = |pid, name: &str, client| Holder {
+            pid,
+            name: name.into(),
+            client,
+        };
+        // What the service saw on the Nitro 5: KWin with a context, Xwayland with the card node.
+        let v = holder_names(&[
+            h(2374, "Xwayland", false),
+            h(2225, "kwin_wayland", true),
+            h(1, "systemd", false),
+            h(842, "nvidia-powerd", true),
+            h(2226, "kwin_wayland", true),
+        ]);
+        assert_eq!(v, vec!["Xwayland", "kwin_wayland", "nvidia-powerd"]);
+        let (desktop, users): (Vec<_>, Vec<_>) = v.into_iter().partition(|n| is_desktop_holder(n));
+        assert_eq!(desktop, vec!["Xwayland", "kwin_wayland"]);
+        assert_eq!(users, vec!["nvidia-powerd"]);
+    }
+
+    #[test]
+    fn old_state_files_still_load() {
+        // dgpu.json written by a service from before awake_by/asleep existed
+        let t = r#"{"pci":"0000:01:00.0","alias":"nvidia-0","removed":false,"mode":"auto","want_present":true,"blocked_by":[],"sleep_only":false,"last_error":null,"bridge":"0000:00:01.1"}"#;
+        let s: crate::hybrid::State = serde_json::from_str(t).unwrap();
+        assert!(!s.asleep && s.awake_by.is_empty());
     }
 }

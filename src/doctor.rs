@@ -243,17 +243,20 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                     "Notebook",
                     &crate::tf!("{} sleep", "{} dormir", g.alias),
                     Level::Ok,
-                    crate::notebook::dgpu_state(&g.pci),
+                    crate::tf!(
+                        "allowed (sleeps when nobody uses it) · now: {}",
+                        "permitido (dorme quando ninguém usa) · agora: {}",
+                        crate::notebook::dgpu_state(&g.pci)
+                    ),
                     None,
                 );
             }
             if !crate::notebook::dgpu_asleep(&g.pci) {
-                let mut users: Vec<String> = crate::notebook::dgpu_users(&g.pci)
+                // Local view plus what the service sees (KWin's fds are hidden from the user).
+                let holders = crate::notebook::awake_by(&g.pci);
+                let (desktop, users): (Vec<String>, Vec<String>) = holders
                     .into_iter()
-                    .map(|u| u.1)
-                    .collect();
-                users.sort();
-                users.dedup();
+                    .partition(|n| crate::notebook::is_desktop_holder(n));
                 if !users.is_empty() {
                     add(
                         "Notebook",
@@ -275,44 +278,53 @@ pub fn run(cfg: &Config) -> Vec<Check> {
                             );
                         }
                     }
-                    // KDE: KWin (and Xwayland) open every card; it can be limited to the integrated one
+                }
+                if !desktop.is_empty() {
+                    // KDE: KWin (and Xwayland through it) open every card; KWin can be limited
+                    // to the integrated one. The NVIDIA's own outputs stop working then.
                     let kde = std::env::var("XDG_CURRENT_DESKTOP")
                         .unwrap_or_default()
                         .contains("KDE");
-                    if users
+                    let igpu = topo
+                        .gpus
                         .iter()
-                        .any(|u| u == "Xwayland" || u.starts_with("kwin"))
-                    {
-                        let igpu = topo
-                            .gpus
-                            .iter()
-                            .find(|x| x.is_integrated())
-                            .and_then(|x| {
-                                std::fs::read_dir(crate::util::sys(&format!(
-                                    "bus/pci/devices/{}/drm",
-                                    x.pci
-                                )))
-                                .ok()
-                            })
-                            .and_then(|rd| {
-                                rd.flatten()
-                                    .map(|e| e.file_name().to_string_lossy().to_string())
-                                    .find(|n| n.starts_with("card"))
-                            });
-                        let fix = igpu.filter(|_| kde).map(|c| {
-                            crate::tf!("echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment and log in again (if the card number changes after an update, redo it)", "echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment e entre de novo (se o número da placa mudar após atualizar, refaça)")
-                        });
-                        add(
-                            "Notebook",
-                            crate::i18n::tr("desktop holding the NVIDIA"),
-                            Level::Info,
-                            crate::i18n::tr(
-                                "the compositor (KWin/Xwayland) opened the dedicated card",
-                            )
-                            .into(),
-                            fix.as_deref(),
+                        .find(|x| x.is_integrated())
+                        .and_then(|x| card_of(&x.pci));
+                    let lost = crate::hybrid::outputs(&g.pci)
+                        .into_iter()
+                        .filter(|o| !o.name.starts_with("eDP"))
+                        .map(|o| o.name)
+                        .collect::<Vec<_>>();
+                    let fix = igpu.filter(|_| kde).map(|c| {
+                        let mut f = crate::tf!(
+                            "echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment and log in again (if the card number changes after an update, redo it)",
+                            "echo 'KWIN_DRM_DEVICES=/dev/dri/{c}' | sudo tee -a /etc/environment e entre de novo (se o número da placa mudar após atualizar, refaça)"
                         );
-                    }
+                        if !lost.is_empty() {
+                            f.push_str(&crate::tf!(
+                                ". The NVIDIA's outputs stop working while this is set: {}",
+                                ". As saídas da NVIDIA param de funcionar enquanto isso estiver ligado: {}",
+                                lost.join(", ")
+                            ));
+                        }
+                        f
+                    });
+                    add(
+                        "Notebook",
+                        crate::i18n::tr("desktop holding the NVIDIA"),
+                        if ac == Some(false) {
+                            Level::Warn
+                        } else {
+                            Level::Info
+                        },
+                        crate::tf!(
+                            "{} keeps the dedicated card awake ({})",
+                            "{} mantém a placa dedicada acordada ({})",
+                            desktop.join(", "),
+                            crate::notebook::dgpu_state(&g.pci)
+                        ),
+                        fix.as_deref(),
+                    );
                 }
             }
         }
@@ -1656,4 +1668,13 @@ mod rival_tests {
         assert_eq!(rival_of("kwin_wayland", "kwin_wayland "), None);
         assert_eq!(rival_of("plasmashell", "plasmashell "), None);
     }
+}
+
+/// DRM card node ("card2") of a GPU.
+fn card_of(pci: &str) -> Option<String> {
+    std::fs::read_dir(crate::util::sys(&format!("bus/pci/devices/{pci}/drm")))
+        .ok()?
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .find(|n| n.starts_with("card"))
 }

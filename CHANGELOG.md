@@ -3,6 +3,14 @@
 ## Ainda não lançado
 
 - QA round on the Nitro 5 laptop:
+  - **Laptop NVIDIA that never sleeps was reported as "nothing holding it".** KWin runs with
+    `cap_sys_nice`, so its `/proc/PID/fd` is hidden from the user: doctor, selftest and
+    `hybrid status` (run as the user) could not see that KWin keeps a context with VRAM on the
+    NVIDIA (the card never suspended in 26 h). The service now publishes in `dgpu.json` who keeps
+    the card awake, in every mode and on AC too; the user-side tools read it. The doctor shows
+    "desktop holding the NVIDIA" with the `KWIN_DRM_DEVICES` fix and names the NVIDIA outputs
+    that stop working with it (HDMI on the Nitro 5); a warning on battery. `hybrid status` shows
+    the card's state and holders, and no longer says Xwayland "does not hold the NVIDIA".
   - The doctor said "acer_wmi predator_v4: on" because of a `modprobe.d` line, even with
     acer_wmi blacklisted and not loaded. It now reads what the kernel loaded: acer_wmi and its
     parameter, linuwu_sense, its model parameter and whether it exposed anything, the blacklist,
