@@ -509,14 +509,12 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
                     }
                     set.push(("__GLX_VENDOR_LIBRARY_NAME".into(), "nvidia".into()));
                     set.push(("__VK_LAYER_NV_optimus".into(), "NVIDIA_only".into()));
-                    // inherited from a program that started on the integrated GPU (e.g. Steam from startup)
-                    for v in [
-                        "VK_DRIVER_FILES",
-                        "VK_ICD_FILENAMES",
-                        "DRI_PRIME",
-                        "MESA_VK_DEVICE_SELECT",
-                        "MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE",
-                    ] {
+                    // Inherited from a program that started on the integrated GPU (e.g. Steam from
+                    // startup): an ICD list without the NVIDIA hides it from Vulkan. DRI_PRIME and
+                    // MESA_VK_DEVICE_SELECT* stay set above (pointing at the NVIDIA): without them,
+                    // Mesa's device-select layer leaves the integrated card first and programs that
+                    // take Vulkan device 0 (native games, vkmark) run on it.
+                    for v in ["VK_DRIVER_FILES", "VK_ICD_FILENAMES"] {
                         unset.push(v.into());
                     }
                     let nvs = crate::nvctl::cuda_indices(topo);
@@ -626,7 +624,29 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
         "NUMAPILOT_MODE".into(),
         if d.manual { "manual" } else { "auto" }.into(),
     ));
+    // A variable is either set or removed, never both: callers apply the two lists in different
+    // orders, and removing after setting silently dropped the GPU choice.
+    unset.retain(|k| !set.iter().any(|(s, _)| s == k));
+    unset.dedup();
     (set, unset)
+}
+
+/// The environment a program gets: `base` without `unset`, plus `set`. Same order as
+/// `numapilot run` and `gpu-test` apply them (remove first, then set).
+pub fn effective_env(
+    base: &[(String, String)],
+    set: &[(String, String)],
+    unset: &[String],
+) -> HashMap<String, String> {
+    let mut env: HashMap<String, String> = base
+        .iter()
+        .filter(|(k, _)| !unset.contains(k))
+        .cloned()
+        .collect();
+    for (k, v) in set {
+        env.insert(k.clone(), v.clone());
+    }
+    env
 }
 
 /// "How many threads to use" variables of common libraries. `numapilot run` only sets them
@@ -783,4 +803,138 @@ pub fn env_for_gpu(g: &crate::topo::Gpu, topo: &Topology) -> Vec<(String, String
         reasons: vec![],
     };
     gpu_env(&d, topo).0
+}
+
+#[cfg(test)]
+mod env_tests {
+    use super::*;
+    use crate::topo::{Gpu, GpuRole};
+
+    fn gpu(alias: &str, pci: &str, vendor: u16, device: u16, render: &str, role: GpuRole) -> Gpu {
+        Gpu {
+            alias: alias.into(),
+            pci: pci.into(),
+            vendor,
+            device,
+            name: alias.into(),
+            numa_node: Some(0),
+            card: None,
+            render: Some(render.into()),
+            display_connected: role == GpuRole::Display,
+            gfx: None,
+            rocr_id: None,
+            role,
+        }
+    }
+
+    /// Laptop: Radeon 680M (screen) + RTX 3070 Ti Laptop.
+    fn laptop() -> Topology {
+        Topology {
+            nodes: vec![],
+            gpus: vec![
+                gpu(
+                    "nvidia-0",
+                    "0000:01:00.0",
+                    0x10de,
+                    0x24a0,
+                    "renderD128",
+                    GpuRole::Other,
+                ),
+                gpu(
+                    "gfx1035-0",
+                    "0000:74:00.0",
+                    0x1002,
+                    0x1681,
+                    "renderD129",
+                    GpuRole::Display,
+                ),
+            ],
+            default_graphics: None,
+        }
+    }
+
+    /// What a program started from the integrated GPU (Steam from startup) passes on.
+    fn inherited_igpu() -> Vec<(String, String)> {
+        [
+            ("DRI_PRIME", "pci-0000_74_00_0"),
+            ("MESA_VK_DEVICE_SELECT", "1002:1681"),
+            (
+                "VK_DRIVER_FILES",
+                "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json",
+            ),
+            (
+                "VK_ICD_FILENAMES",
+                "/usr/share/vulkan/icd.d/radeon_icd.x86_64.json",
+            ),
+            ("HOME", "/home/u"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+    }
+
+    #[test]
+    fn nvidia_on_laptop_keeps_vulkan_selection() {
+        let t = laptop();
+        let (set, unset) = env_for_gpu_full(&t.gpus[0], &t);
+        let env = effective_env(&inherited_igpu(), &set, &unset);
+        // Mesa's device-select layer must put the NVIDIA first and alone, or programs that take
+        // Vulkan device 0 run on the Radeon.
+        assert_eq!(
+            env.get("MESA_VK_DEVICE_SELECT").map(String::as_str),
+            Some("10de:24a0")
+        );
+        assert_eq!(
+            env.get("MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE")
+                .map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            env.get("DRI_PRIME").map(String::as_str),
+            Some("pci-0000_01_00_0")
+        );
+        assert_eq!(
+            env.get("__NV_PRIME_RENDER_OFFLOAD").map(String::as_str),
+            Some("1")
+        );
+        // The inherited ICD list without the NVIDIA must go.
+        assert!(!env.contains_key("VK_DRIVER_FILES"));
+        assert!(!env.contains_key("VK_ICD_FILENAMES"));
+        assert_eq!(env.get("HOME").map(String::as_str), Some("/home/u"));
+    }
+
+    #[test]
+    fn integrated_on_laptop_hides_nvidia() {
+        let t = laptop();
+        let (set, unset) = env_for_gpu_full(&t.gpus[1], &t);
+        let env = effective_env(
+            &[("__NV_PRIME_RENDER_OFFLOAD".into(), "1".into())],
+            &set,
+            &unset,
+        );
+        assert_eq!(
+            env.get("MESA_VK_DEVICE_SELECT").map(String::as_str),
+            Some("1002:1681")
+        );
+        assert_eq!(
+            env.get("DRI_PRIME").map(String::as_str),
+            Some("pci-0000_74_00_0")
+        );
+        assert!(!env.contains_key("__NV_PRIME_RENDER_OFFLOAD"));
+    }
+
+    #[test]
+    fn never_set_and_removed_together() {
+        let t = laptop();
+        for g in &t.gpus {
+            let (set, unset) = env_for_gpu_full(g, &t);
+            for k in &unset {
+                assert!(
+                    !set.iter().any(|(s, _)| s == k),
+                    "{k} is both set and removed for {}",
+                    g.alias
+                );
+            }
+        }
+    }
 }

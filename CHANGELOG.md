@@ -2,6 +2,13 @@
 
 ## Ainda não lançado
 
+- **Laptop with NVIDIA: `run --gpu nvidia-0` opened Vulkan programs on the integrated card.**
+  The NVIDIA branch set `MESA_VK_DEVICE_SELECT*`/`DRI_PRIME` and also listed them to be removed;
+  `run` removed after setting, so Mesa's device-select layer left the Radeon first and programs
+  that take Vulkan device 0 (native games, vkmark) ran on it. `gpu-test` applied the lists in the
+  opposite order and reported "right". A variable is now either set or removed, both apply the
+  lists in the same order, and tests check the final environment on a Radeon + NVIDIA laptop.
+
 - QA round on the BC-250:
   - A profile saved with an exact CPU list (`profile set KEY --cpu cpus:4-7`) got the whole
     socket: the service turned the list into its node. It now keeps the list.

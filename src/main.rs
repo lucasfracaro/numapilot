@@ -2091,6 +2091,10 @@ fn cmd_run(
     }
     let mut c = std::process::Command::new(&argv[0]);
     c.args(&argv[1..]);
+    // Remove first, then set (same order as gpu-test, so what it checks is what runs).
+    for k in unset {
+        c.env_remove(k);
+    }
     for (k, v) in set {
         if numapilot::decide::SOFT_THREAD_VARS.contains(&k.as_str())
             && std::env::var_os(&k).is_some()
@@ -2107,9 +2111,6 @@ fn cmd_run(
                 .to_string();
             c.env("JAVA_TOOL_OPTIONS", jto);
         }
-    }
-    for k in unset {
-        c.env_remove(k);
     }
     if let Some(u) = profiles
         .get(&pkey)
