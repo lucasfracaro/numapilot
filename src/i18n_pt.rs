@@ -300,11 +300,6 @@ pub const PT: &[(&str, &str)] = &[
         "no permission to change the affinity",
         "sem permissão para mudar a afinidade",
     ),
-    (
-        "end of the rule, back to the previous one",
-        "fim da regra, volta ao anterior",
-    ),
-    ("automatic rule", "regra automática"),
     ("on battery", "na bateria"),
     ("on AC power", "na tomada"),
     (

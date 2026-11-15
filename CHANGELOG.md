@@ -1,5 +1,10 @@
 # Mudanças
 
+## Ainda não lançado
+
+- Service log: the automatic machine mode line is in English on every system (it came out as
+  "regra automática" on a pt_BR one).
+
 ## 0.5.2 — 2026-11-15
 
 - QA round on the Nitro 5 laptop:

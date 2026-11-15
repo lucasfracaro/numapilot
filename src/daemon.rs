@@ -216,10 +216,11 @@ impl Hw {
         self.apply_machine(topo, Some(&prev));
         crate::nlog!(
             "mode {target} ({})",
+            // log lines stay in English (tr() gave "regra automática" on a pt_BR system)
             if self.auto_mode.is_some() {
-                crate::i18n::tr("automatic rule")
+                "automatic rule"
             } else {
-                crate::i18n::tr("end of the rule, back to the previous one")
+                "end of the rule, back to the previous one"
             }
         );
     }
