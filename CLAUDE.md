@@ -267,6 +267,12 @@ Em aberto no notebook:
   também o EGL do Mesa. No primeiro teste o modo "Desligada" removeu a placa no meio da troca de
   sessão e travou de novo: agora o serviço só remove com um KWin restrito rodando
   (`hybrid::desktop_lets_go`, lê o environ dele) e a placa livre por 6 s, numa thread própria.
+  Testado depois (sessão restrita, 03:15): KWin e Xwayland **largaram** a placa (`awake_by` só
+  nvidia-powerd), mas ela **continua `active`** mesmo com Dynamic Boost, deslocamento NVML e o
+  serviço do numapilot parados, e `awake_by` vazio. Suspeito: o fbdev do `nvidia-drm`
+  ("[drm] Cannot find any crtc or sizes" no boot), cliente dentro do kernel. Testar seria
+  `numapilot boot cmdline add nvidia_drm.fbdev=0` + reiniciar; o Lucas preferiu **não mexer no
+  boot** por enquanto. A NVIDIA parada gasta ~10 W (P8). Driver 620.70.06 (módulos abertos).
 
 BC-250 (2026-11-08): instalada pelo `install.sh`, autoteste com 44 testes: 40 OK, 3 avisos,
 0 falhas (antes das correções: falha do Mesa por causa da época `3:` no `pacman -Q`, sensores
