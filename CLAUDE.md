@@ -190,7 +190,11 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   (`RANK_WANTED`). Mecânica conferida: com uma ordem útil, 2 núcleos → os 2 mais rápidos, com HT
   → núcleos inteiros, o limite de CPU também segue. Diferenças < 1% são empate. A lista manual
   (`cpu_list`) não usa a ordem. No servidor (anel do Broadwell, 22 núcleos) ainda não medido.
-  Ideia não feita: usar o `amd_pstate_prefcore_ranking` (estável, do firmware) nos Ryzen.
+  Ordem usada (`corebench::order_source`): a medição de cache se for confiável (`useful`); senão
+  os núcleos preferidos do firmware (`amd_pstate_prefcore_ranking`, ou `acpi_cppc/highest_perf`
+  se variar entre núcleos); senão a do sistema. No Nitro 5 vale a do firmware (conferido: 2
+  núcleos → 6,10; 4 → 0,4,6,10; HT → 6,7,10,11). Pedido do Lucas: latência de cache quando
+  tiver impacto medido (Xeon), firmware quando não tiver.
 - Idiomas (2026-11-12): **inglês é o idioma base do código**; o português é a tradução.
   Texto fixo mostrado ao usuário = `crate::i18n::tr("text")` com o par em `src/i18n_pt.rs`
   (biblioteca/CLI) ou `src/bin/numapilot-gui/i18n_pt.rs` (interface, que cai na da biblioteca);

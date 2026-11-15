@@ -318,13 +318,90 @@ pub fn summary(r: &CoreRank) -> String {
     )
 }
 
-/// A core's time for ordering (only when the measurement is reliable).
-pub fn ns_of(first_cpu: usize) -> Option<f32> {
-    let r = saved()?;
-    if !r.useful {
-        return None;
+/// The firmware's preferred-core ranking of a CPU (higher = better): AMD
+/// `amd_pstate_prefcore_ranking`, otherwise ACPI CPPC `highest_perf` (Intel Turbo Boost Max 3.0,
+/// hybrid processors). None when the firmware does not rank the cores.
+fn firmware_rank_of(cpu: usize) -> Option<u32> {
+    let d = crate::util::sys(&format!("devices/system/cpu/cpu{cpu}"));
+    crate::util::read_trim(d.join("cpufreq/amd_pstate_prefcore_ranking"))
+        .or_else(|| crate::util::read_trim(d.join("acpi_cppc/highest_perf")))
+        .and_then(|v| v.parse().ok())
+        .filter(|v| *v > 0)
+}
+
+/// Preferred cores by the firmware, only when it really ranks them (not all the same value).
+pub fn firmware_ranking(topo: &Topology) -> Option<BTreeMap<usize, u32>> {
+    let firsts: Vec<usize> = topo
+        .nodes
+        .iter()
+        .flat_map(|n| n.cores.iter().filter_map(|c| c.first().copied()))
+        .collect();
+    let m: BTreeMap<usize, u32> = firsts
+        .iter()
+        .map(|c| Some((*c, firmware_rank_of(*c)?)))
+        .collect::<Option<_>>()?;
+    let lo = m.values().min()?;
+    let hi = m.values().max()?;
+    (m.len() >= 2 && lo != hi).then_some(m)
+}
+
+/// Where the core order comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderSource {
+    /// the cache latency measured here, when it is reliable (repeats and beats the noise)
+    Cache,
+    /// the firmware's preferred cores, when the cache latency makes no measurable difference
+    Firmware,
+    /// neither: the system order
+    System,
+}
+
+pub fn order_source() -> OrderSource {
+    if saved().is_some_and(|r| r.useful) {
+        OrderSource::Cache
+    } else if firmware_rank_of(0).is_some() && firmware_differs() {
+        OrderSource::Firmware
+    } else {
+        OrderSource::System
     }
-    r.ns.get(&first_cpu).copied()
+}
+
+fn firmware_differs() -> bool {
+    let Ok(rd) = std::fs::read_dir(crate::util::sys("devices/system/cpu")) else {
+        return false;
+    };
+    let mut seen = None;
+    for e in rd.flatten() {
+        let Some(c) = e
+            .file_name()
+            .to_str()
+            .and_then(|n| n.strip_prefix("cpu"))
+            .and_then(|n| n.parse::<usize>().ok())
+        else {
+            continue;
+        };
+        if let Some(v) = firmware_rank_of(c) {
+            match seen {
+                None => seen = Some(v),
+                Some(s) if s != v => return true,
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+/// A core's cost for ordering (lower = better). The cache latency measured here when it matters
+/// (it repeats and beats the noise, as on the 2x Xeon's ring); otherwise the firmware's
+/// preferred cores (on a single-CCX Ryzen every core sees the L3 the same and the measured
+/// "order" was noise); otherwise nothing (system order).
+pub fn ns_of(first_cpu: usize) -> Option<f32> {
+    match order_source() {
+        OrderSource::Cache => saved()?.ns.get(&first_cpu).copied(),
+        // higher rank = better: as a cost, 1000/rank (5.10 for 196, 5.24 for 191: 2.6% apart)
+        OrderSource::Firmware => firmware_rank_of(first_cpu).map(|r| 1000.0 / r as f32),
+        OrderSource::System => None,
+    }
 }
 
 /// Orders cores (each with its threads) from fastest to slowest; without a reliable
@@ -400,5 +477,35 @@ mod tests {
         }
         assert_eq!(i, 0);
         assert!(chase(&b, 10_000) > 0.0);
+    }
+
+    #[test]
+    fn firmware_preferred_cores_when_the_cache_does_not_matter() {
+        // Nitro 5 (Ryzen 7 6800H): amd_pstate_prefcore_ranking per core, no cache order
+        let root = std::env::temp_dir().join(format!("np-prefcore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (cpu, rank) in [(0, 186), (2, 171), (4, 191), (6, 196)] {
+            let d = root.join(format!("devices/system/cpu/cpu{cpu}/cpufreq"));
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("amd_pstate_prefcore_ranking"), format!("{rank}\n")).unwrap();
+        }
+        let _g = crate::util::test_sysfs_lock(&root);
+        // saved() is off under NUMAPILOT_SYSFS: no cache order, so the firmware's
+        assert_eq!(order_source(), OrderSource::Firmware);
+        let mut u = vec![vec![0], vec![2], vec![4], vec![6]];
+        sort_units(&mut u, &ns_of);
+        assert_eq!(u, vec![vec![6], vec![4], vec![0], vec![2]]);
+        // all equal (a Xeon's highest_perf): no firmware order
+        for cpu in [0, 2, 4, 6] {
+            std::fs::write(
+                root.join(format!(
+                    "devices/system/cpu/cpu{cpu}/cpufreq/amd_pstate_prefcore_ranking"
+                )),
+                "186\n",
+            )
+            .unwrap();
+        }
+        assert_eq!(order_source(), OrderSource::System);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

@@ -392,14 +392,27 @@ pub fn decide_launch(
                 let smt = p.smt_for(crate::machine::sched_ext_active());
                 let v = topo.select_cpus(&nodes, count, smt, &[]);
                 reasons.push(crate::tf!(
-                    "{} CPUs ({} physical cores{}) chosen in the profile",
-                    "{} CPUs ({} núcleos físicos{}) escolhidos no perfil",
+                    "{} CPUs ({} physical cores{}) chosen in the profile, {}",
+                    "{} CPUs ({} núcleos físicos{}) escolhidos no perfil, {}",
                     v.len(),
                     topo.physical_count(&v),
                     if smt {
                         ""
                     } else {
                         crate::i18n::tr(", no hyper-threading")
+                    },
+                    match crate::corebench::order_source() {
+                        crate::corebench::OrderSource::Cache => crate::t2!(
+                            "fastest cache first (measured here)",
+                            "cache mais rápido primeiro (medido aqui)"
+                        ),
+                        crate::corebench::OrderSource::Firmware => crate::t2!(
+                            "the firmware's preferred cores first (the cache latency makes no difference here)",
+                            "núcleos preferidos do firmware primeiro (a latência do cache não faz diferença aqui)"
+                        ),
+                        crate::corebench::OrderSource::System => {
+                            crate::t2!("in the system order", "na ordem do sistema")
+                        }
                     }
                 ));
                 if p.cpu_max_pct.is_some()

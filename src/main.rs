@@ -3568,10 +3568,37 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
         println!(
             "{}",
             numapilot::tf!(
-                "The difference is too small (or the order did not repeat) to count as a criterion: \
-             core choice stays in the system order. If the PC was busy, close everything and measure again.",
-                "A diferença é pequena demais (ou a ordem não se repetiu) para valer como critério: \
-             a escolha de núcleos continua na ordem do sistema. Se o PC estava ocupado, feche tudo e meça de novo."
+                "The difference is too small (or the order did not repeat) to count as a criterion. \
+             If the PC was busy, close everything and measure again.",
+                "A diferença é pequena demais (ou a ordem não se repetiu) para valer como critério. \
+             Se o PC estava ocupado, feche tudo e meça de novo."
+            )
+        );
+    }
+    // Where the order comes from now: this measurement if reliable, otherwise the firmware.
+    if !rank.useful && corebench::firmware_ranking(&topo).is_none() {
+        println!(
+            "{}",
+            numapilot::tf!(
+                "The firmware does not rank the cores either: core choice stays in the system order.",
+                "O firmware também não classifica os núcleos: a escolha de núcleos fica na ordem do sistema."
+            )
+        );
+    }
+    if !rank.useful
+        && let Some(fw) = corebench::firmware_ranking(&topo)
+    {
+        let mut v: Vec<(usize, u32)> = fw.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        println!(
+            "{}",
+            numapilot::tf!(
+                "The firmware ranks the cores (preferred cores); that order is used instead, best first: {}",
+                "O firmware classifica os núcleos (núcleos preferidos); essa ordem é usada no lugar, do melhor ao pior: {}",
+                v.iter()
+                    .map(|(c, r)| format!("CPU {c} ({r})"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
         );
     }

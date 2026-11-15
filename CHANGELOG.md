@@ -3,6 +3,12 @@
 ## Ainda não lançado
 
 - QA round on the Nitro 5 laptop:
+  - **Core order: measured cache latency where it matters, the firmware's preferred cores where
+    it does not.** When the cache measurement is reliable (the 2x Xeon's ring) it decides; when it
+    is not (a single-CCX Ryzen, where every core sees the L3 the same) the firmware's ranking
+    decides (`amd_pstate_prefcore_ranking`, or ACPI CPPC `highest_perf` on Intel Turbo Boost Max /
+    hybrid); otherwise the system order. On the Nitro 5: 2 cores → CPUs 6, 10; 6 cores → without
+    the two the firmware ranks last. `run --dry-run` and `bench-cores` say which order is in use.
   - **Cache order per core measured before it is needed.** A profile that picks some of the
     cores (a count, no hyper-threading, or a processor limit as cores) on a processor never
     measured: `numapilot run` measures first and then picks the cores (dry-run says it will);
