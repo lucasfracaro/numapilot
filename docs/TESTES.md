@@ -136,6 +136,8 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
       "Desligada" com as telas USB-C ligadas: a NVIDIA some do `lspci` e o KDE continua; "Sempre disponível":
       ela volta e um monitor no HDMI acende sem sair da sessão; "Automático": tirar/colocar o carregador troca
 - [ ] Com um jogo aberto na NVIDIA, pedir "Desligada": espera e mostra o jogo; ao fechar, desliga
+- [x] Teste 15 nov: tirar a NVIDIA do PCI com o KDE aberto (numapilot e nvidia-powerd parados) trava:
+      o NVRM espera o KWin soltar `/dev/nvidia0` para sempre e o rescan fica preso; só reiniciando.
 - [x] Teste 7 nov: o modo esperou o Elden Ring; a placa nunca foi tirada (KWin, LACT, Sunshine, ZapZap
       seguravam). Telas piscando após trocar o monitor entre HDMI e USB-C; sumiu ao reiniciar
       (numapilot não mexeu nas placas). Se voltar: parâmetro amdgpu.dcdebugmask=0x10

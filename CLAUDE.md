@@ -254,6 +254,14 @@ Em aberto no notebook:
   o serviço publica `awake_by` no `dgpu.json`. Tirar o polling da NVML (deslocamento de clock)
   por 60 s não fez a placa dormir. Falta testar `KWIN_DRM_DEVICES=/dev/dri/card2` (perde o HDMI,
   que é ligado na NVIDIA) e ver se o `nvidia-powerd` (root) também aparece em `awake_by`.
+  Testado depois: `awake_by` = Xwayland, kwin_wayland, nvidia-powerd. Sem o Dynamic Boost (90 s) e
+  com o serviço do numapilot parado (60 s) a placa **continuou acordada**: quem impede é o KWin, que
+  abre `/dev/nvidia0`, `nvidiactl`, `nvidia-modeset`, `renderD128` e `card1` (não só a saída).
+  **Tirar do PCI com o KDE aberto não funciona** (teste de 2026-11-15): `nvidia-drm` sai, mas o
+  NVRM fica em `os_delay` ("remove device with non-zero usage count") esperando o KWin, o remove
+  trava, o rescan fica preso atrás dele e a placa só volta reiniciando. O `sleep_only` do serviço
+  está certo: nunca remover com o KWin segurando. Única saída: o KWin iniciar sem a NVIDIA
+  (`KWIN_DRM_DEVICES` no login); o botão para isso está no `git stash` "desktop-on-igpu".
 
 BC-250 (2026-11-08): instalada pelo `install.sh`, autoteste com 44 testes: 40 OK, 3 avisos,
 0 falhas (antes das correções: falha do Mesa por causa da época `3:` no `pacman -Q`, sensores
