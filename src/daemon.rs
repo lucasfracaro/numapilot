@@ -1207,9 +1207,15 @@ pub fn run(cfg: Config) -> Result<()> {
                         let _ = serde_json::to_string(&r)
                             .map(|t| std::fs::write(crate::corebench::path(), t));
                         crate::nlog!(
-                            "cache latency per core measured while idle: difference {:.1}% (noise {:.1}%)",
+                            "cache latency per core measured while idle: difference {:.1}% (noise {:.1}%, order repeats {:.0}%), {}",
                             r.spread_pct,
-                            r.noise_pct
+                            r.noise_pct,
+                            r.agreement.max(0.0) * 100.0,
+                            if r.useful {
+                                "in use for choosing cores"
+                            } else {
+                                "not reliable, system order"
+                            }
                         );
                         let sx = crate::machine::sched_ext_active();
                         for (pid, t) in procs.iter_mut() {
@@ -1628,13 +1634,15 @@ fn handle(
             {
                 Ok(()) => {
                     crate::nlog!(
-                        "cache latency per core: difference of {:.1}% (noise {:.1}%), {}",
+                        "cache latency per core: difference of {:.1}% (noise {:.1}%, order repeats {:.0}%), {}",
                         rank.spread_pct,
                         rank.noise_pct,
+                        rank.agreement.max(0.0) * 100.0,
+                        // the log is in English (crate::i18n::tr would follow the requester)
                         if rank.useful {
-                            crate::i18n::tr("in use for choosing cores")
+                            "in use for choosing cores"
                         } else {
-                            crate::i18n::tr("too small to use")
+                            "not reliable, system order"
                         }
                     );
                     Response::ok(crate::i18n::tr("measurement saved"))
