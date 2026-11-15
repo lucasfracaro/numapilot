@@ -473,10 +473,25 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             ui.horizontal(|ui| {
                                 let mut lim = ed.p.cores.is_some();
                                 if ui.checkbox(&mut lim, crate::i18n::tr("limit to")).changed() {
-                                    ed.p.cores = if lim { Some(16) } else { None };
+                                    // "4" should mean 4 physical cores: hyper-threading starts off
+                                    // (with it on, 4 CPUs are 2 cores with both threads, half the speed)
+                                    ed.p.cores = if lim { Some(4) } else { None };
+                                    if lim {
+                                        ed.p.smt = false;
+                                    }
                                 }
                                 if let Some(c) = ed.p.cores.as_mut() {
                                     ui.add(egui::Slider::new(c, 1..=app.topo.all_cpus().len()).suffix(" CPUs"));
+                                    let phys = if ed.p.smt { c.div_ceil(2) } else { *c };
+                                    ui.label(
+                                        RichText::new(if ed.p.smt {
+                                            crate::tf!("= {phys} physical cores × 2 threads", "= {phys} núcleos físicos × 2 threads")
+                                        } else {
+                                            crate::tf!("= {phys} physical cores", "= {phys} núcleos físicos")
+                                        })
+                                        .small()
+                                        .weak(),
+                                    );
                                 }
                             });
                             ui.checkbox(&mut ed.p.smt, crate::i18n::tr("use hyper-threading (2 threads per core)"))
@@ -566,8 +581,9 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             );
                             ui.label(RichText::new(crate::tf!("= {:.1} core(s)", "= {:.1} núcleo(s)", *c / 100.0)).small().weak());
                             if numapilot::machine::sched_ext_active() {
-                                ui.label(RichText::new(crate::i18n::tr("⚠ may not hold with the sched_ext scheduler on")).small().color(Color32::from_rgb(220, 160, 60)))
-                                    .on_hover_text(crate::i18n::tr("With a sched_ext scheduler running (Machine → Scheduler) the kernel only enforces this limit if that scheduler supports it; with LAVD it was not enforced. Limiting the number of cores always works."));
+                                let n = ((*c / 100.0).ceil() as usize).max(1);
+                                ui.label(RichText::new(crate::tf!("applied as {n} core(s)", "aplicado como {n} núcleo(s)")).small().color(Color32::from_rgb(220, 160, 60)))
+                                    .on_hover_text(crate::i18n::tr("With a sched_ext scheduler running (Machine → Scheduler, e.g. LAVD) the kernel does not enforce a percentage limit, so numapilot limits the number of cores instead, rounded up."));
                             }
                         }
                     });

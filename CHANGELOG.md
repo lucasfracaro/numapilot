@@ -3,6 +3,16 @@
 ## Ainda não lançado
 
 - QA round on the Nitro 5 laptop:
+  - **Processor limit works with sched_ext (LAVD).** The kernel ignored `cpu.max` (measured: a
+    150% limit ran at 16 cores). Under a sched_ext scheduler the limit now becomes a number of
+    physical cores, rounded up (150% → 2 cores; measured: 2 cores' worth), in `run`, in the
+    service and in the interface, which says how it was applied.
+  - **"N CPUs" and hyper-threading:** with HT on, 4 CPUs are 2 physical cores with both threads,
+    half the speed of 4 cores (measured 27 k vs 51 k). Turning on "limit to" in the interface
+    now starts with HT off and shows how many physical cores the number means; `run --dry-run`
+    says it too. The meaning of HT on is unchanged (the maximum-turbo panel relies on it).
+  - Exclusive cores reserve whole physical cores: nothing else runs on the other thread of a
+    reserved core.
   - **Exclusive cores, maximum turbo and the per-program machine mode did nothing for programs
     opened by `numapilot run`** (which is how Steam games start with numapilot): the service
     marks them "manual (numapilot run)" and those features only looked at programs it had placed

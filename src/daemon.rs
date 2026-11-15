@@ -734,7 +734,8 @@ impl Ctx<'_> {
                 return Some(v);
             }
         }
-        if !p.has_cpu_choice() {
+        let cores = p.cores_for(crate::machine::sched_ext_active());
+        if !p.has_cpu_choice() && cores.is_none() {
             return None;
         }
         let nodes = self.profile_nodes(p).unwrap_or_else(|| {
@@ -744,7 +745,12 @@ impl Ctx<'_> {
                 current_nodes.to_vec()
             }
         });
-        let v = self.topo.select_cpus(&nodes, p.cores, p.smt, &[]);
+        let v = self.topo.select_cpus(
+            &nodes,
+            cores,
+            p.smt_for(crate::machine::sched_ext_active()),
+            &[],
+        );
         if v.is_empty() { None } else { Some(v) }
     }
 
@@ -775,10 +781,13 @@ impl Ctx<'_> {
             match cgroup::apply(&t.pkey, &t.label, pids, &limits) {
                 Ok(name) => {
                     crate::nlog!("{} → {name} {:?}", t.comm, limits);
-                    if limits.cpu_quota_pct.is_some() && crate::machine::sched_ext_active() {
+                    if let Some(q) = limits.cpu_quota_pct
+                        && crate::machine::sched_ext_active()
+                    {
                         crate::nlog!(
-                            "warning: {}: the CPU limit may not hold while a sched_ext scheduler is running",
-                            t.comm
+                            "{}: CPU limit {q}% under sched_ext: applied as {} core(s)",
+                            t.comm,
+                            p.cores_for(true).unwrap_or(0)
                         );
                     }
                     status_update(|s| s.cgroup_ok_count += 1);
@@ -1270,11 +1279,13 @@ pub fn run(cfg: Config) -> Result<()> {
             let _ = std::fs::write(run_dir().join("hw.json"), live.to_string());
         }
         // Exclusive cores: union of the programs with "exclusive" running now.
-        let mut want: Vec<usize> = procs
+        let want: Vec<usize> = procs
             .values()
             .filter(|t| t.profile_in_effect() && t.profile.as_ref().is_some_and(|p| p.exclusive))
             .flat_map(|t| t.cpus.iter().copied())
             .collect();
+        // whole physical cores: nothing else on the other thread of a reserved core
+        let mut want = topo.whole_cores(&want);
         // Maximum turbo: reserves the whole socket of the program's cores, so its other
         // cores sleep. Only with more than one processor, and never all sockets.
         if topo.nodes.len() > 1 {

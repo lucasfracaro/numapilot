@@ -790,6 +790,7 @@ pub const PT: &[(&str, &str)] = &[
         "normal (pode prender a NVIDIA)",
     ),
     ("Mesa only (EGL)", "só Mesa (EGL)"),
+    (", no hyper-threading", ", sem hyper-threading"),
     (
         "the driver is waiting for a program to let go of the NVIDIA to finish removing it; if nothing lets go, only a reboot brings it back",
         "o driver está esperando algum programa soltar a NVIDIA para terminar de tirá-la; se nada soltar, só reiniciando ela volta",

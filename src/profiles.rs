@@ -194,6 +194,26 @@ impl Profile {
         *self == d
     }
 
+    /// Number of CPUs to use. With a sched_ext scheduler (LAVD...) the kernel does not enforce
+    /// the processor limit (cpu.max), so it becomes a number of cores, rounded up: 150% → 2.
+    pub fn cores_for(&self, sched_ext: bool) -> Option<usize> {
+        let quota = self
+            .cpu_max_pct
+            .filter(|_| sched_ext)
+            .map(|p| ((p / 100.0).ceil() as usize).max(1));
+        match (self.cores, quota) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, None) => a,
+            (None, b) => b,
+        }
+    }
+
+    /// Hyper-threading for the chosen cores: off when the processor limit decides the count, so
+    /// "2 cores" are 2 physical cores and not the 2 threads of one.
+    pub fn smt_for(&self, sched_ext: bool) -> bool {
+        self.smt && self.cores_for(sched_ext) == self.cores
+    }
+
     /// Anything in the CPU/memory part that is not automatic?
     pub fn has_cpu_choice(&self) -> bool {
         self.cpu != "auto" || self.cores.is_some() || !self.smt || self.cpu_list.is_some()
@@ -490,5 +510,31 @@ mod export_tests {
         assert_eq!(ok[0].1.cores, Some(4));
         assert_eq!(bad.len(), 1);
         assert!(import_text("{}", &[]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod quota_tests {
+    use super::Profile;
+
+    #[test]
+    fn cpu_limit_as_cores_under_sched_ext() {
+        let mut p = Profile {
+            cpu_max_pct: Some(150.0),
+            ..Default::default()
+        };
+        assert_eq!(p.cores_for(false), None);
+        assert_eq!(p.cores_for(true), Some(2));
+        p.cpu_max_pct = Some(30.0);
+        assert_eq!(p.cores_for(true), Some(1));
+        p.cores = Some(8);
+        p.cpu_max_pct = Some(400.0);
+        assert_eq!(p.cores_for(true), Some(4));
+        assert_eq!(p.cores_for(false), Some(8));
+        assert!(!p.smt_for(true), "the limit decides: physical cores");
+        assert!(p.smt_for(false));
+        p.cpu_max_pct = None;
+        assert_eq!(p.cores_for(true), Some(8));
+        assert!(p.smt_for(true));
     }
 }

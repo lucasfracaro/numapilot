@@ -1365,6 +1365,10 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("Log out…", "Sair da sessão…"),
     (
+        "With a sched_ext scheduler running (Machine → Scheduler, e.g. LAVD) the kernel does not enforce a percentage limit, so numapilot limits the number of cores instead, rounded up.",
+        "Com um escalonador sched_ext rodando (Máquina → Escalonador, ex.: LAVD) o kernel não aplica um limite em porcentagem; o numapilot limita o número de núcleos, arredondando para cima.",
+    ),
+    (
         "These programs opened the dedicated card; while they are open it does not sleep and drains the battery. Open them on the integrated GPU (program profile → card) to save power.",
         "Esses programas abriram a placa dedicada; enquanto estiverem abertos ela não dorme e gasta bateria. Abra-os na integrada (perfil do programa → placa) para economizar.",
     ),

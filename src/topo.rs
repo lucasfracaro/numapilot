@@ -348,6 +348,31 @@ impl Topology {
         out
     }
 
+    /// The CPUs plus their hyper-threading siblings (whole physical cores).
+    pub fn whole_cores(&self, cpus: &[usize]) -> Vec<usize> {
+        let mut v: Vec<usize> = self
+            .nodes
+            .iter()
+            .flat_map(|n| n.cores.iter())
+            .filter(|core| core.iter().any(|c| cpus.contains(c)))
+            .flatten()
+            .copied()
+            .collect();
+        v.extend(cpus.iter().copied());
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
+    /// How many physical cores these CPUs are on.
+    pub fn physical_count(&self, cpus: &[usize]) -> usize {
+        self.nodes
+            .iter()
+            .flat_map(|n| n.cores.iter())
+            .filter(|core| core.iter().any(|c| cpus.contains(c)))
+            .count()
+    }
+
     /// Nodes that contain any of the CPUs.
     pub fn nodes_of(&self, cpus: &[usize]) -> Vec<usize> {
         self.nodes
@@ -882,6 +907,9 @@ pub mod tests {
         assert_eq!(t.select_cpus(&[0], None, true, &[]).len(), 44);
         assert_eq!(t.select_cpus(&[0], None, false, &[]).len(), 22);
         assert_eq!(t.nodes_of(&[3, 70]), vec![0, 1]);
+        // Exclusive cores reserve whole physical cores; 4 CPUs with HT are 2 physical cores.
+        assert_eq!(t.whole_cores(&[0, 1]), vec![0, 1, 44, 45]);
+        assert_eq!(t.physical_count(&[22, 23, 66, 67]), 2);
 
         assert_eq!(t.gpus.len(), 3);
         let a: Vec<_> = t
