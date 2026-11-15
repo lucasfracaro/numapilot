@@ -261,7 +261,12 @@ Em aberto no notebook:
   NVRM fica em `os_delay` ("remove device with non-zero usage count") esperando o KWin, o remove
   trava, o rescan fica preso atrás dele e a placa só volta reiniciando. O `sleep_only` do serviço
   está certo: nunca remover com o KWin segurando. Única saída: o KWin iniciar sem a NVIDIA
-  (`KWIN_DRM_DEVICES` no login); o botão para isso está no `git stash` "desktop-on-igpu".
+  (`KWIN_DRM_DEVICES` no login): botão Máquina → Notebook → "Desktop só na integrada"
+  (`hybrid::desktop_script`, em `~/.config/plasma-workspace/env`; o Plasma 6.8 lê e passa ao
+  systemd). Só `KWIN_DRM_DEVICES` não basta: o EGL do KWin ainda carrega a NVIDIA; o script põe
+  também o EGL do Mesa. No primeiro teste o modo "Desligada" removeu a placa no meio da troca de
+  sessão e travou de novo: agora o serviço só remove com um KWin restrito rodando
+  (`hybrid::desktop_lets_go`, lê o environ dele) e a placa livre por 6 s, numa thread própria.
 
 BC-250 (2026-11-08): instalada pelo `install.sh`, autoteste com 44 testes: 40 OK, 3 avisos,
 0 falhas (antes das correções: falha do Mesa por causa da época `3:` no `pacman -Q`, sensores

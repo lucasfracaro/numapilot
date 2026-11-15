@@ -294,9 +294,11 @@ pub fn desktop_script(igpu_pci: &str, dgpu_pci: &str) -> String {
          fi\n\
          if [ -z \"$_np_busy\" ] && [ -n \"$_np_i\" ] && [ -e \"$_np_i\" ]; then\n\
          \x20   export KWIN_DRM_DEVICES=\"$_np_i\"\n\
+         \x20   # without this KWin's EGL still loads the NVIDIA driver and holds the card\n\
+         \x20   [ -f {MESA_EGL} ] && export __EGL_VENDOR_LIBRARY_FILENAMES={MESA_EGL}\n\
          else\n\
-         \x20   unset KWIN_DRM_DEVICES\n\
-         \x20   systemctl --user unset-environment KWIN_DRM_DEVICES 2>/dev/null\n\
+         \x20   unset KWIN_DRM_DEVICES __EGL_VENDOR_LIBRARY_FILENAMES\n\
+         \x20   systemctl --user unset-environment KWIN_DRM_DEVICES __EGL_VENDOR_LIBRARY_FILENAMES 2>/dev/null\n\
          fi\n\
          unset _np_i _np_d _np_busy _np_s\n"
     )
@@ -309,7 +311,12 @@ pub fn set_desktop_integrated(topo: &Topology, on: bool) -> Result<(), String> {
         let _ = std::fs::remove_file(&p);
         // with linger the user manager outlives the session and would keep the variable
         let _ = std::process::Command::new("systemctl")
-            .args(["--user", "unset-environment", "KWIN_DRM_DEVICES"])
+            .args([
+                "--user",
+                "unset-environment",
+                "KWIN_DRM_DEVICES",
+                "__EGL_VENDOR_LIBRARY_FILENAMES",
+            ])
             .status();
         return Ok(());
     }
@@ -351,6 +358,48 @@ pub fn kwin_drm_elsewhere() -> Option<String> {
                 .find(|l| !l.starts_with('#') && l.contains("KWIN_DRM_DEVICES"))
                 .map(|l| format!("{}: {l}", f.display()))
         })
+}
+
+/// Whether the desktop can let the card go: a compositor is running (between sessions a new one
+/// may open the card while it is being removed, and the removal then hangs until a reboot) and,
+/// if it is KWin, it was started without the NVIDIA (KWIN_DRM_DEVICES without its card and EGL
+/// from Mesa only). Reads the compositor's environment, so only the service (root) can tell.
+pub fn desktop_lets_go(nvidia_pci: &str) -> bool {
+    let card = card(nvidia_pci).map(|c| format!("/dev/dri/{c}"));
+    let mut any = false;
+    let Ok(rd) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    for e in rd.flatten() {
+        let Some(comm) = read_trim(e.path().join("comm")) else {
+            continue;
+        };
+        if !crate::notebook::COMPOSITORS.contains(&comm.as_str()) {
+            continue;
+        }
+        any = true;
+        if comm.starts_with("kwin") {
+            let env = std::fs::read(e.path().join("environ")).unwrap_or_default();
+            if !kwin_env_lets_go(&String::from_utf8_lossy(&env), card.as_deref()) {
+                return false;
+            }
+        }
+    }
+    any
+}
+
+/// KWin's environment (NUL separated) keeps it off the NVIDIA card.
+pub fn kwin_env_lets_go(environ: &str, nvidia_card: Option<&str>) -> bool {
+    let get = |k: &str| {
+        environ
+            .split('\0')
+            .find_map(|kv| kv.strip_prefix(k).and_then(|v| v.strip_prefix('=')))
+    };
+    let drm_ok = get("KWIN_DRM_DEVICES").is_some_and(|v| {
+        !v.is_empty() && nvidia_card.is_none_or(|c| !v.split(':').any(|d| d == c))
+    });
+    let egl_ok = get("__EGL_VENDOR_LIBRARY_FILENAMES").is_some_and(|v| !v.contains("nvidia"));
+    drm_ok && egl_ok
 }
 
 /// Asks KDE to show its log out dialog (the user confirms there).
@@ -423,6 +472,8 @@ mod desktop_tests {
         assert!(s.contains("/dev/dri/by-path/pci-0000:01:00.0-card"));
         assert!(s.contains("export KWIN_DRM_DEVICES"));
         assert!(s.contains("systemctl --user unset-environment KWIN_DRM_DEVICES"));
+        // KWin's EGL must not load the NVIDIA driver either (it held the card on the Nitro 5)
+        assert!(s.contains(&format!("export __EGL_VENDOR_LIBRARY_FILENAMES={MESA_EGL}")));
         // Valid shell, and sourced with no card found (no PATH: readlink/systemctl missing, so
         // nothing on this machine is touched) it leaves KWIN_DRM_DEVICES unset and no helpers.
         let dir = std::env::temp_dir().join(format!("np-desk-{}", std::process::id()));
@@ -449,5 +500,40 @@ mod desktop_tests {
         let o = String::from_utf8_lossy(&out.stdout);
         assert_eq!(o.trim(), "k=unset i=unset b=unset", "{o}");
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod lets_go_tests {
+    use super::kwin_env_lets_go;
+
+    #[test]
+    fn kwin_environment() {
+        let env = |v: &[&str]| v.join("\0");
+        let ok = env(&[
+            "HOME=/home/u",
+            "KWIN_DRM_DEVICES=/dev/dri/card2",
+            "__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json",
+        ]);
+        assert!(kwin_env_lets_go(&ok, Some("/dev/dri/card1")));
+        // the session of the Nitro 5 that hung: KWIN_DRM_DEVICES only, EGL still loads NVIDIA
+        let no_egl = env(&["KWIN_DRM_DEVICES=/dev/dri/card2"]);
+        assert!(!kwin_env_lets_go(&no_egl, Some("/dev/dri/card1")));
+        // a normal session
+        assert!(!kwin_env_lets_go(
+            &env(&["HOME=/home/u"]),
+            Some("/dev/dri/card1")
+        ));
+        // the NVIDIA card in the list
+        let both = env(&[
+            "KWIN_DRM_DEVICES=/dev/dri/card2:/dev/dri/card1",
+            "__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json",
+        ]);
+        assert!(!kwin_env_lets_go(&both, Some("/dev/dri/card1")));
+        let nv_egl = env(&[
+            "KWIN_DRM_DEVICES=/dev/dri/card2",
+            "__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_nvidia.json",
+        ]);
+        assert!(!kwin_env_lets_go(&nv_egl, Some("/dev/dri/card1")));
     }
 }

@@ -3,6 +3,12 @@
 ## Ainda não lançado
 
 - QA round on the Nitro 5 laptop:
+  - **The NVIDIA "off" mode hung the laptop card at login.** Right when the old KWin quit, the
+    service saw the card free and removed it; the new KWin opened it during the removal and the
+    driver waited for it until a reboot (it also froze the service's main loop). The removal now
+    needs a running KWin started without the NVIDIA (the service reads its environment) and the
+    card free for 6 s in a row, and it runs in its own thread. The login script also sets Mesa's
+    EGL for the session: with `KWIN_DRM_DEVICES` alone KWin's EGL still loaded the NVIDIA driver.
   - **Desktop only on the integrated GPU** (KDE): Machine → Laptop or
     `numapilot hybrid desktop integrated|all`. KWin opens `/dev/nvidia0`, `nvidiactl`,
     `nvidia-modeset`, the render node and the card, so the NVIDIA never sleeps; with the numapilot

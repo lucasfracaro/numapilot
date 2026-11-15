@@ -62,6 +62,11 @@ struct Hw {
     dgpu: Option<crate::hybrid::State>,
     /// NVIDIA services stopped so the card can be removed (they come back with it).
     dgpu_stopped: Vec<String>,
+    /// Since when nobody holds the laptop NVIDIA (removal waits for a few quiet seconds).
+    dgpu_free_since: Option<Instant>,
+    /// Removal running in its own thread: if the driver waits for someone forever, only this
+    /// thread hangs, not the service.
+    dgpu_removing: Option<(Instant, std::thread::JoinHandle<Result<(), String>>)>,
 }
 
 fn base_governors() -> BTreeMap<usize, String> {
@@ -114,6 +119,8 @@ impl Hw {
                 })
                 .or_else(crate::hybrid::load_state),
             dgpu_stopped: vec![],
+            dgpu_free_since: None,
+            dgpu_removing: None,
         }
     }
 
@@ -271,9 +278,24 @@ impl Hw {
                     && !crate::notebook::SYSTEM_HOLDERS.contains(&h.name.as_str())
             });
             st.sleep_only = users.is_empty() && display_open;
+            // KDE between sessions or with a KWin that uses the NVIDIA: a new holder can appear
+            // in the middle of the removal and the driver then waits for it until a reboot
+            // (seen on the Nitro 5 at login). Only remove with a desktop that lets it go and
+            // nobody holding it for a few seconds in a row.
+            let free = users.is_empty() && !display_open;
+            if !free {
+                self.dgpu_free_since = None;
+            } else if self.dgpu_free_since.is_none() {
+                self.dgpu_free_since = Some(Instant::now());
+            }
+            let quiet = self
+                .dgpu_free_since
+                .is_some_and(|t| t.elapsed() >= Duration::from_secs(6));
             if st.sleep_only {
                 st.blocked_by.clear();
-            } else if users.is_empty() {
+            } else if free && !(quiet && crate::hybrid::desktop_lets_go(&st.pci)) {
+                st.blocked_by.clear();
+            } else if free && self.dgpu_removing.is_none() {
                 for svc in svcs {
                     let active = Command::new("systemctl")
                         .args(["is-active", "--quiet", svc])
@@ -288,15 +310,14 @@ impl Hw {
                         self.dgpu_stopped.push(svc.to_string());
                     }
                 }
-                match crate::hybrid::remove(&st.functions) {
-                    Ok(()) => {
-                        st.removed = true;
-                        st.blocked_by.clear();
-                        st.last_error = None;
-                        crate::nlog!("NVIDIA off ({}): integrated only", st.alias);
-                    }
-                    Err(e) => st.last_error = Some(e),
-                }
+                let f = st.functions.clone();
+                crate::nlog!("NVIDIA ({}): removing from the system", st.alias);
+                self.dgpu_removing = Some((
+                    Instant::now(),
+                    std::thread::spawn(move || crate::hybrid::remove(&f)),
+                ));
+            } else if free {
+                // removal running: see below
             } else {
                 if st.blocked_by != users {
                     crate::nlog!("NVIDIA in use, not turned off: {}", users.join(", "));
@@ -306,6 +327,27 @@ impl Hw {
         } else {
             st.blocked_by.clear();
             st.sleep_only = false;
+        }
+        if let Some((since, h)) = &self.dgpu_removing {
+            if h.is_finished() {
+                let (_, h) = self.dgpu_removing.take().unwrap();
+                match h
+                    .join()
+                    .unwrap_or_else(|_| Err("removal thread panicked".into()))
+                {
+                    Ok(()) => {
+                        st.removed = true;
+                        st.blocked_by.clear();
+                        st.last_error = None;
+                        crate::nlog!("NVIDIA off ({}): integrated only", st.alias);
+                    }
+                    Err(e) => st.last_error = Some(e),
+                }
+            } else if since.elapsed() > Duration::from_secs(20) {
+                st.last_error = Some(crate::i18n::tr(
+                    "the driver is waiting for a program to let go of the NVIDIA to finish removing it; if nothing lets go, only a reboot brings it back",
+                ).into());
+            }
         }
         // Who keeps it awake, in every mode and on AC too (doctor, selftest and `hybrid status`
         // run as the user and cannot see KWin or the system services).
