@@ -546,11 +546,16 @@ struct Tracked {
 }
 
 impl Tracked {
-    /// Its profile is in effect: placed by the service, or opened by `numapilot run` (which
-    /// decided the cores itself; the service still owns what only root can do: exclusive
-    /// cores, maximum turbo, machine mode, low latency).
+    /// Its profile is in effect for what only the service can do (exclusive cores, maximum
+    /// turbo, machine mode, low latency): whenever the process is followed, placed or only
+    /// watched (a profile without a CPU choice never gets placed on a one-socket PC), or opened
+    /// by `numapilot run` (which decided the cores itself). Not for processes ignored for other
+    /// reasons (system, another user, affinity set by another program).
     fn profile_in_effect(&self) -> bool {
-        self.state == St::Placed || self.origin == "manual"
+        match &self.state {
+            St::Placed | St::Watching => true,
+            St::Ignored(_) => self.origin == "manual",
+        }
     }
 }
 

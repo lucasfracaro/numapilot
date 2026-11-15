@@ -9,6 +9,10 @@
     itself. Measured on the Nitro 5: opened directly, a profile with exclusive cores 0-3 moved
     the rest of the system to 4-15; through `run`, nothing. They now count both, like low latency
     already did.
+  - A profile **without a CPU choice** (only the machine mode, for example) never took effect
+    on a one-socket PC: the service only "places" a program when there is something to place,
+    and those features waited for that. Profiles now take effect while the program is followed
+    at all (placed or watched) or opened by `run`.
   - Saving a profile right after the program closed reported "1 process adjusted": the process
     was still in the service's table. Exited processes are skipped.
   - **The NVIDIA "off" mode hung the laptop card at login.** Right when the old KWin quit, the
