@@ -2,6 +2,13 @@
 
 ## Ainda não lançado
 
+- **A program opened while cores are reserved is no longer ignored.** With "exclusive cores"
+  in use, anything opened meanwhile is born without those cores, and the service took that
+  for an affinity chosen by another program (taskset) and left it alone for good: no profile,
+  no placement. Seen on the server by reopening an exclusive program right after closing it:
+  the second run stayed out of the table and did 211 M iterations/s per thread instead of
+  ~400. The service now recognizes "everything (or one socket) minus the cores it reserved".
+- `profile rm` of a program with no saved profile says so instead of "profile deleted".
 - `profile set` refuses a socket, a CPU or a card this PC does not have (it saved the profile,
   which then did nothing), and `vm check CARD` says when the card does not exist. Found by a
   sweep of 163 command lines, valid and invalid, on the server: no crash, no hang.
@@ -20,6 +27,10 @@
 
   Low latency and exclusive cores already removed the long delays; only the profiles that
   reached the `performance` governor (Game mode, maximum turbo) halved the burst.
+
+  Measured again with this change installed: "+ low latency" does the burst in 536 µs (was
+  1038) and 386-417 M iterations/s per thread (was ~210); maximum turbo reopened three times
+  in a row keeps its 4 cores, the reserved socket and 413-444 M iterations/s.
 
 - **Interface no longer freezes on the BC-250** (switching tabs took ~2 s, scrolling stuttered).
   Measured on the board: the voltage regulators (`bc250_vrm`) are read over I2C, 20-47 ms per

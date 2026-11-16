@@ -849,6 +849,35 @@ fn same_set(a: &[usize], b: &[usize]) -> bool {
     a.len() == b.len() && a.iter().all(|x| b.contains(x))
 }
 
+/// Cores the service took from the rest of the system (exclusive cores, maximum turbo): the
+/// reservation in force and the one before it. A program opened meanwhile is born without
+/// them, and the cores come back to it a moment after the reservation ends.
+static RESERVED: std::sync::Mutex<[Vec<usize>; 2]> = std::sync::Mutex::new([vec![], vec![]]);
+
+fn note_reserved(now: &[usize]) {
+    if let Ok(mut r) = RESERVED.lock() {
+        r[1] = std::mem::replace(&mut r[0], now.to_vec());
+    }
+}
+
+/// `allowed` is everything, or a whole node, minus the cores of one of `reserved`: the affinity
+/// of a program opened while the service itself held those cores, not one chosen by taskset.
+fn only_missing_reserved(
+    allowed: &[usize],
+    all: &[usize],
+    node_sets: &[Vec<usize>],
+    reserved: &[Vec<usize>],
+) -> bool {
+    reserved.iter().filter(|r| !r.is_empty()).any(|r| {
+        std::iter::once(all)
+            .chain(node_sets.iter().map(|s| s.as_slice()))
+            .any(|base| {
+                let rest: Vec<usize> = base.iter().copied().filter(|c| !r.contains(c)).collect();
+                !rest.is_empty() && same_set(&rest, allowed)
+            })
+    })
+}
+
 fn bind_ctl() -> Option<UnixListener> {
     let p = ctl::sock_path();
     let _ = std::fs::remove_file(&p);
@@ -1400,10 +1429,12 @@ pub fn run(cfg: Config) -> Result<()> {
                         );
                     }
                     reserved_now = want;
+                    note_reserved(&reserved_now);
                 }
                 Err(e) => {
                     crate::nlog!("could not reserve cores: {e}");
                     reserved_now = want;
+                    note_reserved(&reserved_now);
                 }
             }
         }
@@ -1715,8 +1746,9 @@ fn handle(
     {
         return Response::err(crate::i18n::tr("this process belongs to another user"));
     }
+    let mut existed = true;
     if profile.is_auto() {
-        profiles.map.remove(&key);
+        existed = profiles.map.remove(&key).is_some();
     } else {
         profiles.map.insert(key.clone(), profile.clone());
     }
@@ -1751,6 +1783,12 @@ fn handle(
     // Priority and control group apply to the whole program.
     if let Some((t, prev)) = sample {
         ctx.apply_extras(&pids, &t, &profile, prev.as_ref());
+    }
+    if deleting && !existed && n == 0 {
+        return Response::ok(crate::tf!(
+            "no saved profile for {key}",
+            "nenhum perfil salvo para {key}"
+        ));
     }
     if deleting {
         return Response::ok(crate::tf!(
@@ -2328,8 +2366,11 @@ fn classify(
             .collect();
         return t;
     }
-    let ours =
-        same_set(&allowed, &ctx.all_cpus) || ctx.node_sets.iter().any(|s| same_set(s, &allowed));
+    let ours = same_set(&allowed, &ctx.all_cpus)
+        || ctx.node_sets.iter().any(|s| same_set(s, &allowed))
+        || RESERVED
+            .lock()
+            .is_ok_and(|r| only_missing_reserved(&allowed, &ctx.all_cpus, &ctx.node_sets, &r[..]));
     if !ours && mode.as_deref() != Some("auto") {
         ignore(
             &mut t,
@@ -2718,5 +2759,42 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(ctx.plan_cpus(&p, &[]).map(|v| v.len()), Some(16));
+    }
+
+    #[test]
+    fn program_born_during_a_reservation_is_still_ours() {
+        let all: Vec<usize> = (0..8).collect();
+        let nodes = vec![vec![0, 1, 2, 3], vec![4, 5, 6, 7]];
+        let res = [vec![4, 5], vec![]];
+        // opened from a shell on node 1, or from one with every core
+        assert!(only_missing_reserved(&[6, 7], &all, &nodes, &res));
+        assert!(only_missing_reserved(
+            &[0, 1, 2, 3, 6, 7],
+            &all,
+            &nodes,
+            &res
+        ));
+        // the reservation that has just ended still counts
+        assert!(only_missing_reserved(
+            &[6, 7],
+            &all,
+            &nodes,
+            &[vec![], vec![4, 5]]
+        ));
+        // a taskset choice is not ours, with or without a reservation
+        assert!(!only_missing_reserved(&[6], &all, &nodes, &res));
+        assert!(!only_missing_reserved(
+            &[6, 7],
+            &all,
+            &nodes,
+            &[vec![], vec![]]
+        ));
+        // a whole reserved node leaves nothing: never matches an empty affinity
+        assert!(!only_missing_reserved(
+            &[],
+            &all,
+            &nodes,
+            &[vec![4, 5, 6, 7], vec![]]
+        ));
     }
 }
