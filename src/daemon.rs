@@ -1020,6 +1020,9 @@ pub fn run(cfg: Config) -> Result<()> {
     let mut procs: HashMap<i32, Tracked> = HashMap::new();
     let mut prev_cpu = procfs::cpu_times();
     let mut rank_prev = procfs::cpu_times();
+    // sched_ext scheduler in use at the last look, and when to choose cores again after a change
+    let mut sx_seen = crate::machine::sched_ext_active();
+    let mut sx_replan: Option<u64> = None;
     let mut rank_job: Option<std::thread::JoinHandle<Result<crate::corebench::CoreRank, String>>> =
         None;
     let mut last_save = Instant::now();
@@ -1216,6 +1219,26 @@ pub fn run(cfg: Config) -> Result<()> {
         if tick.is_multiple_of(3) {
             hw.auto_mode_tick(&topo, &procs);
             hw.dgpu_tick();
+        }
+        // A processor limit is a number of cores under sched_ext and a quota without it.
+        // Changing the machine mode restarts the scheduler (2-3 s without sched_ext on the
+        // server): a program opened in that gap got the whole socket and kept it. A few
+        // seconds after each change, the programs with a limit get their cores chosen again.
+        let sx = crate::machine::sched_ext_active();
+        if sx != sx_seen {
+            sx_seen = sx;
+            sx_replan = Some(tick + 4);
+        } else if sx_replan.is_some_and(|at| tick >= at) {
+            sx_replan = None;
+            for (pid, t) in procs.iter_mut() {
+                if let Some(p) = t.profile.clone()
+                    && p.cpu_max_pct.is_some()
+                    && matches!(t.state, St::Placed | St::Watching)
+                {
+                    ctx.apply_profile_live(*pid, t, &p, tick);
+                    ctx.apply_extras(&[*pid], t, &p, Some(&p));
+                }
+            }
         }
         // Cache order per core wanted by a profile: measure when the PC is idle, then apply.
         if tick.is_multiple_of(10) {

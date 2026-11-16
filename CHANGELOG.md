@@ -8,6 +8,10 @@
   no placement. Seen on the server by reopening an exclusive program right after closing it:
   the second run stayed out of the table and did 211 M iterations/s per thread instead of
   ~400. The service now recognizes "everything (or one socket) minus the cores it reserved".
+- A program with a processor limit opened while the machine mode was changing kept the whole
+  socket: the mode restarts the sched_ext scheduler (2-3 s without it on the server) and the
+  limit was planned as a quota that LAVD then does not enforce. The service chooses the cores
+  again a few seconds after the scheduler changes.
 - `profile rm` of a program with no saved profile says so instead of "profile deleted".
 - `profile set` refuses a socket, a CPU or a card this PC does not have (it saved the profile,
   which then did nothing), and `vm check CARD` says when the card does not exist. Found by a
