@@ -854,6 +854,11 @@ fn same_set(a: &[usize], b: &[usize]) -> bool {
 /// them, and the cores come back to it a moment after the reservation ends.
 static RESERVED: std::sync::Mutex<[Vec<usize>; 2]> = std::sync::Mutex::new([vec![], vec![]]);
 
+/// Cores `numapilot run` chose for each program (by profile key), as told in its Adopt request.
+/// The processes of that launch are placed on these, whatever affinity they show later.
+static RUN_CPUS: std::sync::Mutex<BTreeMap<String, Vec<usize>>> =
+    std::sync::Mutex::new(BTreeMap::new());
+
 fn note_reserved(now: &[usize]) {
     if let Ok(mut r) = RESERVED.lock() {
         r[1] = std::mem::replace(&mut r[0], now.to_vec());
@@ -1219,6 +1224,20 @@ pub fn run(cfg: Config) -> Result<()> {
         if tick.is_multiple_of(3) {
             hw.auto_mode_tick(&topo, &procs);
             hw.dgpu_tick();
+        }
+        // A process opened by `numapilot run` that left its program's scope (Steam puts the
+        // game in a control group of its own after starting it) goes back in: outside, it has
+        // neither the profile's cores nor its memory limit.
+        if tick.is_multiple_of(5) {
+            for (pid, t) in procs.iter() {
+                if t.origin == "manual"
+                    && let Some(p) = t.profile.as_ref().filter(|p| p.needs_scope())
+                    && !cgroup::in_scope_of(*pid, &cgroup::scope_name(&t.pkey))
+                    && procfs::alive(*pid)
+                {
+                    ctx.apply_extras(&[*pid], t, p, Some(p));
+                }
+            }
         }
         // A processor limit is a number of cores under sched_ext and a quota without it.
         // Changing the machine mode restarts the scheduler (2-3 s without sched_ext on the
@@ -1957,6 +1976,9 @@ fn handle_adopt(
         .or_else(|| ctx.plan_cpus(&p, &[]))
         .unwrap_or_else(|| procfs::allowed_cpus(pid).unwrap_or_default());
     t.nodes = ctx.topo.nodes_of(&t.cpus);
+    if let Ok(mut m) = RUN_CPUS.lock() {
+        m.insert(t.pkey.clone(), t.cpus.clone());
+    }
     ctx.apply_extras(&[pid], &t, &p, None);
     procs.insert(pid, t);
     Response::ok(crate::i18n::tr("profile applied"))
@@ -2392,6 +2414,17 @@ fn classify(
         ignore(&mut t, "manual (numapilot run)");
         t.origin = "manual".into();
         t.profile = profiles.get(&pkey).cloned();
+        // The cores `run` chose, not the ones the process shows right now. Steam moves the
+        // game to a control group of its own a moment after starting it; with exclusive cores
+        // already reserved, that group has every core except the game's, the kernel gives the
+        // process exactly those, and the service then wrote them to the program's scopes:
+        // Skyrim ran on all the cores but its own, on both sockets.
+        let chosen = t
+            .profile
+            .as_ref()
+            .filter(|p| p.needs_scope())
+            .and_then(|_| RUN_CPUS.lock().ok()?.get(&pkey).cloned());
+        let allowed = chosen.unwrap_or(allowed);
         t.cpus = allowed.clone();
         t.nodes = ctx
             .topo

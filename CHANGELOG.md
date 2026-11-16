@@ -2,6 +2,13 @@
 
 ## Ainda não lançado
 
+- **A Steam game with exclusive cores ran on every core except its own.** Skyrim on the
+  server, 21 minutes played: 60 fps capped, but 85 stutters above 100 ms (up to 1.4 s). Steam
+  moves the game to a control group of its own a moment after starting it; the exclusive
+  cores were already reserved, so that group had all the cores but the game's, and the
+  service, which trusted the affinity it saw, wrote that to the program's scopes (and then
+  "reserved" all 88 CPUs, which reserves nothing). The service now keeps the cores `run`
+  chose for every process of the launch and puts back in the scope a process that left it.
 - **A game with a profile on the other socket did not open.** Skyrim on the server: Steam sits
   on socket 1, the profile sends the game to socket 0 (the card of the main monitor). `run`
   asked the service for the control group before taking its cores, the service made it with

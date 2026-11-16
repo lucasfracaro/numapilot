@@ -153,7 +153,7 @@ pub fn apply(key: &str, label: &str, pids: &[i32], limits: &Limits) -> Result<St
 }
 
 /// Is the process already in a scope of this program (the main one or an extra)?
-fn in_scope_of(pid: i32, name: &str) -> bool {
+pub fn in_scope_of(pid: i32, name: &str) -> bool {
     let base = name.trim_end_matches(".scope");
     std::fs::read_to_string(format!("/proc/{pid}/cgroup"))
         .is_ok_and(|c| c.lines().any(|l| l.contains(&format!("/{base}"))))
