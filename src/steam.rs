@@ -325,6 +325,34 @@ pub fn wrap_option(opt: &str) -> String {
     }
 }
 
+/// Launch options to paste in Steam for a game: what it already has, with numapilot in front
+/// of %command% and, when `gpu` is given, that card forced (`numapilot run --gpu CARD`). A
+/// `--gpu` already there is replaced. Without `gpu` the saved profile decides the card.
+pub fn command_for(opt: &str, gpu: Option<&str>) -> String {
+    let o = wrap_option(opt);
+    // drop a card chosen before
+    let mut words: Vec<&str> = o.split(' ').collect();
+    if let Some(i) = words.iter().position(|w| *w == "run")
+        && i > 0
+        && words[i - 1].ends_with("numapilot")
+    {
+        while let Some(j) = words.iter().skip(i).position(|w| *w == "--") {
+            let end = i + j;
+            if let Some(k) = words[i..end].iter().position(|w| *w == "--gpu") {
+                let k = i + k;
+                words.drain(k..(k + 2).min(end));
+            } else {
+                break;
+            }
+        }
+        if let Some(g) = gpu {
+            words.insert(i + 1, g);
+            words.insert(i + 1, "--gpu");
+        }
+    }
+    words.join(" ")
+}
+
 pub fn unwrap_option(opt: &str) -> String {
     let o = opt.replace(&format!("{WRAP} "), "").replace(WRAP, "");
     let o = o.trim().to_string();
@@ -478,6 +506,30 @@ mod tests {
                 .unwrap()
                 .flatten()
                 .any(|e| e.file_name().to_string_lossy().contains("numapilot-bak"))
+        );
+    }
+
+    #[test]
+    fn command_to_paste() {
+        assert_eq!(command_for("", None), "numapilot run -- %command%");
+        assert_eq!(
+            command_for("", Some("gfx906-1")),
+            "numapilot run --gpu gfx906-1 -- %command%"
+        );
+        // keeps the variables and wrappers the game already had
+        assert_eq!(
+            command_for("RADV_DEBUG=nodcc mangohud %command%", Some("gfx906-0")),
+            "RADV_DEBUG=nodcc mangohud numapilot run --gpu gfx906-0 -- %command%"
+        );
+        // a card chosen before is replaced, or removed
+        let had = "A=1 numapilot run --gpu gfx906-0 -- mangohud %command% -arg";
+        assert_eq!(
+            command_for(had, Some("gfx803-0")),
+            "A=1 numapilot run --gpu gfx803-0 -- mangohud %command% -arg"
+        );
+        assert_eq!(
+            command_for(had, None),
+            "A=1 numapilot run -- mangohud %command% -arg"
         );
     }
 }

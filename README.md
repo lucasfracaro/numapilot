@@ -338,6 +338,7 @@ and Resizable BAR.
 | `numapilot gpu-test` | checks that each card choice lands on the right card |
 | `numapilot boot status\|overdrive on\|gpu-memory N\|cmdline …` | boot options |
 | `numapilot steam enable\|disable\|list` | numapilot in the launch options of every Steam game |
+| `numapilot steam command GAME [--gpu CARD]` | prints the launch options to paste in Steam for one game (works with Steam open), optionally forcing a card |
 | `numapilot upscale fetch\|status\|install\|remove APPID` | OptiScaler per game |
 | `numapilot tune start\|status\|apply GAME` | FPS optimizer |
 | `numapilot peers add\|list\|remove\|wake\|pull\|backup` | other PCs |

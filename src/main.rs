@@ -232,8 +232,13 @@ enum Cmd {
     },
     /// Steam: puts numapilot in (or removes it from) the launch options of every game.
     Steam {
-        /// enable | disable | list
+        /// enable | disable | list | command
         action: String,
+        /// command: the game (appid or part of the name).
+        game: Option<String>,
+        /// command: card to force for this game (alias from `numapilot topo`).
+        #[arg(long)]
+        gpu: Option<String>,
     },
     /// Measures memory latency and bandwidth between the sockets.
     Bench {
@@ -430,7 +435,9 @@ fn real_main() -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Steam { action } => cmd_steam(&action),
+        Cmd::Steam { action, game, gpu } => {
+            cmd_steam(&cfg, &action, game.as_deref(), gpu.as_deref())
+        }
         Cmd::Tune { action, key } => cmd_tune(&cfg, &action, key),
         Cmd::Boot { what, args } => cmd_boot(&what, &args),
         Cmd::Machine { action, value } => cmd_machine(&cfg, &action, value.as_deref()),
@@ -3058,7 +3065,7 @@ fn cmd_boot(what: &str, args: &[String]) -> Result<()> {
     }
 }
 
-fn cmd_steam(action: &str) -> Result<()> {
+fn cmd_steam(cfg: &Config, action: &str, game: Option<&str>, gpu: Option<&str>) -> Result<()> {
     use numapilot::steam;
     let games = steam::installed_games();
     let lc = steam::find_localconfigs();
@@ -3088,6 +3095,80 @@ fn cmd_steam(action: &str) -> Result<()> {
             }
             Ok(())
         }
+        // The line to paste by hand (Steam open: it rewrites its file when it closes, so
+        // `enable` only works with Steam closed).
+        "command" | "comando" => {
+            let q = game.context(numapilot::i18n::tr(
+                "which game? numapilot steam command APPID_OR_NAME [--gpu CARD]",
+            ))?;
+            let ql = q.to_lowercase();
+            let found: Vec<&(String, String)> = games
+                .iter()
+                .filter(|(id, name)| id == q || name.to_lowercase().contains(&ql))
+                .collect();
+            let (id, name) = match found.as_slice() {
+                [one] => (*one).clone(),
+                [] => bail!(
+                    "{}",
+                    numapilot::tf!(
+                        "no installed Steam game matches '{q}' (see numapilot steam list)",
+                        "nenhum jogo instalado da Steam combina com '{q}' (veja numapilot steam list)"
+                    )
+                ),
+                many => bail!(
+                    "{}",
+                    numapilot::tf!(
+                        "'{q}' matches more than one game: {}",
+                        "'{q}' combina com mais de um jogo: {}",
+                        many.iter()
+                            .map(|(i, n)| format!("{n} ({i})"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                ),
+            };
+            let topo = Topology::load(cfg);
+            if let Some(g) = gpu
+                && !topo.gpus.iter().any(|x| x.matches(g))
+            {
+                bail!(
+                    "{}",
+                    numapilot::tf!(
+                        "GPU '{g}' not found; see the aliases with `numapilot topo`",
+                        "GPU '{g}' não encontrada; veja os apelidos com `numapilot topo`"
+                    )
+                );
+            }
+            let cur = steam::read_launch_options(path)
+                .unwrap_or_default()
+                .get(&id)
+                .cloned()
+                .unwrap_or_default();
+            println!(
+                "{}",
+                numapilot::tf!(
+                    "{name} ({id}): Steam → Properties → General → Launch options:",
+                    "{name} ({id}): Steam → Propriedades → Geral → Opções de inicialização:"
+                )
+            );
+            println!("\n{}\n", steam::command_for(&cur, gpu));
+            if gpu.is_none() {
+                println!(
+                    "{}",
+                    numapilot::i18n::tr(
+                        "The card is the one in the game's saved profile. To force one:"
+                    )
+                );
+                for g in &topo.gpus {
+                    println!(
+                        "  {:<10} {}",
+                        g.alias,
+                        steam::command_for(&cur, Some(&g.alias))
+                    );
+                }
+            }
+            Ok(())
+        }
         "enable" | "disable" => {
             let n = steam::apply_all(path, &games, action == "enable")
                 .map_err(|e| anyhow::anyhow!(e))?;
@@ -3104,8 +3185,8 @@ fn cmd_steam(action: &str) -> Result<()> {
         _ => bail!(
             "{}",
             numapilot::tf!(
-                "usage: numapilot steam enable | disable | list",
-                "use: numapilot steam enable | disable | list"
+                "usage: numapilot steam enable | disable | list | command GAME [--gpu CARD]",
+                "use: numapilot steam enable | disable | list | command JOGO [--gpu PLACA]"
             )
         ),
     }

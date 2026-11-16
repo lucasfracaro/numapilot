@@ -2,6 +2,10 @@
 
 ## Ainda não lançado
 
+- `numapilot steam command GAME [--gpu CARD]`: prints the launch options to paste in Steam for
+  one game (appid or part of the name), keeping what the game already has. `steam enable`
+  only works with Steam closed; this is for when it is open. With `--gpu` the card is forced
+  for that game; without it, the line that follows the saved profile and one per card.
 - **A busy card forced to the lowest performance level goes back to auto.** On the server
   LACT had `performance_level: low` saved for both MI50: Elden Ring ran with the card at 99%
   and 859 MHz of 1700 (350 MHz memory clock), which is where its ~20 fps came from. With

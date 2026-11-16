@@ -836,6 +836,14 @@ pub const PT: &[(&str, &str)] = &[
         "jogo não encontrado nas bibliotecas da Steam",
     ),
     ("the Steam appid is missing", "faltou o appid da Steam"),
+    (
+        "which game? numapilot steam command APPID_OR_NAME [--gpu CARD]",
+        "qual jogo? numapilot steam command APPID_OU_NOME [--gpu PLACA]",
+    ),
+    (
+        "The card is the one in the game's saved profile. To force one:",
+        "A placa é a do perfil salvo do jogo. Para forçar uma:",
+    ),
     ("no board with a governor", "nenhuma placa com governor"),
     ("the file is missing", "faltou o arquivo"),
     ("MISSING ", "FALTA   "),

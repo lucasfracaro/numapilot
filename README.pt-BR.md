@@ -326,6 +326,7 @@ link PCIe e Resizable BAR.
 | `numapilot undervolt GPU` | undervolt automático |
 | `numapilot boot status\|overdrive on\|gpu-memory N\|cmdline …` | opções de boot |
 | `numapilot steam enable\|disable\|list` | numapilot nas opções de todos os jogos da Steam |
+| `numapilot steam command JOGO [--gpu PLACA]` | mostra as opções de inicialização para colar na Steam para um jogo (funciona com a Steam aberta), forçando uma placa se quiser |
 | `numapilot upscale fetch\|status\|install\|remove APPID` | OptiScaler por jogo |
 | `numapilot tune start\|status\|apply JOGO` | otimizador de FPS |
 | `numapilot peers add\|list\|remove\|wake\|pull\|backup` | outros PCs |
