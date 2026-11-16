@@ -1353,6 +1353,7 @@ pub fn run(cfg: Config) -> Result<()> {
             .collect();
         // whole physical cores: nothing else on the other thread of a reserved core
         let mut want = topo.whole_cores(&want);
+        let mut perf_cpus: Vec<usize> = vec![];
         // Maximum turbo: reserves the whole socket of the program's cores, so its other
         // cores sleep. Only with more than one processor, and never all sockets.
         if topo.nodes.len() > 1 {
@@ -1371,11 +1372,18 @@ pub fn run(cfg: Config) -> Result<()> {
                 vec![]
             };
             want.extend(turbo_cpus.iter().copied());
-            // The point of this profile is the highest clock, and a governor that follows the
-            // load does not give it: on the 2× Xeon server (schedutil + scx_lavd) the same 4
-            // cores did 256 M iterations/s per thread, against 419 in performance.
-            turbo_governor(&turbo_cpus, &mut turbo_gov);
+            perf_cpus = turbo_cpus;
         }
+        // Full clock for the programs that asked for it. A governor that follows the load does
+        // not give it: on the 2× Xeon server (schedutil + scx_lavd) the 4 cores of a maximum
+        // turbo program did 256 M iterations/s per thread against 419 in performance, and a
+        // 0.5 ms burst of work after each wake-up (what a game frame looks like) took 1058 µs
+        // against 490-557. Maximum turbo: its whole socket. Low latency: the program's cores
+        // (both threads of each), the same ones kept out of deep idle states.
+        perf_cpus.extend(topo.whole_cores(&hw.lowlat.cpus));
+        perf_cpus.sort_unstable();
+        perf_cpus.dedup();
+        turbo_governor(&perf_cpus, &mut turbo_gov);
         want.sort_unstable();
         want.dedup();
         if want != reserved_now {
@@ -2536,7 +2544,8 @@ fn step(
     }
 }
 
-/// Puts `cpus` (the socket of a "maximum turbo" program) in the performance governor and
+/// Puts `cpus` (the socket of a "maximum turbo" program, the cores of a "low latency" one) in
+/// the performance governor and
 /// gives back the previous one to the CPUs that left the list. `saved` remembers what each
 /// CPU had; a CPU whose governor was changed by someone else in the meantime is left alone.
 fn turbo_governor(cpus: &[usize], saved: &mut BTreeMap<usize, String>) {
@@ -2555,7 +2564,7 @@ fn turbo_governor(cpus: &[usize], saved: &mut BTreeMap<usize, String>) {
         }
     }
     if restored > 0 {
-        crate::nlog!("maximum turbo ended: previous governor back on {restored} CPUs");
+        crate::nlog!("full clock ended: previous governor back on {restored} CPUs");
     }
     let mut switched = 0;
     for &c in cpus {
@@ -2578,7 +2587,9 @@ fn turbo_governor(cpus: &[usize], saved: &mut BTreeMap<usize, String>) {
         }
     }
     if switched > 0 {
-        crate::nlog!("maximum turbo: performance governor on {switched} CPUs while it runs");
+        crate::nlog!(
+            "full clock (maximum turbo / low latency): performance governor on {switched} CPUs while it runs"
+        );
     }
 }
 

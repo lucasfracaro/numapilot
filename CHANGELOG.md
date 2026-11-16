@@ -2,6 +2,22 @@
 
 ## Ainda não lançado
 
+- **Low latency now also gives the full clock.** A program with "low latency" gets its cores
+  (both threads of each) in the `performance` governor while it runs, like maximum turbo does
+  for its socket. Measured on the 2× Xeon server (schedutil + scx_lavd), 6 s per case, a 0.5 ms
+  sleep followed by a short burst of work (what a game frame looks like):
+
+  | profile | wake-up delay p99 / max, idle | max with 40 busy threads around | burst of work |
+  |---|---|---|---|
+  | automatic | 120 µs / 49 ms | 15 ms | 1058 µs |
+  | 8 cores, no HT, high priority | 120 µs / 148 µs | 130 ms | 1044 µs |
+  | + low latency (before this change) | 107 µs / 119 µs | 162 µs | 1038 µs |
+  | + exclusive cores + Game mode | 109 µs / 134 µs | 118 µs | 557 µs |
+  | maximum turbo, 4 cores | 65 µs / 113 µs | 117 µs | 490 µs |
+
+  Low latency and exclusive cores already removed the long delays; only the profiles that
+  reached the `performance` governor (Game mode, maximum turbo) halved the burst.
+
 - **Interface no longer freezes on the BC-250** (switching tabs took ~2 s, scrolling stuttered).
   Measured on the board: the voltage regulators (`bc250_vrm`) are read over I2C, 20-47 ms per
   file and ~0.3-0.5 s for all of them, and the interface read them on screen once a second,

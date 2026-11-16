@@ -584,9 +584,9 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("Cores at turbo", "Núcleos no turbo"),
     (
-        "While it runs: its cores do not enter the deep idle states and the socket's uncore \
+        "While it runs: its cores do not enter the deep idle states, run at full clock (performance governor) and the socket's uncore \
                              stays at maximum (less micro-stutter). Tune it in Machine → Gaming latency.",
-        "Enquanto ele roda: os núcleos dele não entram nos estados de economia profundos e o uncore do socket \
+        "Enquanto ele roda: os núcleos dele não entram nos estados de economia profundos, rodam no clock cheio (governor performance) e o uncore do socket \
                              fica no máximo (menos travadinhas). Ajuste em Máquina → Latência em jogos.",
     ),
     ("low latency", "baixa latência"),

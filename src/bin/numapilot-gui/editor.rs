@@ -605,7 +605,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             );
                         }
                         ui.checkbox(&mut ed.p.low_latency, crate::i18n::tr("low latency")).on_hover_text(
-                            crate::i18n::tr("While it runs: its cores do not enter the deep idle states and the socket's uncore \
+                            crate::i18n::tr("While it runs: its cores do not enter the deep idle states, run at full clock (performance governor) and the socket's uncore \
                              stays at maximum (less micro-stutter). Tune it in Machine → Gaming latency."),
                         );
                     });

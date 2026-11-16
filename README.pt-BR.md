@@ -181,7 +181,7 @@ AppId) em **Aplicativos** e **Sessão e sistema**:
 | Núcleos | N CPUs, com ou sem hyper-threading, ou escolhidos no mapa | na hora |
 | O programa enxerga | só os núcleos liberados (`WINE_CPU_TOPOLOGY` no Proton, `OMP/MKL/…_NUM_THREADS`, `GOMAXPROCS`, .NET, Java) | ao abrir |
 | Memória | só do socket, preferir a local, intercalar ou livre; limite em GB | na hora |
-| Prioridade, núcleos exclusivos, baixa latência | CPU/disco, núcleos só dele, sem estados de economia profundos | na hora |
+| Prioridade, núcleos exclusivos, baixa latência | CPU/disco, núcleos só dele, sem estados de economia profundos e com o clock cheio | na hora |
 | Placa de vídeo, perfil de energia da GPU, modo da máquina | GPU e uso (jogo/IA), 3D/computação/VR, Jogo/IA/Silencioso enquanto ele roda | ao abrir |
 | gamescope, upscaling, otimizar FPS | veja [Jogos](#jogos) | ao abrir |
 
