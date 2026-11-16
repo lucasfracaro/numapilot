@@ -753,7 +753,17 @@ fn real_main() -> Result<()> {
             };
             match action.as_str() {
                 "check" => {
-                    let g = arg.as_deref().or(gpu.as_deref()).and_then(find);
+                    let named = arg.as_deref().or(gpu.as_deref());
+                    let g = named.and_then(find);
+                    if let (Some(n), None) = (named, &g) {
+                        bail!(
+                            "{}",
+                            numapilot::tf!(
+                                "GPU '{n}' not found; see the aliases with `numapilot topo`",
+                                "GPU '{n}' não encontrada; veja os apelidos com `numapilot topo`"
+                            )
+                        );
+                    }
                     for c in vm::check(&topo, g.as_ref()) {
                         println!(
                             "[{}] {}{}{}",
@@ -2382,6 +2392,51 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
             gpu,
             usage,
         } => {
+            // A socket or a card this PC does not have was saved as it came (the service takes
+            // profiles made on other PCs) and then did nothing: say so here, where it is typed.
+            let topo = Topology::load(&Config::load()?);
+            match numapilot::config::CpuSpec::parse(&cpu)? {
+                numapilot::config::CpuSpec::Nodes(ids) => {
+                    let have = topo.node_ids();
+                    if let Some(id) = ids.iter().find(|i| !have.contains(i)) {
+                        bail!(
+                            "{}",
+                            numapilot::tf!(
+                                "node {id} does not exist (nodes: {:?})",
+                                "nó {id} não existe (nós: {:?})",
+                                have
+                            )
+                        );
+                    }
+                }
+                numapilot::config::CpuSpec::Cpus(v) => {
+                    let all = topo.all_cpus();
+                    if let Some(c) = v.iter().find(|c| !all.contains(c)) {
+                        bail!(
+                            "{}",
+                            numapilot::tf!(
+                                "CPU {c} does not exist on this PC",
+                                "a CPU {c} não existe neste PC"
+                            )
+                        );
+                    }
+                }
+                _ => {}
+            }
+            if let numapilot::config::GpuSpec::Named(names) =
+                numapilot::config::GpuSpec::parse(&gpu)?
+                && let Some(n) = names
+                    .iter()
+                    .find(|n| !topo.gpus.iter().any(|g| g.matches(n)))
+            {
+                bail!(
+                    "{}",
+                    numapilot::tf!(
+                        "GPU '{n}' not found; see the aliases with `numapilot topo`",
+                        "GPU '{n}' não encontrada; veja os apelidos com `numapilot topo`"
+                    )
+                );
+            }
             let profile = Profile {
                 label: basename(&key).to_string(),
                 cpu,

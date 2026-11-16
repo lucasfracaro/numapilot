@@ -2,6 +2,9 @@
 
 ## Ainda não lançado
 
+- `profile set` refuses a socket, a CPU or a card this PC does not have (it saved the profile,
+  which then did nothing), and `vm check CARD` says when the card does not exist. Found by a
+  sweep of 163 command lines, valid and invalid, on the server: no crash, no hang.
 - **Low latency now also gives the full clock.** A program with "low latency" gets its cores
   (both threads of each) in the `performance` governor while it runs, like maximum turbo does
   for its socket. Measured on the 2× Xeon server (schedutil + scx_lavd), 6 s per case, a 0.5 ms
