@@ -1669,8 +1669,9 @@ fn handle(
             profile,
             key,
             label,
+            cpus,
         } => {
-            return handle_adopt(uid, ctx, procs, profiles, pid, profile, key, label);
+            return handle_adopt(uid, ctx, procs, profiles, pid, profile, key, label, cpus);
         }
         Request::FixMemory { key } => return handle_fix_memory(uid, ctx, procs, &key),
         Request::SetGovernor { node, governor } => {
@@ -1918,6 +1919,7 @@ fn handle_adopt(
     given: Option<Profile>,
     key: Option<String>,
     label: Option<String>,
+    cpus: Option<Vec<usize>>,
 ) -> Response {
     if uid != 0 && procfs::uid(pid) != Some(uid) {
         return Response::err(crate::i18n::tr("this process belongs to another user"));
@@ -1942,7 +1944,18 @@ fn handle_adopt(
         return Response::err(e);
     }
     t.profile = Some(p.clone());
-    t.cpus = procfs::allowed_cpus(pid).unwrap_or_default();
+    // The cores `run` is about to take. The process still has the ones of whoever started it:
+    // a game opened by a Steam placed on the other socket got a control group limited to
+    // Steam's socket, and `run` then failed to move to the profile's cores (EINVAL).
+    t.cpus = cpus
+        .map(|l| {
+            l.into_iter()
+                .filter(|c| ctx.all_cpus.contains(c))
+                .collect::<Vec<usize>>()
+        })
+        .filter(|l| !l.is_empty())
+        .or_else(|| ctx.plan_cpus(&p, &[]))
+        .unwrap_or_else(|| procfs::allowed_cpus(pid).unwrap_or_default());
     t.nodes = ctx.topo.nodes_of(&t.cpus);
     ctx.apply_extras(&[pid], &t, &p, None);
     procs.insert(pid, t);

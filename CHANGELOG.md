@@ -2,6 +2,13 @@
 
 ## Ainda não lançado
 
+- **A game with a profile on the other socket did not open.** Skyrim on the server: Steam sits
+  on socket 1, the profile sends the game to socket 0 (the card of the main monitor). `run`
+  asked the service for the control group before taking its cores, the service made it with
+  the cores the process still had (Steam's socket), and `run` then failed with
+  `sched_setaffinity: Invalid argument`: Steam showed the game starting and closing. `run`
+  now tells the service which cores it is taking, and if it still cannot take them it opens
+  the program anyway and logs the reason.
 - **A program opened while cores are reserved is no longer ignored.** With "exclusive cores"
   in use, anything opened meanwhile is born without those cores, and the service took that
   for an affinity chosen by another program (taskset) and left it alone for good: no profile,

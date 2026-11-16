@@ -2159,6 +2159,7 @@ fn cmd_run(
             profile,
             key: Some(pkey.clone()),
             label: Some(basename(prog).to_string()),
+            cpus: Some(d.cpus.clone()),
         }) {
             Ok(r) if r.ok => {}
             Ok(r) => eprintln!(
@@ -2181,7 +2182,14 @@ fn cmd_run(
         procfs::set_nice_all(std::process::id() as i32, nice);
         procfs::set_ioprio_all(std::process::id() as i32, io);
     }
-    procfs::set_affinity(0, &d.cpus).context("sched_setaffinity")?;
+    // Never keep the program from opening because of the cores: a game that does not start is
+    // worse than one on the wrong cores (the service places it again once it is running).
+    if let Err(e) = procfs::set_affinity(0, &d.cpus) {
+        numapilot::nlog!(
+            "run: could not take CPUs {}: {e}; opening with the current ones",
+            format_cpulist(&d.cpus)
+        );
+    }
     let wide = d.nodes.len() > 1;
     let pol = match d.mem {
         MemSpec::Local if wide => (procfs::MPOL_DEFAULT, vec![]),

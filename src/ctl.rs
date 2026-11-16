@@ -57,6 +57,10 @@ pub enum Request {
         key: Option<String>,
         #[serde(default)]
         label: Option<String>,
+        /// Cores `run` is about to take. The control group is made for these, not for the
+        /// ones the process still has (those of whoever started it, Steam for instance).
+        #[serde(default)]
+        cpus: Option<Vec<usize>>,
     },
     /// Moves a program's memory back to the socket(s) of its cores.
     FixMemory {
