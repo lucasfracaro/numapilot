@@ -155,6 +155,37 @@ pub fn run(cfg: &Config) -> Vec<Check> {
             )),
         );
     }
+    // An AMD card forced to its lowest performance level by another tool stays at the lowest
+    // clock under load (seen on the server: LACT had saved "low" for both MI50, Elden Ring ran
+    // at 859 MHz of 1700 with the card at 99%).
+    let lact_low = std::fs::read_to_string("/etc/lact/config.yaml")
+        .is_ok_and(|t| t.lines().any(|l| l.trim() == "performance_level: low"));
+    for g in topo.gpus.iter().filter(|g| g.vendor == 0x1002) {
+        let lvl = crate::util::read_trim(&crate::util::sys(&format!(
+            "bus/pci/devices/{}/power_dpm_force_performance_level",
+            g.pci
+        )));
+        if lvl.as_deref() == Some("low") && (lact_low || g.busy_percent().unwrap_or(0) >= 50) {
+            add(
+                crate::i18n::tr("Graphics cards"),
+                crate::i18n::tr("Performance level"),
+                Level::Warn,
+                crate::tf!(
+                    "{} is forced to the lowest level (lowest clock even under load){}",
+                    "{} está forçada no nível mais baixo (clock mínimo mesmo com carga){}",
+                    g.alias,
+                    if lact_low {
+                        crate::i18n::tr(": saved in LACT")
+                    } else {
+                        ""
+                    }
+                ),
+                Some(crate::i18n::tr(
+                    "In LACT, set the card's performance level to Automatic (or stop lactd); with \"idle saving\" on, numapilot puts the card back to auto when it gets busy",
+                )),
+            );
+        }
+    }
     // ---- NVIDIA and laptop ----
     if topo.gpus.iter().any(|g| g.is_nvidia()) {
         let st = crate::driver::status(&topo);

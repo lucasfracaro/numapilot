@@ -620,6 +620,12 @@ pub const PT: &[(&str, &str)] = &[
     ("OverDrive (clock/voltage)", "OverDrive (clock/voltagem)"),
     ("Reboot the computer", "Reinicie o computador"),
     ("turns on after a reboot", "liga depois de reiniciar"),
+    ("Performance level", "Nível de desempenho"),
+    (": saved in LACT", ": salvo no LACT"),
+    (
+        "In LACT, set the card's performance level to Automatic (or stop lactd); with \"idle saving\" on, numapilot puts the card back to auto when it gets busy",
+        "No LACT, ponha o nível de desempenho da placa em Automático (ou pare o lactd); com a \"economia quando parada\" ligada, o numapilot devolve a placa ao automático quando ela é usada",
+    ),
     (
         "The system needs cgroups v2 (default on CachyOS) for memory limits and exclusive cores",
         "O sistema precisa de cgroups v2 (padrão no CachyOS) para limites de memória e núcleos exclusivos",

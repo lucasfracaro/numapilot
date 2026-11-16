@@ -241,12 +241,17 @@ mod tests {
 
     #[test]
     fn tiny_bench_on_this_machine() {
-        // Minimal topology (CPU 0, node 0): only checks that it measures something plausible.
+        // Minimal topology (one CPU, node 0): only checks that it measures something plausible.
+        // A CPU this process may use: CPU 0 can be reserved for a program with exclusive
+        // cores (the test then measured nothing, on the server with a game open).
+        let c = crate::procfs::allowed_cpus(std::process::id() as i32)
+            .and_then(|v| v.first().copied())
+            .unwrap_or(0);
         let t = Topology {
             nodes: vec![crate::topo::Node {
                 id: 0,
-                cpus: vec![0],
-                cores: vec![vec![0]],
+                cpus: vec![c],
+                cores: vec![vec![c]],
                 physical_cores: 1,
                 sockets: Default::default(),
                 mem_total_kb: 0,

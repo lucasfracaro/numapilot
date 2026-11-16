@@ -1025,6 +1025,8 @@ pub fn run(cfg: Config) -> Result<()> {
     let mut procs: HashMap<i32, Tracked> = HashMap::new();
     let mut prev_cpu = procfs::cpu_times();
     let mut rank_prev = procfs::cpu_times();
+    // seconds each card has been busy while forced to the lowest performance level
+    let mut stuck_low: HashMap<String, u32> = HashMap::new();
     // sched_ext scheduler in use at the last look, and when to choose cores again after a change
     let mut sx_seen = crate::machine::sched_ext_active();
     let mut sx_replan: Option<u64> = None;
@@ -1176,6 +1178,21 @@ pub fn run(cfg: Config) -> Result<()> {
                 e.0 = None;
                 if let Some(prev) = e.1.take() {
                     let _ = std::fs::write(&lvl_path, &prev);
+                }
+                // Busy and still in the lowest level, which was not put there by this loop
+                // (it has nothing to give back): another tool forced it. On the server LACT
+                // had saved "low" for both MI50; Elden Ring ran at 859 MHz of 1700 with the
+                // card at 99%. "Low until it is used again" is what this option promises.
+                let n = stuck_low.entry(pci.clone()).or_insert(0u32);
+                if busy >= 50 && crate::util::read_trim(&lvl_path).as_deref() == Some("low") {
+                    *n += 1;
+                    if *n == 5 && std::fs::write(&lvl_path, "auto").is_ok() {
+                        crate::nlog!(
+                            "{pci}: busy at the lowest performance level (forced by another tool): back to auto"
+                        );
+                    }
+                } else {
+                    *n = 0;
                 }
             } else {
                 let since = *e.0.get_or_insert_with(Instant::now);

@@ -2,6 +2,11 @@
 
 ## Ainda não lançado
 
+- **A busy card forced to the lowest performance level goes back to auto.** On the server
+  LACT had `performance_level: low` saved for both MI50: Elden Ring ran with the card at 99%
+  and 859 MHz of 1700 (350 MHz memory clock), which is where its ~20 fps came from. With
+  "idle saving" on, a card 5 s above 50% at level `low` that numapilot did not set itself is
+  put back to `auto`; the doctor warns about a card forced low.
 - **A Steam game with exclusive cores ran on every core except its own.** Skyrim on the
   server, 21 minutes played: 60 fps capped, but 85 stutters above 100 ms (up to 1.4 s). Steam
   moves the game to a control group of its own a moment after starting it; the exclusive
