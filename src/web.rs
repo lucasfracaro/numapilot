@@ -111,7 +111,11 @@ pub fn state(topo: &Topology) -> Value {
         .collect();
     let profiles = Profiles::load();
     let mut progs: BTreeMap<String, (String, f64, String, String)> = BTreeMap::new();
-    for r in crate::daemon::read_state().unwrap_or_default() {
+    for r in crate::daemon::read_state()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| !r.idle)
+    {
         let e = progs
             .entry(r.key.clone())
             .or_insert_with(|| (r.label.clone(), 0.0, r.nodes.clone(), r.gpus.clone()));

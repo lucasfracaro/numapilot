@@ -7,6 +7,10 @@
   point that changes on every start (`/tmp/.mount_XXXX/…`), so a saved profile never applied
   again. Now the key is the `.AppImage` file (`$APPIMAGE`, the same key the "find installed
   app" window gives it) and the name is the file's (e.g. `lichii-linux-x86_64-pgo`).
+- **Programs lists every open program, idle ones too.** The service published a watched
+  process only while it used ≥ 0.1 core or a card, so an emulator waiting in its menu vanished
+  from the list and could not be adjusted. Idle ones are now published with `idle: true`;
+  `numapilot status` and the web panel still leave them out.
 - **Lighter on small PCs (BC-250).** Measured on the server: the open window used ~20-35% of
   one core and now ~4%; the service reads much less each second.
   - Window: meters no longer slide to each new reading (each slide redrew the window at the

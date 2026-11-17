@@ -3236,7 +3236,7 @@ fn cmd_status() -> Result<()> {
             "CPUs"
         )
     );
-    for r in rows {
+    for r in rows.into_iter().filter(|r| !r.idle) {
         println!(
             "{:>7}  {:<16} {:>6.1}  {:<12} {:<6} {:<10} {:<14} {}",
             r.pid, r.comm, r.cores, r.state, r.nodes, r.gpus, r.cpus, r.origin

@@ -579,6 +579,11 @@ pub struct Row {
     pub gpus: String,
     /// The process's memory on each NUMA node (MB), index = node.
     pub mem: Vec<u64>,
+    /// Only watched, nearly idle, no card and no profile: listed so the Programs tab shows
+    /// every open program (an emulator waiting in its menu disappeared from it), left out of
+    /// the short lists (`numapilot status`, web panel).
+    #[serde(default)]
+    pub idle: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -2790,8 +2795,7 @@ fn write_state(
     let mut rows: Vec<Row> = procs
         .iter()
         .filter(|(_, t)| match &t.state {
-            St::Placed => true,
-            St::Watching => t.cores >= 0.1 || !t.gpus.is_empty() || profiles.get(&t.pkey).is_some(),
+            St::Placed | St::Watching => true,
             St::Ignored(r) => r.starts_with("manual") || r.starts_with("pin"),
         })
         .map(|(pid, t)| Row {
@@ -2827,6 +2831,10 @@ fn write_state(
             }),
             mem: t.mem.clone(),
             cores: (t.cores * 10.0).round() / 10.0,
+            idle: t.state == St::Watching
+                && t.cores < 0.1
+                && t.gpus.is_empty()
+                && profiles.get(&t.pkey).is_none(),
             gpus: t.gpus.join(","),
         })
         .collect();
