@@ -2,6 +2,13 @@
 
 ## Ainda não lançado
 
+- `numapilot clock [PROGRAM] [--watch]`: the clock a program is really getting. CPU: the
+  frequency of the CPUs its threads ran on during a short sample (not the average of every CPU
+  it may use, most of them asleep), the governor and the CPUs allowed. GPU: the card it is
+  really rendering on (DRM fdinfo), with clock, performance level, power profile, load, power
+  and temperature. Without a name: the five programs using the most processor.
+- Profile editor of a Steam game: **"Copy the line for Steam"** copies the launch options for
+  that game with the card chosen in the profile (what the game already has is kept).
 - **`bench-cores` measured the frequency governor, not the cores.** On the 2× Xeon server
   (schedutil + scx_lavd) each core was caught at 1.2 or at 2.2 GHz at random: the same core
   went from 23 to 42 ns between rounds, the "difference" was 50% and the order never repeated

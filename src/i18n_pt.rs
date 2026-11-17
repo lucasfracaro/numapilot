@@ -289,6 +289,10 @@ pub const PT: &[(&str, &str)] = &[
     ("measurement saved", "medição guardada"),
     ("too small to use", "pequena demais para usar"),
     (
+        "  GPU  not using a card (or the driver does not say: NVIDIA)",
+        "  GPU  não está usando placa (ou o driver não informa: NVIDIA)",
+    ),
+    (
         "Could not hold the clock at full speed (service or performance governor missing): the result may vary with the clock.",
         "Não deu para segurar o clock no máximo (falta o serviço ou o governor performance): o resultado pode variar com o clock.",
     ),

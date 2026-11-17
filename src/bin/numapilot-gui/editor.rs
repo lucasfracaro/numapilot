@@ -369,6 +369,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let mut open = true;
     let mut apply = false;
     let mut fix = false;
+    let mut steam_line: Option<Option<String>> = None;
     egui::Window::new(crate::tf!("Adjust: {}", "Ajustar: {}", ed.label))
         .id(egui::Id::unique("numapilot-editor"))
         .open(&mut open)
@@ -866,9 +867,33 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     if ui.button(crate::i18n::tr("Bring the memory to the right socket")).clicked() {
                         fix = true;
                     }
+                    // Steam game: the card only follows the profile when the game is opened
+                    // through `numapilot run`, which goes in the game's launch options
+                    if let Some(id) = ed.key.strip_prefix("steam:")
+                        && ui
+                            .button(crate::i18n::tr("Copy the line for Steam"))
+                            .on_hover_text(crate::i18n::tr(
+                                "Copies the launch options for this game with the card chosen here. Paste in Steam → game Properties → General → Launch options (what the game already has there is kept).",
+                            ))
+                            .clicked()
+                    {
+                        let gpu = app.topo.gpus.iter().find(|g| g.matches(&ed.p.gpu)).map(|g| g.alias.clone());
+                        steam_line = Some(numapilot::steam::command_for_game(id, gpu.as_deref()));
+                    }
                 });
             });
         });
+    match steam_line {
+        Some(Some(line)) => {
+            ctx.copy_text(line.clone());
+            app.toast(crate::tf!("Copied: {line}", "Copiado: {line}"), true);
+        }
+        Some(None) => app.toast(
+            crate::i18n::tr("Steam's configuration was not found (open Steam once)."),
+            false,
+        ),
+        None => {}
+    }
     if apply {
         let p = ed.p.clone();
         app.send(Request::SetProfile {

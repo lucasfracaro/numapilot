@@ -7,6 +7,7 @@ pub mod bench;
 pub mod boards;
 pub mod bootcfg;
 pub mod cgroup;
+pub mod clock;
 pub mod cmdline;
 pub mod config;
 pub mod containers;

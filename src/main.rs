@@ -254,6 +254,16 @@ enum Cmd {
         #[command(subcommand)]
         action: ProfileCmd,
     },
+    /// The clock a program is really getting: frequency of the CPUs its threads are running on
+    /// and clock, load and performance level of the card it is rendering on.
+    Clock {
+        /// Part of the program's name, its profile key (steam:APPID) or a PID. Without it:
+        /// the programs using the most processor now.
+        program: Option<String>,
+        /// Repeats every second until Ctrl+C.
+        #[arg(long, short)]
+        watch: bool,
+    },
     /// Prints the ROCR_VISIBLE_DEVICES IDs of the compute GPUs (for scripts).
     #[command(name = "rocr-ids")]
     RocrIds,
@@ -366,6 +376,7 @@ fn real_main() -> Result<()> {
         Cmd::Topo => cmd_topo(&cfg),
         Cmd::Log { lines, which } => cmd_log(lines, which.as_deref()),
         Cmd::Turbo => cmd_turbo(&cfg),
+        Cmd::Clock { program, watch } => cmd_clock(&cfg, program.as_deref(), watch),
         Cmd::BenchCores { show, clear } => cmd_bench_cores(&cfg, show, clear),
         Cmd::GpuTest { gpu, json } => cmd_gpu_test(&cfg, gpu.as_deref(), json),
         Cmd::Selftest { out, quick, json } => {
@@ -3232,6 +3243,165 @@ fn cmd_status() -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn cmd_clock(cfg: &Config, program: Option<&str>, watch: bool) -> Result<()> {
+    use numapilot::util::format_cpulist;
+    let topo = Topology::load(cfg);
+    loop {
+        let s = std::fs::read_to_string(daemon::state_path()).context(numapilot::i18n::tr(
+            "the daemon does not seem to be running (systemctl status numapilot)",
+        ))?;
+        let rows: Vec<daemon::Row> = serde_json::from_str(&s)?;
+        // one entry per program (profile key), with all its processes
+        let mut groups: std::collections::BTreeMap<String, (String, Vec<i32>, f64)> =
+            Default::default();
+        for r in &rows {
+            let key = if r.key.is_empty() {
+                r.comm.clone()
+            } else {
+                r.key.clone()
+            };
+            let g = groups.entry(key).or_default();
+            if g.0.is_empty() {
+                g.0 = if r.label.is_empty() {
+                    r.comm.clone()
+                } else {
+                    r.label.clone()
+                };
+            }
+            g.1.push(r.pid);
+            g.2 += r.cores;
+        }
+        let mut list: Vec<(String, String, Vec<i32>, f64)> = groups
+            .into_iter()
+            .map(|(k, (l, p, c))| (k, l, p, c))
+            .collect();
+        match program {
+            Some(q) => {
+                let ql = q.to_lowercase();
+                let pid: Option<i32> = q.parse().ok();
+                list.retain(|(k, l, p, _)| {
+                    k.to_lowercase().contains(&ql)
+                        || l.to_lowercase().contains(&ql)
+                        || pid.is_some_and(|x| p.contains(&x))
+                });
+                if list.is_empty() {
+                    bail!(
+                        "{}",
+                        numapilot::tf!(
+                            "no running program matches '{q}' (see numapilot status)",
+                            "nenhum programa aberto combina com '{q}' (veja numapilot status)"
+                        )
+                    );
+                }
+            }
+            None => {
+                list.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+                list.truncate(5);
+            }
+        }
+        let n = list.len().max(1) as u64;
+        for (key, label, pids, _) in &list {
+            let mut c = numapilot::clock::sample(&topo, pids, (1000 / n).max(300));
+            if c.allowed.is_empty() {
+                // closed between the service's list and now
+                continue;
+            }
+            // only the cards it is working on, when it is working on one
+            if c.cards.iter().any(|g| g.use_pct >= 1.0) {
+                c.cards.retain(|g| g.use_pct >= 1.0);
+            }
+            let short = label.rsplit('/').next().unwrap_or(label);
+            let name = if key.starts_with("steam:") {
+                format!("{short} ({key})")
+            } else {
+                short.to_string()
+            };
+            println!(
+                "{}",
+                numapilot::tf!(
+                    "{name}: {} process(es), using {:.1} cores",
+                    "{name}: {} processo(s), usando {:.1} núcleos",
+                    pids.len(),
+                    c.cores
+                )
+            );
+            let gov = c.governors.iter().cloned().collect::<Vec<_>>().join("/");
+            let nodes = topo.nodes_of(&c.allowed);
+            match c.mhz() {
+                Some((avg, min, max)) => {
+                    let cpus: Vec<usize> = c.ran_on.keys().copied().collect();
+                    println!(
+                        "{}",
+                        numapilot::tf!(
+                            "  CPU  {avg} MHz on the {} CPUs it ran on now ({}): from {min} to {max} MHz · governor {gov}",
+                            "  CPU  {avg} MHz nas {} CPUs em que rodou agora ({}): de {min} a {max} MHz · governor {gov}",
+                            cpus.len(),
+                            format_cpulist(&cpus)
+                        )
+                    );
+                }
+                None => println!(
+                    "{}",
+                    numapilot::tf!(
+                        "  CPU  idle during the sample (no frequency to show) · governor {gov}",
+                        "  CPU  parado durante a amostra (sem frequência para mostrar) · governor {gov}"
+                    )
+                ),
+            }
+            println!(
+                "{}",
+                numapilot::tf!(
+                    "       may use {} CPUs ({}) on socket(s) {:?}",
+                    "       pode usar {} CPUs ({}) no(s) socket(s) {:?}",
+                    c.allowed.len(),
+                    format_cpulist(&c.allowed),
+                    nodes
+                )
+            );
+            if c.cards.is_empty() {
+                println!(
+                    "{}",
+                    numapilot::i18n::tr(
+                        "  GPU  not using a card (or the driver does not say: NVIDIA)"
+                    )
+                );
+            }
+            for g in &c.cards {
+                let mut parts = vec![];
+                if let Some(v) = g.clock_mhz {
+                    parts.push(format!("{v:.0} MHz"));
+                }
+                if let Some(v) = &g.level {
+                    parts.push(numapilot::tf!("level {v}", "nível {v}"));
+                }
+                if let Some(v) = &g.profile {
+                    parts.push(numapilot::tf!("profile {v}", "perfil {v}"));
+                }
+                if let Some(v) = g.busy_pct {
+                    parts.push(numapilot::tf!("{v}% busy", "{v}% ocupada"));
+                }
+                parts.push(numapilot::tf!(
+                    "{:.0}% by this program",
+                    "{:.0}% por este programa",
+                    g.use_pct
+                ));
+                if let Some(v) = g.power_w {
+                    parts.push(format!("{v:.0} W"));
+                }
+                if let Some(v) = g.temp_c {
+                    parts.push(format!("{v:.0} °C"));
+                }
+                println!("  GPU  {} ({}): {}", g.alias, g.pci, parts.join(" · "));
+            }
+        }
+        if !watch {
+            return Ok(());
+        }
+        println!();
+        std::thread::sleep(std::time::Duration::from_millis(400));
+    }
 }
 
 fn cmd_pin(cfg: &Config, pid: i32, cpu: &str, no_migrate: bool) -> Result<()> {

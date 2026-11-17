@@ -353,6 +353,18 @@ pub fn command_for(opt: &str, gpu: Option<&str>) -> String {
     words.join(" ")
 }
 
+/// The line to paste for the game `appid`, from what Steam has for it now. None = Steam's
+/// configuration was not found.
+pub fn command_for_game(appid: &str, gpu: Option<&str>) -> Option<String> {
+    let lc = find_localconfigs();
+    let cur = read_launch_options(lc.first()?)
+        .unwrap_or_default()
+        .get(appid)
+        .cloned()
+        .unwrap_or_default();
+    Some(command_for(&cur, gpu))
+}
+
 pub fn unwrap_option(opt: &str) -> String {
     let o = opt.replace(&format!("{WRAP} "), "").replace(WRAP, "");
     let o = o.trim().to_string();

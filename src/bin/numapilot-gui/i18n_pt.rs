@@ -523,6 +523,15 @@ pub const PT: &[(&str, &str)] = &[
         "Trazer a memória para o socket certo",
     ),
     ("Apply", "Aplicar"),
+    ("Copy the line for Steam", "Copiar a linha para a Steam"),
+    (
+        "Copies the launch options for this game with the card chosen here. Paste in Steam → game Properties → General → Launch options (what the game already has there is kept).",
+        "Copia as opções de inicialização deste jogo com a placa escolhida aqui. Cole na Steam → Propriedades do jogo → Geral → Opções de inicialização (o que o jogo já tem lá é mantido).",
+    ),
+    (
+        "Steam's configuration was not found (open Steam once).",
+        "A configuração da Steam não foi encontrada (abra a Steam uma vez).",
+    ),
     (
         "Apply right away: processors, cores, memory (except interleave), limit, priority and exclusive. \
                          Apply on reopen: graphics card, interleave and what the program sees.",
