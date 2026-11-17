@@ -1,6 +1,6 @@
 # Mudanças
 
-## Ainda não lançado
+## 0.5.6 — 2026-11-17
 
 - **AMD card stuck at its lowest clock in the "manual" level.** Setting a power profile (3D
   full screen…) needs the "manual" level, and in it the driver keeps the clock levels allowed
