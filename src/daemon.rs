@@ -2453,7 +2453,7 @@ fn classify(
         label: match (&appimage, exe.as_deref()) {
             (Some((_, name)), _) => name.clone(),
             (None, Some(e)) if e.to_lowercase().ends_with(".appimage") => procfs::appimage_name(e),
-            _ => st.comm.clone(),
+            _ => procfs::full_name(&st.comm, exe.as_deref()),
         },
         exe: exe.clone(),
         uid,

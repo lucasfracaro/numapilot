@@ -11,6 +11,8 @@
   process only while it used ≥ 0.1 core or a card, so an emulator waiting in its menu vanished
   from the list and could not be adjusted. Idle ones are now published with `idle: true`;
   `numapilot status` and the web panel still leave them out.
+- Program names cut by the kernel at 15 characters (`xdg-desktop-por`, `lichii-linux-x8`) show
+  the executable's full name when it starts with them.
 - **Lighter on small PCs (BC-250).** Measured on the server: the open window used ~20-35% of
   one core and now ~4%; the service reads much less each second.
   - Window: meters no longer slide to each new reading (each slide redrew the window at the

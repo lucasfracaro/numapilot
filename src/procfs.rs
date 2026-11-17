@@ -113,6 +113,15 @@ pub fn appimage_of(pid: i32, exe: Option<&str>) -> Option<(String, String)> {
     Some((file.clone(), appimage_name(&file)))
 }
 
+/// The kernel keeps only 15 characters of a process name ("xdg-desktop-por",
+/// "lichii-linux-x8"): when the executable's name starts with them, that full name is used.
+pub fn full_name(comm: &str, exe: Option<&str>) -> String {
+    match exe.map(basename) {
+        Some(b) if comm.len() >= 15 && b.len() > comm.len() && b.starts_with(comm) => b.to_string(),
+        _ => comm.to_string(),
+    }
+}
+
 /// "lichii-linux-x86_64-pgo.AppImage" → "lichii-linux-x86_64-pgo"
 pub fn appimage_name(file: &str) -> String {
     let b = basename(file);
@@ -423,6 +432,19 @@ pub fn migrate_pages(pid: i32, from: &[usize], to: &[usize]) -> io::Result<i64> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_names() {
+        assert_eq!(
+            full_name("xdg-desktop-por", Some("/usr/lib/xdg-desktop-portal-kde")),
+            "xdg-desktop-portal-kde"
+        );
+        assert_eq!(full_name("bash", Some("/usr/bin/bash")), "bash");
+        assert_eq!(
+            full_name("MainThread", Some("/usr/bin/python3")),
+            "MainThread"
+        );
+    }
 
     #[test]
     fn appimage_names() {
