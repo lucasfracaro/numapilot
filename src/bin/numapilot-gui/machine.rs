@@ -139,7 +139,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     egui::ScrollArea::vertical().show(ui, |ui| {
         let mu = &mut app.mach;
         // ---------------- modos ----------------
-        ui.heading(crate::i18n::tr("Machine mode"));
+        crate::theme::title(ui, crate::i18n::tr("Machine mode"));
         ui.label(RichText::new(crate::i18n::tr("One click tunes processors, memory and scheduler together. \"Normal\" puts everything back as the system was.")).weak());
         ui.horizontal_wrapped(|ui| {
             let game_node = app
@@ -173,7 +173,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         if numapilot::notebook::is_laptop() {
             use numapilot::notebook as nb;
             ui.add_space(8.0);
-            ui.heading(crate::i18n::tr("Laptop"));
+            crate::theme::title(ui, crate::i18n::tr("Laptop"));
             let ac = nb::on_ac();
             for b in nb::battery_info() {
                 ui.label(crate::tf!(
@@ -316,8 +316,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 if !hybrid::xwayland_wrapped() {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(crate::i18n::tr("Xwayland may hold the NVIDIA for no reason.")).small().weak());
-                        if ui
-                            .small_button(crate::i18n::tr("use only the integrated GPU in Xwayland"))
+                        if crate::theme::small(ui, crate::i18n::tr("use only the integrated GPU in Xwayland"))
                             .on_hover_text(crate::i18n::tr("Installs /usr/local/bin/Xwayland that uses only Mesa (asks for the password). X11 games set to the NVIDIA still go to it. Applies at the next login."))
                             .clicked()
                         {
@@ -372,7 +371,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 .small()
                                 .weak(),
                             );
-                            if ui.small_button(crate::i18n::tr("Log out…")).clicked()
+                            if crate::theme::small(ui, crate::i18n::tr("Log out…")).clicked()
                                 && let Err(e) = hybrid::prompt_logout()
                             {
                                 app_toast = Some(e);
@@ -476,11 +475,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         // ---------------- laptop Ryzen (ryzenadj) ----------------
         if numapilot::ryzen::applicable() {
             ui.add_space(8.0);
-            ui.heading(crate::i18n::tr("Ryzen power limits"));
+            crate::theme::title(ui, crate::i18n::tr("Ryzen power limits"));
             if !numapilot::ryzen::available() {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(crate::i18n::tr("Install ryzenadj to tune STAPM/PPT (the equivalent of Intel's PL1/PL2).")).weak());
-                    if ui.small_button(crate::i18n::tr("install (AUR)")).clicked() {
+                    if crate::theme::small(ui, crate::i18n::tr("install (AUR)")).clicked() {
                         let helper = if numapilot::containers::which("paru") { "paru" } else { "yay" };
                         if let Err(e) = crate::jobs::in_terminal(&[helper.into(), "-S".into(), "ryzenadj".into()]) {
                             app_toast = Some(e);
@@ -527,12 +526,12 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         if numapilot::acer::is_acer() || numapilot::acer::sense_dir().is_some() {
             use numapilot::acer;
             ui.add_space(8.0);
-            ui.heading("Acer Predator / Nitro");
+            crate::theme::title(ui, "Acer Predator / Nitro");
             let knobs = acer::knobs();
             if knobs.is_empty() && acer::kb_dir().is_none() {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(crate::i18n::tr("Fans, the 80% charge limit and RGB need the community module Linuwu-Sense.")).weak());
-                    if ui.small_button(crate::i18n::tr("page")).clicked() {
+                    if crate::theme::small(ui, crate::i18n::tr("page")).clicked() {
                         let _ = crate::jobs::open_url("https://github.com/0x7375646F/Linuwu-Sense");
                     }
                 });
@@ -647,7 +646,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- schedules ----------------
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Scheduled modes"));
+        crate::theme::title(ui, crate::i18n::tr("Scheduled modes"));
         ui.label(
             RichText::new(crate::i18n::tr("E.g. Quiet from 23:00 to 07:00. A program with \"machine mode\" in its profile (Adjust…) takes priority; switching the mode by hand holds until the rule changes."))
                 .small()
@@ -668,7 +667,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 if !s.valid() {
                     ui.label(RichText::new(crate::i18n::tr("invalid time (use HH:MM)")).color(Color32::from_rgb(229, 83, 75)));
                 }
-                if ui.small_button(crate::i18n::tr("remove")).clicked() {
+                if crate::theme::small(ui, crate::i18n::tr("remove")).clicked() {
                     del = Some(i);
                 }
             });
@@ -676,13 +675,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         if let Some(i) = del {
             m.schedule.remove(i);
         }
-        if ui.small_button(crate::i18n::tr("+ schedule")).clicked() {
+        if crate::theme::small(ui, crate::i18n::tr("+ schedule")).clicked() {
             m.schedule.push(machine::Sched { from: "23:00".into(), to: "07:00".into(), mode: "silencioso".into() });
         }
 
         // ---------------- energia ----------------
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Energy"));
+        crate::theme::title(ui, crate::i18n::tr("Energy"));
         {
             let e = numapilot::energy::Energy::load();
             let today = numapilot::energy::today();
@@ -734,7 +733,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- health ----------------
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Hardware health"));
+        crate::theme::title(ui, crate::i18n::tr("Hardware health"));
         match &mu.health {
             None => {
                 ui.label(RichText::new(crate::i18n::tr("The service collects 1 min after starting and then every 30 min.")).weak());
@@ -834,7 +833,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         // ---------------- network: wake over the network ----------------
         if !mu.nics.is_empty() {
             ui.add_space(8.0);
-            ui.heading(crate::i18n::tr("Wake over the network (Wake-on-LAN)"));
+            crate::theme::title(ui, crate::i18n::tr("Wake over the network (Wake-on-LAN)"));
             ui.label(
                 RichText::new(crate::i18n::tr("Lets this PC be turned on from another one's panel (My PCs → Wake). Also needs the BIOS option (Wake on LAN / Power on by PCI-E) and the network cable."))
                     .small()
@@ -868,7 +867,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- processadores ----------------
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Processors"));
+        crate::theme::title(ui, crate::i18n::tr("Processors"));
         ui.horizontal(|ui| {
             ui.label("Turbo:");
             tri(ui, "turbo", &mut m.turbo, crate::i18n::tr("on"), crate::i18n::tr("off"));
@@ -1030,7 +1029,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- latency ----------------
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Gaming latency"));
+        crate::theme::title(ui, crate::i18n::tr("Gaming latency"));
         ui.label(
             RichText::new(
                 crate::i18n::tr("Applies while a program with \"Low latency\" runs (the Game profile turns it on): on its cores, the processor does not enter \
@@ -1063,7 +1062,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- memory ----------------
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Memory"));
+        crate::theme::title(ui, crate::i18n::tr("Memory"));
         egui::Grid::new("mem").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
             let multi = topo.nodes.len() > 1;
             if multi {
@@ -1113,7 +1112,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- escalonador ----------------
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Scheduler (sched_ext)"));
+        crate::theme::title(ui, crate::i18n::tr("Scheduler (sched_ext)"));
         match &mu.scx {
             Some((cur, list)) => {
                 ui.horizontal(|ui| {
@@ -1185,7 +1184,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- motherboard fans ----------------
         ui.add_space(10.0);
-        ui.heading(crate::i18n::tr("Motherboard fans"));
+        crate::theme::title(ui, crate::i18n::tr("Motherboard fans"));
         if mu.fans.is_empty() && mu.ipmi.is_empty() {
             ui.label(
                 RichText::new(
@@ -1281,7 +1280,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- mitigations ----------------
         ui.add_space(10.0);
-        ui.heading(crate::i18n::tr("Processor mitigations"));
+        crate::theme::title(ui, crate::i18n::tr("Processor mitigations"));
         ui.label(
             RichText::new(
                 crate::i18n::tr("Protections against side-channel attacks. Turning them off gives performance back, but lets malicious programs read \
@@ -1363,7 +1362,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---------------- other parameters ----------------
         ui.add_space(10.0);
-        ui.heading(crate::i18n::tr("Kernel parameters"));
+        crate::theme::title(ui, crate::i18n::tr("Kernel parameters"));
         ui.label(
             RichText::new(match &mu.loader {
                 Some(l) => crate::tf!("Bootloader: {l}. numapilot edits this file (with a backup) and rewrites the entries; kernel updates keep them.", "Bootloader: {l}. O numapilot edita esse arquivo (com backup) e regrava as entradas; atualizações do kernel mantêm."),
@@ -1384,7 +1383,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(crate::i18n::tr("Other:"));
             ui.add(egui::TextEdit::singleline(&mut mu.custom).hint_text(crate::i18n::tr("e.g. amd_iommu=on")).desired_width(220.0));
-            if ui.small_button(crate::i18n::tr("add")).clicked() {
+            if crate::theme::small(ui, crate::i18n::tr("add")).clicked() {
                 let c = mu.custom.trim().to_string();
                 if !c.is_empty() && !c.contains(char::is_whitespace) {
                     mu.sel.insert(c);

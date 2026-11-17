@@ -219,11 +219,11 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                                     act = Some((s.clone(), Verb::Restart));
                                 }
                             } else if s.file_state != "masked"
-                                && ui.small_button(crate::i18n::tr("Start")).clicked()
+                                && crate::theme::small(ui, crate::i18n::tr("Start")).clicked()
                             {
                                 act = Some((s.clone(), Verb::Start));
                             }
-                            if ui.small_button("Log").clicked() {
+                            if crate::theme::small(ui, "Log").clicked() {
                                 want_log = Some(s.clone());
                             }
                         });

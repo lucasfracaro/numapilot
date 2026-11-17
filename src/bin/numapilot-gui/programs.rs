@@ -981,8 +981,7 @@ fn finder_window(app: &mut App, ui: &mut egui::Ui) {
                                     ui.label(RichText::new(crate::i18n::tr("menu adjusted")).small().color(p.ok))
                                         .on_hover_text(crate::i18n::tr("Opened from the menu, this program already goes through numapilot (the card choice applies)."));
                                 } else if saved
-                                    && ui
-                                        .small_button(crate::i18n::tr("Adjust the menu"))
+                                    && crate::theme::small(ui, crate::i18n::tr("Adjust the menu"))
                                         .on_hover_text(crate::i18n::tr("Makes the menu shortcut open this program through numapilot, so the graphics card choice applies. Can be undone in Saved choices."))
                                         .clicked()
                                 {

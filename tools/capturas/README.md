@@ -23,3 +23,6 @@ sudo env NUMAPILOT_SYSFS=/tmp/srv NUMAPILOT_PROC_STAT=/tmp/fakeproc/stat ../../t
   iniciar o serviço.
 - Sem `nvidia-smi` de verdade, a NVIDIA do `notebook.sh` precisa de um `nvidia-smi` falso no PATH
   (`FBIN`) que responda ao `--query-gpu`.
+- Sem Xvfb: `NUMAPILOT_GUI_SHOT=/tmp/aba.ppm NUMAPILOT_GUI_SHOT_WAIT=4 NUMAPILOT_GUI_TAB=5
+  numapilot-gui` abre a janela, grava a imagem dela mesma (PPM; `magick aba.ppm aba.png`) e
+  fecha, sem tomar o lugar da janela que já está aberta.

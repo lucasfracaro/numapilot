@@ -2,6 +2,15 @@
 
 ## Ainda não lançado
 
+- **Interface look.** The strip of meters at the top shares one row between its cards (it used
+  to wrap to a second row with fixed-width cards) and each card starts with what tells it apart
+  (socket, card alias). The side menu is grouped (Programs, Hardware, Tools, System) and has a
+  mark next to the name. Section titles have a rule under them. The readings of each graphics
+  card (usage, VRAM, temperatures, fan, power / limit, clock) are tiles instead of a line of
+  text. Small buttons keep a readable height.
+- `NUMAPILOT_GUI_SHOT=file.ppm` (with `NUMAPILOT_GUI_SHOT_WAIT=seconds`): the interface saves
+  its own picture and closes, without taking the place of the window already open. For
+  screenshots without a screen grabber.
 - `numapilot clock [PROGRAM] [--watch]`: the clock a program is really getting. CPU: the
   frequency of the CPUs its threads ran on during a short sample (not the average of every CPU
   it may use, most of them asleep), the governor and the CPUs allowed. GPU: the card it is

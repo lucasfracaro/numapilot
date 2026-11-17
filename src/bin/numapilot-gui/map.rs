@@ -398,7 +398,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         disks_and_net(app, ui);
         ui.separator();
 
-        ui.heading(crate::i18n::tr("Memory and frequency per socket"));
+        crate::theme::title(ui, crate::i18n::tr("Memory and frequency per socket"));
         let nodes = app.topo.nodes.clone();
         egui::Grid::new("sockets").num_columns(4).spacing([16.0, 6.0]).striped(true).show(ui, |ui| {
             ui.label(RichText::new("Socket").strong());
@@ -454,7 +454,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.separator();
 
         ui.horizontal(|ui| {
-            ui.heading(crate::i18n::tr("Cache latency per core"));
+            crate::theme::title(ui, crate::i18n::tr("Cache latency per core"));
             if ui
                 .button(crate::i18n::tr("Measure cores"))
                 .on_hover_text(crate::i18n::tr("Measures L3 cache access from each core (a few seconds, with the PC idle). If the difference is larger than the noise, core choices, including maximum turbo, start preferring the fastest ones."))
@@ -489,7 +489,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.separator();
 
         ui.horizontal(|ui| {
-            ui.heading(crate::i18n::tr("Latency and bandwidth between sockets (measured)"));
+            crate::theme::title(ui, crate::i18n::tr("Latency and bandwidth between sockets (measured)"));
             if ui.button(crate::i18n::tr("Measure now")).on_hover_text(crate::i18n::tr("Takes ~10 s; the PC is busy during the test")).clicked() {
                 let mut v = vec![crate::jobs::sibling("numapilot")];
                 v.push("bench".into());
@@ -532,7 +532,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            if ui.small_button(crate::i18n::tr("Full diagnosis (gfx906-rocm doctor)")).clicked() {
+            if crate::theme::small(ui, crate::i18n::tr("Full diagnosis (gfx906-rocm doctor)")).clicked() {
                 app.start_job(crate::i18n::tr("Diagnosis"), gfx(&["doctor"]));
             }
         });
@@ -579,7 +579,7 @@ fn disks_and_net(app: &App, ui: &mut egui::Ui) {
     let write = Color32::from_rgb(0xf0, 0xa6, 0x3a);
     let down = Color32::from_rgb(0x3e, 0xcf, 0x8e);
     let up = Color32::from_rgb(0xc0, 0x7c, 0xf0);
-    ui.heading(crate::i18n::tr("Disks and network"));
+    crate::theme::title(ui, crate::i18n::tr("Disks and network"));
     if app.disk_rates.is_empty() && app.net_rates.is_empty() {
         ui.label(RichText::new(crate::i18n::tr("Measuring...")).weak());
         return;

@@ -333,7 +333,7 @@ impl Spark {
 pub fn nav_item(ui: &mut egui::Ui, icon: &str, label: &str, selected: bool) -> egui::Response {
     let p = pal(ui);
     let w = ui.available_width();
-    let (rect, resp) = ui.allocate_exact_size(vec2(w, 34.0), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(vec2(w, 32.0), Sense::click());
     let hovered = resp.hovered();
     let painter = ui.painter();
     if selected {
@@ -377,12 +377,27 @@ pub struct Metric<'a> {
     pub color: Color32,
     pub spark: Option<&'a Spark>,
     pub extra: Option<(&'a str, f32)>,
+    /// Card width (the strip shares the row between its cards).
+    pub width: f32,
+    /// Leave room for the second bar even without one (same height along the row).
+    pub tall: bool,
+}
+
+/// Width of each card of a strip of `n` so they share one row (wraps only when they would
+/// get too narrow to read).
+pub fn metric_width(avail: f32, n: usize, gap: f32) -> f32 {
+    let n = n.max(1) as f32;
+    ((avail - gap * (n - 1.0)) / n).floor().clamp(176.0, 300.0)
 }
 
 pub fn metric(ui: &mut egui::Ui, m: &Metric) -> egui::Response {
     let p = pal(ui);
-    let h = if m.extra.is_some() { 128.0 } else { 104.0 };
-    let (rect, resp) = ui.allocate_exact_size(vec2(248.0, h), Sense::hover());
+    let h = if m.extra.is_some() || m.tall {
+        126.0
+    } else {
+        100.0
+    };
+    let (rect, resp) = ui.allocate_exact_size(vec2(m.width, h), Sense::hover());
     let painter = ui.painter_at(rect.expand(2.0));
     painter.rect(
         rect,
@@ -394,8 +409,13 @@ pub fn metric(ui: &mut egui::Ui, m: &Metric) -> egui::Response {
     let inner = rect.shrink(14.0);
     let x = inner.left();
     // name across the full width (clipped if it does not fit)
-    let name: String = if m.name.chars().count() > 36 {
-        m.name.chars().take(35).collect::<String>() + "…"
+    let fit = ((m.width - 28.0) / 6.4) as usize;
+    let name: String = if m.name.chars().count() > fit {
+        m.name
+            .chars()
+            .take(fit.saturating_sub(1))
+            .collect::<String>()
+            + "…"
     } else {
         m.name.to_string()
     };
@@ -410,7 +430,7 @@ pub fn metric(ui: &mut egui::Ui, m: &Metric) -> egui::Response {
         pos2(x, inner.top() + 16.0),
         egui::Align2::LEFT_TOP,
         m.big,
-        FontId::new(22.0, FontFamily::Name(BOLD.into())),
+        FontId::new(23.0, FontFamily::Name(BOLD.into())),
         p.text,
     );
     painter.text(
@@ -422,8 +442,11 @@ pub fn metric(ui: &mut egui::Ui, m: &Metric) -> egui::Response {
     );
     if let Some(sp) = m.spark {
         let r = Rect::from_min_size(
-            pos2(inner.right() - 84.0, inner.top() + 18.0),
-            vec2(84.0, 40.0),
+            pos2(
+                inner.right() - (m.width * 0.32).min(84.0),
+                inner.top() + 20.0,
+            ),
+            vec2((m.width * 0.32).min(84.0), 36.0),
         );
         spark_in(&painter, r, sp, m.color);
     }
@@ -490,4 +513,80 @@ pub fn spark_in(painter: &egui::Painter, rect: Rect, s: &Spark, color: Color32) 
     }
     painter.add(mesh);
     painter.add(egui::Shape::line(pts, Stroke::new(1.5, color)));
+}
+
+/// Section title inside a page: semibold, with a hairline under it and air above (the first
+/// one of a page gets less).
+pub fn title(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    let p = pal(ui);
+    ui.add_space(10.0);
+    let r = ui.label(
+        egui::RichText::new(text)
+            .size(16.0)
+            .family(FontFamily::Name(BOLD.into()))
+            .color(p.text),
+    );
+    let w = ui.available_width();
+    let (line, _) = ui.allocate_exact_size(vec2(w, 1.0), Sense::hover());
+    ui.painter().rect_filled(line, 0.0, p.stroke);
+    // a short accent mark under the title, over the hairline
+    let mark = Rect::from_min_size(line.min - vec2(0.0, 0.5), vec2(r.rect.width().min(w), 2.0));
+    ui.painter()
+        .rect_filled(mark, CornerRadius::same(1), p.accent.gamma_multiply(0.9));
+    ui.add_space(2.0);
+    r
+}
+
+/// Label of a group of the side menu.
+pub fn nav_group(ui: &mut egui::Ui, text: &str) {
+    let p = pal(ui);
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.add_space(12.0);
+        ui.label(
+            egui::RichText::new(text.to_uppercase())
+                .size(10.5)
+                .family(FontFamily::Name(BOLD.into()))
+                .color(p.weak.gamma_multiply(0.8))
+                .extra_letter_spacing(0.8),
+        );
+    });
+    ui.add_space(1.0);
+}
+
+/// Small button that keeps a readable height (egui's own small button has no padding).
+pub fn small(ui: &mut egui::Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = vec2(9.0, 3.0);
+        ui.spacing_mut().interact_size.y = 22.0;
+        ui.add(egui::Button::new(text.into().text_style(TextStyle::Small)))
+    })
+    .inner
+}
+
+/// One reading: small label above, value below, in its own tile.
+pub fn stat(ui: &mut egui::Ui, label: &str, value: &str, color: Option<Color32>) -> egui::Response {
+    let p = pal(ui);
+    egui::Frame::new()
+        .fill(p.track.gamma_multiply(0.55))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(10, 6))
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                ui.label(
+                    egui::RichText::new(label.to_uppercase())
+                        .size(10.0)
+                        .color(p.weak)
+                        .extra_letter_spacing(0.6),
+                );
+                ui.label(
+                    egui::RichText::new(value)
+                        .size(15.0)
+                        .family(FontFamily::Name(BOLD.into()))
+                        .color(color.unwrap_or(p.text)),
+                );
+            });
+        })
+        .response
 }

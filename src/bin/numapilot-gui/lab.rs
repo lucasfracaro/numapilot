@@ -143,7 +143,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                ui.heading(crate::i18n::tr("Data and AI lab"));
+                crate::theme::title(ui, crate::i18n::tr("Data and AI lab"));
                 status_badge(ui, lab_running);
                 if let Some(c) = &lab {
                     ui.label(RichText::new(&c.image).weak().small());
@@ -234,7 +234,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
 
         // ---- containers ----
         ui.horizontal(|ui| {
-            ui.heading("Containers");
+            crate::theme::title(ui, "Containers");
             ui.label(RichText::new(crate::i18n::tr("click \"View apps\" to list what is installed in each one")).weak());
         });
         if containers.is_empty() && matches!(list, Some(Ok(_))) {
@@ -257,10 +257,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 ui.horizontal_wrapped(|ui| {
                     let eng = containers::engine().unwrap_or_else(|| "podman".into());
                     if c.running {
-                        if ui.small_button(crate::i18n::tr("Stop")).clicked() {
+                        if crate::theme::small(ui, crate::i18n::tr("Stop")).clicked() {
                             app.start_job(crate::tf!("Stopping {}", "Parando {}", c.name), vec![eng.clone(), "stop".into(), c.name.clone()]);
                         }
-                    } else if ui.small_button(crate::i18n::tr("Turn on")).clicked() {
+                    } else if crate::theme::small(ui, crate::i18n::tr("Turn on")).clicked() {
                         app.start_job(crate::tf!("Starting {}", "Ligando {}", c.name), vec![eng.clone(), "start".into(), c.name.clone()]);
                     }
                     if ui.add_enabled(c.running, egui::Button::new("Terminal").small()).clicked()
@@ -283,7 +283,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         } else {
                             format!("http://{host}:{}", p.host_port)
                         };
-                        if p.container_port != 2222 && ui.small_button(crate::tf!("open :{}", "abrir :{}", p.host_port)).on_hover_text(&url).clicked() {
+                        if p.container_port != 2222 && crate::theme::small(ui, crate::tf!("open :{}", "abrir :{}", p.host_port)).on_hover_text(&url).clicked() {
                             let _ = open_url(&url);
                         }
                     }

@@ -938,6 +938,25 @@ impl App {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.add_space(6.0);
+            // mark: two sockets side by side, one lit
+            let (r, _) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
+            let pt = ui.painter();
+            pt.rect_filled(
+                r,
+                egui::CornerRadius::same(6),
+                p.accent.gamma_multiply(0.18),
+            );
+            let (a, b) = r.shrink(5.0).split_left_right_at_fraction(0.5);
+            pt.rect_filled(
+                a.shrink2(egui::vec2(1.0, 0.0)),
+                egui::CornerRadius::same(2),
+                p.accent,
+            );
+            pt.rect_filled(
+                b.shrink2(egui::vec2(1.0, 0.0)),
+                egui::CornerRadius::same(2),
+                p.accent.gamma_multiply(0.45),
+            );
             ui.label(
                 RichText::new("numapilot")
                     .size(19.0)
@@ -953,16 +972,36 @@ impl App {
                     .color(p.weak),
             );
         });
-        ui.add_space(14.0);
-        for (t, icon, label, _) in TABS {
-            // tabs hidden in Settings (the one open now never disappears)
-            if self.hidden_tabs.iter().any(|h| h == label) && self.tab != *t {
+        ui.add_space(4.0);
+        // grouped like the things they control; the tab numbers (TABS order) stay the same
+        let groups: [(&str, &[Tab]); 4] = [
+            (
+                i18n::tr("Programs"),
+                &[Tab::Programs, Tab::Profiles, Tab::Startup, Tab::Services],
+            ),
+            ("Hardware", &[Tab::Map, Tab::Gpus, Tab::Machine]),
+            (i18n::tr("Tools"), &[Tab::Lab, Tab::Llm, Tab::Stream]),
+            (i18n::tr("System"), &[Tab::Settings, Tab::Tests]),
+        ];
+        for (name, tabs) in groups {
+            let shown: Vec<_> = tabs
+                .iter()
+                .filter_map(|t| TABS.iter().find(|x| x.0 == *t))
+                // tabs hidden in Settings (the one open now never disappears)
+                .filter(|(t, _, label, _)| {
+                    !self.hidden_tabs.iter().any(|h| h == label) || self.tab == *t
+                })
+                .collect();
+            if shown.is_empty() {
                 continue;
             }
-            if theme::nav_item(ui, icon, i18n::tr(label), self.tab == *t).clicked() {
-                self.tab = *t;
+            theme::nav_group(ui, name);
+            for (t, icon, label, _) in shown {
+                if theme::nav_item(ui, icon, i18n::tr(label), self.tab == *t).clicked() {
+                    self.tab = *t;
+                }
+                ui.add_space(1.0);
             }
-            ui.add_space(2.0);
         }
         ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
             ui.add_space(6.0);
@@ -1056,15 +1095,24 @@ impl App {
             |ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
                 let multi = self.topo.nodes.len() > 1;
+                let cards =
+                    self.topo.nodes.len() + usize::from(self.mem_sys.1 > 0) + self.topo.gpus.len();
+                let width = theme::metric_width(ui.available_width(), cards, 12.0);
+                let tall = self
+                    .topo
+                    .gpus
+                    .iter()
+                    .any(|g| self.live.get(&g.pci).is_some_and(|l| l.vram.is_some()));
                 for n in self.topo.nodes.clone() {
                     let l = self.loads.get(&n.id).copied().unwrap_or(0.0) as f32;
                     let cores = n.physical_cores.max(n.cores.len());
                     let name = if multi {
+                        // what tells the cards apart comes first: the end is cut when narrow
                         crate::tf!(
-                            "{} · socket {} · {cores} cores",
-                            "{} · socket {} · {cores} núcleos",
-                            self.cpu_name,
-                            n.id
+                            "Socket {} · {cores} cores · {}",
+                            "Socket {} · {cores} núcleos · {}",
+                            n.id,
+                            self.cpu_name
                         )
                     } else {
                         crate::tf!("{} · {cores} cores", "{} · {cores} núcleos", self.cpu_name)
@@ -1082,6 +1130,8 @@ impl App {
                             color: p.accent,
                             spark: self.sparks.get(&key),
                             extra: None,
+                            width,
+                            tall,
                         },
                     );
                 }
@@ -1098,6 +1148,8 @@ impl App {
                             color: Color32::from_rgb(0x9b, 0x7b, 0xff),
                             spark: self.sparks.get("mem"),
                             extra: None,
+                            width,
+                            tall,
                         },
                     );
                 }
@@ -1131,13 +1183,15 @@ impl App {
                         ui,
                         &theme::Metric {
                             key: &key,
-                            name: &format!("{} · {}", g.short_name(), g.alias),
+                            name: &format!("{} · {}", g.alias, g.short_name()),
                             big: &format!("{:.0}%", busy * 100.0),
                             small: &info.join(" · "),
                             frac: busy,
                             color: Color32::from_rgb(0x2d, 0xc4, 0xa8),
                             spark: self.sparks.get(&key),
                             extra: vram.as_ref().map(|(t, f)| (t.as_str(), *f)),
+                            width,
+                            tall,
                         },
                     );
                 }
@@ -1234,7 +1288,7 @@ impl App {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(txt).small().color(Color32::from_rgb(230, 160, 40)))
                             .on_hover_text(crate::i18n::tr("Part of the memory is on the other socket: every access to it is slower."));
-                        if ui.small_button(crate::i18n::tr("fix")).clicked() {
+                        if crate::theme::small(ui, crate::i18n::tr("fix")).clicked() {
                             self.pending_fix = Some(g.key.clone());
                         }
                     });
@@ -1630,6 +1684,7 @@ impl eframe::App for App {
 impl App {
     fn frame(&mut self, ui: &mut egui::Ui) {
         single::handle(ui.ctx());
+        shot(ui.ctx());
         if self.last.elapsed() > Duration::from_secs(1) {
             self.refresh();
         }
@@ -1823,7 +1878,7 @@ fn main() -> eframe::Result {
         return Ok(());
     }
     // There is already a window open: it comes to the front and this one does not open another.
-    if single::show_existing() {
+    if std::env::var_os("NUMAPILOT_GUI_SHOT").is_none() && single::show_existing() {
         return Ok(());
     }
     numapilot::log::init("gui");
@@ -1846,12 +1901,46 @@ fn main() -> eframe::Result {
         "numapilot",
         options,
         Box::new(|cc| {
-            single::listen(cc.egui_ctx.clone());
+            if std::env::var_os("NUMAPILOT_GUI_SHOT").is_none() {
+                single::listen(cc.egui_ctx.clone());
+            }
             Ok(Box::new(App::new(cc.egui_ctx.clone())))
         }),
     );
     single::cleanup();
     r
+}
+
+/// Screenshots without a screen grabber: `NUMAPILOT_GUI_SHOT=file.ppm` saves the window's own
+/// picture after `NUMAPILOT_GUI_SHOT_WAIT` seconds (default 4) and closes. This window does not
+/// take the place of the one already open (tools/capturas).
+fn shot(ctx: &egui::Context) {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    static ASKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let Some(path) = std::env::var_os("NUMAPILOT_GUI_SHOT") else {
+        return;
+    };
+    let wait: f32 = std::env::var("NUMAPILOT_GUI_SHOT_WAIT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4.0);
+    let start = *START.get_or_init(Instant::now);
+    ctx.request_repaint_after(Duration::from_millis(200));
+    if start.elapsed().as_secs_f32() >= wait
+        && !ASKED.swap(true, std::sync::atomic::Ordering::Relaxed)
+    {
+        let ctx2 = ctx.clone();
+        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+            egui::ScreenshotCallback::new(move |img: std::sync::Arc<egui::ColorImage>| {
+                let mut out = format!("P6\n{} {}\n255\n", img.size[0], img.size[1]).into_bytes();
+                for px in &img.pixels {
+                    out.extend_from_slice(&[px.r(), px.g(), px.b()]);
+                }
+                let _ = std::fs::write(&path, out);
+                ctx2.send_viewport_cmd(egui::ViewportCommand::Close);
+            }),
+        ));
+    }
 }
 
 pub(crate) fn in_path(bin: &str) -> bool {

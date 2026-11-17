@@ -29,7 +29,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
     }
 
     ui.horizontal(|ui| {
-        ui.heading(crate::i18n::tr("AI server (llama.cpp)"));
+        crate::theme::title(ui, crate::i18n::tr("AI server (llama.cpp)"));
         let (t, c) = match state {
             None => (crate::t2!("stopped", "parado"), Color32::GRAY),
             Some(false) => (
@@ -66,11 +66,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     cfg.set("LLM_MODELS", &d);
                     app.models = None;
                 }
-                if ui.small_button(crate::i18n::tr("open")).clicked() {
+                if crate::theme::small(ui, crate::i18n::tr("open")).clicked() {
                     let _ = std::fs::create_dir_all(&models_dir);
                     let _ = open_url(&models_dir.to_string_lossy());
                 }
-                if ui.small_button(crate::i18n::tr("reload")).clicked() {
+                if crate::theme::small(ui, crate::i18n::tr("reload")).clicked() {
                     app.models = None;
                 }
             });
@@ -283,7 +283,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
             let api = format!("http://127.0.0.1:{port}/v1");
             ui.label(RichText::new(format!("API: {api}")).monospace());
-            if ui.small_button(crate::i18n::tr("copy")).clicked() {
+            if crate::theme::small(ui, crate::i18n::tr("copy")).clicked() {
                 ui.ctx().copy_text(api);
             }
         });

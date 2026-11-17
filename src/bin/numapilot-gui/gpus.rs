@@ -25,12 +25,7 @@ fn temps(ui: &mut egui::Ui, s: &Sensors) {
         ("VRM", s.vrm_c),
     ] {
         if let Some(t) = v {
-            ui.label(label.to_string());
-            ui.label(
-                RichText::new(format!("{t:.0} °C"))
-                    .strong()
-                    .color(temp_color(t)),
-            );
+            crate::theme::stat(ui, label, &format!("{t:.0} °C"), Some(temp_color(t)));
         }
     }
 }
@@ -368,7 +363,7 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
             s.curve = if custom { od.curve.iter().map(|c| (c.1, c.2)).collect() } else { vec![] };
         }
         for mv in [25u32, 50] {
-            if ui.small_button(crate::tf!("reduce {mv} mV", "reduzir {mv} mV")).on_hover_text(crate::i18n::tr("Undervolt: same frequency with less voltage (less heat and power). Test the stability.")).clicked() {
+            if crate::theme::small(ui, crate::tf!("reduce {mv} mV", "reduzir {mv} mV")).on_hover_text(crate::i18n::tr("Undervolt: same frequency with less voltage (less heat and power). Test the stability.")).clicked() {
                 s.curve = od
                     .curve
                     .iter()
@@ -813,7 +808,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                 ui.add_space(4.0);
             }
             if let Some(d) = &b.docs
-                && ui.small_button(crate::i18n::tr("Community guide")).clicked()
+                && crate::theme::small(ui, crate::i18n::tr("Community guide")).clicked()
             {
                 let _ = crate::jobs::open_url(d);
             }
@@ -873,8 +868,7 @@ fn first_setup_ui(
                 ui.label(RichText::new(&s.detail).small().weak());
                 match &s.action {
                     Some(StepAction::EnableService(name)) => {
-                        if ui
-                            .small_button(crate::i18n::tr("Enable (asks for the password)"))
+                        if crate::theme::small(ui, crate::i18n::tr("Enable (asks for the password)"))
                             .clicked()
                         {
                             app.start_job(
@@ -890,7 +884,7 @@ fn first_setup_ui(
                         }
                     }
                     Some(StepAction::InstallAur(pkg)) => {
-                        if ui.small_button(crate::i18n::tr("Install (AUR)")).clicked()
+                        if crate::theme::small(ui, crate::i18n::tr("Install (AUR)")).clicked()
                             && let Err(e) =
                                 crate::jobs::in_terminal(&[helper.into(), "-S".into(), pkg.clone()])
                         {
@@ -898,8 +892,7 @@ fn first_setup_ui(
                         }
                     }
                     Some(StepAction::RebuildAur(name)) => {
-                        if ui
-                            .small_button(crate::i18n::tr("Rebuild (AUR)"))
+                        if crate::theme::small(ui, crate::i18n::tr("Rebuild (AUR)"))
                             .on_hover_text(crate::i18n::tr("Rebuilds the package against the current system libraries, in a terminal (may ask for the password)"))
                             .clicked()
                             && let Some(cmd) = numapilot::boards::broken_apps(b)
@@ -912,7 +905,7 @@ fn first_setup_ui(
                         }
                     }
                     Some(StepAction::InstallApp(name)) => {
-                        if ui.small_button(crate::i18n::tr("Install")).clicked()
+                        if crate::theme::small(ui, crate::i18n::tr("Install")).clicked()
                             && let Some(cmd) = b
                                 .apps
                                 .iter()
@@ -986,7 +979,7 @@ fn app_buttons(
             }
         }
         if let Some(u) = &a.url
-            && ui.small_button(crate::i18n::tr("page")).clicked()
+            && crate::theme::small(ui, crate::i18n::tr("page")).clicked()
         {
             let _ = crate::jobs::open_url(u);
         }
@@ -1028,7 +1021,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
-                    ui.heading(g.short_name());
+                    ui.label(RichText::new(g.short_name()).size(18.0).family(egui::FontFamily::Name(crate::theme::BOLD.into())));
                     ui.label(
                         RichText::new(format!(
                             "{} · {} · socket {} · {}",
@@ -1040,8 +1033,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                         .weak(),
                     );
                     if topo_n > 1
-                        && ui
-                            .small_button(crate::i18n::tr("Test this card's selection"))
+                        && crate::theme::small(ui, crate::i18n::tr("Test this card's selection"))
                             .on_hover_text(crate::i18n::tr("Runs vulkaninfo and glxinfo the way a game would on this card and shows which card answered (Vulkan/DirectX and OpenGL)."))
                             .clicked()
                     {
@@ -1049,31 +1041,27 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                 });
                 ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+                    let stat = crate::theme::stat;
+                    stat(ui, crate::t2!("usage", "uso"), &format!("{}%", g.busy_percent().unwrap_or(0)), None);
+                    if let Some((u, t)) = g.vram_used_total() {
+                        stat(ui, "VRAM", &format!("{:.1} / {:.0} GB", u as f64 / 1073741824.0, t as f64 / 1073741824.0), None);
+                    }
                     temps(ui, &s);
-                    ui.separator();
                     if let Some(rpm) = s.fan_rpm {
-                        ui.label(crate::tf!("fan {rpm} RPM", "ventoinha {rpm} RPM"));
+                        let pct = s.fan_pct.map(|p| format!(" · {p:.0}%")).unwrap_or_default();
+                        stat(ui, crate::t2!("fan", "ventoinha"), &format!("{rpm} RPM{pct}"), None);
                     }
-                    if let Some(p) = s.fan_pct {
-                        ui.label(format!("({p:.0}%)"));
-                    }
-                    ui.separator();
                     if let Some(w) = s.power_w {
-                        ui.label(format!("{w:.0} W"));
+                        let cap = s.power_cap_w.map(|c| format!(" / {c:.0}")).unwrap_or_default();
+                        stat(ui, crate::t2!("power", "potência"), &format!("{w:.0}{cap} W"), None)
+                            .on_hover_text(crate::t2!("Power now / the card's limit", "Potência agora / limite da placa"));
                     }
                     if let Some(c) = s.clock_mhz {
-                        ui.label(format!("{c:.0} MHz"));
+                        stat(ui, "clock", &format!("{c:.0} MHz"), None);
                     }
                     if let Some(mv) = s.voltage_mv {
-                        ui.label(format!("{mv:.0} mV"));
-                    }
-                    if let Some(c) = s.power_cap_w {
-                        ui.label(RichText::new(crate::tf!("limit {c:.0} W", "limite {c:.0} W")).weak());
-                    }
-                    ui.separator();
-                    ui.label(crate::tf!("usage {}%", "uso {}%", g.busy_percent().unwrap_or(0)));
-                    if let Some((u, t)) = g.vram_used_total() {
-                        ui.label(format!("VRAM {:.1}/{:.0} GB", u as f64 / 1073741824.0, t as f64 / 1073741824.0));
+                        stat(ui, crate::t2!("voltage", "tensão"), &format!("{mv:.0} mV"), None);
                     }
                 });
                 board_ui(app, ui, g);
@@ -1183,7 +1171,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                         for (i, pt) in edit.curve.iter_mut().enumerate() {
                                             ui.add(egui::DragValue::new(&mut pt.0).range(20.0..=100.0).suffix(" °C"));
                                             ui.add(egui::DragValue::new(&mut pt.1).range(0.0..=100.0).suffix(" %"));
-                                            if n > 2 && ui.small_button("x").clicked() {
+                                            if n > 2 && crate::theme::small(ui, "x").clicked() {
                                                 remove = Some(i);
                                             }
                                             ui.end_row();
@@ -1193,11 +1181,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                         }
                                     });
                                     ui.horizontal(|ui| {
-                                        if ui.small_button(crate::i18n::tr("+ point")).clicked() {
+                                        if crate::theme::small(ui, crate::i18n::tr("+ point")).clicked() {
                                             let last = edit.curve.last().copied().unwrap_or((70.0, 60.0));
                                             edit.curve.push(((last.0 + 5.0).min(100.0), last.1));
                                         }
-                                        if ui.small_button(crate::i18n::tr("default curve")).clicked() {
+                                        if crate::theme::small(ui, crate::i18n::tr("default curve")).clicked() {
                                             edit.curve = default_curve();
                                         }
                                     });
@@ -1343,7 +1331,7 @@ fn apu_memory_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                 vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "boot".into(), "gpu-memory".into(), format!("{v:.1}")],
             );
         }
-        if saved.is_some() && ui.small_button(crate::i18n::tr("default")).clicked() {
+        if saved.is_some() && crate::theme::small(ui, crate::i18n::tr("default")).clicked() {
             app.start_job(
                 crate::i18n::tr("GPU memory"),
                 vec!["pkexec".into(), crate::jobs::sibling_abs("numapilot"), "boot".into(), "gpu-memory".into(), "padrao".into()],

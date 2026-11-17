@@ -39,7 +39,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         Err(_) => (false, false, None),
     };
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.heading(crate::i18n::tr("General"));
+        crate::theme::title(ui, crate::i18n::tr("General"));
         ui.horizontal(|ui| {
             ui.label(crate::i18n::tr("numapilot service:"));
             if daemon_ok {
@@ -65,7 +65,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Language"));
+        crate::theme::title(ui, crate::i18n::tr("Language"));
         ui.horizontal(|ui| {
             let en = !crate::i18n::portuguese();
             if ui.selectable_label(!en, "Português").clicked() {
@@ -80,7 +80,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             }
         });
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Menu tabs"));
+        crate::theme::title(ui, crate::i18n::tr("Menu tabs"));
         ui.label(
             RichText::new(crate::i18n::tr("Uncheck what you do not use on this PC to make the menu shorter. Nothing is turned off: it is only the menu."))
                 .small()
@@ -105,7 +105,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         });
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Updates"));
+        crate::theme::title(ui, crate::i18n::tr("Updates"));
         let mut on = auto;
         if ui
             .checkbox(&mut on, crate::i18n::tr("Check every week (lab, llama.cpp and ROCm)"))
@@ -132,7 +132,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         selfupdate_ui(app, ui);
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Phone panel"));
+        crate::theme::title(ui, crate::i18n::tr("Phone panel"));
         web_ui(app, ui);
 
         peers_ui(app, ui);
@@ -142,7 +142,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         vm_ui(app, ui);
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Boot options"));
+        crate::theme::title(ui, crate::i18n::tr("Boot options"));
         let od = numapilot::bootcfg::overdrive_state();
         ui.horizontal(|ui| {
             let mut on = od.on_next_boot;
@@ -179,7 +179,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         );
 
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Diagnosis"));
+        crate::theme::title(ui, crate::i18n::tr("Diagnosis"));
         ui.label(crate::i18n::tr("Tests each part on your hardware (NUMA, cgroups, Vulkan GPU selection, ROCm, fans, OverDrive, ReBAR, Steam) and says what to fix."));
         ui.horizontal(|ui| {
             if ui.button(crate::i18n::tr("Check everything")).clicked() {
@@ -198,7 +198,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         });
 
         ui.add_space(8.0);
-        ui.heading("Hardware");
+        crate::theme::title(ui, "Hardware");
         for n in &app.topo.nodes {
             ui.label(crate::tf!(
                 "Socket {} — {} threads ({} physical cores), RAM {:.0} GB, CPUs {}", "Socket {} — {} threads ({} núcleos físicos), RAM {:.0} GB, CPUs {}",
@@ -229,7 +229,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.label(RichText::new(crate::tf!("Warning: {w}", "Aviso: {w}")).color(Color32::from_rgb(230, 160, 40)));
         }
         ui.add_space(8.0);
-        ui.heading(crate::i18n::tr("Tips"));
+        crate::theme::title(ui, crate::i18n::tr("Tips"));
         ui.label(crate::i18n::tr("• Game on an MI50: choose \"MI50 — game/graphics\" in the Programs tab."));
         ui.label(crate::i18n::tr("• Lossless Scaling (lsfg-vk): the official one generates the frames on the same GPU as the game."));
         ui.label(crate::i18n::tr("• Advanced settings: /etc/numapilot.toml (rules) and /etc/gfx906-rocm.conf (lab/ROCm)."));
@@ -330,10 +330,7 @@ fn notify_ui(app: &mut App, ui: &mut egui::Ui) {
                 Err(e) => app.toast(e, false),
             }
         }
-        if ui
-            .small_button(crate::i18n::tr("open in the browser"))
-            .clicked()
-        {
+        if crate::theme::small(ui, crate::i18n::tr("open in the browser")).clicked() {
             let _ = crate::jobs::open_url(&n.subscribe_url());
         }
     });
@@ -357,12 +354,11 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(&p.name);
             ui.label(RichText::new(&p.url).small().weak());
-            if ui.small_button(crate::i18n::tr("open")).clicked() {
+            if crate::theme::small(ui, crate::i18n::tr("open")).clicked() {
                 let _ = crate::jobs::open_url(&p.link());
             }
             if p.mac.is_some()
-                && ui
-                    .small_button(crate::i18n::tr("turn on"))
+                && crate::theme::small(ui, crate::i18n::tr("turn on"))
                     .on_hover_text(crate::i18n::tr("Sends the Wake-on-LAN packet"))
                     .clicked()
             {
@@ -371,8 +367,7 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
                     Err(e) => app.toast(e, false),
                 }
             }
-            if ui
-                .small_button(crate::i18n::tr("copy profiles"))
+            if crate::theme::small(ui, crate::i18n::tr("copy profiles"))
                 .on_hover_text(crate::i18n::tr(
                     "Brings in the program profiles (Adjust…) this PC does not have yet",
                 ))
@@ -383,7 +378,7 @@ fn peers_ui(app: &mut App, ui: &mut egui::Ui) {
                     Err(e) => app.toast(e, false),
                 }
             }
-            if ui.small_button(crate::i18n::tr("remove")).clicked() {
+            if crate::theme::small(ui, crate::i18n::tr("remove")).clicked() {
                 let _ = numapilot::peers::remove(&p.name);
             }
         });

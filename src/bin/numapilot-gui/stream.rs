@@ -70,7 +70,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         Err(_) => return,
     };
     ui.horizontal(|ui| {
-        ui.heading(crate::i18n::tr("Game streaming (Sunshine)"));
+        crate::theme::title(ui, crate::i18n::tr("Game streaming (Sunshine)"));
         if sun.install.is_some() {
             let (t, c) = if sun.active {
                 (crate::i18n::tr("on"), Color32::from_rgb(90, 180, 110))

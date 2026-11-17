@@ -269,19 +269,18 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 ui.label(RichText::new(now).small().color(p.ok));
                             }
                             if it.id != "kde:session"
-                                && ui.small_button(crate::i18n::tr("Details")).on_hover_text(crate::i18n::tr("Where it comes from: file, program, package, folders")).clicked()
+                                && crate::theme::small(ui, crate::i18n::tr("Details")).on_hover_text(crate::i18n::tr("Where it comes from: file, program, package, folders")).clicked()
                             {
                                 details = Some(it.clone());
                             }
                             if it.removable
-                                && ui.small_button(crate::i18n::tr("Remove")).on_hover_text(crate::i18n::tr("Deletes this startup shortcut (does not uninstall the program)")).clicked()
+                                && crate::theme::small(ui, crate::i18n::tr("Remove")).on_hover_text(crate::i18n::tr("Deletes this startup shortcut (does not uninstall the program)")).clicked()
                             {
                                 remove = Some(it.clone());
                             }
                             if it.protected.is_none()
                                 && it.id != "kde:session"
-                                && ui
-                                    .small_button(crate::i18n::tr("Uninstall…"))
+                                && crate::theme::small(ui, crate::i18n::tr("Uninstall…"))
                                     .on_hover_text(crate::i18n::tr("Removes the program the right way for its source (package, Flatpak, npm, pipx, file...)"))
                                     .clicked()
                             {
@@ -384,7 +383,7 @@ fn path_row(ui: &mut egui::Ui, label: &str, p: &std::path::Path) {
         } else {
             p.parent().map(|d| d.to_path_buf()).unwrap_or_default()
         };
-        if ui.small_button(crate::i18n::tr("Open folder")).clicked() {
+        if crate::theme::small(ui, crate::i18n::tr("Open folder")).clicked() {
             let _ = crate::jobs::open_url(&dir.to_string_lossy());
         }
     });

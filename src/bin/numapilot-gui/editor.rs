@@ -504,7 +504,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             }
                             if ed.picking {
                                 ui.label(RichText::new(crate::tf!("{} CPUs selected", "{} CPUs selecionados", ed.pick.len())).weak());
-                                if ui.small_button(crate::i18n::tr("clear")).clicked() {
+                                if crate::theme::small(ui, crate::i18n::tr("clear")).clicked() {
                                     ed.pick.clear();
                                 }
                             }
