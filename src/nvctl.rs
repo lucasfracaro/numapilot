@@ -215,6 +215,56 @@ pub fn set_power_limit(pci: &str, watts: Option<f64>) -> Result<f64, String> {
     Ok(v)
 }
 
+/// Busy now with the clock held down by a clock setting (`nvidia-smi -lgc`/`-ac`, left by
+/// another tool) and not by heat or power: (use %, clock MHz, max clock MHz). Reasons bits
+/// from NVML: 0x2 applications clocks setting; 0x4 SW power cap, 0x8 HW slowdown, 0x40 SW
+/// thermal, 0x80 HW thermal, 0x100 HW power brake.
+pub fn held_by_setting(pci: &str) -> Option<(f64, f64, f64)> {
+    if asleep(pci) {
+        return None;
+    }
+    let i = index_of(pci).ok()?.to_string();
+    for field in [
+        "clocks_event_reasons.active",
+        "clocks_throttle_reasons.active",
+    ] {
+        let o = Command::new(smi())
+            .args([
+                "-i",
+                &i,
+                &format!("--query-gpu=utilization.gpu,clocks.gr,clocks.max.gr,{field}"),
+                "--format=csv,noheader,nounits",
+            ])
+            .output()
+            .ok()?;
+        if !o.status.success() {
+            continue;
+        }
+        return parse_held(&String::from_utf8_lossy(&o.stdout));
+    }
+    None
+}
+
+/// "97, 600, 2100, 0x0000000000000002" → Some((97, 600, 2100)) when held by a clock setting.
+pub fn parse_held(line: &str) -> Option<(f64, f64, f64)> {
+    let c: Vec<&str> = line.trim().split(',').map(str::trim).collect();
+    let f = |i: usize| c.get(i)?.parse::<f64>().ok();
+    let (util, clock, max) = (f(0)?, f(1)?, f(2)?);
+    let bits = u64::from_str_radix(c.get(3)?.trim_start_matches("0x"), 16).ok()?;
+    let heat_or_power = 0x4 | 0x8 | 0x40 | 0x80 | 0x100;
+    (bits & 0x2 != 0 && bits & heat_or_power == 0 && util >= 50.0 && clock < max * 0.8)
+        .then_some((util, clock, max))
+}
+
+/// Back to the card's own clocks: undoes `-lgc` (locked) and `-ac` (application clocks).
+pub fn reset_clocks(pci: &str) -> Result<(), String> {
+    let i = index_of(pci)?.to_string();
+    let r = run(&["-i".into(), i.clone(), "-rgc".into()]);
+    // application clocks do not exist on most GeForce: its error does not count
+    let _ = run(&["-i".into(), i, "-rac".into()]);
+    r
+}
+
 /// Locks the GPU's maximum clock (None = back to normal). Together with the power limit,
 /// it is the way to make the card draw and heat less through nvidia-smi.
 pub fn set_clock_max(pci: &str, mhz: Option<u32>) -> Result<(), String> {
@@ -252,6 +302,22 @@ pub fn cuda_indices(topo: &crate::topo::Topology) -> BTreeMap<String, usize> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn held_clock() {
+        assert_eq!(
+            super::parse_held("97, 600, 2100, 0x0000000000000002"),
+            Some((97.0, 600.0, 2100.0))
+        );
+        // heat: not a setting
+        assert_eq!(super::parse_held("97, 600, 2100, 0x0000000000000042"), None);
+        // idle
+        assert_eq!(super::parse_held("3, 300, 2100, 0x0000000000000003"), None);
+        assert_eq!(
+            super::parse_held("97, 2000, 2100, 0x0000000000000002"),
+            None
+        );
+    }
+
     use super::*;
 
     #[test]

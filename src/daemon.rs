@@ -1286,6 +1286,60 @@ pub fn run(cfg: Config) -> Result<()> {
                 );
             }
         }
+        // The same for NVIDIA and Intel: a card held at a low clock ceiling by another tool
+        // (`nvidia-smi -lgc`, GreenWithEnvy, LACT; Intel `gt_max_freq_mhz`) while a program
+        // uses it. Only when numapilot itself has no ceiling for the card; Intel every 2 s,
+        // NVIDIA every 5 s, only while awake and used by a program here, and nvidia-smi
+        // (~50 ms) is asked for the reasons only when the shared reading shows it busy and
+        // well below its top clock. Three checks in a row.
+        for g in topo
+            .gpus
+            .iter()
+            .filter(|g| g.vendor == 0x10de || g.vendor == 0x8086)
+        {
+            let nvidia = g.vendor == 0x10de;
+            if !tick.is_multiple_of(if nvidia { 5 } else { 2 }) {
+                continue;
+            }
+            let pci = &g.pci;
+            let own_cap = gpuc.map.get(pci).and_then(|c| c.clock_max_mhz).is_some();
+            let used = procs.values().any(|t| t.gpus.contains(&g.alias));
+            let n = stuck_low.entry(pci.clone()).or_insert(0u32);
+            let held = if own_cap || !used {
+                None
+            } else if nvidia {
+                crate::nvctl::get(pci)
+                    .filter(|q| {
+                        q.util_pct.unwrap_or(0.0) >= 50.0
+                            && q.clock_mhz
+                                .zip(q.clock_max_mhz)
+                                .is_some_and(|(c, m)| c < m * 0.8)
+                    })
+                    .and_then(|_| crate::nvctl::held_by_setting(pci))
+                    .map(|(_, c, m)| (c, m))
+            } else {
+                gpuctl::intel_capped(pci).map(|(c, _, m)| (c as f64, m as f64))
+            };
+            let Some((clock, max)) = held else {
+                *n = 0;
+                continue;
+            };
+            *n += 1;
+            if *n != 3 {
+                continue;
+            }
+            let r = if nvidia {
+                crate::nvctl::reset_clocks(pci)
+            } else {
+                gpuctl::set_intel_max_freq(pci, None)
+            };
+            match r {
+                Ok(()) => crate::nlog!(
+                    "{pci}: busy at {clock:.0} of {max:.0} MHz under a clock ceiling set by another tool: back to the card's own clocks"
+                ),
+                Err(e) => crate::nlog!("{pci}: clock ceiling set by another tool: {e}"),
+            }
+        }
         // The NVIDIA offset is lost when the laptop card sleeps and wakes:
         // check from time to time (only while it is awake, so as not to wake it).
         if tick.is_multiple_of(10) {

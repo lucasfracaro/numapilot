@@ -619,6 +619,13 @@ pub fn intel_freq(pci: &str) -> Option<(u32, u32, u32, u32, u32)> {
     ))
 }
 
+/// Intel GPU running at a ceiling below the factory one: (current, ceiling, factory) MHz when
+/// it is at the ceiling (so it wants more) and the ceiling is under 90% of the factory one.
+pub fn intel_capped(pci: &str) -> Option<(u32, u32, u32)> {
+    let (cur, _, max, _, hw_max) = intel_freq(pci)?;
+    (hw_max > 0 && max * 10 < hw_max * 9 && cur + 25 >= max).then_some((cur, max, hw_max))
+}
+
 /// Intel GPU frequency ceiling (None = the factory one).
 pub fn set_intel_max_freq(pci: &str, mhz: Option<u32>) -> Result<(), String> {
     let c = drm_card_dir(pci).ok_or("sem placa DRM")?;
@@ -1040,6 +1047,32 @@ mod profile_tests {
         assert!(b.above_4g);
         assert_eq!(b.max_bytes, Some(8 << 30), "bit 13 = 8 GB");
         assert!(!b.full());
+    }
+
+    #[test]
+    fn intel_ceiling_from_another_tool() {
+        let root = std::env::temp_dir().join("numapilot-intel-cap-test");
+        let _ = std::fs::remove_dir_all(&root);
+        let c = root.join("bus/pci/devices/0000:00:02.0/drm/card0");
+        std::fs::create_dir_all(&c).unwrap();
+        for (f, v) in [
+            ("gt_cur_freq_mhz", "600"),
+            ("gt_min_freq_mhz", "300"),
+            ("gt_max_freq_mhz", "600"),
+            ("gt_RPn_freq_mhz", "300"),
+            ("gt_RP0_freq_mhz", "1150"),
+        ] {
+            std::fs::write(c.join(f), v).unwrap();
+        }
+        let _g = crate::util::test_sysfs_lock(&root);
+        assert_eq!(intel_capped("0000:00:02.0"), Some((600, 600, 1150)));
+        // idle under the ceiling: it does not want more
+        std::fs::write(c.join("gt_cur_freq_mhz"), "300").unwrap();
+        assert_eq!(intel_capped("0000:00:02.0"), None);
+        // factory ceiling
+        std::fs::write(c.join("gt_max_freq_mhz"), "1150").unwrap();
+        std::fs::write(c.join("gt_cur_freq_mhz"), "1150").unwrap();
+        assert_eq!(intel_capped("0000:00:02.0"), None);
     }
 
     #[test]

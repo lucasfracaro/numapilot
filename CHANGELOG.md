@@ -1,5 +1,15 @@
 # Mudanças
 
+## Ainda não lançado
+
+- **NVIDIA and Intel held at a low clock ceiling by another tool.** Like the AMD check: a
+  card used by a program, busy and held below its top clock by a setting (NVIDIA: the
+  "applications clocks setting" reason with no heat or power reason, as `nvidia-smi -lgc`,
+  GreenWithEnvy or LACT leave it; Intel: running at a `gt_max_freq_mhz` under 90% of the
+  factory one) goes back to its own clocks (`nvidia-smi -rgc`/`-rac`; the factory ceiling)
+  after three checks in a row. Not when numapilot has its own ceiling for the card. NVIDIA is
+  checked every 5 s and only while awake and used here; nvidia-smi is asked for the reasons
+  only when the shared reading already shows it busy and below 80% of its top clock.
 ## 0.5.6 — 2026-11-17
 
 - **AMD card stuck at its lowest clock in the "manual" level.** Setting a power profile (3D
