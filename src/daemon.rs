@@ -1864,6 +1864,7 @@ fn handle(
         return Response::err(crate::i18n::tr("this process belongs to another user"));
     }
     let mut existed = true;
+    let key = procfs::stable_key(&key);
     if profile.is_auto() {
         existed = profiles.map.remove(&key).is_some();
     } else {
@@ -2438,7 +2439,7 @@ fn classify(
     let idents = procfs::idents(&st.comm, exe.as_deref(), &argv);
     let appimage = procfs::appimage_of(pid, exe.as_deref());
     let key = match &appimage {
-        Some((file, _)) => file.clone(),
+        Some((file, _)) => procfs::stable_key(file),
         None => procfs::learn_key(exe.as_deref(), &argv, &st.comm),
     };
     let steam = procfs::env_var(pid, "SteamAppId");

@@ -11,6 +11,11 @@
   process only while it used ≥ 0.1 core or a card, so an emulator waiting in its menu vanished
   from the list and could not be adjusted. Idle ones are now published with `idle: true`;
   `numapilot status` and the web panel still leave them out.
+- **Profiles survive updates that change the program's folder or file.** Keys drop the parts
+  that change with each version: `Ryujinx-1.2.3` → `Ryujinx-*`, `RPCS3-v0.0.36-17920.AppImage`
+  → `RPCS3-*.AppImage`, Snap revisions, Homebrew Cellar versions, build-hash folders
+  (`claude-code/2.1.325/00b1b977bcc3`), `python3.12` → `python*`. Saved profiles and learned
+  choices are converted when read, so nothing is lost.
 - Program names cut by the kernel at 15 characters (`xdg-desktop-por`, `lichii-linux-x8`) show
   the executable's full name when it starts with them.
 - **Lighter on small PCs (BC-250).** Measured on the server: the open window used ~20-35% of

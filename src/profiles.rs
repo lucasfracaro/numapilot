@@ -384,13 +384,20 @@ impl Profiles {
     pub fn load() -> Profiles {
         let map = std::fs::read_to_string(Self::path())
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .and_then(|s| serde_json::from_str::<BTreeMap<String, Profile>>(&s).ok())
             .unwrap_or_default();
+        // profiles saved before keys dropped versions (`stable_key`) keep working
+        let map = map
+            .into_iter()
+            .map(|(k, p)| (crate::procfs::stable_key(&k), p))
+            .collect();
         Profiles { map }
     }
 
     pub fn get(&self, key: &str) -> Option<&Profile> {
-        self.map.get(key)
+        self.map
+            .get(key)
+            .or_else(|| self.map.get(&crate::procfs::stable_key(key)))
     }
 
     pub fn save(&self) -> std::io::Result<()> {

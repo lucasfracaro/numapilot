@@ -238,6 +238,85 @@ pub fn idents(comm: &str, exe: Option<&str>, argv: &[String]) -> Vec<String> {
 /// Stable "program" key for learning. For interpreters
 /// (python, wine...) it also uses the script/exe passed as an argument.
 pub fn learn_key(exe: Option<&str>, argv: &[String], comm: &str) -> String {
+    stable_key(&learn_key_raw(exe, argv, comm))
+}
+
+/// A program key without the parts that change when the program is updated: versions
+/// (`Ryujinx-1.2.3`, `RPCS3-v0.0.36-17920`, `python3.12`), folders that are only a number (Snap
+/// revision) and folders that are a build hash (`…/2.1.325/00b1b977bcc3/claude`) become `*`.
+/// So a profile keeps applying after an update that installs the program in a new folder or
+/// file. Names with digits that are not versions (`x86_64`, `gfx906`, `steamrt64`) stay.
+pub fn stable_key(key: &str) -> String {
+    key.split('/')
+        .map(|c| {
+            let hexish = c.len() >= 8
+                && c.chars().all(|ch| ch.is_ascii_hexdigit())
+                && c.chars().any(|ch| ch.is_ascii_digit());
+            if !c.is_empty() && (c.chars().all(|ch| ch.is_ascii_digit()) || hexish) {
+                "*".to_string()
+            } else {
+                strip_versions(c)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// "Ryujinx-1.2.3-x64" → "Ryujinx-*-x64"; "RPCS3-v0.0.36-17920.AppImage" → "RPCS3-*.AppImage".
+/// A version is digits with at least one dot (optionally after a `v`); a build number glued
+/// to it with `-` or `+` goes with it.
+fn strip_versions(c: &str) -> String {
+    let b = c.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < b.len() {
+        let start = i;
+        let mut j = i;
+        if (b[j] == b'v' || b[j] == b'V')
+            && j + 1 < b.len()
+            && b[j + 1].is_ascii_digit()
+            && (j == 0 || !b[j - 1].is_ascii_alphanumeric())
+        {
+            j += 1;
+        }
+        let digits = |k: &mut usize| {
+            let s = *k;
+            while *k < b.len() && b[*k].is_ascii_digit() {
+                *k += 1;
+            }
+            *k > s
+        };
+        if j < b.len() && b[j].is_ascii_digit() && (start == 0 || !b[start - 1].is_ascii_digit()) {
+            let mut k = j;
+            digits(&mut k);
+            let mut dots = 0;
+            while k + 1 < b.len() && b[k] == b'.' && b[k + 1].is_ascii_digit() {
+                k += 1;
+                digits(&mut k);
+                dots += 1;
+            }
+            if dots > 0 {
+                // build number glued with - or +
+                let mut m = k;
+                if m + 1 < b.len() && (b[m] == b'-' || b[m] == b'+') && b[m + 1].is_ascii_digit() {
+                    m += 1;
+                    digits(&mut m);
+                    if m == b.len() || !b[m].is_ascii_alphabetic() {
+                        k = m;
+                    }
+                }
+                out.push('*');
+                i = k;
+                continue;
+            }
+        }
+        out.push(b[start] as char);
+        i = start + 1;
+    }
+    out
+}
+
+fn learn_key_raw(exe: Option<&str>, argv: &[String], comm: &str) -> String {
     let Some(exe) = exe else {
         return comm.to_string();
     };
@@ -434,6 +513,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn stable_keys() {
+        for (a, b) in [
+            ("/opt/Ryujinx-1.2.3/Ryujinx", "/opt/Ryujinx-*/Ryujinx"),
+            ("/e/RPCS3-v0.0.36-17920.AppImage", "/e/RPCS3-*.AppImage"),
+            ("/e/cemu-2.6-x86_64.AppImage", "/e/cemu-*-x86_64.AppImage"),
+            (
+                "/e/lichii-linux-x86_64-pgo.AppImage",
+                "/e/lichii-linux-x86_64-pgo.AppImage",
+            ),
+            (
+                "/snap/firefox/5123/usr/lib/firefox/firefox",
+                "/snap/firefox/*/usr/lib/firefox/firefox",
+            ),
+            (
+                "/h/claude-code/2.1.325/00b1b977bcc3/claude",
+                "/h/claude-code/*/*/claude",
+            ),
+            ("/usr/bin/blender", "/usr/bin/blender"),
+            ("/opt/gfx906/steamrt64/x", "/opt/gfx906/steamrt64/x"),
+            (
+                "/usr/bin/wine64-preloader [game.exe]",
+                "/usr/bin/wine64-preloader [game.exe]",
+            ),
+            ("steam:1245620", "steam:1245620"),
+        ] {
+            assert_eq!(stable_key(a), b, "{a}");
+        }
+    }
+
+    #[test]
     fn full_names() {
         assert_eq!(
             full_name("xdg-desktop-por", Some("/usr/lib/xdg-desktop-portal-kde")),
@@ -550,7 +659,7 @@ mod tests {
         ];
         assert_eq!(
             learn_key(Some("/usr/bin/python3.12"), &argv, "python3"),
-            "/usr/bin/python3.12 main.py"
+            "/usr/bin/python* main.py"
         );
         assert_eq!(
             learn_key(Some("/usr/bin/blender"), &[], "blender"),

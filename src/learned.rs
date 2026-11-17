@@ -50,8 +50,11 @@ impl Learned {
     pub fn load() -> Learned {
         let map = std::fs::read_to_string(Self::path())
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+            .and_then(|s| serde_json::from_str::<std::collections::HashMap<String, Entry>>(&s).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k, e)| (crate::procfs::stable_key(&k), e))
+            .collect();
         Learned { map, dirty: false }
     }
 

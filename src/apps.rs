@@ -291,15 +291,16 @@ fn appimages(out: &mut Vec<App>) {
             if !n.to_lowercase().ends_with(".appimage") || !p.is_file() {
                 continue;
             }
-            let key = p.to_string_lossy().to_string();
-            if out.iter().any(|a| a.detail == key) {
+            let file = p.to_string_lossy().to_string();
+            let key = crate::procfs::stable_key(&file);
+            if out.iter().any(|a| a.detail == file) {
                 continue;
             }
             out.push(App {
                 name: n[..n.len() - ".appimage".len()].to_string(),
                 source: "AppImage",
-                key: key.clone(),
-                detail: key,
+                key,
+                detail: file,
                 desktop: None,
             });
         }
