@@ -2,6 +2,11 @@
 
 ## Ainda não lançado
 
+- **AppImage programs show up by name and keep their settings.** A program running from an
+  AppImage was listed as `AppRun` (the launcher inside every AppImage) with a key in a mount
+  point that changes on every start (`/tmp/.mount_XXXX/…`), so a saved profile never applied
+  again. Now the key is the `.AppImage` file (`$APPIMAGE`, the same key the "find installed
+  app" window gives it) and the name is the file's (e.g. `lichii-linux-x86_64-pgo`).
 - **Lighter on small PCs (BC-250).** Measured on the server: the open window used ~20-35% of
   one core and now ~4%; the service reads much less each second.
   - Window: meters no longer slide to each new reading (each slide redrew the window at the

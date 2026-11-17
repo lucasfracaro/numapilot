@@ -2431,7 +2431,11 @@ fn classify(
     let exe = procfs::exe(pid);
     let argv = procfs::cmdline(pid);
     let idents = procfs::idents(&st.comm, exe.as_deref(), &argv);
-    let key = procfs::learn_key(exe.as_deref(), &argv, &st.comm);
+    let appimage = procfs::appimage_of(pid, exe.as_deref());
+    let key = match &appimage {
+        Some((file, _)) => file.clone(),
+        None => procfs::learn_key(exe.as_deref(), &argv, &st.comm),
+    };
     let steam = procfs::env_var(pid, "SteamAppId");
     let pkey = program_key(steam.as_deref(), &key);
     let uid = procfs::uid(pid).unwrap_or(0);
@@ -2440,7 +2444,12 @@ fn classify(
         comm: st.comm.clone(),
         key: key.clone(),
         pkey: pkey.clone(),
-        label: st.comm.clone(),
+        // the AppImage's name, also for its runtime process (exe = the .AppImage file itself)
+        label: match (&appimage, exe.as_deref()) {
+            (Some((_, name)), _) => name.clone(),
+            (None, Some(e)) if e.to_lowercase().ends_with(".appimage") => procfs::appimage_name(e),
+            _ => st.comm.clone(),
+        },
         exe: exe.clone(),
         uid,
         origin: "auto".into(),

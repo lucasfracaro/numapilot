@@ -101,6 +101,28 @@ pub fn env_var(pid: i32, key: &str) -> Option<String> {
     })
 }
 
+/// A program running from inside an AppImage: its file (`$APPIMAGE`) and name. The program's
+/// executable sits in a mount point that changes on every start (`/tmp/.mount_lichiiaEbjnd/…`)
+/// and the process is often called `AppRun`: the file is what stays the same, and it is the
+/// key the "find installed app" window gives to an AppImage.
+pub fn appimage_of(pid: i32, exe: Option<&str>) -> Option<(String, String)> {
+    if !exe.is_some_and(|e| e.contains("/.mount_")) {
+        return None;
+    }
+    let file = env_var(pid, "APPIMAGE").filter(|f| !f.is_empty())?;
+    Some((file.clone(), appimage_name(&file)))
+}
+
+/// "lichii-linux-x86_64-pgo.AppImage" → "lichii-linux-x86_64-pgo"
+pub fn appimage_name(file: &str) -> String {
+    let b = basename(file);
+    let l = b.to_lowercase();
+    match l.strip_suffix(".appimage") {
+        Some(_) => b[..b.len() - ".appimage".len()].to_string(),
+        None => b.to_string(),
+    }
+}
+
 /// All environment variables of the process (only your own processes, or as root).
 pub fn environ(pid: i32) -> Vec<(String, String)> {
     fs::read(format!("/proc/{pid}/environ"))
@@ -401,6 +423,16 @@ pub fn migrate_pages(pid: i32, from: &[usize], to: &[usize]) -> io::Result<i64> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn appimage_names() {
+        assert_eq!(
+            appimage_name("/run/media/x/lichii-linux-x86_64-pgo.AppImage"),
+            "lichii-linux-x86_64-pgo"
+        );
+        assert_eq!(appimage_name("/home/x/Foo.appimage"), "Foo");
+        assert_eq!(appimage_name("/usr/bin/foo"), "foo");
+    }
 
     #[test]
     fn idents_skip_what_a_tool_names() {
