@@ -11,6 +11,7 @@ mod lab;
 mod llm;
 mod machine;
 mod map;
+mod prof;
 mod programs;
 mod services;
 mod settings;
@@ -597,7 +598,7 @@ impl App {
     }
 
     fn refresh(&mut self) {
-        let cur = procfs::cpu_times();
+        let cur = prof::time("r cpu_times", procfs::cpu_times);
         self.loads = node_loads(&self.topo, &self.prev_cpu, &cur);
         let prev: HashMap<usize, (u64, u64)> =
             self.prev_cpu.iter().map(|&(c, b, t)| (c, (b, t))).collect();
@@ -613,9 +614,11 @@ impl App {
             self.cpu_sparks.entry(*c).or_default().push(*l);
         }
         // processor power: the service measures it and publishes it in hw.json
-        let hwj = std::fs::read_to_string(numapilot::learned::run_dir().join("hw.json"))
-            .ok()
-            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok());
+        let hwj = prof::time("r hw.json", || {
+            std::fs::read_to_string(numapilot::learned::run_dir().join("hw.json"))
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        });
         // turbo table (the service reads the MSRs) and cores awake per processor
         if let Some(t) = hwj
             .as_ref()
@@ -655,14 +658,14 @@ impl App {
             .unwrap_or_default();
         {
             // cpufreq or, without it (BC-250), /proc/cpuinfo
-            let mhz = numapilot::cpuctl::cur_mhz_all();
+            let mhz = prof::time("r cur_mhz_all", numapilot::cpuctl::cur_mhz_all);
             for c in self.cpu_loads.keys() {
                 if let Some(m) = mhz.get(c) {
                     self.cpu_freq.insert(*c, *m);
                 }
             }
         }
-        for (pkg, t) in numapilot::cpuctl::package_temps() {
+        for (pkg, t) in prof::time("r package_temps", numapilot::cpuctl::package_temps) {
             let e = self.temp_spark.entry(pkg).or_default();
             // escala 30–100 °C
             e.0.push(((t - 30.0) / 70.0) as f32);
@@ -672,7 +675,7 @@ impl App {
         let dt = self.prev_numa_t.elapsed().as_secs_f64().max(0.1);
         self.prev_numa_t = Instant::now();
         for n in &self.topo.nodes {
-            let st = procfs::numastat(n.id);
+            let st = prof::time("r numastat", || procfs::numastat(n.id));
             let other = st.get("other_node").copied().unwrap_or(0);
             let hit = st.get("local_node").copied().unwrap_or(0) + other;
             if let Some((po, ph)) = self.prev_numa.get(&n.id) {
@@ -692,7 +695,7 @@ impl App {
         }
         self.prev_cpu = cur;
         // Live readings (once a second) and the last minute for the sparklines.
-        self.mem_sys = mem_system();
+        self.mem_sys = prof::time("r mem_system", mem_system);
         let (mu, mt) = self.mem_sys;
         self.sparks
             .entry("mem".into())
@@ -706,13 +709,15 @@ impl App {
                 .push(l);
         }
         for g in &self.topo.gpus {
-            let s = numapilot::gpuctl::read_sensors(&g.pci);
-            let l = Live {
-                busy: g.busy_percent().map(|b| b as f32 / 100.0),
-                temp: s.control_temp(),
-                power: s.power_w,
-                vram: g.vram_used_total(),
-            };
+            let l = prof::time("r gpu sensors", || {
+                let s = numapilot::gpuctl::read_sensors(&g.pci);
+                Live {
+                    busy: g.busy_percent().map(|b| b as f32 / 100.0),
+                    temp: s.control_temp(),
+                    power: s.power_w,
+                    vram: g.vram_used_total(),
+                }
+            });
             self.sparks
                 .entry(format!("gpu{}", g.pci))
                 .or_default()
@@ -724,13 +729,13 @@ impl App {
             .ok()
             .and_then(|t| SystemTime::now().duration_since(t).ok())
             .is_some_and(|d| d < Duration::from_secs(5));
-        let rows: Vec<Row> = daemon::read_state()
+        let rows: Vec<Row> = prof::time("r read_state", daemon::read_state)
             .unwrap_or_default()
             .into_iter()
             .filter(|r| !self.only_mine || r.uid == self.my_uid)
             .collect();
-        self.groups = group_rows(&rows);
-        let (d, n) = self.io.sample();
+        self.groups = prof::time("r group_rows", || group_rows(&rows));
+        let (d, n) = prof::time("r io", || self.io.sample());
         let mut push = |k: String, a: f64, b: f64| {
             let h = self.io_hist.entry(k).or_default();
             for (q, v) in [(&mut h.0, a), (&mut h.1, b)] {
@@ -750,7 +755,10 @@ impl App {
         self.net_rates = n;
         // memory (PSS: memory shared between processes counts only once) and GPU of each
         // process; each program's is the sum
-        self.progs.sample(&self.groups);
+        // per-process memory, GPU and disk: only the Programs tab and the Adjust window show them
+        if self.tab == Tab::Programs || self.editor.is_some() {
+            prof::time("r progs.sample", || self.progs.sample(&self.groups));
+        }
         self.prog_mem = self
             .groups
             .iter()
@@ -763,7 +771,7 @@ impl App {
                 (g.key.clone(), b)
             })
             .collect();
-        self.profiles = Profiles::load();
+        self.profiles = prof::time("r profiles", Profiles::load);
         self.last = Instant::now();
         let msgs: Vec<(String, bool)> = self
             .bg_msgs
@@ -1666,6 +1674,8 @@ impl eframe::App for App {
         // A slow frame means something read the hardware or ran a command while drawing:
         // logged (at most once a minute) so `numapilot log` shows which tab.
         let took = frame_start.elapsed();
+        prof::add("frame (all)", took);
+        prof::frame(&format!("{:?}", self.tab), ui.ctx());
         static LOGGED: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
         if took > Duration::from_millis(150)
             && let Ok(mut l) = LOGGED.lock()
@@ -1703,7 +1713,7 @@ impl App {
             }
         }
         if self.last.elapsed() > Duration::from_secs(1) {
-            self.refresh();
+            prof::time("refresh (all)", || self.refresh());
         }
         ui.ctx().request_repaint_after(Duration::from_millis(1000));
         let p = theme::pal(ui);
@@ -1895,7 +1905,7 @@ fn main() -> eframe::Result {
         return Ok(());
     }
     // There is already a window open: it comes to the front and this one does not open another.
-    if std::env::var_os("NUMAPILOT_GUI_SHOT").is_none() && single::show_existing() {
+    if std::env::var_os("NUMAPILOT_GUI_SHOT").is_none() && !prof::on() && single::show_existing() {
         return Ok(());
     }
     numapilot::log::init("gui");
@@ -1918,7 +1928,7 @@ fn main() -> eframe::Result {
         "numapilot",
         options,
         Box::new(|cc| {
-            if std::env::var_os("NUMAPILOT_GUI_SHOT").is_none() {
+            if std::env::var_os("NUMAPILOT_GUI_SHOT").is_none() && !prof::on() {
                 single::listen(cc.egui_ctx.clone());
             }
             Ok(Box::new(App::new(cc.egui_ctx.clone())))

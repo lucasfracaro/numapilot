@@ -50,6 +50,9 @@ pub(crate) struct ProgTable {
     /// (browsers, Steam), and the interface stuttered while it ran.
     pss_shared: std::sync::Arc<std::sync::Mutex<HashMap<i32, u64>>>,
     pss_busy: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// When the last PSS reading started: one every few seconds is enough for a memory column,
+    /// and each costs ~0.15-0.2 s of processor with a browser and Steam open.
+    pss_at: Option<Instant>,
     io_prev: HashMap<i32, (u64, Instant)>,
     /// Disk read + write of each process (bytes/s).
     disk_bps: HashMap<i32, f64>,
@@ -62,6 +65,9 @@ pub(crate) struct ProgTable {
     /// Collapsed sections: 0 = Applications, 1 = Session and system.
     closed: [bool; 2],
 }
+
+/// How often the memory of each process (PSS) is read again.
+const PSS_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
 
 impl Default for ProgTable {
     fn default() -> Self {
@@ -78,6 +84,7 @@ impl Default for ProgTable {
             pid_mem: HashMap::new(),
             pss_shared: Default::default(),
             pss_busy: Default::default(),
+            pss_at: None,
             io_prev: HashMap::new(),
             disk_bps: HashMap::new(),
             finder: None,
@@ -104,17 +111,20 @@ impl ProgTable {
         if let Ok(m) = self.pss_shared.lock() {
             self.pid_mem = m.clone();
         }
-        if !self
-            .pss_busy
-            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        if self.pss_at.is_none_or(|t| t.elapsed() >= PSS_EVERY)
+            && !self
+                .pss_busy
+                .swap(true, std::sync::atomic::Ordering::AcqRel)
         {
+            self.pss_at = Some(now);
             let pids: Vec<i32> = groups.iter().flat_map(|g| g.pids.iter().copied()).collect();
             let (out, busy) = (self.pss_shared.clone(), self.pss_busy.clone());
             std::thread::spawn(move || {
-                let m: HashMap<i32, u64> = pids
-                    .into_iter()
-                    .filter_map(|p| Some((p, crate::pss_bytes(p)?)))
-                    .collect();
+                let m: HashMap<i32, u64> = crate::prof::time("pss thread", || {
+                    pids.into_iter()
+                        .filter_map(|p| Some((p, crate::pss_bytes(p)?)))
+                        .collect()
+                });
                 if let Ok(mut o) = out.lock() {
                     *o = m;
                 }
@@ -122,18 +132,9 @@ impl ProgTable {
             });
         }
         for g in groups {
-            // only for those with a chosen card (that is what can be checked)
-            if g.gpus.len() == 1 {
-                let mut by: HashMap<String, procctl::GpuUse> = HashMap::new();
-                for &pid in &g.pids {
-                    for (pci, u) in procctl::gpu_use_by_pci(pid) {
-                        let e = by.entry(pci).or_default();
-                        e.engine_ns += u.engine_ns;
-                        e.vram += u.vram;
-                    }
-                }
-                self.by_pci.insert(g.key.clone(), by);
-            }
+            // per card only for those with a chosen card (that is what can be checked)
+            let check = g.gpus.len() == 1;
+            let mut by: HashMap<String, procctl::GpuUse> = HashMap::new();
             if let Some(why) = procctl::kill_blocked(g.main_pid, me) {
                 self.blocked.insert(g.main_pid, why);
             }
@@ -149,9 +150,23 @@ impl ProgTable {
                     }
                     io_prev.insert(pid, (tot, now));
                 }
-                let Some(u) = procctl::gpu_use(pid) else {
+                let clients = procctl::drm_clients(pid);
+                if clients.is_empty() {
                     continue;
-                };
+                }
+                let u = clients
+                    .values()
+                    .fold(procctl::GpuUse::default(), |a, u| procctl::GpuUse {
+                        engine_ns: a.engine_ns + u.engine_ns,
+                        vram: a.vram + u.vram,
+                    });
+                if check {
+                    for (pci, x) in procctl::by_pci(clients) {
+                        let e = by.entry(pci).or_default();
+                        e.engine_ns += x.engine_ns;
+                        e.vram += x.vram;
+                    }
+                }
                 self.vram.insert(pid, u.vram);
                 if let Some((ns, t)) = self.gpu_prev.get(&pid) {
                     let dt = now.duration_since(*t).as_nanos() as f64;
@@ -161,6 +176,9 @@ impl ProgTable {
                     }
                 }
                 prev.insert(pid, (u.engine_ns, now));
+            }
+            if check {
+                self.by_pci.insert(g.key.clone(), by);
             }
         }
         self.gpu_prev = prev;

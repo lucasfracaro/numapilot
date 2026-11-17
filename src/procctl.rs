@@ -185,19 +185,7 @@ pub struct GpuUse {
 
 /// Reads a process's DRM fdinfo. None = does not use a GPU (or cannot be read).
 pub fn gpu_use(pid: i32) -> Option<GpuUse> {
-    let dir = fs::read_dir(format!("/proc/{pid}/fdinfo")).ok()?;
-    let mut clients: HashMap<String, GpuUse> = HashMap::new();
-    for e in dir.flatten() {
-        let Ok(t) = fs::read_to_string(e.path()) else {
-            continue;
-        };
-        if !t.contains("drm-driver:") {
-            continue;
-        }
-        if let Some((id, u)) = parse_drm_fdinfo(&t) {
-            clients.insert(id, u);
-        }
-    }
+    let clients = drm_clients(pid);
     if clients.is_empty() {
         return None;
     }
@@ -210,19 +198,11 @@ pub fn gpu_use(pid: i32) -> Option<GpuUse> {
 /// GPU usage of a process split by card (PCI address). The NVIDIA driver does not
 /// publish fdinfo: processes only on it do not show up here.
 pub fn gpu_use_by_pci(pid: i32) -> HashMap<String, GpuUse> {
-    let mut clients: HashMap<String, GpuUse> = HashMap::new();
-    if let Ok(dir) = fs::read_dir(format!("/proc/{pid}/fdinfo")) {
-        for e in dir.flatten() {
-            let Ok(t) = fs::read_to_string(e.path()) else {
-                continue;
-            };
-            if t.contains("drm-driver:")
-                && let Some((id, u)) = parse_drm_fdinfo(&t)
-            {
-                clients.insert(id, u);
-            }
-        }
-    }
+    by_pci(drm_clients(pid))
+}
+
+/// Groups the DRM clients of [`drm_clients`] by card (PCI address).
+pub fn by_pci(clients: HashMap<String, GpuUse>) -> HashMap<String, GpuUse> {
     let mut by: HashMap<String, GpuUse> = HashMap::new();
     for (id, u) in clients {
         let pci = id.split('/').next().unwrap_or("").to_string();
@@ -234,6 +214,37 @@ pub fn gpu_use_by_pci(pid: i32) -> HashMap<String, GpuUse> {
         e.vram += u.vram;
     }
     by
+}
+
+/// DRM clients of a process (pdev + client id → usage). Only the descriptors that point to
+/// `/dev/dri/` have their fdinfo read: a browser or Steam process holds hundreds of sockets and
+/// files, and reading every fdinfo of every process each second was most of the interface's
+/// processor use.
+pub fn drm_clients(pid: i32) -> HashMap<String, GpuUse> {
+    let mut clients: HashMap<String, GpuUse> = HashMap::new();
+    let Ok(dir) = fs::read_dir(format!("/proc/{pid}/fd")) else {
+        return clients;
+    };
+    for e in dir.flatten() {
+        let Ok(target) = fs::read_link(e.path()) else {
+            continue;
+        };
+        if !target.starts_with("/dev/dri/") {
+            continue;
+        }
+        let Ok(t) = fs::read_to_string(format!(
+            "/proc/{pid}/fdinfo/{}",
+            e.file_name().to_string_lossy()
+        )) else {
+            continue;
+        };
+        if t.contains("drm-driver:")
+            && let Some((id, u)) = parse_drm_fdinfo(&t)
+        {
+            clients.insert(id, u);
+        }
+    }
+    clients
 }
 
 /// The program asked for card `want` (PCI) but is using another? Returns the PCI of the card

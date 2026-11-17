@@ -319,10 +319,12 @@ pub fn chip(ui: &mut egui::Ui, text: &str, color: Color32) -> egui::Response {
         .response
 }
 
-/// Value that slides to the target (no jumps when the reading changes).
-pub fn smooth(ui: &egui::Ui, id: &str, target: f32) -> f32 {
-    ui.ctx()
-        .animate_value_with_time(ui.make_persistent_id(("smooth", id)), target, 0.45)
+/// Value shown by a meter. It used to slide to each new reading, but every slide redraws the
+/// window at the screen's rate (40-110 frames a second here, with readings changing every
+/// second), which cost more processor than everything else the window does: on a small PC
+/// (BC-250) the interface should cost next to nothing. The readings change once a second.
+pub fn smooth(_ui: &egui::Ui, _id: &str, target: f32) -> f32 {
+    target
 }
 
 /// Meter color by level: normal, high, critical.

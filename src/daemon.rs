@@ -1027,6 +1027,9 @@ pub fn run(cfg: Config) -> Result<()> {
     let mut rank_prev = procfs::cpu_times();
     // seconds each card has been busy while forced to the lowest performance level
     let mut stuck_low: HashMap<String, u32> = HashMap::new();
+    // Kernel threads seen: never reread (on the server ~1000 of ~1170 PIDs, most of the
+    // /proc/PID/stat reads of each second). Leaves the set when the PID disappears.
+    let mut kthreads: HashSet<i32> = HashSet::new();
     // sched_ext scheduler in use at the last look, and when to choose cores again after a change
     let mut sx_seen = crate::machine::sched_ext_active();
     let mut sx_replan: Option<u64> = None;
@@ -1093,16 +1096,20 @@ pub fn run(cfg: Config) -> Result<()> {
         let pids = procfs::list_pids();
         let alive: HashSet<i32> = pids.iter().copied().collect();
         procs.retain(|p, _| alive.contains(p));
+        kthreads.retain(|p| alive.contains(p));
         let mut ppids: HashMap<i32, i32> = HashMap::new();
+        // computed again only after a step that may have placed a process that reserves a socket
+        let mut reserved = reserved_nodes(&procs);
 
         for pid in pids {
-            if pid == me {
+            if pid == me || kthreads.contains(&pid) {
                 continue;
             }
             let Some(st) = procfs::read_stat(pid) else {
                 continue;
             };
             if st.is_kthread() {
+                kthreads.insert(pid);
                 continue;
             }
             ppids.insert(pid, st.ppid);
@@ -1113,10 +1120,12 @@ pub fn run(cfg: Config) -> Result<()> {
             };
             if reclassify {
                 admit(&ctx, &learned, &profiles, &mut procs, pid, &st, tick);
+                if procs.get(&pid).is_some_and(|t| t.reserve) {
+                    reserved = reserved_nodes(&procs);
+                }
                 continue;
             }
 
-            let reserved = reserved_nodes(&procs);
             let t = procs.get_mut(&pid).unwrap();
             if pins.contains(&Pin {
                 pid,
@@ -1131,16 +1140,26 @@ pub fn run(cfg: Config) -> Result<()> {
             let own_dt = now.duration_since(t.last_at).as_secs_f64().max(0.001);
             t.last_at = now;
             t.cores = delta / tck / own_dt;
-            // GPUs in use (for the interface), every 5 samples.
+            // Memory per socket and GPUs in use (for the interface): every 10 and 5 samples for
+            // a process that is working, every 60 and 15 for an idle one. numa_maps of a big
+            // program takes 10-20 ms to read; for every placed process each 10 s it was the
+            // largest part of the service's processor use.
             let visible = !matches!(&t.state, St::Ignored(r) if !r.starts_with("manual"));
-            if visible && tick.is_multiple_of(10) && (t.state == St::Placed || t.cores >= 0.05) {
+            let busy = t.cores >= 0.05;
+            let (mem_every, gpu_every) = if busy { (10, 5) } else { (60, 15) };
+            // spread over the ticks so idle processes are not all read in the same second
+            let phase = pid.unsigned_abs() as u64;
+            if visible
+                && (tick + phase).is_multiple_of(mem_every)
+                && (t.state == St::Placed || busy)
+            {
                 let m = procfs::mem_by_node(pid);
                 let max = topo.nodes.iter().map(|n| n.id).max().unwrap_or(0);
                 t.mem = (0..=max)
                     .map(|n| m.get(&n).copied().unwrap_or(0) / 1048576)
                     .collect();
             }
-            if visible && tick.is_multiple_of(5) {
+            if visible && (tick + phase).is_multiple_of(gpu_every) {
                 let drm = procfs::open_drm(pid);
                 let mut g: Vec<String> = drm
                     .iter()
@@ -1154,7 +1173,11 @@ pub fn run(cfg: Config) -> Result<()> {
             if matches!(t.state, St::Ignored(_)) {
                 continue;
             }
+            let reserves = t.reserve;
             step(&ctx, &mut learned, pid, t, &loads, &reserved, tick);
+            if reserves {
+                reserved = reserved_nodes(&procs);
+            }
         }
 
         for (pci, c) in &gpuc.map {

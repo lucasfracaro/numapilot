@@ -1,5 +1,21 @@
 # Mudanças
 
+## Ainda não lançado
+
+- **Lighter on small PCs (BC-250).** Measured on the server: the open window used ~20-35% of
+  one core and now ~4%; the service reads much less each second.
+  - Window: meters no longer slide to each new reading (each slide redrew the window at the
+    screen's rate, 40-110 frames a second); per-process memory, GPU and disk are read only
+    while the Programs tab or the Adjust window is open; the memory of each process (PSS) is
+    read every 10 s instead of continuously; GPU use per process reads only the descriptors
+    that point to `/dev/dri/` instead of every fdinfo.
+  - Service: kernel threads are not read again every second; memory per socket of an idle
+    process is read every 60 s (10 s while it works) and its cards every 15 s (5 s), spread
+    over the seconds; the reserved sockets are computed once per second instead of once per
+    process.
+  - `NUMAPILOT_GUI_STATS=1` prints frames per second and the time of each part of the
+    window every 10 s.
+
 ## 0.5.5 — 2026-11-17
 
 - **Interface look, second pass.** Menu icons drawn with one line weight instead of the fonts'
