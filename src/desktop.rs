@@ -175,6 +175,23 @@ pub fn remove_override(original: &Path) -> std::io::Result<()> {
 /// Line that ties a shortcut made by numapilot to a program (its profile key).
 const KEY_LINE: &str = "X-Numapilot-Key=";
 
+/// Every shortcut numapilot made, by program key (one read of the folder).
+pub fn own_shortcuts() -> std::collections::HashMap<String, PathBuf> {
+    let mut m = std::collections::HashMap::new();
+    for e in fs::read_dir(user_dir()).into_iter().flatten().flatten() {
+        let p = e.path();
+        if p.extension().and_then(|e| e.to_str()) != Some("desktop") {
+            continue;
+        }
+        if let Ok(c) = fs::read_to_string(&p)
+            && let Some(k) = c.lines().find_map(|l| l.trim().strip_prefix(KEY_LINE))
+        {
+            m.entry(k.to_string()).or_insert(p);
+        }
+    }
+    m
+}
+
 /// The shortcut numapilot made for this program (key), if there is one.
 pub fn own_shortcut(key: &str) -> Option<PathBuf> {
     let want = format!("{KEY_LINE}{key}");

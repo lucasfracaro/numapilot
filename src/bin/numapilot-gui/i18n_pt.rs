@@ -1479,7 +1479,20 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("balanced (power saving)", "equilibrado (economia)"),
     ("balanced (performance)", "equilibrado (desempenho)"),
-    ("Back to automatic", "Voltar ao automático"),
+    ("Delete", "Apagar"),
+    ("Click again to delete", "Clique de novo para apagar"),
+    (
+        "Deletes this saved choice: the program goes back to automatic.",
+        "Apaga esta escolha salva: o programa volta para o automático.",
+    ),
+    (
+        "Deletes the shortcut numapilot created for this program. The saved choice stays.",
+        "Apaga o atalho que o numapilot criou para este programa. A escolha salva continua.",
+    ),
+    (
+        "this file no longer exists: the choice applies to nothing",
+        "este arquivo não existe mais: a escolha não vale para nada",
+    ),
     ("AI / ROCm", "IA / ROCm"),
     ("game / graphics", "jogo / gráfico"),
     ("GPU usage", "Uso da GPU"),

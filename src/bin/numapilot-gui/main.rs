@@ -351,6 +351,8 @@ pub(crate) struct App {
     pub(crate) cpu_name: String,
     /// Path typed to import choices.
     import_path: String,
+    /// Saved choice waiting for the second click on Delete.
+    confirm_delete: Option<String>,
     /// Turbo: table per processor (up to N cores awake → MHz) and cores awake right now.
     pub(crate) turbo_tables: BTreeMap<u32, numapilot::turbo::Table>,
     pub(crate) awake: BTreeMap<u32, f32>,
@@ -525,6 +527,7 @@ impl App {
             cpu_power: BTreeMap::new(),
             turbo_tables: BTreeMap::new(),
             import_path: String::new(),
+            confirm_delete: None,
             awake: BTreeMap::new(),
             deep_prev: None,
             prog_mem: HashMap::new(),
@@ -1593,7 +1596,16 @@ impl App {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         let mut delete = None;
+        let mut unshortcut: Option<String> = None;
         let mut edit: Option<(String, Profile)> = None;
+        // shortcuts made by numapilot, by key (the folder is read again every few seconds)
+        let shortcuts = bg::cached(
+            "own-shortcuts",
+            Duration::from_secs(3),
+            ui.ctx(),
+            numapilot::desktop::own_shortcuts,
+        )
+        .unwrap_or_default();
         egui::ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("profiles")
                 .striped(true)
@@ -1619,6 +1631,32 @@ impl App {
                                     .strong(),
                             );
                             ui.label(RichText::new(truncate(k, 50)).small().weak());
+                            // a program file that is gone (moved, renamed, uninstalled): the
+                            // choice no longer applies to anything
+                            if k.starts_with('/')
+                                && !k.contains('*')
+                                && !k.contains(' ')
+                                && !std::path::Path::new(k).exists()
+                            {
+                                ui.label(
+                                    RichText::new(crate::i18n::tr(
+                                        "this file no longer exists: the choice applies to nothing",
+                                    ))
+                                    .small()
+                                    .color(crate::theme::warn()),
+                                );
+                            }
+                            if let Some(sc) = shortcuts.get(k) {
+                                ui.label(
+                                    RichText::new(crate::tf!(
+                                        "menu shortcut: {}",
+                                        "atalho no menu: {}",
+                                        sc.file_name().unwrap_or_default().to_string_lossy()
+                                    ))
+                                    .small()
+                                    .weak(),
+                                );
+                            }
                         });
                         let cpu_t = self
                             .cpu_opts
@@ -1645,8 +1683,38 @@ impl App {
                             if ui.button(crate::i18n::tr("Adjust…")).clicked() {
                                 edit = Some((k.clone(), p.clone()));
                             }
-                            if ui.button(crate::i18n::tr("Back to automatic")).clicked() {
-                                delete = Some(k.clone());
+                            if shortcuts.contains_key(k)
+                                && ui
+                                    .button(crate::i18n::tr("Remove the menu shortcut"))
+                                    .on_hover_text(crate::i18n::tr(
+                                        "Deletes the shortcut numapilot created for this program. The saved choice stays.",
+                                    ))
+                                    .clicked()
+                            {
+                                unshortcut = Some(k.clone());
+                            }
+                            let confirming = self.confirm_delete.as_deref() == Some(k.as_str());
+                            let b = if confirming {
+                                egui::Button::new(
+                                    RichText::new(crate::i18n::tr("Click again to delete"))
+                                        .color(crate::theme::err()),
+                                )
+                            } else {
+                                egui::Button::new(crate::i18n::tr("Delete"))
+                            };
+                            if ui
+                                .add(b)
+                                .on_hover_text(crate::i18n::tr(
+                                    "Deletes this saved choice: the program goes back to automatic.",
+                                ))
+                                .clicked()
+                            {
+                                if confirming {
+                                    delete = Some(k.clone());
+                                    self.confirm_delete = None;
+                                } else {
+                                    self.confirm_delete = Some(k.clone());
+                                }
                             }
                         });
                         ui.end_row();
@@ -1663,6 +1731,18 @@ impl App {
         }
         if let Some(key) = delete {
             self.send(Request::DeleteProfile { key, pid: None });
+        }
+        if let Some(key) = unshortcut {
+            match numapilot::desktop::remove_shortcut(&key) {
+                Ok(_) => self.toast(crate::i18n::tr("Menu shortcut removed"), true),
+                Err(e) => self.toast(
+                    crate::tf!(
+                        "Could not remove the shortcut: {e}",
+                        "Não consegui remover o atalho: {e}"
+                    ),
+                    false,
+                ),
+            }
         }
     }
 }
