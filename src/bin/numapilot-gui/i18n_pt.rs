@@ -77,6 +77,7 @@ pub const PT: &[(&str, &str)] = &[
     ("Disk", "Disco"),
     ("GPU memory", "Memória da GPU"),
     ("Card", "Placa"),
+    ("Priority and clock", "Prioridade e clock"),
     ("Adjust…", "Ajustar…"),
     ("End", "Encerrar"),
     ("Force stop", "Forçar parada"),

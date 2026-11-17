@@ -421,7 +421,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 });
                 let rate = app.numa_rates.get(&n.id).copied().unwrap_or((0.0, 0.0));
                 let txt = crate::tf!("{:.0}/s ({:.1}% of allocations)", "{:.0}/s ({:.1}% das alocações)", rate.0, rate.1 * 100.0);
-                ui.label(if rate.1 > 0.05 { RichText::new(txt).color(Color32::from_rgb(230, 160, 40)) } else { RichText::new(txt) });
+                ui.label(if rate.1 > 0.05 { RichText::new(txt).color(crate::theme::warn()) } else { RichText::new(txt) });
                 let (cur, avail) = governors(n.cpus[0]);
                 if avail.is_empty() {
                     ui.label(RichText::new(crate::i18n::tr("unavailable")).weak());
@@ -448,7 +448,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                      sudo systemctl disable --now irqbalance"),
                 )
                 .small()
-                .color(Color32::from_rgb(230, 160, 40)),
+                .color(crate::theme::warn()),
             );
         }
         ui.separator();
@@ -514,7 +514,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             let lat = b.latency_ns[i][j];
                             let bw = b.bandwidth_gbs[i][j];
                             let t = format!("{lat:.0} ns · {bw:.1} GB/s");
-                            ui.label(if i == j { RichText::new(t).color(Color32::from_rgb(110, 190, 120)) } else { RichText::new(t).color(Color32::from_rgb(230, 160, 40)) });
+                            ui.label(if i == j { RichText::new(t).color(crate::theme::ok()) } else { RichText::new(t).color(crate::theme::warn()) });
                         }
                         ui.end_row();
                     }

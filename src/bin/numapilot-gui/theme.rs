@@ -54,6 +54,35 @@ const LIGHT: Pal = Pal {
     track: Color32::from_rgb(0xe6, 0xe9, 0xef),
 };
 
+/// Theme in use, for colors asked where there is no `ui` at hand (set at every frame).
+static DARK_NOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn note_theme(ctx: &egui::Context) {
+    DARK_NOW.store(
+        ctx.global_style().visuals.dark_mode,
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+fn now() -> Pal {
+    if DARK_NOW.load(std::sync::atomic::Ordering::Relaxed) {
+        DARK
+    } else {
+        LIGHT
+    }
+}
+
+/// Status colors of the theme in use: fine, attention, problem.
+pub fn ok() -> Color32 {
+    now().ok
+}
+pub fn warn() -> Color32 {
+    now().warn
+}
+pub fn err() -> Color32 {
+    now().err
+}
+
 pub fn pal(ui: &egui::Ui) -> Pal {
     if ui.visuals().dark_mode { DARK } else { LIGHT }
 }
@@ -122,7 +151,12 @@ pub fn install(ctx: &egui::Context) {
     fonts.families.insert(FontFamily::Name(BOLD.into()), bold);
     ctx.set_fonts(fonts);
 
-    ctx.set_theme(saved_theme());
+    // NUMAPILOT_GUI_THEME=light|dark: for screenshots, without touching the saved choice
+    ctx.set_theme(match std::env::var("NUMAPILOT_GUI_THEME").as_deref() {
+        Ok("light") => egui::ThemePreference::Light,
+        Ok("dark") => egui::ThemePreference::Dark,
+        _ => saved_theme(),
+    });
     for (theme, p) in [(Theme::Dark, DARK), (Theme::Light, LIGHT)] {
         ctx.style_mut_of(theme, |s| {
             s.text_styles = [
@@ -273,9 +307,11 @@ pub fn chip(ui: &mut egui::Ui, text: &str, color: Color32) -> egui::Response {
         .corner_radius(CornerRadius::same(255))
         .inner_margin(Margin::symmetric(10, 3))
         .show(ui, |ui| {
+            ui.spacing_mut().interact_size.y = 0.0;
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                let (r, _) = ui.allocate_exact_size(vec2(7.0, 7.0), Sense::hover());
+                // as tall as the text, so the dot sits on its middle
+                let (r, _) = ui.allocate_exact_size(vec2(7.0, 16.0), Sense::hover());
                 ui.painter().circle_filled(r.center(), 3.5, color);
                 ui.label(egui::RichText::new(text).color(color).size(12.5));
             });
@@ -345,11 +381,10 @@ pub fn nav_item(ui: &mut egui::Ui, icon: &str, label: &str, selected: bool) -> e
     }
     let fg = if selected { p.text } else { p.weak };
     let icon_c = if selected { p.accent } else { p.weak };
-    painter.text(
-        rect.left_center() + vec2(14.0, 0.0),
-        egui::Align2::LEFT_CENTER,
+    glyph(
+        painter,
+        Rect::from_center_size(rect.left_center() + vec2(21.0, 0.0), vec2(16.0, 16.0)),
         icon,
-        FontId::proportional(15.0),
         icon_c,
     );
     painter.text(
@@ -519,6 +554,15 @@ pub fn spark_in(painter: &egui::Painter, rect: Rect, s: &Spark, color: Color32) 
 /// one of a page gets less).
 pub fn title(ui: &mut egui::Ui, text: &str) -> egui::Response {
     let p = pal(ui);
+    if ui.layout().is_horizontal() {
+        // in a row with other things (a status, a button): the name alone, no rule
+        return ui.label(
+            egui::RichText::new(text)
+                .size(16.0)
+                .family(FontFamily::Name(BOLD.into()))
+                .color(p.text),
+        );
+    }
     ui.add_space(10.0);
     let r = ui.label(
         egui::RichText::new(text)
@@ -589,4 +633,206 @@ pub fn stat(ui: &mut egui::Ui, label: &str, value: &str, color: Option<Color32>)
             });
         })
         .response
+}
+
+/// Background of a chart: its own fill, a hairline border and a light grid (quarters).
+pub fn plot_bg(painter: &egui::Painter, rect: Rect, p: &Pal) {
+    painter.rect(
+        rect,
+        CornerRadius::same(8),
+        p.track.gamma_multiply(0.45),
+        Stroke::new(1.0, p.stroke),
+        egui::StrokeKind::Inside,
+    );
+    for q in 1..4 {
+        let y = rect.top() + rect.height() * q as f32 / 4.0;
+        painter.hline(
+            rect.x_range().shrink(1.0),
+            y,
+            Stroke::new(1.0, p.stroke.gamma_multiply(0.55)),
+        );
+        let x = rect.left() + rect.width() * q as f32 / 4.0;
+        painter.vline(
+            x,
+            rect.y_range().shrink(1.0),
+            Stroke::new(1.0, p.stroke.gamma_multiply(0.3)),
+        );
+    }
+}
+
+/// A line with the area under it lightly filled.
+pub fn area_line(painter: &egui::Painter, pts: Vec<egui::Pos2>, bottom: f32, color: Color32) {
+    if pts.len() < 2 {
+        return;
+    }
+    let mut mesh = egui::Mesh::default();
+    let fill = color.gamma_multiply(0.13);
+    for w in pts.windows(2) {
+        let base = mesh.vertices.len() as u32;
+        for q in [w[0], w[1], pos2(w[1].x, bottom), pos2(w[0].x, bottom)] {
+            mesh.colored_vertex(q, fill);
+        }
+        mesh.add_triangle(base, base + 1, base + 2);
+        mesh.add_triangle(base, base + 2, base + 3);
+    }
+    painter.add(mesh);
+    painter.add(egui::Shape::line(pts, Stroke::new(1.6, color)));
+}
+
+/// Menu icons drawn here, all with the same line weight (the emoji of the fonts had uneven
+/// weights). `r` is a 16×16 box.
+pub fn glyph(p: &egui::Painter, r: Rect, name: &str, c: Color32) {
+    let st = Stroke::new(1.5, c);
+    let at = |x: f32, y: f32| pos2(r.left() + x, r.top() + y);
+    let line = |a: (f32, f32), b: (f32, f32)| {
+        p.line_segment([at(a.0, a.1), at(b.0, b.1)], st);
+    };
+    let boxr = |x0: f32, y0: f32, x1: f32, y1: f32, rad: u8| {
+        p.rect_stroke(
+            Rect::from_min_max(at(x0, y0), at(x1, y1)),
+            CornerRadius::same(rad),
+            st,
+            egui::StrokeKind::Middle,
+        );
+    };
+    let path = |pts: &[(f32, f32)], closed: bool| {
+        let v: Vec<_> = pts.iter().map(|q| at(q.0, q.1)).collect();
+        if closed {
+            p.add(egui::Shape::closed_line(v, st));
+        } else {
+            p.add(egui::Shape::line(v, st));
+        }
+    };
+    match name {
+        // four tiles
+        "apps" => {
+            for (x, y) in [(1.5, 1.5), (9.0, 1.5), (1.5, 9.0), (9.0, 9.0)] {
+                boxr(x, y, x + 5.5, y + 5.5, 1);
+            }
+        }
+        // power button
+        "power" => {
+            let n = 14;
+            let pts: Vec<(f32, f32)> = (0..=n)
+                .map(|i| {
+                    let a = (-60.0 + 300.0 * i as f32 / n as f32).to_radians();
+                    (8.0 + 6.0 * a.cos(), 8.8 - 6.0 * (-a).sin())
+                })
+                .collect();
+            path(&pts, false);
+            line((8.0, 1.5), (8.0, 7.5));
+        }
+        // list with bullets
+        "list" => {
+            for y in [3.5, 8.0, 12.5] {
+                p.circle_filled(at(2.5, y), 1.3, c);
+                line((6.0, y), (14.5, y));
+            }
+        }
+        // processor with pins
+        "chip" => {
+            boxr(3.5, 3.5, 12.5, 12.5, 2);
+            boxr(6.5, 6.5, 9.5, 9.5, 0);
+            for q in [6.0, 10.0] {
+                line((q, 1.0), (q, 3.5));
+                line((q, 12.5), (q, 15.0));
+                line((1.0, q), (3.5, q));
+                line((12.5, q), (15.0, q));
+            }
+        }
+        "bookmark" => path(
+            &[
+                (4.0, 1.5),
+                (12.0, 1.5),
+                (12.0, 14.5),
+                (8.0, 11.0),
+                (4.0, 14.5),
+            ],
+            true,
+        ),
+        // graphics card: board, fan, bracket
+        "card" => {
+            boxr(3.0, 4.0, 15.0, 11.5, 2);
+            p.circle_stroke(at(9.5, 7.75), 2.2, st);
+            line((1.0, 2.5), (1.0, 14.0));
+            line((1.0, 4.0), (3.0, 4.0));
+        }
+        "monitor" => {
+            boxr(1.5, 2.5, 14.5, 11.0, 2);
+            line((8.0, 11.0), (8.0, 13.8));
+            line((5.0, 13.8), (11.0, 13.8));
+        }
+        "flask" => {
+            path(
+                &[
+                    (6.2, 1.5),
+                    (6.2, 6.0),
+                    (2.5, 13.0),
+                    (3.3, 14.5),
+                    (12.7, 14.5),
+                    (13.5, 13.0),
+                    (9.8, 6.0),
+                    (9.8, 1.5),
+                ],
+                false,
+            );
+            line((5.0, 1.5), (11.0, 1.5));
+            line((4.6, 10.5), (11.4, 10.5));
+        }
+        "chat" => path(
+            &[
+                (2.0, 2.5),
+                (14.0, 2.5),
+                (14.0, 10.5),
+                (7.5, 10.5),
+                (4.5, 13.8),
+                (4.5, 10.5),
+                (2.0, 10.5),
+            ],
+            true,
+        ),
+        // screen with a play mark
+        "cast" => {
+            boxr(1.5, 2.5, 14.5, 12.0, 2);
+            path(&[(6.5, 5.0), (10.5, 7.25), (6.5, 9.5)], true);
+            line((5.5, 14.5), (10.5, 14.5));
+        }
+        "sliders" => {
+            line((1.5, 5.0), (14.5, 5.0));
+            line((1.5, 11.0), (14.5, 11.0));
+            p.circle_filled(at(5.5, 5.0), 2.3, c);
+            p.circle_filled(at(10.5, 11.0), 2.3, c);
+        }
+        "check" => {
+            boxr(1.5, 1.5, 14.5, 14.5, 3);
+            path(&[(4.5, 8.2), (7.0, 10.8), (11.5, 5.4)], false);
+        }
+        other => {
+            p.text(
+                r.left_center(),
+                egui::Align2::LEFT_CENTER,
+                other,
+                FontId::proportional(15.0),
+                c,
+            );
+        }
+    }
+}
+
+/// A "?" that shows an explanation when pointed at: for instructions that do not need to be
+/// on the page all the time.
+pub fn help(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    let p = pal(ui);
+    let (r, resp) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::hover());
+    let c = if resp.hovered() { p.accent } else { p.weak };
+    ui.painter()
+        .circle_stroke(r.center(), 8.5, Stroke::new(1.2, c));
+    ui.painter().text(
+        r.center(),
+        egui::Align2::CENTER_CENTER,
+        "?",
+        FontId::new(12.0, FontFamily::Name(BOLD.into())),
+        c,
+    );
+    resp.on_hover_text(text)
 }

@@ -8,11 +8,11 @@ use numapilot::history::History;
 
 fn temp_color(t: f64) -> Color32 {
     if t >= 90.0 {
-        Color32::from_rgb(230, 70, 60)
+        crate::theme::err()
     } else if t >= 75.0 {
-        Color32::from_rgb(230, 160, 40)
+        crate::theme::warn()
     } else {
-        Color32::from_rgb(110, 190, 120)
+        crate::theme::ok()
     }
 }
 
@@ -33,12 +33,8 @@ fn temps(ui: &mut egui::Ui, s: &Sensors) {
 fn draw_curve(ui: &mut egui::Ui, c: &GpuControl, temp: Option<f64>) {
     let (resp, p) = ui.allocate_painter(egui::vec2(280.0, 120.0), egui::Sense::hover());
     let r = resp.rect;
-    p.rect_stroke(
-        r,
-        4.0,
-        Stroke::new(1.0, ui.visuals().weak_text_color()),
-        egui::StrokeKind::Inside,
-    );
+    let pal = crate::theme::pal(ui);
+    crate::theme::plot_bg(&p, r, &pal);
     let map = |t: f64, pct: f64| {
         egui::pos2(
             r.left() + ((t - 20.0) / 80.0).clamp(0.0, 1.0) as f32 * r.width(),
@@ -48,8 +44,8 @@ fn draw_curve(ui: &mut egui::Ui, c: &GpuControl, temp: Option<f64>) {
     let mut pts = vec![map(20.0, c.curve.first().map(|x| x.1).unwrap_or(0.0))];
     pts.extend(c.curve.iter().map(|&(t, pct)| map(t, pct)));
     pts.push(map(100.0, c.curve.last().map(|x| x.1).unwrap_or(100.0)));
-    let col = ui.visuals().selection.bg_fill;
-    p.add(egui::Shape::line(pts, Stroke::new(2.0, col)));
+    let col = pal.accent;
+    crate::theme::area_line(&p, pts, r.bottom() - 1.0, col);
     for &(t, pct) in &c.curve {
         p.circle_filled(map(t, pct), 3.5, col);
     }
@@ -91,18 +87,14 @@ fn draw_curve(ui: &mut egui::Ui, c: &GpuControl, temp: Option<f64>) {
 fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f64) {
     let samples = h.since(secs);
     let (resp, p) = ui.allocate_painter(
-        egui::vec2(ui.available_width().min(620.0), 124.0),
+        egui::vec2(ui.available_width().min(760.0), 140.0),
         egui::Sense::hover(),
     );
     let full = resp.rect;
-    let r = egui::Rect::from_min_max(full.min, egui::pos2(full.right(), full.bottom() - 14.0));
-    p.rect_stroke(
-        r,
-        4.0,
-        Stroke::new(1.0, ui.visuals().weak_text_color()),
-        egui::StrokeKind::Inside,
-    );
-    let small = egui::FontId::proportional(10.0);
+    let r = egui::Rect::from_min_max(full.min, egui::pos2(full.right(), full.bottom() - 16.0));
+    let pal = crate::theme::pal(ui);
+    crate::theme::plot_bg(&p, r, &pal);
+    let small = egui::FontId::proportional(11.0);
     let weak = ui.visuals().weak_text_color();
     if samples.len() < 2 {
         p.text(
@@ -136,16 +128,10 @@ fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f6
     let y90 = y(90.0, 100.0);
     p.line_segment(
         [egui::pos2(r.left(), y90), egui::pos2(r.right(), y90)],
-        Stroke::new(1.0, Color32::from_rgb(190, 70, 60)),
+        Stroke::new(1.0, crate::theme::err()),
     );
-    p.add(egui::Shape::line(
-        pow,
-        Stroke::new(1.5, Color32::from_rgb(90, 140, 220)),
-    ));
-    p.add(egui::Shape::line(
-        temp,
-        Stroke::new(1.5, Color32::from_rgb(230, 120, 60)),
-    ));
+    crate::theme::area_line(&p, pow, r.bottom() - 1.0, pal.accent);
+    crate::theme::area_line(&p, temp, r.bottom() - 1.0, pal.warn);
     let maxt = samples
         .iter()
         .filter_map(|s| s.g.get(idx).map(|g| g[0]))
@@ -162,7 +148,7 @@ fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f6
             "temperatura (máx {maxt:.0} °C)"
         ),
         small.clone(),
-        Color32::from_rgb(230, 120, 60),
+        crate::theme::warn(),
     );
     p.text(
         full.center_bottom(),
@@ -180,7 +166,7 @@ fn history_plot(ui: &mut egui::Ui, h: &History, idx: usize, secs: u64, max_w: f6
         egui::Align2::RIGHT_BOTTOM,
         crate::tf!("power (max {maxp:.0} W)", "potência (máx {maxp:.0} W)"),
         small,
-        Color32::from_rgb(90, 140, 220),
+        pal.accent,
     );
 }
 
@@ -203,7 +189,7 @@ fn rebar_ui(ui: &mut egui::Ui, pci: &str) {
                 "Resizable BAR: ativo ({} visíveis pela CPU)",
                 gb(b.bar_bytes)
             ))
-            .color(Color32::from_rgb(110, 190, 120)),
+            .color(crate::theme::ok()),
         );
         return;
     }
@@ -217,7 +203,7 @@ fn rebar_ui(ui: &mut egui::Ui, pci: &str) {
         txt.push_str(&crate::tf!(" of {}", " de {}", gb(v)));
     }
     txt.push(')');
-    ui.label(RichText::new(txt).color(Color32::from_rgb(230, 160, 40)));
+    ui.label(RichText::new(txt).color(crate::theme::warn()));
     let advice = if !b.above_4g {
         crate::i18n::tr(
             "First step, in the BIOS: enable \"Above 4G Decoding\" (sometimes called \"64-bit PCI\" or \"MMIO above 4G\"). It will not work without it.",
@@ -263,7 +249,7 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
         let st = numapilot::bootcfg::overdrive_state();
         ui.horizontal_wrapped(|ui| {
             if st.on_next_boot {
-                ui.label(RichText::new(crate::i18n::tr("Clock/voltage: OverDrive turns on when you reboot the computer.")).color(Color32::from_rgb(230, 160, 40)));
+                ui.label(RichText::new(crate::i18n::tr("Clock/voltage: OverDrive turns on when you reboot the computer.")).color(crate::theme::warn()));
             } else {
                 ui.label(RichText::new(crate::i18n::tr("Clock/voltage (undervolt/overclock): the driver's OverDrive is off.")).weak());
                 if ui
@@ -405,7 +391,7 @@ fn od_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl, boot_job: &mut Opt
     ui.label(
         RichText::new(crate::i18n::tr("If the card hangs or the game closes by itself, go back one step. On reboot the service reapplies; unchecking \"customize\" restores the default."))
             .small()
-            .color(Color32::from_rgb(230, 160, 40)),
+            .color(crate::theme::warn()),
     );
 }
 
@@ -482,7 +468,7 @@ fn nv_clock_ui(ui: &mut egui::Ui, pci: &str, edit: &mut GpuControl) {
         ui.label(
             RichText::new(crate::i18n::tr("Without locking the maximum clock, the offset becomes an overclock (more clock, same voltage). For undervolt, lock the clock too."))
                 .small()
-                .color(Color32::from_rgb(230, 160, 40)),
+                .color(crate::theme::warn()),
         );
     }
     ui.label(
@@ -526,10 +512,10 @@ fn nv_driver_panel(app: &mut App, ui: &mut egui::Ui) {
             st.available.clone().unwrap_or("?".into())
         ));
         if st.nouveau {
-            ui.label(RichText::new(crate::i18n::tr("Using nouveau (the community's open driver): no performance for games.")).color(Color32::from_rgb(230, 160, 40)));
+            ui.label(RichText::new(crate::i18n::tr("Using nouveau (the community's open driver): no performance for games.")).color(crate::theme::warn()));
         }
         if st.needs_reboot {
-            ui.label(RichText::new(crate::i18n::tr("The installed driver is newer than the loaded one: reboot.")).color(Color32::from_rgb(230, 160, 40)));
+            ui.label(RichText::new(crate::i18n::tr("The installed driver is newer than the loaded one: reboot.")).color(crate::theme::warn()));
         }
         let newer = matches!((&st.installed, &st.available), (Some(i), Some(a)) if i != a);
         ui.horizontal(|ui| {
@@ -552,7 +538,7 @@ fn nv_driver_panel(app: &mut App, ui: &mut egui::Ui) {
                 app.nv_status = None;
             }
             if !newer && st.installed.is_some() {
-                ui.label(RichText::new(crate::i18n::tr("up to date")).color(Color32::from_rgb(90, 180, 110)));
+                ui.label(RichText::new(crate::i18n::tr("up to date")).color(crate::theme::ok()));
             }
         });
     });
@@ -617,11 +603,11 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                 };
                 match sv.iter().find(|s| s.active) {
                     Some(s) => {
-                        ui.label(RichText::new(crate::tf!("Clock governor: {} running", "Governor de clock: {} rodando", s.name)).color(Color32::from_rgb(110, 190, 120)));
+                        ui.label(RichText::new(crate::tf!("Clock governor: {} running", "Governor de clock: {} rodando", s.name)).color(crate::theme::ok()));
                     }
                     None => {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(crate::i18n::tr("No governor running: the GPU stays at a fixed clock.")).color(Color32::from_rgb(230, 160, 40)));
+                            ui.label(RichText::new(crate::i18n::tr("No governor running: the GPU stays at a fixed clock.")).color(crate::theme::warn()));
                             if let Some(s) = sv.iter().find(|s| s.installed) {
                                 if ui.button(crate::tf!("Enable {}", "Ligar {}", s.name)).clicked() {
                                     app.start_job(
@@ -691,7 +677,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                         ui.label(
                             RichText::new(crate::i18n::tr("Raise the clock and the voltage little by little and test the stability (e.g. Unigine Superposition) at each step."))
                                 .small()
-                                .color(Color32::from_rgb(230, 160, 40)),
+                                .color(crate::theme::warn()),
                         );
                         if let Some(newtext) = save {
                             let tmp = std::env::temp_dir().join("numapilot-governor.toml");
@@ -715,7 +701,7 @@ fn board_ui(app: &mut App, ui: &mut egui::Ui, g: &numapilot::topo::Gpu) {
                     }
                 }
             }
-            let ok = Color32::from_rgb(110, 190, 120);
+            let ok = crate::theme::ok();
             // ----- now: CPU cores and clock, GPU CUs and clock -----
             if b.cores.is_some() || b.cus.is_some() {
                 ui.add_space(4.0);
@@ -994,18 +980,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         app.hist = History::load();
         app.hist_at = Some(std::time::Instant::now());
     }
-    ui.label(
-        RichText::new(
-            crate::i18n::tr("Temperature, fan and power of each card. The numapilot service applies them; \
-             if it stops, the fans go back to the card's own control. Above 95 °C the fan goes to 100%."),
-        )
-        .weak(),
-    );
     ui.horizontal(|ui| {
         ui.label(crate::i18n::tr("History:"));
         for (s, l) in [(3600u64, "1 h"), (6 * 3600, "6 h"), (24 * 3600, "24 h")] {
             ui.selectable_value(&mut app.hist_secs, s, l);
         }
+        crate::theme::help(ui, crate::i18n::tr("Temperature, fan and power of each card. The numapilot service applies them; \
+             if it stops, the fans go back to the card's own control. Above 95 °C the fan goes to 100%."));
     });
     ui.separator();
     nv_driver_panel(app, ui);
@@ -1070,7 +1051,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     if let Some(l) = gpuctl::pcie_link(&g.pci) {
                         let txt = crate::tf!("PCIe Gen{} x{} (max Gen{} x{})", "PCIe Gen{} x{} (máx. Gen{} x{})", l.generation, l.width, l.max_gen, l.max_width);
                         if l.width < l.max_width {
-                            ui.label(RichText::new(crate::tf!("{txt}: link narrower than possible; check the slot and the BIOS", "{txt}: link mais estreito que o possível; confira o slot e a BIOS")).color(Color32::from_rgb(230, 160, 40)));
+                            ui.label(RichText::new(crate::tf!("{txt}: link narrower than possible; check the slot and the BIOS", "{txt}: link mais estreito que o possível; confira o slot e a BIOS")).color(crate::theme::warn()));
                         } else {
                             ui.label(RichText::new(txt).weak()).on_hover_text(crate::i18n::tr("The generation drops when the card is idle (power saving); check it while in use."));
                         }
@@ -1089,7 +1070,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 }
                 if g.is_nvidia() {
                     if numapilot::nvctl::driver_version().is_none() {
-                        ui.label(RichText::new(crate::i18n::tr("The official NVIDIA driver is not loaded: no sensors or controls.")).color(Color32::from_rgb(230, 160, 40)));
+                        ui.label(RichText::new(crate::i18n::tr("The official NVIDIA driver is not loaded: no sensors or controls.")).color(crate::theme::warn()));
                         return;
                     }
                     if numapilot::nvctl::asleep(&g.pci) {

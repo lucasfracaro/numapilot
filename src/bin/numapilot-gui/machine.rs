@@ -2,7 +2,7 @@
 //! gaming latency, memory, scheduler, motherboard fans, mitigations and boot.
 
 use crate::App;
-use eframe::egui::{self, Color32, RichText};
+use eframe::egui::{self, RichText};
 use numapilot::cmdline;
 use numapilot::cpuctl;
 use numapilot::ctl::Request;
@@ -11,9 +11,6 @@ use numapilot::gpuctl::FanMode;
 use numapilot::machine::{self, Machine};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
-
-const ORANGE: Color32 = Color32::from_rgb(230, 160, 40);
-const GREEN: Color32 = Color32::from_rgb(110, 190, 120);
 
 #[derive(Default)]
 pub struct MachineUi {
@@ -280,11 +277,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 "Waiting to turn off the NVIDIA: in use by {}. Close those programs (or open them on the integrated GPU).", "Esperando para desligar a NVIDIA: em uso por {}. Feche esses programas (ou abra-os na integrada).",
                                 st.blocked_by.join(", ")
                             ))
-                            .color(Color32::from_rgb(230, 160, 40)),
+                            .color(crate::theme::warn()),
                         );
                     }
                     if let Some(e) = &st.last_error {
-                        ui.label(RichText::new(crate::tf!("Error: {e}", "Erro: {e}")).color(Color32::from_rgb(229, 83, 75)));
+                        ui.label(RichText::new(crate::tf!("Error: {e}", "Erro: {e}")).color(crate::theme::err()));
                     }
                 }
                 {
@@ -384,7 +381,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                                 "KWIN_DRM_DEVICES is also set in {e}: remove it there so this choice works.",
                                 "KWIN_DRM_DEVICES também está em {e}: tire de lá para esta escolha funcionar."
                             ))
-                            .color(Color32::from_rgb(230, 160, 40)),
+                            .color(crate::theme::warn()),
                         );
                     }
                 }
@@ -457,7 +454,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                             ui.label(
                                 RichText::new(crate::tf!("Woken by: {}", "Acordada por: {}", names.join(", ")))
                                     .small()
-                                    .color(Color32::from_rgb(230, 160, 40)),
+                                    .color(crate::theme::warn()),
                             )
                             .on_hover_text(crate::i18n::tr("These programs opened the dedicated card; while they are open it does not sleep and drains the battery. Open them on the integrated GPU (program profile → card) to save power."));
                             ui.end_row();
@@ -665,7 +662,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                 });
                 if !s.valid() {
-                    ui.label(RichText::new(crate::i18n::tr("invalid time (use HH:MM)")).color(Color32::from_rgb(229, 83, 75)));
+                    ui.label(RichText::new(crate::i18n::tr("invalid time (use HH:MM)")).color(crate::theme::err()));
                 }
                 if crate::theme::small(ui, crate::i18n::tr("remove")).clicked() {
                     del = Some(i);
@@ -690,15 +687,17 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             let price = m.price_kwh;
             let money = |k: f64| price.map(|p| format!(" (R$ {:.2})", k * p)).unwrap_or_default();
             let w = mu.hw["watts"].as_f64();
-            ui.label(crate::tf!(
-                "Now {} · today {kwh_today:.2} kWh{} · this month {month:.1} kWh{}{}", "Agora {} · hoje {kwh_today:.2} kWh{} · este mês {month:.1} kWh{}{}",
-                w.map(|w| format!("{w:.0} W")).unwrap_or("? W".into()),
-                money(kwh_today),
-                money(month),
-                e.avg_days(30)
-                    .map(|a| crate::tf!(" · average {a:.2} kWh/day, ~{:.0} kWh/month{}", " · média {a:.2} kWh/dia, ~{:.0} kWh/mês{}", a * 30.0, money(a * 30.0)))
-                    .unwrap_or_default()
-            ));
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+                let stat = crate::theme::stat;
+                stat(ui, crate::t2!("now", "agora"), &w.map(|w| format!("{w:.0} W")).unwrap_or("? W".into()), None);
+                stat(ui, crate::t2!("today", "hoje"), &format!("{kwh_today:.2} kWh{}", money(kwh_today)), None);
+                stat(ui, crate::t2!("this month", "este mês"), &format!("{month:.1} kWh{}", money(month)), None);
+                if let Some(a) = e.avg_days(30) {
+                    stat(ui, crate::t2!("average per day", "média por dia"), &format!("{a:.2} kWh"), None);
+                    stat(ui, crate::t2!("per month, at this pace", "por mês, nesse ritmo"), &format!("~{:.0} kWh{}", a * 30.0, money(a * 30.0)), None);
+                }
+            });
             ui.horizontal(|ui| {
                 ui.label(crate::i18n::tr("kWh price (R$):"));
                 let mut on = m.price_kwh.is_some();
@@ -717,12 +716,17 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 let max = days.iter().map(|d| *d.1).fold(0.0, f64::max).max(0.01);
                 ui.horizontal(|ui| {
                     for (d, v) in days.iter().rev() {
-                        let (r, _) = ui.allocate_exact_size(egui::vec2(14.0, 40.0), egui::Sense::hover());
-                        let h = (*v / max) as f32 * 40.0;
+                        let (r, _) = ui.allocate_exact_size(egui::vec2(16.0, 44.0), egui::Sense::hover());
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_max(egui::pos2(r.left() + 2.0, r.top()), egui::pos2(r.right() - 2.0, r.bottom())),
+                            3.0,
+                            crate::theme::pal(ui).track,
+                        );
+                        let h = ((*v / max) as f32 * 44.0).max(3.0);
                         ui.painter().rect_filled(
                             egui::Rect::from_min_max(egui::pos2(r.left() + 2.0, r.bottom() - h), egui::pos2(r.right() - 2.0, r.bottom())),
-                            2.0,
-                            Color32::from_rgb(79, 143, 240),
+                            3.0,
+                            crate::theme::pal(ui).accent,
                         );
                         ui.interact(r, ui.next_auto_id(), egui::Sense::hover()).on_hover_text(format!("{d}: {v:.2} kWh{}", money(**v)));
                     }
@@ -741,13 +745,13 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             Some(r) => {
                 let probs = numapilot::health::problems(r);
                 if probs.is_empty() {
-                    ui.label(RichText::new(crate::i18n::tr("No problems found.")).color(Color32::from_rgb(110, 190, 120)));
+                    ui.label(RichText::new(crate::i18n::tr("No problems found.")).color(crate::theme::ok()));
                 }
                 for (lvl, p) in &probs {
                     ui.label(RichText::new(format!("• {p}")).color(if *lvl >= 2 {
-                        Color32::from_rgb(229, 83, 75)
+                        crate::theme::err()
                     } else {
-                        Color32::from_rgb(230, 160, 40)
+                        crate::theme::warn()
                     }));
                 }
                 if !r.smartctl {
@@ -772,20 +776,30 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     );
                     let node_gb: Vec<f64> = app.topo.nodes.iter().map(|n| n.mem_total_kb as f64 / 1048576.0).collect();
                     for n in numapilot::health::mem_notes(&r.dimms, &node_gb) {
-                        ui.label(RichText::new(n).small().color(Color32::from_rgb(230, 160, 40)));
+                        ui.label(RichText::new(n).small().color(crate::theme::warn()));
                     }
                 }
                 for e in &r.disk_errors {
-                    ui.label(RichText::new(crate::tf!("disk not read: {e}", "disco não lido: {e}")).small().color(Color32::from_rgb(230, 160, 40)));
+                    ui.label(RichText::new(crate::tf!("disk not read: {e}", "disco não lido: {e}")).small().color(crate::theme::warn()));
                 }
-                egui::Grid::new("health").striped(true).num_columns(5).spacing([14.0, 4.0]).show(ui, |ui| {
+                egui::Grid::new("health").striped(true).num_columns(5).spacing([22.0, 6.0]).show(ui, |ui| {
+                    for h in [
+                        crate::t2!("device", "dispositivo"),
+                        crate::t2!("state", "estado"),
+                        crate::t2!("temperature", "temperatura"),
+                        crate::t2!("use", "uso"),
+                        crate::t2!("written", "escrito"),
+                    ] {
+                        ui.label(RichText::new(h.to_uppercase()).size(10.5).weak().extra_letter_spacing(0.6));
+                    }
+                    ui.end_row();
                     for d in &r.disks {
                         ui.label(format!("{} {}", d.dev, d.model));
-                        ui.label(match d.passed {
-                            Some(true) => "SMART ok",
-                            Some(false) => crate::i18n::tr("SMART FAILED"),
-                            None => "?",
-                        });
+                        match d.passed {
+                            Some(true) => crate::theme::chip(ui, "SMART ok", crate::theme::ok()),
+                            Some(false) => crate::theme::chip(ui, crate::i18n::tr("SMART FAILED"), crate::theme::err()),
+                            None => ui.label("?"),
+                        };
                         ui.label(d.temp_c.map(|t| format!("{t:.0} °C")).unwrap_or_default());
                         ui.label(match (d.used_pct, d.hours) {
                             (Some(u), Some(h)) => crate::tf!("{u}% used · {h} h powered on", "{u}% usado · {h} h ligado"),
@@ -797,7 +811,11 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     }
                     for m in &r.mem {
                         ui.label(crate::tf!("memory {}", "memória {}", m.name));
-                        ui.label(if m.ue > 0 { crate::i18n::tr("ERRORS") } else { "ECC ok" });
+                        if m.ue > 0 {
+                            crate::theme::chip(ui, crate::i18n::tr("ERRORS"), crate::theme::err());
+                        } else {
+                            crate::theme::chip(ui, "ECC ok", crate::theme::ok());
+                        }
                         ui.label(crate::tf!("{} corrected", "{} corrigidos", m.ce));
                         ui.label(crate::tf!("{} uncorrected", "{} não corrigidos", m.ue));
                         ui.label("");
@@ -1057,7 +1075,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ui.checkbox(&mut m.game_uncore_max, crate::i18n::tr("uncore at maximum"));
         });
         if let Some(l) = mu.hw["lowlat"].as_str().filter(|s| !s.is_empty()) {
-            ui.label(RichText::new(crate::tf!("Active now on cores {l}", "Ativo agora nos núcleos {l}")).color(GREEN));
+            ui.label(RichText::new(crate::tf!("Active now on cores {l}", "Ativo agora nos núcleos {l}")).color(crate::theme::ok()));
         }
 
         // ---------------- memory ----------------
@@ -1351,7 +1369,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     .map(|(_, s)| s.split(';').next().unwrap_or(s).to_string())
                     .collect();
                 ui.label(RichText::new(st.join(" / ")).small());
-                ui.label(RichText::new(crate::i18n::tr(g.risk)).color(if g.heavy { Color32::from_rgb(220, 80, 60) } else { ORANGE }));
+                ui.label(RichText::new(crate::i18n::tr(g.risk)).color(if g.heavy { crate::theme::err() } else { crate::theme::warn() }));
                 ui.label(crate::i18n::tr(g.gain));
                 ui.end_row();
             }
@@ -1403,7 +1421,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     add.iter().map(|a| format!("+{a} ")).collect::<String>(),
                     rm.iter().map(|a| format!("-{a} ")).collect::<String>()
                 ))
-                .color(ORANGE),
+                .color(crate::theme::warn()),
             );
         }
         ui.horizontal(|ui| {

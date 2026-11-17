@@ -73,7 +73,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         crate::theme::title(ui, crate::i18n::tr("Game streaming (Sunshine)"));
         if sun.install.is_some() {
             let (t, c) = if sun.active {
-                (crate::i18n::tr("on"), Color32::from_rgb(90, 180, 110))
+                (crate::i18n::tr("on"), crate::theme::ok())
             } else {
                 (crate::i18n::tr("off"), Color32::GRAY)
             };
@@ -211,7 +211,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 "{}: has no working video encoder. Use the software encoder (CPU) below, or install the community VA-API driver through BC250 Control Center (H.264 on the GPU).", "{}: não tem codificador de vídeo funcionando. Use o codificador por software (CPU) abaixo, ou instale o driver VA-API da comunidade pelo BC250 Control Center (H.264 na GPU).",
                 no_enc.join(", ")
             ))
-            .color(Color32::from_rgb(230, 160, 40)),
+            .color(crate::theme::warn()),
         );
     }
     let enc = read_key(&conf, "encoder");

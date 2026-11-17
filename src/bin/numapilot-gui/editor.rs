@@ -3,7 +3,7 @@
 
 use crate::App;
 use crate::map::core_map;
-use eframe::egui::{self, Color32, RichText};
+use eframe::egui::{self, RichText};
 use numapilot::ctl::Request;
 use numapilot::decide::{LaunchInput, decide_launch, game_warnings};
 use numapilot::learned::Learned;
@@ -175,14 +175,14 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 "Do not use OptiScaler in online games: the anti-cheat may ban you.",
             ))
             .small()
-            .color(Color32::from_rgb(230, 120, 60)),
+            .color(crate::theme::warn()),
         );
         if let Some(id) = ed.key.strip_prefix("steam:") {
             let dir = upscale::steam_game_root(id).and_then(|r| upscale::exe_dir(&r));
             ui.horizontal(|ui| {
                 match dir.as_ref().and_then(|d| upscale::installed(d)) {
                     Some(i) => {
-                        ui.label(RichText::new(crate::tf!("OptiScaler {} installed", "OptiScaler {} instalado", i.version)).color(Color32::from_rgb(110, 190, 120)));
+                        ui.label(RichText::new(crate::tf!("OptiScaler {} installed", "OptiScaler {} instalado", i.version)).color(crate::theme::ok()));
                         if ui.button(crate::i18n::tr("Remove from the game")).clicked() {
                             app.start_job("OptiScaler", vec![crate::jobs::sibling("numapilot"), "upscale".into(), "remove".into(), id.into()]);
                         }
@@ -248,7 +248,7 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             if !app.has_mangohud {
                 ui.label(
                     RichText::new(crate::i18n::tr("Needs MangoHud: sudo pacman -S mangohud"))
-                        .color(Color32::from_rgb(230, 160, 40)),
+                        .color(crate::theme::warn()),
                 );
             }
             if ui
@@ -362,6 +362,26 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
     }
 }
 
+/// Row that opens a group of settings in the editor's table: its name in small capitals and a
+/// rule across the second column.
+fn group_row(ui: &mut egui::Ui, name: &str) {
+    let p = crate::theme::pal(ui);
+    ui.label(
+        RichText::new(name.to_uppercase())
+            .size(10.5)
+            .family(egui::FontFamily::Name(crate::theme::BOLD.into()))
+            .color(p.accent)
+            .extra_letter_spacing(0.8),
+    );
+    let (r, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width().max(60.0), 14.0),
+        egui::Sense::hover(),
+    );
+    ui.painter()
+        .hline(r.x_range(), r.center().y, egui::Stroke::new(1.0, p.stroke));
+    ui.end_row();
+}
+
 pub fn window(app: &mut App, ctx: &egui::Context) {
     let Some(mut ed) = app.editor.take() else {
         return;
@@ -456,7 +476,8 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 });
                 ui.separator();
 
-                egui::Grid::new("ed").num_columns(2).spacing([14.0, 10.0]).show(ui, |ui| {
+                egui::Grid::new("ed").num_columns(2).spacing([18.0, 10.0]).show(ui, |ui| {
+                    group_row(ui, crate::i18n::tr("Processor"));
                     ui.label(RichText::new(crate::i18n::tr("Processors")).strong());
                     let txt = app.cpu_opts.iter().find(|(v, _)| *v == ed.p.cpu).map(|(_, t)| t.clone()).unwrap_or(ed.p.cpu.clone());
                     ui.add_enabled_ui(!ed.picking, |ui| {
@@ -520,6 +541,34 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         );
                     ui.end_row();
 
+                    ui.label(RichText::new(crate::i18n::tr("Processor limit")).strong());
+                    ui.horizontal(|ui| {
+                        let mut lim = ed.p.cpu_max_pct.is_some();
+                        if ui
+                            .checkbox(&mut lim, crate::i18n::tr("Use at most"))
+                            .on_hover_text(crate::i18n::tr("Usage cap adding up all cores: 50% = half a core, 200% = two cores. Good for background programs."))
+                            .changed()
+                        {
+                            ed.p.cpu_max_pct = lim.then_some(100.0);
+                        }
+                        if let Some(c) = ed.p.cpu_max_pct.as_mut() {
+                            ui.add(
+                                egui::Slider::new(c, 5.0..=1600.0)
+                                    .logarithmic(true)
+                                    .suffix("%")
+                                    .fixed_decimals(0),
+                            );
+                            ui.label(RichText::new(crate::tf!("= {:.1} core(s)", "= {:.1} núcleo(s)", *c / 100.0)).small().weak());
+                            if numapilot::machine::sched_ext_active() {
+                                let n = ((*c / 100.0).ceil() as usize).max(1);
+                                ui.label(RichText::new(crate::tf!("applied as {n} core(s)", "aplicado como {n} núcleo(s)")).small().color(crate::theme::warn()))
+                                    .on_hover_text(crate::i18n::tr("With a sched_ext scheduler running (Machine → Scheduler, e.g. LAVD) the kernel does not enforce a percentage limit, so numapilot limits the number of cores instead, rounded up."));
+                            }
+                        }
+                    });
+                    ui.end_row();
+
+                    group_row(ui, crate::i18n::tr("Memory"));
                     ui.label(RichText::new(crate::i18n::tr("Memory")).strong());
                     let multi = app.topo.nodes.len() > 1;
                     ui.vertical(|ui| {
@@ -563,33 +612,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     });
                     ui.end_row();
 
-                    ui.label(RichText::new(crate::i18n::tr("Processor limit")).strong());
-                    ui.horizontal(|ui| {
-                        let mut lim = ed.p.cpu_max_pct.is_some();
-                        if ui
-                            .checkbox(&mut lim, crate::i18n::tr("Use at most"))
-                            .on_hover_text(crate::i18n::tr("Usage cap adding up all cores: 50% = half a core, 200% = two cores. Good for background programs."))
-                            .changed()
-                        {
-                            ed.p.cpu_max_pct = lim.then_some(100.0);
-                        }
-                        if let Some(c) = ed.p.cpu_max_pct.as_mut() {
-                            ui.add(
-                                egui::Slider::new(c, 5.0..=1600.0)
-                                    .logarithmic(true)
-                                    .suffix("%")
-                                    .fixed_decimals(0),
-                            );
-                            ui.label(RichText::new(crate::tf!("= {:.1} core(s)", "= {:.1} núcleo(s)", *c / 100.0)).small().weak());
-                            if numapilot::machine::sched_ext_active() {
-                                let n = ((*c / 100.0).ceil() as usize).max(1);
-                                ui.label(RichText::new(crate::tf!("applied as {n} core(s)", "aplicado como {n} núcleo(s)")).small().color(Color32::from_rgb(220, 160, 60)))
-                                    .on_hover_text(crate::i18n::tr("With a sched_ext scheduler running (Machine → Scheduler, e.g. LAVD) the kernel does not enforce a percentage limit, so numapilot limits the number of cores instead, rounded up."));
-                            }
-                        }
-                    });
-                    ui.end_row();
-
+                    group_row(ui, crate::i18n::tr("Priority and clock"));
                     ui.label(RichText::new(crate::i18n::tr("Priority")).strong());
                     ui.horizontal(|ui| {
                         ui.radio_value(&mut ed.p.priority, "low".to_string(), crate::i18n::tr("low"));
@@ -703,7 +726,8 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     });
                     ui.end_row();
 
-                    ui.label(RichText::new(crate::i18n::tr("Graphics card")).strong());
+                    group_row(ui, crate::i18n::tr("Graphics card"));
+                    ui.label(RichText::new(crate::i18n::tr("Card")).strong());
                     ui.vertical(|ui| {
                         let cur = (ed.p.gpu.clone(), ed.p.usage.clone());
                         let mut sel = cur.clone();
@@ -768,7 +792,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut gs_on, RichText::new(crate::i18n::tr("Open inside gamescope")).strong());
                     if !app.has_gamescope {
-                        ui.label(RichText::new(crate::i18n::tr("(not installed: sudo pacman -S gamescope)")).small().color(Color32::from_rgb(230, 160, 40)));
+                        ui.label(RichText::new(crate::i18n::tr("(not installed: sudo pacman -S gamescope)")).small().color(crate::theme::warn()));
                     }
                 });
                 if gs_on != ed.p.gamescope.is_some() {
@@ -844,11 +868,11 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             }
                         )).strong());
                         for w in game_warnings(&app.topo, &d) {
-                            ui.label(RichText::new(crate::tf!("Warning: {w}", "Atenção: {w}")).color(Color32::from_rgb(230, 160, 40)));
+                            ui.label(RichText::new(crate::tf!("Warning: {w}", "Atenção: {w}")).color(crate::theme::warn()));
                         }
                     }
                     Err(e) => {
-                        ui.label(RichText::new(crate::tf!("Invalid combination: {e}", "Combinação inválida: {e}")).color(Color32::from_rgb(220, 80, 60)));
+                        ui.label(RichText::new(crate::tf!("Invalid combination: {e}", "Combinação inválida: {e}")).color(crate::theme::err()));
                     }
                 }
                 ui.label(

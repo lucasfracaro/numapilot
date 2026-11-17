@@ -104,7 +104,7 @@ pub fn gfx(args: &[&str]) -> Vec<String> {
 
 fn status_badge(ui: &mut egui::Ui, running: bool) {
     let (t, c) = if running {
-        (crate::i18n::tr("running"), Color32::from_rgb(90, 180, 110))
+        (crate::i18n::tr("running"), crate::theme::ok())
     } else {
         (crate::t2!("stopped", "parado"), Color32::GRAY)
     };
@@ -125,7 +125,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     "Containers unavailable: {e}",
                     "Containers indisponíveis: {e}"
                 ))
-                .color(Color32::from_rgb(220, 80, 60)),
+                .color(crate::theme::err()),
             );
             ui.label(crate::i18n::tr("Install podman:  sudo pacman -S podman"));
             vec![]

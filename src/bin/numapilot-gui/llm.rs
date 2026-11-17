@@ -34,12 +34,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             None => (crate::t2!("stopped", "parado"), Color32::GRAY),
             Some(false) => (
                 crate::i18n::tr("loading the model..."),
-                Color32::from_rgb(230, 160, 40),
+                crate::theme::warn(),
             ),
-            Some(true) => (
-                crate::t2!("ready", "pronto"),
-                Color32::from_rgb(90, 180, 110),
-            ),
+            Some(true) => (crate::t2!("ready", "pronto"), crate::theme::ok()),
         };
         ui.label(RichText::new(t).color(c));
     });
@@ -207,7 +204,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     "Otimizado: {}{args} ({res})",
                     if one { "1 GPU, " } else { "" }
                 ))
-                .color(Color32::from_rgb(110, 190, 120)),
+                .color(crate::theme::ok()),
             );
         }
     }

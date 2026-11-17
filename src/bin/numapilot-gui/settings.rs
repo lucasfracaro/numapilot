@@ -43,9 +43,9 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(crate::i18n::tr("numapilot service:"));
             if daemon_ok {
-                ui.label(RichText::new(crate::i18n::tr("running")).color(Color32::from_rgb(90, 180, 110)));
+                ui.label(RichText::new(crate::i18n::tr("running")).color(crate::theme::ok()));
             } else {
-                ui.label(RichText::new(crate::i18n::tr("stopped — sudo systemctl enable --now numapilot")).color(Color32::from_rgb(220, 80, 60)));
+                ui.label(RichText::new(crate::i18n::tr("stopped — sudo systemctl enable --now numapilot")).color(crate::theme::err()));
             }
         });
         let mut tray = autostart_path().exists();
@@ -124,7 +124,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                     l["time"].as_str().unwrap_or("?"),
                     l["summary"].as_str().unwrap_or("").replace(';', ", ")
                 ))
-                .color(if ok { Color32::from_rgb(90, 180, 110) } else { Color32::from_rgb(230, 160, 40) }),
+                .color(if ok { crate::theme::ok() } else { crate::theme::warn() }),
             );
         }
         updates_ui(app, ui);
@@ -226,7 +226,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             ));
         }
         for w in app.topo.warnings() {
-            ui.label(RichText::new(crate::tf!("Warning: {w}", "Aviso: {w}")).color(Color32::from_rgb(230, 160, 40)));
+            ui.label(RichText::new(crate::tf!("Warning: {w}", "Aviso: {w}")).color(crate::theme::warn()));
         }
         ui.add_space(8.0);
         crate::theme::title(ui, crate::i18n::tr("Tips"));
@@ -605,12 +605,11 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
                 if new != cur {
                     ui.label(
                         RichText::new(crate::tf!("{new} (new)", "{new} (nova)"))
-                            .color(Color32::from_rgb(230, 160, 40)),
+                            .color(crate::theme::warn()),
                     );
                 } else {
                     ui.label(
-                        RichText::new(crate::i18n::tr("up to date"))
-                            .color(Color32::from_rgb(90, 180, 110)),
+                        RichText::new(crate::i18n::tr("up to date")).color(crate::theme::ok()),
                     );
                 }
                 let hold = labcfg::cfg_dir().join(format!("hold-{k}"));
@@ -714,9 +713,9 @@ fn updates_ui(app: &mut App, ui: &mut egui::Ui) {
                         ui.label(format!("{} → {}", s("from"), s("to")));
                         let res = r["result"].as_str().unwrap_or("");
                         ui.label(RichText::new(res).color(if res == "ok" {
-                            Color32::from_rgb(90, 180, 110)
+                            crate::theme::ok()
                         } else {
-                            Color32::from_rgb(230, 160, 40)
+                            crate::theme::warn()
                         }));
                         let m = &r["metrics"];
                         let perf = if let Some(t) = m["tflops"].as_array() {
@@ -788,7 +787,7 @@ fn vm_ui(app: &mut App, ui: &mut egui::Ui) {
                         c.name,
                         if c.detail.is_empty() { String::new() } else { format!(": {}", c.detail) }
                     ))
-                    .color(if c.ok { Color32::from_rgb(110, 190, 120) } else { Color32::from_rgb(230, 160, 40) }),
+                    .color(if c.ok { crate::theme::ok() } else { crate::theme::warn() }),
                 );
                 if !c.ok
                     && let Some(f) = &c.fix

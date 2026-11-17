@@ -2,6 +2,15 @@
 
 ## Ainda não lançado
 
+- **Interface look, second pass.** Menu icons drawn with one line weight instead of the fonts'
+  emoji. Status colors (fine, attention, problem) come from the theme everywhere, so the light
+  theme keeps its contrast. Energy readings on the Machine tab are tiles and the health table
+  has a header and status tags. The Adjust window is grouped (Processor, Memory, Priority and
+  clock, Graphics card), with the processor limit next to the cores. History and fan-curve
+  charts have their own background, a light grid and a filled area. Two long instruction
+  paragraphs moved behind a "?" (Programs, Graphics cards).
+- Screenshot switches: `NUMAPILOT_GUI_THEME=light|dark` and `NUMAPILOT_GUI_EDIT=KEY` (opens the
+  Adjust window of a saved profile).
 - **Interface look.** The strip of meters at the top shares one row between its cards (it used
   to wrap to a second row with fixed-width cards) and each card starts with what tells it apart
   (socket, card alias). The side menu is grouped (Programs, Hardware, Tools, System) and has a

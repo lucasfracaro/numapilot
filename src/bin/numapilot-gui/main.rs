@@ -268,68 +268,68 @@ pub(crate) fn mem_system() -> (u64, u64) {
 const TABS: &[(Tab, &str, &str, &str)] = &[
     (
         Tab::Programs,
-        "▶",
+        "apps",
         "Programs",
         "What is open now and which processor and card each one runs on",
     ),
     (
         Tab::Startup,
-        "🚀",
+        "power",
         "Startup",
         "Everything that starts with the system: login programs and services",
     ),
     (
         Tab::Services,
-        "⚙",
+        "list",
         "Services",
         "System and user services: start, stop, restart and read the log",
     ),
     (
         Tab::Map,
-        "🗺",
+        "chip",
         "Map & measurements",
         "Cores, memory per socket and performance measurements",
     ),
     (
         Tab::Profiles,
-        "💾",
+        "bookmark",
         "Saved choices",
         "Per-program choices applied every time it starts",
     ),
     (
         Tab::Gpus,
-        "🎮",
+        "card",
         "Graphics cards",
         "Fan, power, clock and undervolt of each card",
     ),
     (
         Tab::Machine,
-        "🖥",
+        "monitor",
         "Machine",
         "Power mode, processor, laptop and hardware health",
     ),
     (
         Tab::Lab,
-        "🔬",
+        "flask",
         "Lab",
         "Containers with ROCm, Jupyter and IDEs",
     ),
-    (Tab::Llm, "💬", "AI server", "Local models with llama.cpp"),
+    (Tab::Llm, "chat", "AI server", "Local models with llama.cpp"),
     (
         Tab::Stream,
-        "📡",
+        "cast",
         "Streaming",
         "Sunshine and Moonlight: play from another device",
     ),
     (
         Tab::Settings,
-        "⚙",
+        "sliders",
         "Settings",
         "Other PCs, notifications, updates and virtual machine",
     ),
     (
         Tab::Tests,
-        "📋",
+        "check",
         "Tests",
         "Manual test script, self-test and a report to send",
     ),
@@ -1286,7 +1286,7 @@ impl App {
                 let txt = crate::tf!("memory {:.1} GB · {pct:.0}% local", "memória {:.1} GB · {pct:.0}% local", tot as f64 / 1024.0);
                 if pct < 80.0 {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(txt).small().color(Color32::from_rgb(230, 160, 40)))
+                        ui.label(RichText::new(txt).small().color(crate::theme::warn()))
                             .on_hover_text(crate::i18n::tr("Part of the memory is on the other socket: every access to it is slower."));
                         if crate::theme::small(ui, crate::i18n::tr("fix")).clicked() {
                             self.pending_fix = Some(g.key.clone());
@@ -1367,7 +1367,7 @@ impl App {
                 ui.label(
                     RichText::new(crate::i18n::tr("reopen the program to switch the GPU"))
                         .small()
-                        .color(Color32::from_rgb(230, 160, 40)),
+                        .color(crate::theme::warn()),
                 );
             }
         });
@@ -1685,6 +1685,23 @@ impl App {
     fn frame(&mut self, ui: &mut egui::Ui) {
         single::handle(ui.ctx());
         shot(ui.ctx());
+        theme::note_theme(ui.ctx());
+        // screenshots: NUMAPILOT_GUI_EDIT=KEY opens the Adjust window of a saved profile
+        {
+            static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if let Ok(key) = std::env::var("NUMAPILOT_GUI_EDIT")
+                && !self.profiles.map.is_empty()
+                && !DONE.swap(true, std::sync::atomic::Ordering::Relaxed)
+            {
+                let prof = self.profile_of(&key);
+                let label = if prof.label.is_empty() {
+                    key.clone()
+                } else {
+                    prof.label.clone()
+                };
+                self.editor = Some(editor::Editor::new(&key, &label, None, "", &[], prof));
+            }
+        }
         if self.last.elapsed() > Duration::from_secs(1) {
             self.refresh();
         }

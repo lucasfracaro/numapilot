@@ -341,11 +341,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         {
             app.progs.finder = Some(Finder::new());
         }
-        ui.label(
-            RichText::new(crate::i18n::tr("Click a row to select it; the arrow (or double-click) shows the processes and lets you choose processor and card. CPU changes right away; the GPU applies when the program starts."))
-                .small()
-                .weak(),
-        );
+        crate::theme::help(ui, crate::i18n::tr("Click a row to select it; the arrow (or double-click) shows the processes and lets you choose processor and card. CPU changes right away; the GPU applies when the program starts."));
     });
     finder_window(app, ui);
     ui.add_space(4.0);
