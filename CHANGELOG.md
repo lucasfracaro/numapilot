@@ -5,7 +5,8 @@
 - **Saved choices: Delete and Remove the menu shortcut.** "Back to automatic" became "Delete"
   (a second click confirms). A choice whose program file no longer exists (moved, renamed,
   uninstalled) says so, and a choice with a shortcut made by numapilot shows it, with a button
-  that deletes only the shortcut.
+  that deletes only the shortcut. Deleting the choice also deletes the shortcut numapilot made
+  for it (without the choice it would open the program on automatic).
 - **Menu shortcut from the Adjust window.** For anything that is not a Steam game, "Create a
   menu shortcut" writes `~/.local/share/applications/numapilot-NAME.desktop`, which opens the
   program through `numapilot run`, so the graphics card and the rest of the adjustment apply

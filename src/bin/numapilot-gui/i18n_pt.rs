@@ -1482,8 +1482,8 @@ pub const PT: &[(&str, &str)] = &[
     ("Delete", "Apagar"),
     ("Click again to delete", "Clique de novo para apagar"),
     (
-        "Deletes this saved choice: the program goes back to automatic.",
-        "Apaga esta escolha salva: o programa volta para o automático.",
+        "Deletes this saved choice: the program goes back to automatic. A menu shortcut numapilot made for it is deleted too.",
+        "Apaga esta escolha salva: o programa volta para o automático. O atalho do menu que o numapilot criou para ele também é apagado.",
     ),
     (
         "Deletes the shortcut numapilot created for this program. The saved choice stays.",

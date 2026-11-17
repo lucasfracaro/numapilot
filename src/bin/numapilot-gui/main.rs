@@ -1705,7 +1705,7 @@ impl App {
                             if ui
                                 .add(b)
                                 .on_hover_text(crate::i18n::tr(
-                                    "Deletes this saved choice: the program goes back to automatic.",
+                                    "Deletes this saved choice: the program goes back to automatic. A menu shortcut numapilot made for it is deleted too.",
                                 ))
                                 .clicked()
                             {
@@ -1730,6 +1730,13 @@ impl App {
             self.editor = Some(editor::Editor::new(&k, &label, None, "", &[], p));
         }
         if let Some(key) = delete {
+            // a shortcut numapilot made only exists to open the program with this choice
+            if numapilot::desktop::remove_shortcut(&key).unwrap_or(false) {
+                numapilot::log::info(&crate::tf!(
+                    "menu shortcut of {key} deleted with its choice",
+                    "atalho do menu de {key} apagado junto com a escolha"
+                ));
+            }
             self.send(Request::DeleteProfile { key, pid: None });
         }
         if let Some(key) = unshortcut {
