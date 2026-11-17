@@ -2,6 +2,15 @@
 
 ## Ainda não lançado
 
+- **`bench-cores` measured the frequency governor, not the cores.** On the 2× Xeon server
+  (schedutil + scx_lavd) each core was caught at 1.2 or at 2.2 GHz at random: the same core
+  went from 23 to 42 ns between rounds, the "difference" was 50% and the order never repeated
+  (27%), so the measurement was always rejected. The service now holds the performance governor
+  on every CPU while measuring (new `full_clock` request, nothing saved, ends by itself after
+  3 min if the measurement dies) and gives the previous one back; the warm-up is 30 ms and each
+  round takes the best of 8 short passes. Same server: 16% between cores, noise 0.1%, order
+  repeats 98–99%, so the core choice follows the measurement. The refusal message says which
+  test failed (order did not repeat, or difference too small).
 - `numapilot steam command GAME [--gpu CARD]`: prints the launch options to paste in Steam for
   one game (appid or part of the name), keeping what the game already has. `steam enable`
   only works with Steam closed; this is for when it is open. With `--gpu` the card is forced

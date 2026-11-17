@@ -288,6 +288,14 @@ pub const PT: &[(&str, &str)] = &[
     ("notifications on", "avisos ligados"),
     ("measurement saved", "medição guardada"),
     ("too small to use", "pequena demais para usar"),
+    (
+        "Could not hold the clock at full speed (service or performance governor missing): the result may vary with the clock.",
+        "Não deu para segurar o clock no máximo (falta o serviço ou o governor performance): o resultado pode variar com o clock.",
+    ),
+    (
+        "no performance governor on this PC",
+        "este PC não tem o governor performance",
+    ),
     ("in use for choosing cores", "em uso na escolha de núcleos"),
     ("invalid measurement", "medição inválida"),
     ("could not read the request", "não consegui ler o pedido"),

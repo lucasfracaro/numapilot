@@ -191,6 +191,58 @@ pub fn set_governor(cpus: &[usize], gov: &str) -> Result<(), String> {
     err.map_or(Ok(()), Err)
 }
 
+/// CPUs put in the performance governor for a measurement, with what each had before, and
+/// when the hold ends by itself (whoever asked may have died).
+type ClockHold = (
+    std::collections::BTreeMap<usize, String>,
+    Option<std::time::Instant>,
+);
+static CLOCK_HOLD: std::sync::Mutex<ClockHold> =
+    std::sync::Mutex::new((std::collections::BTreeMap::new(), None));
+
+/// Full clock on `cpus` for at most `secs`: the performance governor, remembering the previous
+/// one. Nothing is written to disk. Returns how many CPUs are in performance now.
+pub fn hold_full_clock(cpus: &[usize], secs: u64) -> usize {
+    let mut g = CLOCK_HOLD.lock().unwrap_or_else(|e| e.into_inner());
+    let mut n = 0;
+    for &c in cpus {
+        let Some(cur) = governor(c) else { continue };
+        if cur == "performance" {
+            n += 1;
+        } else if governors_available(c).iter().any(|x| x == "performance")
+            && set_governor(&[c], "performance").is_ok()
+        {
+            g.0.entry(c).or_insert(cur);
+            n += 1;
+        }
+    }
+    g.1 = Some(std::time::Instant::now() + std::time::Duration::from_secs(secs));
+    n
+}
+
+/// Ends the hold: the previous governor back on the CPUs nobody else changed meanwhile.
+pub fn release_full_clock() -> usize {
+    let mut g = CLOCK_HOLD.lock().unwrap_or_else(|e| e.into_inner());
+    g.1 = None;
+    let mut n = 0;
+    for (c, prev) in std::mem::take(&mut g.0) {
+        if governor(c).as_deref() == Some("performance") && set_governor(&[c], &prev).is_ok() {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// Called by the service at every tick: a hold past its time ends.
+pub fn full_clock_expire() -> usize {
+    let late = CLOCK_HOLD
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .1
+        .is_some_and(|t| std::time::Instant::now() >= t);
+    if late { release_full_clock() } else { 0 }
+}
+
 /// "Power-saving" governor that still follows the load: powersave on intel_pstate,
 /// schedutil on the other drivers (acpi-cpufreq's powersave locks at the minimum).
 pub fn eco_governor(cpu: usize) -> String {

@@ -1079,6 +1079,12 @@ pub fn run(cfg: Config) -> Result<()> {
             std::thread::sleep(Duration::from_millis(25));
         }
         tick += 1;
+        let n = crate::cpuctl::full_clock_expire();
+        if n > 0 {
+            crate::nlog!(
+                "measurement did not end its full clock: previous governor back on {n} CPUs"
+            );
+        }
         let cur_cpu = procfs::cpu_times();
         let loads = node_loads(&topo, &prev_cpu, &cur_cpu);
         prev_cpu = cur_cpu;
@@ -1560,6 +1566,7 @@ pub fn run(cfg: Config) -> Result<()> {
         }
     }
     turbo_governor(&[], &mut turbo_gov);
+    crate::cpuctl::release_full_clock();
     if !reserved_now.is_empty() {
         let _ = cgroup::set_reserved(&ctx.all_cpus, &[]);
         let _ = std::fs::remove_file(&reserved_flag);
@@ -1712,6 +1719,28 @@ fn handle(
         Request::FixMemory { key } => return handle_fix_memory(uid, ctx, procs, &key),
         Request::SetGovernor { node, governor } => {
             return handle_governor(uid, ctx, node, &governor);
+        }
+        Request::FullClock { secs } => {
+            if let Some(e) = admin_denied(uid, ctx) {
+                return Response::err(e);
+            }
+            if secs == 0 {
+                let n = crate::cpuctl::release_full_clock();
+                if n > 0 {
+                    crate::nlog!("measurement ended: previous governor back on {n} CPUs");
+                }
+                return Response::ok(String::new());
+            }
+            let n = crate::cpuctl::hold_full_clock(&ctx.topo.all_cpus(), secs.min(180));
+            crate::nlog!(
+                "measurement: full clock on {n} CPUs for at most {} s",
+                secs.min(180)
+            );
+            return if n > 0 {
+                Response::ok(String::new())
+            } else {
+                Response::err(crate::i18n::tr("no performance governor on this PC"))
+            };
         }
         Request::SetCoreRank { rank } => {
             if let Some(e) = admin_denied(uid, ctx) {

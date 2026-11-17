@@ -202,7 +202,7 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
     let bytes = test_bytes(cache_bytes(cpus[0], 2), cache_bytes(cpus[0], 3));
     let lines = bytes / 64;
     let buf = make_cycle(lines);
-    let steps = (lines * 6).max(400_000);
+    let steps = lines.max(50_000);
     out(&crate::tf!(
         "Measuring {} cores, {} rounds, {} MB block (fits in the L3 cache)…",
         "Medindo {} núcleos, {} rodadas, bloco de {} MB (cabe no cache L3)…",
@@ -210,6 +210,16 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
         ROUNDS,
         bytes >> 20
     ));
+    // The clock must be the same on every core: with a governor that follows the load
+    // (schedutil + scx_lavd on the 2× Xeon) each core was caught at 1.2 or at 2.2 GHz at random,
+    // the same core went from 23 to 42 ns between rounds and the order never repeated (27%).
+    // With the clock held: 16% between cores, noise 0.1%, order repeats 98%.
+    let hold = ClockHold::take(&cpus);
+    if !hold.0 {
+        out(crate::i18n::tr(
+            "Could not hold the clock at full speed (service or performance governor missing): the result may vary with the clock.",
+        ));
+    }
     let before = crate::procfs::get_affinity(0);
     let mut rounds: BTreeMap<usize, Vec<f32>> = BTreeMap::new();
     for r in 0..ROUNDS {
@@ -217,9 +227,17 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
             if crate::procfs::set_affinity(0, &[c]).is_err() {
                 continue;
             }
-            // warm-up: brings the block into the L3 from this core and wakes the clock
-            chase(&buf, lines);
-            rounds.entry(c).or_default().push(chase(&buf, steps));
+            // warm-up: brings the block into the L3 from this core and gives the clock time
+            // to rise (a core coming out of deep idle starts slow)
+            let t = Instant::now();
+            while t.elapsed().as_millis() < WARM_MS {
+                chase(&buf, lines / 4);
+            }
+            // the best of several short passes: an interruption spoils one pass, not the round
+            let ns = (0..PASSES)
+                .map(|_| chase(&buf, steps))
+                .fold(f32::MAX, f32::min);
+            rounds.entry(c).or_default().push(ns);
         }
         out(&crate::tf!(
             "  round {} of {ROUNDS}",
@@ -239,6 +257,50 @@ pub fn measure(topo: &Topology, out: &mut dyn FnMut(&str)) -> Result<CoreRank, S
 }
 
 const ROUNDS: usize = 8;
+const WARM_MS: u128 = 30;
+const PASSES: usize = 8;
+
+/// Full clock while measuring: asked from the service (or done here when this is the service),
+/// given back when dropped. The service ends it by itself if this process dies.
+struct ClockHold(bool);
+
+impl ClockHold {
+    fn take(cpus: &[usize]) -> Self {
+        if cfg!(test) || std::env::var_os("NUMAPILOT_SYSFS").is_some() {
+            return Self(false);
+        }
+        let all_fast = || {
+            cpus.iter()
+                .all(|&c| crate::cpuctl::governor(c).as_deref() == Some("performance"))
+        };
+        if all_fast() {
+            return Self(true);
+        }
+        if crate::util::is_root() {
+            crate::cpuctl::hold_full_clock(cpus, 180);
+        } else {
+            let _ = crate::ctl::send(&crate::ctl::Request::FullClock { secs: 180 });
+        }
+        let ok = all_fast();
+        if ok {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+        Self(ok)
+    }
+}
+
+impl Drop for ClockHold {
+    fn drop(&mut self) {
+        if cfg!(test) || std::env::var_os("NUMAPILOT_SYSFS").is_some() {
+            return;
+        }
+        if crate::util::is_root() {
+            crate::cpuctl::release_full_clock();
+        } else {
+            let _ = crate::ctl::send(&crate::ctl::Request::FullClock { secs: 0 });
+        }
+    }
+}
 
 /// Saved order (if it exists, is from this processor and the difference is reliable). Rereads
 /// when the file changes.

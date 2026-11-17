@@ -37,6 +37,11 @@ pub enum Request {
     SetCoreRank {
         rank: crate::corebench::CoreRank,
     },
+    /// Full clock (performance governor) on every CPU for at most `secs` seconds, for a
+    /// measurement; 0 ends it. Nothing is saved: the previous governor comes back.
+    FullClock {
+        secs: u64,
+    },
     /// Phone notifications (ntfy).
     SetNotify {
         notify: crate::notify::Notify,

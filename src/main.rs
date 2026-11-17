@@ -3711,12 +3711,18 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
     } else {
         println!(
             "{}",
-            numapilot::tf!(
-                "The difference is too small (or the order did not repeat) to count as a criterion. \
-             If the PC was busy, close everything and measure again.",
-                "A diferença é pequena demais (ou a ordem não se repetiu) para valer como critério. \
-             Se o PC estava ocupado, feche tudo e meça de novo."
-            )
+            if rank.agreement < 0.8 {
+                numapilot::tf!(
+                    "Not used: the order of the cores did not repeat between the rounds ({:.0}%, needs 80%), so the difference comes from something else (load, clock), not from the cores. If the PC was busy, close everything and measure again.",
+                    "Não vai ser usada: a ordem dos núcleos não se repetiu entre as rodadas ({:.0}%, precisa de 80%), então a diferença vem de outra coisa (carga, clock), não dos núcleos. Se o PC estava ocupado, feche tudo e meça de novo.",
+                    rank.agreement.max(0.0) * 100.0
+                )
+            } else {
+                numapilot::tf!(
+                    "Not used: the difference between the cores is too small next to the noise to count as a criterion.",
+                    "Não vai ser usada: a diferença entre os núcleos é pequena demais perto do ruído para valer como critério."
+                )
+            }
         );
     }
     // Where the order comes from now: this measurement if reliable, otherwise the firmware.
