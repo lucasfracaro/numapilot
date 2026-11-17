@@ -1996,12 +1996,16 @@ fn cmd_run(
     let topo = Topology::load(cfg);
     let learned = Learned::load();
     let mut profiles = Profiles::load();
-    let prog = command
+    // The program is what comes after `env VAR=value…` (menu shortcuts of AppImages start
+    // with `env DESKTOPINTEGRATION=1 …`): with `env` as the program, the saved choice of the
+    // real one was never found and it opened on automatic, on another card.
+    let target = numapilot::procfs::after_env(&command);
+    let prog = target
         .first()
         .context(numapilot::i18n::tr("the program is missing"))?;
     let exe = which(prog);
-    let idents = procfs::idents(basename(prog), exe.as_deref(), &command);
-    let key = procfs::learn_key(exe.as_deref(), &command, basename(prog));
+    let idents = procfs::idents(basename(prog), exe.as_deref(), target);
+    let key = procfs::learn_key(exe.as_deref(), target, basename(prog));
     let steam = std::env::var("SteamAppId").ok();
     let pkey = program_key(steam.as_deref(), &key);
     // FPS optimizer: this launch uses the next configuration in the list.

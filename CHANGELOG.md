@@ -2,6 +2,9 @@
 
 ## Ainda não lançado
 
+- `numapilot run`: the program is what comes after `env VAR=value…`. AppImage menu shortcuts
+  start with `env DESKTOPINTEGRATION=1 …`, so `run` took `env` as the program, did not find the
+  saved choice and opened the emulator on automatic, on another card.
 - **Saved choices: Delete and Remove the menu shortcut.** "Back to automatic" became "Delete"
   (a second click confirms). A choice whose program file no longer exists (moved, renamed,
   uninstalled) says so, and a choice with a shortcut made by numapilot shows it, with a button

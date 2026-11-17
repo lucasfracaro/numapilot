@@ -316,6 +316,35 @@ fn strip_versions(c: &str) -> String {
     out
 }
 
+/// The command without a leading `env [-options] VAR=value…`: what really runs.
+pub fn after_env(argv: &[String]) -> &[String] {
+    let mut i = 0;
+    if argv.first().is_some_and(|a| basename(a) == "env") {
+        i = 1;
+        while let Some(a) = argv.get(i) {
+            if a == "--" {
+                i += 1;
+                break;
+            }
+            if a.starts_with('-') {
+                // options with a value: -u NAME, -C DIR, -S STRING
+                i += if matches!(a.as_str(), "-u" | "-C" | "-S" | "--unset" | "--chdir") {
+                    2
+                } else {
+                    1
+                };
+                continue;
+            }
+            if a.contains('=') {
+                i += 1;
+                continue;
+            }
+            break;
+        }
+    }
+    &argv[i.min(argv.len())..]
+}
+
 /// Python, Wine, Java, shells…: the program is in the arguments, not in the executable.
 pub fn is_interpreter(exe: &str) -> bool {
     let base = basename(exe);
@@ -517,6 +546,17 @@ pub fn migrate_pages(pid: i32, from: &[usize], to: &[usize]) -> io::Result<i64> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn env_prefix_skipped() {
+        let v = |s: &str| s.split(' ').map(String::from).collect::<Vec<_>>();
+        assert_eq!(
+            after_env(&v("env DESKTOPINTEGRATION=1 /h/lichii.appimage %f")),
+            &v("/h/lichii.appimage %f")[..]
+        );
+        assert_eq!(after_env(&v("/usr/bin/env -u X A=1 prog")), &v("prog")[..]);
+        assert_eq!(after_env(&v("blender --x")), &v("blender --x")[..]);
+    }
 
     #[test]
     fn stable_keys() {
