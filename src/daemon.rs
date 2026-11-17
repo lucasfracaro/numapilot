@@ -544,6 +544,10 @@ struct Tracked {
     profile: Option<Profile>,
     /// Memory per node (MB), measured through numa_maps.
     mem: Vec<u64>,
+    /// Classify again on the next sample: read in the middle of an exec(), when the new
+    /// program's environment did not exist yet (an AppImage's `AppRun` without `$APPIMAGE`
+    /// got the mount point as key and lost its profile).
+    recheck: bool,
 }
 
 impl Tracked {
@@ -1121,7 +1125,7 @@ pub fn run(cfg: Config) -> Result<()> {
             let reclassify = match procs.get(&pid) {
                 None => true,
                 // pid reused, or exec() replaced the program
-                Some(t) => t.starttime != st.starttime || t.comm != st.comm,
+                Some(t) => t.starttime != st.starttime || t.comm != st.comm || t.recheck,
             };
             if reclassify {
                 admit(&ctx, &learned, &profiles, &mut procs, pid, &st, tick);
@@ -2438,6 +2442,10 @@ fn classify(
     let argv = procfs::cmdline(pid);
     let idents = procfs::idents(&st.comm, exe.as_deref(), &argv);
     let appimage = procfs::appimage_of(pid, exe.as_deref());
+    let recheck = appimage.is_none()
+        && exe.as_deref().is_some_and(|e| e.contains("/.mount_"))
+        && procfs::environ(pid).is_empty()
+        && procfs::alive(pid);
     let key = match &appimage {
         Some((file, _)) => procfs::stable_key(file),
         None => procfs::learn_key(exe.as_deref(), &argv, &st.comm),
@@ -2475,6 +2483,7 @@ fn classify(
         cpus: vec![],
         profile: None,
         mem: vec![],
+        recheck,
     };
     let ignore = |t: &mut Tracked, why: &str| t.state = St::Ignored(why.to_string());
 

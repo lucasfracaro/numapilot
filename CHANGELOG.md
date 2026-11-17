@@ -7,6 +7,8 @@
   point that changes on every start (`/tmp/.mount_XXXX/…`), so a saved profile never applied
   again. Now the key is the `.AppImage` file (`$APPIMAGE`, the same key the "find installed
   app" window gives it) and the name is the file's (e.g. `lichii-linux-x86_64-pgo`).
+  A process read in the middle of its exec(), before its environment exists, is read again on
+  the next second (the first test caught `AppRun` that way and it lost its profile).
 - **Programs lists every open program, idle ones too.** The service published a watched
   process only while it used ≥ 0.1 core or a card, so an emulator waiting in its menu vanished
   from the list and could not be adjusted. Idle ones are now published with `idle: true`;
