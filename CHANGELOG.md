@@ -2,6 +2,13 @@
 
 ## Ainda não lançado
 
+- **AMD card stuck at its lowest clock in the "manual" level.** Setting a power profile (3D
+  full screen…) needs the "manual" level, and in it the driver keeps the clock levels allowed
+  before: a MI50 that LACT had put in "low" ran a Switch emulator at 72% with 859 MHz core and
+  350 MHz memory. Now the profile change allows every core and memory level again
+  (`gpuctl::open_dpm_levels`), and so does the return from "low" after the idle saving. The
+  check for a busy card stuck at the lowest level (5 s at ≥ 50%) runs for every AMD card, not
+  only those with idle saving on, and also catches "manual".
 - `numapilot run`: the program is what comes after `env VAR=value…`. AppImage menu shortcuts
   start with `env DESKTOPINTEGRATION=1 …`, so `run` took `env` as the program, did not find the
   saved choice and opened the emulator on automatic, on another card.

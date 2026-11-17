@@ -866,6 +866,27 @@ pub fn profile_driver_name(short: &str) -> Option<&'static str> {
 }
 
 /// Picks a profile by its short name ("3d", "compute", "padrao"...).
+/// In the "manual" level the driver keeps the clock levels that were allowed before it: coming
+/// from "low" (LACT forces it on the MI50s) the card stayed at its lowest clocks, 859 MHz core
+/// and 350 MHz memory with a game at 72%. Allows every level of core and memory clock again.
+/// Returns how many tables were opened.
+pub fn open_dpm_levels(pci: &str) -> usize {
+    let mut n = 0;
+    for f in ["pp_dpm_sclk", "pp_dpm_mclk"] {
+        let path = sys(&format!("bus/pci/devices/{pci}/{f}"));
+        let Some(t) = read_trim(&path) else { continue };
+        let idx: Vec<String> = t
+            .lines()
+            .filter_map(|l| l.split(':').next()?.trim().parse::<u32>().ok())
+            .map(|i| i.to_string())
+            .collect();
+        if idx.len() > 1 && fs::write(&path, idx.join(" ")).is_ok() {
+            n += 1;
+        }
+    }
+    n
+}
+
 pub fn set_power_profile(pci: &str, short: &str) -> Result<(), String> {
     let want = profile_driver_name(short).ok_or("perfil desconhecido")?;
     let (list, active) = power_profiles(pci).ok_or("a placa não tem pp_power_profile_mode")?;
@@ -882,6 +903,7 @@ pub fn set_power_profile(pci: &str, short: &str) -> Result<(), String> {
     // Outside the default the driver requires the "manual" level; on the default, back to "auto".
     if want != "BOOTUP_DEFAULT" {
         let _ = fs::write(&lvl, "manual");
+        open_dpm_levels(pci);
     }
     let r = fs::write(
         sys(&format!("bus/pci/devices/{pci}/pp_power_profile_mode")),

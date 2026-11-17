@@ -1216,21 +1216,10 @@ pub fn run(cfg: Config) -> Result<()> {
                 e.0 = None;
                 if let Some(prev) = e.1.take() {
                     let _ = std::fs::write(&lvl_path, &prev);
-                }
-                // Busy and still in the lowest level, which was not put there by this loop
-                // (it has nothing to give back): another tool forced it. On the server LACT
-                // had saved "low" for both MI50; Elden Ring ran at 859 MHz of 1700 with the
-                // card at 99%. "Low until it is used again" is what this option promises.
-                let n = stuck_low.entry(pci.clone()).or_insert(0u32);
-                if busy >= 50 && crate::util::read_trim(&lvl_path).as_deref() == Some("low") {
-                    *n += 1;
-                    if *n == 5 && std::fs::write(&lvl_path, "auto").is_ok() {
-                        crate::nlog!(
-                            "{pci}: busy at the lowest performance level (forced by another tool): back to auto"
-                        );
+                    // back in "manual" the driver keeps the levels allowed in "low"
+                    if prev == "manual" {
+                        gpuctl::open_dpm_levels(pci);
                     }
-                } else {
-                    *n = 0;
                 }
             } else {
                 let since = *e.0.get_or_insert_with(Instant::now);
@@ -1240,6 +1229,61 @@ pub fn run(cfg: Config) -> Result<()> {
                         e.1 = Some(cur);
                     }
                 }
+            }
+        }
+        // Busy and stuck at the lowest clock, put there by another tool (on the server LACT
+        // saves "low" for both MI50; Elden Ring ran at 859 MHz of 1700 with the card at 99%).
+        // In "low": back to auto. In "manual" (set for a power profile) the driver keeps the
+        // levels allowed before it, so a card that was in "low" keeps its lowest clock (a
+        // Switch emulator at 72% with 859 MHz core / 350 MHz memory): every level allowed
+        // again. Five seconds busy in a row; every AMD card (not the BC-250, whose clock
+        // belongs to its governor).
+        for g in topo
+            .gpus
+            .iter()
+            .filter(|g| g.vendor == 0x1002 && g.device != 0x13fe)
+        {
+            let pci = &g.pci;
+            let n = stuck_low.entry(pci.clone()).or_insert(0u32);
+            if g.busy_percent().unwrap_or(0) < 50 {
+                *n = 0;
+                continue;
+            }
+            let lvl_path = crate::util::sys(&format!(
+                "bus/pci/devices/{pci}/power_dpm_force_performance_level"
+            ));
+            let level = crate::util::read_trim(&lvl_path);
+            let stuck = match level.as_deref() {
+                Some("low") => true,
+                Some("manual") => crate::util::read_trim(crate::util::sys(&format!(
+                    "bus/pci/devices/{pci}/pp_dpm_sclk"
+                )))
+                .is_some_and(|t| {
+                    t.lines().count() > 1
+                        && t.lines()
+                            .next()
+                            .is_some_and(|l| l.trim_end().ends_with('*'))
+                }),
+                _ => false,
+            };
+            if !stuck {
+                *n = 0;
+                continue;
+            }
+            *n += 1;
+            if *n != 5 {
+                continue;
+            }
+            if level.as_deref() == Some("low") {
+                if std::fs::write(&lvl_path, "auto").is_ok() {
+                    crate::nlog!(
+                        "{pci}: busy at the lowest performance level (forced by another tool): back to auto"
+                    );
+                }
+            } else if gpuctl::open_dpm_levels(pci) > 0 {
+                crate::nlog!(
+                    "{pci}: busy at the lowest clock in the manual level: every clock level allowed again"
+                );
             }
         }
         // The NVIDIA offset is lost when the laptop card sleeps and wakes:
