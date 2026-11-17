@@ -525,6 +525,17 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("Apply", "Aplicar"),
     ("Copy the line for Steam", "Copiar a linha para a Steam"),
+    ("Remove the menu shortcut", "Remover o atalho do menu"),
+    ("Create a menu shortcut", "Criar atalho no menu"),
+    (
+        "Creates a shortcut in the menu that opens this program through numapilot, so the graphics card and everything in this adjustment apply from the start.",
+        "Cria um atalho no menu que abre este programa pelo numapilot, para a placa de vídeo e tudo deste ajuste valerem desde o início.",
+    ),
+    (
+        "Open the program once, so numapilot knows how to start it.",
+        "Abra o programa uma vez, para o numapilot saber como iniciá-lo.",
+    ),
+    ("Menu shortcut removed", "Atalho do menu removido"),
     (
         "Copies the launch options for this game with the card chosen here. Paste in Steam → game Properties → General → Launch options (what the game already has there is kept).",
         "Copia as opções de inicialização deste jogo com a placa escolhida aqui. Cole na Steam → Propriedades do jogo → Geral → Opções de inicialização (o que o jogo já tem lá é mantido).",

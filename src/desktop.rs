@@ -172,9 +172,172 @@ pub fn remove_override(original: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Line that ties a shortcut made by numapilot to a program (its profile key).
+const KEY_LINE: &str = "X-Numapilot-Key=";
+
+/// The shortcut numapilot made for this program (key), if there is one.
+pub fn own_shortcut(key: &str) -> Option<PathBuf> {
+    let want = format!("{KEY_LINE}{key}");
+    let mut v: Vec<PathBuf> = fs::read_dir(user_dir())
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("desktop"))
+        .collect();
+    v.sort();
+    v.into_iter()
+        .find(|p| fs::read_to_string(p).is_ok_and(|c| c.lines().any(|l| l.trim() == want)))
+}
+
+/// How to start the program again: what is running (`pid`) or, closed, the key when it is a
+/// file. An AppImage starts from its file; a script keeps its interpreter's whole command
+/// line; anything else is just the executable (the files it had open, like a game's ROM, are
+/// left out). None = unknown (open the program once).
+pub fn launch_command(key: &str, pid: Option<i32>) -> Option<Vec<String>> {
+    if let Some(pid) = pid.filter(|p| crate::procfs::alive(*p)) {
+        let exe = crate::procfs::exe(pid);
+        if let Some((file, _)) = crate::procfs::appimage_of(pid, exe.as_deref()) {
+            return Some(vec![file]);
+        }
+        if let Some(exe) = exe.filter(|e| !e.contains("/.mount_")) {
+            let argv = crate::procfs::cmdline(pid);
+            if crate::procfs::is_interpreter(&exe) && argv.len() > 1 {
+                return Some(argv);
+            }
+            return Some(vec![exe]);
+        }
+    }
+    (!key.contains('*') && !key.contains(' ') && Path::new(key).is_file())
+        .then(|| vec![key.to_string()])
+}
+
+/// One argument of an Exec= line (desktop entry rules: quotes around anything with spaces or
+/// special characters, `%` doubled).
+fn exec_arg(a: &str) -> String {
+    let a = a.replace('%', "%%");
+    if !a.is_empty()
+        && a.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/._-+,:=@".contains(c))
+    {
+        return a;
+    }
+    let mut q = String::from("\"");
+    for c in a.chars() {
+        if matches!(c, '"' | '`' | '$' | '\\') {
+            q.push('\\');
+        }
+        q.push(c);
+    }
+    q.push('"');
+    q
+}
+
+/// Text of a shortcut that opens `argv` through `numapilot run`.
+pub fn shortcut_content(
+    key: &str,
+    name: &str,
+    argv: &[String],
+    bin: &str,
+    icon: &str,
+    categories: &str,
+) -> String {
+    let exec: Vec<String> = argv.iter().map(|a| exec_arg(a)).collect();
+    let name = name.replace('\n', " ");
+    format!(
+        "[Desktop Entry]\nType=Application\nName={name} (numapilot)\nComment=Opens {name} through numapilot, with its saved adjustment\nExec={} run -- {}\nIcon={icon}\nTerminal=false\nCategories={categories}\n{MARK}\n{KEY_LINE}{key}\n",
+        exec_arg(bin),
+        exec.join(" ")
+    )
+}
+
+/// Creates (or replaces) the menu shortcut that opens this program through numapilot.
+pub fn create_shortcut(key: &str, name: &str, argv: &[String]) -> std::io::Result<PathBuf> {
+    if argv.is_empty() {
+        return Err(std::io::Error::other("no command"));
+    }
+    // icon and categories of the program's own shortcut, when it has one
+    let (mut icon, mut cats) = (
+        "application-x-executable".to_string(),
+        "Utility;".to_string(),
+    );
+    if let Some(c) = find_for_exe(&argv[0]).and_then(|p| fs::read_to_string(p).ok()) {
+        for l in c.lines() {
+            if let Some(v) = l.strip_prefix("Icon=") {
+                icon = v.to_string();
+            } else if let Some(v) = l.strip_prefix("Categories=") {
+                cats = v.to_string();
+            }
+        }
+    }
+    let slug: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    fs::create_dir_all(user_dir())?;
+    let dest = match own_shortcut(key) {
+        Some(p) => p,
+        None => {
+            let base = if slug.is_empty() {
+                "program".to_string()
+            } else {
+                slug
+            };
+            let mut p = user_dir().join(format!("numapilot-{base}.desktop"));
+            let mut n = 2;
+            while p.exists() {
+                p = user_dir().join(format!("numapilot-{base}-{n}.desktop"));
+                n += 1;
+            }
+            p
+        }
+    };
+    fs::write(
+        &dest,
+        shortcut_content(key, name, argv, &numapilot_bin(), &icon, &cats),
+    )?;
+    Ok(dest)
+}
+
+/// Deletes the shortcut numapilot made for this program. Ok(false) = there was none.
+pub fn remove_shortcut(key: &str) -> std::io::Result<bool> {
+    match own_shortcut(key) {
+        Some(p) => fs::remove_file(p).map(|_| true),
+        None => Ok(false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shortcut_text() {
+        let c = shortcut_content(
+            "/e/lichii.AppImage",
+            "Lichii",
+            &[
+                "/e/My Games/lichii.AppImage".to_string(),
+                "--x=50%".to_string(),
+            ],
+            "/usr/local/bin/numapilot",
+            "applications-games",
+            "Game;",
+        );
+        assert!(c.contains(
+            "Exec=/usr/local/bin/numapilot run -- \"/e/My Games/lichii.AppImage\" \"--x=50%%\""
+        ));
+        assert!(c.contains("X-Numapilot-Key=/e/lichii.AppImage"));
+        assert!(c.contains(MARK));
+        assert_eq!(
+            exec_program(exec_line(&c).unwrap()).as_deref(),
+            Some("/usr/local/bin/numapilot")
+        );
+    }
 
     #[test]
     fn exec_parsing_and_wrap() {

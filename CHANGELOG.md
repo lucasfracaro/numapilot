@@ -2,6 +2,13 @@
 
 ## Ainda não lançado
 
+- **Menu shortcut from the Adjust window.** For anything that is not a Steam game, "Create a
+  menu shortcut" writes `~/.local/share/applications/numapilot-NAME.desktop`, which opens the
+  program through `numapilot run`, so the graphics card and the rest of the adjustment apply
+  from the start. Once it exists, the button becomes "Remove the menu shortcut". The command
+  comes from the running program (an AppImage from its file, a script with its interpreter's
+  command line) or, closed, from its file; the icon and categories from the program's own
+  shortcut when it has one. The shortcut carries `X-Numapilot-Key=` to be found again.
 - **AppImage programs show up by name and keep their settings.** A program running from an
   AppImage was listed as `AppRun` (the launcher inside every AppImage) with a key in a mount
   point that changes on every start (`/tmp/.mount_XXXX/…`), so a saved profile never applied

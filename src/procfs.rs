@@ -316,6 +316,12 @@ fn strip_versions(c: &str) -> String {
     out
 }
 
+/// Python, Wine, Java, shells…: the program is in the arguments, not in the executable.
+pub fn is_interpreter(exe: &str) -> bool {
+    let base = basename(exe);
+    INTERP.iter().any(|p| crate::util::glob_match(p, base))
+}
+
 fn learn_key_raw(exe: Option<&str>, argv: &[String], comm: &str) -> String {
     let Some(exe) = exe else {
         return comm.to_string();

@@ -21,6 +21,8 @@ pub struct Editor {
     pub p: Profile,
     pub picking: bool,
     pub pick: BTreeSet<usize>,
+    /// Menu shortcut numapilot made for this program (not for Steam games).
+    pub shortcut: Option<std::path::PathBuf>,
 }
 
 impl Editor {
@@ -47,6 +49,11 @@ impl Editor {
             mem: mem.to_vec(),
             picking: !pick.is_empty(),
             pick,
+            shortcut: if key.starts_with("steam:") {
+                None
+            } else {
+                numapilot::desktop::own_shortcut(key)
+            },
             p: Profile {
                 label: label.into(),
                 ..p
@@ -390,6 +397,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let mut apply = false;
     let mut fix = false;
     let mut steam_line: Option<Option<String>> = None;
+    let mut shortcut_op: Option<bool> = None;
     egui::Window::new(crate::tf!("Adjust: {}", "Ajustar: {}", ed.label))
         .id(egui::Id::unique("numapilot-editor"))
         .open(&mut open)
@@ -904,9 +912,77 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                         let gpu = app.topo.gpus.iter().find(|g| g.matches(&ed.p.gpu)).map(|g| g.alias.clone());
                         steam_line = Some(numapilot::steam::command_for_game(id, gpu.as_deref()));
                     }
+                    // Anything else: a menu shortcut that opens it through `numapilot run`
+                    if !ed.key.starts_with("steam:") {
+                        if let Some(path) = ed.shortcut.clone() {
+                            if ui
+                                .button(crate::i18n::tr("Remove the menu shortcut"))
+                                .on_hover_text(path.display().to_string())
+                                .clicked()
+                            {
+                                shortcut_op = Some(false);
+                            }
+                        } else {
+                            let cmd = numapilot::desktop::launch_command(&ed.key, ed.main_pid);
+                            let b = ui
+                                .add_enabled(cmd.is_some(), egui::Button::new(crate::i18n::tr("Create a menu shortcut")))
+                                .on_hover_text(crate::i18n::tr(
+                                    "Creates a shortcut in the menu that opens this program through numapilot, so the graphics card and everything in this adjustment apply from the start.",
+                                ))
+                                .on_disabled_hover_text(crate::i18n::tr(
+                                    "Open the program once, so numapilot knows how to start it.",
+                                ));
+                            if b.clicked() {
+                                shortcut_op = Some(true);
+                            }
+                        }
+                    }
                 });
             });
         });
+    match shortcut_op {
+        Some(true) => {
+            let cmd = numapilot::desktop::launch_command(&ed.key, ed.main_pid).unwrap_or_default();
+            match numapilot::desktop::create_shortcut(&ed.key, &ed.label, &cmd) {
+                Ok(p) => {
+                    ed.shortcut = Some(p);
+                    let _ = std::process::Command::new("kbuildsycoca6")
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn();
+                    app.toast(
+                        crate::tf!(
+                            "Shortcut \"{} (numapilot)\" created in the menu",
+                            "Atalho \"{} (numapilot)\" criado no menu",
+                            ed.label
+                        ),
+                        true,
+                    );
+                }
+                Err(e) => app.toast(
+                    crate::tf!(
+                        "Could not create the shortcut: {e}",
+                        "Não consegui criar o atalho: {e}"
+                    ),
+                    false,
+                ),
+            }
+        }
+        Some(false) => match numapilot::desktop::remove_shortcut(&ed.key) {
+            Ok(_) => {
+                ed.shortcut = None;
+                app.toast(crate::i18n::tr("Menu shortcut removed"), true);
+            }
+            Err(e) => app.toast(
+                crate::tf!(
+                    "Could not remove the shortcut: {e}",
+                    "Não consegui remover o atalho: {e}"
+                ),
+                false,
+            ),
+        },
+        None => {}
+    }
     match steam_line {
         Some(Some(line)) => {
             ctx.copy_text(line.clone());
