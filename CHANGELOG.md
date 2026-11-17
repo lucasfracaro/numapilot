@@ -1,6 +1,6 @@
 # Mudanças
 
-## Ainda não lançado
+## 0.5.7 — 2026-11-17
 
 - **NVIDIA and Intel held at a low clock ceiling by another tool.** Like the AMD check: a
   card used by a program, busy and held below its top clock by a setting (NVIDIA: the
