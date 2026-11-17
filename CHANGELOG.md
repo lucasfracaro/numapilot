@@ -1,6 +1,6 @@
 # Mudanças
 
-## Ainda não lançado
+## 0.5.5 — 2026-11-17
 
 - **Interface look, second pass.** Menu icons drawn with one line weight instead of the fonts'
   emoji. Status colors (fine, attention, problem) come from the theme everywhere, so the light
