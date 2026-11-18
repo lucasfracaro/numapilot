@@ -885,6 +885,37 @@ fn visible_mem_bytes(
     Some(total)
 }
 
+/// `pp_dpm_sclk` with the current level (`*`) at the lowest clock. By MHz, not by position: the
+/// MI50 has two bottom levels (0: 859 MHz, 1: 860 MHz) and a card held low sits on either.
+fn at_lowest_clock(text: &str) -> bool {
+    let levels: Vec<(u32, bool)> = text
+        .lines()
+        .filter_map(|l| {
+            let (_, rest) = l.split_once(':')?;
+            let mhz: u32 = rest
+                .trim()
+                .trim_end_matches('*')
+                .trim()
+                .trim_end_matches("Mhz")
+                .trim()
+                .parse()
+                .ok()?;
+            Some((mhz, l.trim_end().ends_with('*')))
+        })
+        .collect();
+    let (Some(min), Some(max)) = (
+        levels.iter().map(|l| l.0).min(),
+        levels.iter().map(|l| l.0).max(),
+    ) else {
+        return false;
+    };
+    // only when there is somewhere higher to go
+    max > min + min / 10
+        && levels
+            .iter()
+            .any(|&(mhz, cur)| cur && mhz <= min + min / 20)
+}
+
 fn same_set(a: &[usize], b: &[usize]) -> bool {
     a.len() == b.len() && a.iter().all(|x| b.contains(x))
 }
@@ -1289,12 +1320,7 @@ pub fn run(cfg: Config) -> Result<()> {
                 Some("manual") => crate::util::read_trim(crate::util::sys(&format!(
                     "bus/pci/devices/{pci}/pp_dpm_sclk"
                 )))
-                .is_some_and(|t| {
-                    t.lines().count() > 1
-                        && t.lines()
-                            .next()
-                            .is_some_and(|l| l.trim_end().ends_with('*'))
-                }),
+                .is_some_and(|t| at_lowest_clock(&t)),
                 _ => false,
             };
             if !stuck {
@@ -3053,6 +3079,18 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(ctx.plan_cpus(&p, &[]).map(|v| v.len()), Some(16));
+    }
+
+    #[test]
+    fn lowest_clock_by_mhz() {
+        let mi50 = "0: 859Mhz \n1: 860Mhz *\n2: 1153Mhz \n8: 1700Mhz ";
+        assert!(at_lowest_clock(mi50));
+        assert!(at_lowest_clock("0: 859Mhz *\n1: 860Mhz \n2: 1700Mhz "));
+        assert!(!at_lowest_clock("0: 859Mhz \n1: 860Mhz \n2: 1700Mhz *"));
+        // a single level, or levels all alike: nowhere to go
+        assert!(!at_lowest_clock("0: 500Mhz *"));
+        assert!(!at_lowest_clock("0: 859Mhz *\n1: 860Mhz "));
+        assert!(!at_lowest_clock(""));
     }
 
     #[test]

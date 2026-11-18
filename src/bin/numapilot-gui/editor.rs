@@ -23,6 +23,9 @@ pub struct Editor {
     pub pick: BTreeSet<usize>,
     /// Menu shortcut numapilot made for this program (not for Steam games).
     pub shortcut: Option<std::path::PathBuf>,
+    /// The open program was started directly, not through `numapilot run`: the card, what it
+    /// sees and the upscaler of this adjustment do not reach it.
+    pub direct: bool,
 }
 
 impl Editor {
@@ -45,6 +48,10 @@ impl Editor {
             key: key.into(),
             label: label.into(),
             main_pid,
+            direct: main_pid.is_some_and(|pid| {
+                numapilot::procfs::env_var(pid, "NUMAPILOT_MODE").is_none()
+                    && !numapilot::procfs::environ(pid).is_empty()
+            }),
             current_cpus: cpus.into(),
             mem: mem.to_vec(),
             picking: !pick.is_empty(),
@@ -893,6 +900,23 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     .small()
                     .weak(),
                 );
+                if ed.direct && ed.p.gpu != "auto" {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(if ed.key.starts_with("steam:") {
+                            crate::i18n::tr(
+                                "This game was opened without numapilot: the graphics card chosen here does not reach it. \
+                                 Put the line from \"Copy the line for Steam\" in its launch options.",
+                            )
+                        } else {
+                            crate::i18n::tr(
+                                "This program was opened directly, not through numapilot: the graphics card chosen here does not reach it \
+                                 (it goes to the system's default card). Open it from the menu shortcut numapilot makes.",
+                            )
+                        })
+                        .color(crate::theme::warn()),
+                    );
+                }
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     if ui.button(RichText::new(crate::i18n::tr("Apply")).strong()).clicked() {

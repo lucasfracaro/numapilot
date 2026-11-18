@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Adjust warns when the program was opened directly.** The graphics card of a saved choice
+  only reaches a program opened through numapilot (`numapilot run`, its menu shortcut, the Steam
+  line). The Longshot launcher opened from its own shortcut always went to the boot card
+  (gfx906-0, the MI50 at PCIe x8) whatever was chosen; the Adjust window now says so and points
+  to the menu shortcut (or the Steam line).
+- **The card list shows each card's PCIe width** (the slowest stretch to the processor), so the
+  two MI50s on socket 0 can be told apart: gfx906-0 is at x8, gfx906-1 at x16.
+- **AMD stuck-clock check by MHz.** The MI50 has two bottom levels (859 and 860 MHz); a card held
+  low sitting on the second one was not seen as stuck. Now any current level within 5% of the
+  lowest clock counts.
 - **"The program sees" also limits memory.** With memory bound to one socket ("strict"), the
   program's scope gets a memory limit the size of that socket (unless the profile sets its own),
   so programs that size themselves by their control group (Java, .NET, Go, Node, some build

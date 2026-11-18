@@ -655,6 +655,18 @@ pub const PT: &[(&str, &str)] = &[
                              (programas que leem o próprio grupo de controle contam só essa RAM).",
     ),
     ("only the allowed cores", "só os núcleos liberados"),
+    (
+        "This game was opened without numapilot: the graphics card chosen here does not reach it. \
+                                 Put the line from \"Copy the line for Steam\" in its launch options.",
+        "Este jogo foi aberto sem o numapilot: a placa de vídeo escolhida aqui não chega nele. \
+                                 Ponha a linha de \"Copiar a linha para a Steam\" nas opções de inicialização dele.",
+    ),
+    (
+        "This program was opened directly, not through numapilot: the graphics card chosen here does not reach it \
+                                 (it goes to the system's default card). Open it from the menu shortcut numapilot makes.",
+        "Este programa foi aberto direto, não pelo numapilot: a placa de vídeo escolhida aqui não chega nele \
+                                 (ele vai para a placa padrão do sistema). Abra pelo atalho do menu que o numapilot cria.",
+    ),
     ("The program sees", "O programa enxerga"),
     ("pick the cores on the map", "escolher os núcleos no mapa"),
     (

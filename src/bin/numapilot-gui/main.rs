@@ -466,11 +466,18 @@ impl App {
             "auto".to_string(),
             crate::i18n::tr("Automatic").to_string(),
         )];
-        let sk = |n: Option<usize>| {
-            n.map(|n| format!("socket {n}"))
-                .unwrap_or_else(|| "socket ?".into())
-        };
         for g in &topo.gpus {
+            // socket and, with more than one card, the PCIe width of the slot (two MI50s on
+            // socket 0, one at x8 and one at x16, otherwise look the same)
+            let sk = |n: Option<usize>| {
+                let s = n
+                    .map(|n| format!("socket {n}"))
+                    .unwrap_or_else(|| "socket ?".into());
+                match pcie_width(&g.pci).filter(|_| topo.gpus.len() > 1) {
+                    Some(w) => format!("{s}, PCIe x{w}"),
+                    None => s,
+                }
+            };
             match g.role {
                 GpuRole::Compute => {
                     let mon = if g.display_connected {
@@ -2060,4 +2067,18 @@ fn shot(ctx: &egui::Context) {
 pub(crate) fn in_path(bin: &str) -> bool {
     std::env::var_os("PATH")
         .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
+}
+
+/// Width of the slowest PCIe stretch between the card and the processor, read once.
+fn pcie_width(pci: &str) -> Option<u32> {
+    static W: std::sync::Mutex<Option<std::collections::HashMap<String, Option<u32>>>> =
+        std::sync::Mutex::new(None);
+    let mut g = W.lock().ok()?;
+    *g.get_or_insert_with(Default::default)
+        .entry(pci.to_string())
+        .or_insert_with(|| {
+            numapilot::gpuctl::pcie_link(pci)
+                .map(|l| l.width)
+                .filter(|w| *w > 0)
+        })
 }
