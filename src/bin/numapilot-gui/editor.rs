@@ -545,7 +545,9 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                     ui.checkbox(&mut ed.p.limit_visible, crate::i18n::tr("only the allowed cores"))
                         .on_hover_text(
                             crate::i18n::tr("Proton/Wine games (WINE_CPU_TOPOLOGY), OpenMP, MKL, OpenBLAS, .NET, Java, Go...\n\
-                             Keeps games and Easy Anti-Cheat from refusing to start for seeing too many cores. Applies on start."),
+                             Keeps games and Easy Anti-Cheat from refusing to start for seeing too many cores. Applies on start.\n\
+                             With strict memory on one socket, also a memory limit the size of that socket\n\
+                             (programs that read their control group count only that RAM)."),
                         );
                     ui.end_row();
 

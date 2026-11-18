@@ -1,5 +1,14 @@
 # Mudanças
 
+## Unreleased
+
+- **"The program sees" also limits memory.** With memory bound to one socket ("strict"), the
+  program's scope gets a memory limit the size of that socket (unless the profile sets its own),
+  so programs that size themselves by their control group (Java, .NET, Go, Node, some build
+  tools) count 32 GB instead of 64 on the 2× Xeon server. The binding itself already worked
+  (`Mems_allowed` = the socket); `/proc/meminfo`, which most programs read, still shows the whole
+  machine: hiding it would need LXCFS and a mount namespace, left out on purpose.
+
 ## 0.5.7 — 2026-11-17
 
 - **NVIDIA and Intel held at a low clock ceiling by another tool.** Like the AMD check: a

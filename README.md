@@ -182,7 +182,7 @@ A task-manager-style table, with programs grouped (Steam games by AppId) into **
 |---|---|---|
 | Processors | socket 0, 1, both or the GPU's | right away |
 | Cores | N CPUs, with or without hyper-threading, or picked on the map | right away |
-| The program sees | only the allowed cores (`WINE_CPU_TOPOLOGY` in Proton, `OMP/MKL/…_NUM_THREADS`, `GOMAXPROCS`, .NET, Java) | on start |
+| The program sees | only the allowed cores (`WINE_CPU_TOPOLOGY` in Proton, `OMP/MKL/…_NUM_THREADS`, `GOMAXPROCS`, .NET, Java); with strict memory on one socket, a memory limit the size of that socket (programs that read their cgroup count only that RAM; `/proc/meminfo` still shows the whole machine) | on start |
 | Memory | socket only, prefer local, interleave or free; limit in GB | right away |
 | Priority, exclusive cores, low latency | CPU/disk, cores of its own, no deep idle states and full clock | right away |
 | Graphics card, GPU power profile, machine mode | GPU and use (game/AI), 3D/compute/VR, Game/AI/Quiet while it runs | on start |

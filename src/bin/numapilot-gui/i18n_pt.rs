@@ -646,9 +646,13 @@ pub const PT: &[(&str, &str)] = &[
     ),
     (
         "Proton/Wine games (WINE_CPU_TOPOLOGY), OpenMP, MKL, OpenBLAS, .NET, Java, Go...\n\
-                             Keeps games and Easy Anti-Cheat from refusing to start for seeing too many cores. Applies on start.",
+                             Keeps games and Easy Anti-Cheat from refusing to start for seeing too many cores. Applies on start.\n\
+                             With strict memory on one socket, also a memory limit the size of that socket\n\
+                             (programs that read their control group count only that RAM).",
         "Jogos do Proton/Wine (WINE_CPU_TOPOLOGY), OpenMP, MKL, OpenBLAS, .NET, Java, Go...\n\
-                             Evita jogos e o Easy Anti-Cheat recusarem abrir por ver núcleos demais. Vale ao abrir.",
+                             Evita jogos e o Easy Anti-Cheat recusarem abrir por ver núcleos demais. Vale ao abrir.\n\
+                             Com a memória presa a um socket, também um limite de memória do tamanho dele\n\
+                             (programas que leem o próprio grupo de controle contam só essa RAM).",
     ),
     ("only the allowed cores", "só os núcleos liberados"),
     ("The program sees", "O programa enxerga"),

@@ -179,7 +179,7 @@ AppId) em **Aplicativos** e **Sessão e sistema**:
 |---|---|---|
 | Processadores | socket 0, 1, os dois ou o da GPU | na hora |
 | Núcleos | N CPUs, com ou sem hyper-threading, ou escolhidos no mapa | na hora |
-| O programa enxerga | só os núcleos liberados (`WINE_CPU_TOPOLOGY` no Proton, `OMP/MKL/…_NUM_THREADS`, `GOMAXPROCS`, .NET, Java) | ao abrir |
+| O programa enxerga | só os núcleos liberados (`WINE_CPU_TOPOLOGY` no Proton, `OMP/MKL/…_NUM_THREADS`, `GOMAXPROCS`, .NET, Java); com a memória presa a um socket, um limite de memória do tamanho dele (programas que leem o cgroup contam só essa RAM; o `/proc/meminfo` continua mostrando a máquina toda) | ao abrir |
 | Memória | só do socket, preferir a local, intercalar ou livre; limite em GB | na hora |
 | Prioridade, núcleos exclusivos, baixa latência | CPU/disco, núcleos só dele, sem estados de economia profundos e com o clock cheio | na hora |
 | Placa de vídeo, perfil de energia da GPU, modo da máquina | GPU e uso (jogo/IA), 3D/computação/VR, Jogo/IA/Silencioso enquanto ele roda | ao abrir |

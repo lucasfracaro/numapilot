@@ -790,11 +790,21 @@ impl Ctx<'_> {
             } else {
                 t.cpus.clone()
             };
+            let mem_nodes =
+                (p.memory == "strict" && !cpus.is_empty()).then(|| self.topo.nodes_of(&cpus));
+            let sizes: Vec<(usize, u64)> = self
+                .topo
+                .nodes
+                .iter()
+                .map(|n| (n.id, n.mem_total_kb))
+                .collect();
             let limits = Limits {
                 cpus: (p.has_cpu_choice() && !cpus.is_empty()).then(|| cpus.clone()),
-                mem_nodes: (p.memory == "strict" && !cpus.is_empty())
-                    .then(|| self.topo.nodes_of(&cpus)),
-                mem_max_bytes: p.mem_max_gb.map(|g| (g * 1073741824.0) as u64),
+                mem_max_bytes: p
+                    .mem_max_gb
+                    .map(|g| (g * 1073741824.0) as u64)
+                    .or_else(|| visible_mem_bytes(p.limit_visible, mem_nodes.as_deref(), &sizes)),
+                mem_nodes,
                 cpu_quota_pct: p.cpu_max_pct.map(|c| c.round() as u32),
             };
             match cgroup::apply(&t.pkey, &t.label, pids, &limits) {
@@ -852,6 +862,27 @@ impl Ctx<'_> {
             }
         }
     }
+}
+
+/// "The program sees" with memory bound to some of the sockets: a memory limit the size of
+/// those sockets, so programs that size themselves by their control group (Java, .NET, Go,
+/// Node, some build tools) count only that RAM. `/proc/meminfo` still shows the whole machine.
+/// Nothing when every node is allowed or a node size is unknown.
+fn visible_mem_bytes(
+    limit_visible: bool,
+    mem_nodes: Option<&[usize]>,
+    sizes_kb: &[(usize, u64)],
+) -> Option<u64> {
+    let nodes = mem_nodes.filter(|n| limit_visible && !n.is_empty() && n.len() < sizes_kb.len())?;
+    let mut total = 0u64;
+    for n in nodes {
+        let kb = sizes_kb.iter().find(|(id, _)| id == n).map(|(_, kb)| *kb)?;
+        if kb == 0 {
+            return None;
+        }
+        total += kb * 1024;
+    }
+    Some(total)
 }
 
 fn same_set(a: &[usize], b: &[usize]) -> bool {
@@ -3022,6 +3053,22 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(ctx.plan_cpus(&p, &[]).map(|v| v.len()), Some(16));
+    }
+
+    #[test]
+    fn memory_limit_from_bound_sockets() {
+        let sizes = [(0, 32 * 1024 * 1024), (1, 32 * 1024 * 1024)];
+        assert_eq!(
+            visible_mem_bytes(true, Some(&[0]), &sizes),
+            Some(32 * 1024 * 1024 * 1024)
+        );
+        // option off, no binding, both sockets, unknown size: no limit
+        assert_eq!(visible_mem_bytes(false, Some(&[0]), &sizes), None);
+        assert_eq!(visible_mem_bytes(true, None, &sizes), None);
+        assert_eq!(visible_mem_bytes(true, Some(&[0, 1]), &sizes), None);
+        assert_eq!(visible_mem_bytes(true, Some(&[0]), &[(0, 0), (1, 5)]), None);
+        // one socket only (notebook, BC-250): nothing to hide
+        assert_eq!(visible_mem_bytes(true, Some(&[0]), &[(0, 1024)]), None);
     }
 
     #[test]
