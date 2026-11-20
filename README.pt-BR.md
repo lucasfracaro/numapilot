@@ -421,6 +421,10 @@ Interrupções das GPUs, placas de rede e NVMe vão para o socket de cada placa 
 DirectX roda pelo Proton (DXVK/VKD3D → Vulkan), então tudo que vale para Vulkan vale para os dois.
 Para jogar **numa MI50**: escolha "gfx906-N — jogo/gráfico" (com o monitor na MI50, ou PRIME para a
 RX 470). **Lossless Scaling** (lsfg-vk): gera os quadros na GPU do jogo; dual GPU precisa de um fork.
+O lsfg-vk precisa do Lossless Scaling comprado e instalado pela Steam, no ramo `lsfg-vk`
+(Propriedades → Betas); `numapilot lsfg` (e o painel em Ajustar → Apresentação e em Configurações)
+mostra o que falta e instala pelo AUR (`lsfg-vk`) num terminal. Configurações: `lsfg-vk-ui` ou
+`~/.config/lsfg-vk/conf.toml`.
 
 ## IA e laboratório
 

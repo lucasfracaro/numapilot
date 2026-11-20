@@ -548,6 +548,7 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             });
             ui.end_row();
         });
+    let want_lsfg = pr.multiplier > 1 && pr.engine == "lsfg";
     // What the launch will do on this machine (same plan as numapilot run).
     let plan = numapilot::present::plan(
         pr,
@@ -585,6 +586,9 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 .small()
                 .color(crate::theme::warn()),
         );
+    }
+    if want_lsfg {
+        crate::lsfg::panel(app, ui, "editor", false);
     }
     match &ed.present_last {
         Some(m) => {

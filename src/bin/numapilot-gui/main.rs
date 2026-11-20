@@ -9,6 +9,7 @@ mod i18n;
 mod jobs;
 mod lab;
 mod llm;
+mod lsfg;
 mod machine;
 mod map;
 mod prof;

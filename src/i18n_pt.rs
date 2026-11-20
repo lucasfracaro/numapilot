@@ -1556,4 +1556,13 @@ pub const PT: &[(&str, &str)] = &[
     ("SRVGGNetCompact (planned)", "SRVGGNetCompact (planejado)"),
     ("block matching (planned)", "block matching (planejado)"),
     ("RIFE v4 lite (planned)", "RIFE v4 lite (planejado)"),
+    ("lsfg-vk is not installed", "lsfg-vk não instalado"),
+    (
+        "Lossless Scaling is not installed through Steam (app 993090)",
+        "Lossless Scaling não instalado pela Steam (app 993090)",
+    ),
+    (
+        "Lossless Scaling is not on the \"lsfg-vk\" branch (Steam → Properties → Betas)",
+        "Lossless Scaling fora do ramo \"lsfg-vk\" (Steam → Propriedades → Betas)",
+    ),
 ];

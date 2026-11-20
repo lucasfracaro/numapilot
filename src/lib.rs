@@ -32,6 +32,7 @@ pub mod irqs;
 pub mod labcfg;
 pub mod learned;
 pub mod log;
+pub mod lsfg;
 pub mod machine;
 pub mod notebook;
 pub mod notify;
