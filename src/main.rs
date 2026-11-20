@@ -42,6 +42,10 @@ enum Cmd {
         /// GPU for Lossless Scaling frame generation (lsfg-vk). Default: the same as the game.
         #[arg(long)]
         fg_gpu: Option<String>,
+        /// Card that runs gamescope (upscaling and output): alias/PCI | display | same. The game
+        /// stays on its own card. Opens inside gamescope even without it in the profile.
+        #[arg(long)]
+        out_gpu: Option<String>,
         /// Shortcut for --use compute.
         #[arg(long, conflicts_with_all = ["graphics", "usage"])]
         compute: bool,
@@ -420,6 +424,7 @@ fn real_main() -> Result<()> {
             mem,
             usage,
             fg_gpu,
+            out_gpu,
             compute,
             graphics,
             dry_run,
@@ -431,7 +436,9 @@ fn real_main() -> Result<()> {
                 (_, _, Some(u)) => Kind::parse_usage(&u)?,
                 _ => None,
             };
-            cmd_run(&cfg, cpu, gpu, mem, usage, fg_gpu, dry_run, command)
+            cmd_run(
+                &cfg, cpu, gpu, mem, usage, fg_gpu, out_gpu, dry_run, command,
+            )
         }
         Cmd::Profile { action } => cmd_profile(action),
         Cmd::Doctor { json, report } => {
@@ -2002,6 +2009,7 @@ fn cmd_run(
     mem: Option<String>,
     usage: Option<Kind>,
     fg_gpu: Option<String>,
+    out_gpu: Option<String>,
     dry_run: bool,
     command: Vec<String>,
 ) -> Result<()> {
@@ -2090,8 +2098,38 @@ fn cmd_run(
         fg_gpu,
     };
     let d = decide_launch(cfg, &topo, &learned, &profiles, &loads, &inp)?;
-    let (mut set, unset) = gpu_env(&d, &topo);
+    let (mut set, mut unset) = gpu_env(&d, &topo);
     set.extend(numapilot::decide::dx_filter(&d, &topo, &set, &unset));
+    // gamescope: from the profile, or the default one when only --out-gpu asked for it.
+    let gamescope = profiles
+        .get(&pkey)
+        .and_then(|p| p.gamescope.clone())
+        .or_else(|| {
+            out_gpu
+                .as_ref()
+                .map(|_| numapilot::profiles::Gamescope::default())
+        })
+        .filter(|_| {
+            std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_none()
+                && basename(&command[0]) != "gamescope"
+        });
+    // gamescope on another card than the game (e.g. the game on one MI50, upscaling and the
+    // monitor on the other): gamescope's own environment points at the output card and the
+    // game gets its card's variables back through `env` in front of its command.
+    let split = match gamescope.as_ref().and_then(|g| {
+        out_gpu
+            .clone()
+            .or_else(|| g.output_gpu.clone())
+            .filter(|_| which("gamescope").is_some())
+    }) {
+        Some(name) => numapilot::decide::resolve_out_gpu(&name, &d, &topo)?.map(|o| {
+            let s = numapilot::decide::gamescope_split(&o, &topo, &set, &unset, &|k| {
+                std::env::var(k).ok()
+            });
+            (o, s)
+        }),
+        None => None,
+    };
 
     if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
         eprintln!(
@@ -2176,6 +2214,28 @@ fn cmd_run(
         for k in &unset {
             eprintln!("env      : unset {k}");
         }
+        if let Some((o, s)) = &split {
+            eprintln!(
+                "{}",
+                numapilot::tf!(
+                    "gamescope: on the {} ({}), --prefer-vk-device {}; the game stays on the GPU above",
+                    "gamescope: na {} ({}), --prefer-vk-device {}; o jogo fica na GPU acima",
+                    o.alias,
+                    o.pci,
+                    s.prefer
+                )
+            );
+            for (k, v) in &s.set {
+                if !set.contains(&(k.clone(), v.clone())) {
+                    eprintln!("gamescope: {k}={v}");
+                }
+            }
+            for k in &s.unset {
+                if !unset.contains(k) {
+                    eprintln!("gamescope: unset {k}");
+                }
+            }
+        }
         if dry_run {
             return Ok(());
         }
@@ -2245,13 +2305,19 @@ fn cmd_run(
     if tuning.is_some() && which("mangohud").is_some() && basename(&argv[0]) != "mangohud" {
         argv.insert(0, "mangohud".into());
     }
-    if let Some(g) = profiles.get(&pkey).and_then(|p| p.gamescope.clone())
-        && std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_none()
-        && basename(&command[0]) != "gamescope"
-    {
+    if let Some(g) = gamescope {
         if which("gamescope").is_some() {
             let mut a = g.argv();
-            a.push("--".into());
+            if let Some((_, s)) = split {
+                a.push("--prefer-vk-device".into());
+                a.push(s.prefer);
+                a.push("--".into());
+                a.extend(s.child);
+                set = s.set;
+                unset = s.unset;
+            } else {
+                a.push("--".into());
+            }
             a.append(&mut argv);
             argv = a;
         } else {

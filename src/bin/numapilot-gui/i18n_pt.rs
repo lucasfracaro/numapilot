@@ -566,6 +566,13 @@ pub const PT: &[(&str, &str)] = &[
         "(não instalado: sudo pacman -S gamescope)",
     ),
     ("Open inside gamescope", "Abrir dentro do gamescope"),
+    ("gamescope card", "Placa do gamescope"),
+    ("same as the game", "a mesma do jogo"),
+    ("the one with the monitor", "a que tem o monitor"),
+    (
+        "The game renders on the card chosen above and gamescope (upscaling, FPS limit, image on the screen) runs on the other one: the frame crosses PCIe once. Cards with the same model are told apart by the PCI address.",
+        "O jogo renderiza na placa escolhida acima e o gamescope (ampliação, limite de FPS, imagem na tela) roda na outra: o quadro atravessa o PCIe uma vez só. Placas do mesmo modelo são separadas pelo endereço PCI.",
+    ),
     (
         "Click a core to use both threads; right-click = only 1 thread.",
         "Clique num núcleo para usar os 2 threads; botão direito = só 1 thread.",

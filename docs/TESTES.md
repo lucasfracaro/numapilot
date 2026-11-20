@@ -71,6 +71,8 @@ Ordem sugerida: do mais seguro para o que mexe no boot.
 - [ ] Perfil de energia da GPU muda para 3D_FULL_SCREEN com o jogo aberto e volta ao fechar
 - [ ] Otimizador de FPS com MangoHud: rodar os testes num jogo e "Usar a melhor"
 - [ ] gamescope por jogo com FSR
+- [ ] gamescope em outra placa (servidor: jogo na gfx906-0, `--out-gpu gfx906-1`; conferir pelo
+      `amdgpu_top`/fdinfo que o jogo usa a nº 1 e o gamescope a nº 2)
 
 ## 3. Máquina
 
