@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Upscaling layer: 10-bit swapchains (A2B10G10R10 / A2R10G10B10) are upscaled too. On the
+  server, gamescope with `--backend sdl` makes an A2B10G10R10 swapchain and the layer passed it
+  through untouched. Tested with vkcube on a 30-bit X screen (lavapipe).
 - **Own upscaler in gamescope (M1): Anime4K CNN 2× S/M/L as upscaling models of the presentation
   block.** New Vulkan layer `VK_LAYER_NUMAPILOT_upscale` (`layer/`, built with the rest and
   installed by install.sh / the PKGBUILD as an implicit layer that only turns on with

@@ -1,29 +1,57 @@
 //! The work done at each present: small image → buffer → unpack → upscaler passes → pack →
-//! real swapchain image. Storage buffers only (no storage images), so it works with any 8-bit
-//! swapchain format the driver can copy to.
+//! real swapchain image. Storage buffers only (no storage images), so it works with any 32-bit
+//! swapchain format the driver can copy to (8-bit RGBA/BGRA and 10-bit A2B10G10R10/A2R10G10B10).
 
 use crate::DeviceData;
 use anyhow::{Context, Result, anyhow, bail};
 use ash::vk;
 use std::ffi::c_void;
 
-/// Byte order of the 8-bit swapchain formats handled: Some(true) = B,G,R,A.
-pub fn format_order(f: vk::Format) -> Option<bool> {
+/// Layout of the 32-bit swapchain pixels handled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Px {
+    /// R, G, B, A bytes.
+    Rgba8,
+    /// B, G, R, A bytes.
+    Bgra8,
+    /// A2B10G10R10: red in the low 10 bits.
+    Rgb10A2,
+    /// A2R10G10B10: blue in the low 10 bits.
+    Bgr10A2,
+}
+
+/// The pixel layout of a swapchain format, None when it is not handled (passed through).
+pub fn format_px(f: vk::Format) -> Option<Px> {
     match f {
-        vk::Format::B8G8R8A8_UNORM | vk::Format::B8G8R8A8_SRGB => Some(true),
+        vk::Format::B8G8R8A8_UNORM | vk::Format::B8G8R8A8_SRGB => Some(Px::Bgra8),
         vk::Format::R8G8B8A8_UNORM
         | vk::Format::R8G8B8A8_SRGB
         | vk::Format::A8B8G8R8_UNORM_PACK32
-        | vk::Format::A8B8G8R8_SRGB_PACK32 => Some(false),
+        | vk::Format::A8B8G8R8_SRGB_PACK32 => Some(Px::Rgba8),
+        vk::Format::A2B10G10R10_UNORM_PACK32 => Some(Px::Rgb10A2),
+        vk::Format::A2R10G10B10_UNORM_PACK32 => Some(Px::Bgr10A2),
         _ => None,
     }
 }
 
 const GROUP: u32 = numapilot::vkbench::GROUP;
 
-/// u32 pixels (as copied from an 8-bit image) → vec4 RGBA.
-pub fn unpack_glsl(w: u32, h: u32, bgra: bool) -> String {
-    let sw = if bgra { ".zyxw" } else { "" };
+/// GLSL that turns one u32 pixel `v` into vec4 RGBA.
+fn unpack_expr(px: Px) -> &'static str {
+    match px {
+        Px::Rgba8 => "unpackUnorm4x8(v)",
+        Px::Bgra8 => "unpackUnorm4x8(v).zyxw",
+        Px::Rgb10A2 | Px::Bgr10A2 => {
+            "vec4(float(v & 1023u), float((v >> 10u) & 1023u), float((v >> 20u) & 1023u), \
+             float(v >> 30u) * 341.0) / 1023.0"
+        }
+    }
+}
+
+/// u32 pixels (as copied from the swapchain image) → vec4 RGBA.
+pub fn unpack_glsl(w: u32, h: u32, px: Px) -> String {
+    let e = unpack_expr(px);
+    let sw = if px == Px::Bgr10A2 { ".zyxw" } else { "" };
     format!(
         "#version 450
 layout(local_size_x = {GROUP}, local_size_y = {GROUP}, local_size_z = 1) in;
@@ -35,15 +63,27 @@ void main() {{
         return;
     }}
     int i = g.y * {w} + g.x;
-    out_d[i] = unpackUnorm4x8(in_d[i]){sw};
+    uint v = in_d[i];
+    out_d[i] = ({e}){sw};
 }}
 "
     )
 }
 
-/// vec4 RGBA → u32 pixels in the swapchain's byte order (alpha opaque).
-pub fn pack_glsl(w: u32, h: u32, bgra: bool) -> String {
-    let sw = if bgra { ".zyxw" } else { "" };
+/// vec4 RGBA → u32 pixels in the swapchain's layout (alpha opaque).
+pub fn pack_glsl(w: u32, h: u32, px: Px) -> String {
+    let body = match px {
+        Px::Rgba8 => "packUnorm4x8(c)".to_string(),
+        Px::Bgra8 => "packUnorm4x8(c.zyxw)".to_string(),
+        Px::Rgb10A2 | Px::Bgr10A2 => {
+            "(q.x | (q.y << 10u) | (q.z << 20u) | (3u << 30u))".to_string()
+        }
+    };
+    let pre = match px {
+        Px::Rgb10A2 => "    uvec3 q = uvec3(round(c.xyz * 1023.0));\n",
+        Px::Bgr10A2 => "    uvec3 q = uvec3(round(c.zyx * 1023.0));\n",
+        _ => "",
+    };
     format!(
         "#version 450
 layout(local_size_x = {GROUP}, local_size_y = {GROUP}, local_size_z = 1) in;
@@ -56,7 +96,7 @@ void main() {{
     }}
     int i = g.y * {w} + g.x;
     vec4 c = vec4(clamp(in_d[i].xyz, vec3(0.0), vec3(1.0)), 1.0);
-    out_d[i] = packUnorm4x8(c{sw});
+{pre}    out_d[i] = {body};
 }}
 "
     )
@@ -157,7 +197,7 @@ impl Chain {
         info: &vk::SwapchainCreateInfoKHR<'_>,
         real_ext: vk::Extent2D,
         small_ext: vk::Extent2D,
-        bgra: bool,
+        px: Px,
         shader: &str,
     ) -> Result<Chain> {
         let dev = &d.dev;
@@ -185,7 +225,7 @@ impl Chain {
             pool: vk::DescriptorPool::null(),
             frames: vec![],
         };
-        match unsafe { c.build(d, info, bgra, shader) } {
+        match unsafe { c.build(d, info, px, shader) } {
             Ok(()) => Ok(c),
             Err(e) => {
                 unsafe { c.destroy(d) };
@@ -198,7 +238,7 @@ impl Chain {
         &mut self,
         d: &DeviceData,
         info: &vk::SwapchainCreateInfoKHR<'_>,
-        bgra: bool,
+        px: Px,
         shader: &str,
     ) -> Result<()> {
         let dev = &d.dev;
@@ -276,15 +316,17 @@ impl Chain {
         let usage = vk::BufferUsageFlags::STORAGE_BUFFER
             | vk::BufferUsageFlags::TRANSFER_SRC
             | vk::BufferUsageFlags::TRANSFER_DST;
-        let px = |w: u32, h: u32, b: u64| w as u64 * h as u64 * b;
-        self.bufs.push(unsafe { buffer(d, px(sw, sh, 4), usage) }?);
+        let bytes = |w: u32, h: u32, b: u64| w as u64 * h as u64 * b;
+        self.bufs
+            .push(unsafe { buffer(d, bytes(sw, sh, 4), usage) }?);
         self.raw_in = 0;
-        self.bufs.push(unsafe { buffer(d, px(sw, sh, 16), usage) }?);
+        self.bufs
+            .push(unsafe { buffer(d, bytes(sw, sh, 16), usage) }?);
         let mut cur: std::collections::BTreeMap<String, usize> = Default::default();
         cur.insert("MAIN".into(), 1);
         // (spirv, out size, out buffer, in buffers)
         let mut specs: Vec<(Vec<u32>, (u32, u32), usize, Vec<usize>)> = vec![(
-            numapilot::vkbench::compile(&unpack_glsl(sw, sh, bgra))?,
+            numapilot::vkbench::compile(&unpack_glsl(sw, sh, px))?,
             (sw, sh),
             1,
             vec![0],
@@ -292,7 +334,7 @@ impl Chain {
         for p in &planned {
             let ins: Vec<usize> = p.binds.iter().map(|b| cur[b]).collect();
             self.bufs
-                .push(unsafe { buffer(d, px(p.out.0, p.out.1, 16), usage) }?);
+                .push(unsafe { buffer(d, bytes(p.out.0, p.out.1, 16), usage) }?);
             let o = self.bufs.len() - 1;
             cur.insert(p.save.clone(), o);
             specs.push((
@@ -302,10 +344,11 @@ impl Chain {
                 ins,
             ));
         }
-        self.bufs.push(unsafe { buffer(d, px(ow, oh, 4), usage) }?);
+        self.bufs
+            .push(unsafe { buffer(d, bytes(ow, oh, 4), usage) }?);
         self.raw_out = self.bufs.len() - 1;
         specs.push((
-            numapilot::vkbench::compile(&pack_glsl(ow, oh, bgra))?,
+            numapilot::vkbench::compile(&pack_glsl(ow, oh, px))?,
             (ow, oh),
             self.raw_out,
             vec![cur["MAIN"]],
@@ -703,12 +746,20 @@ mod tests {
 
     #[test]
     fn pack_and_unpack_compile() {
-        for bgra in [false, true] {
-            numapilot::vkbench::compile(&unpack_glsl(64, 36, bgra)).unwrap();
-            numapilot::vkbench::compile(&pack_glsl(128, 72, bgra)).unwrap();
+        for px in [Px::Rgba8, Px::Bgra8, Px::Rgb10A2, Px::Bgr10A2] {
+            numapilot::vkbench::compile(&unpack_glsl(64, 36, px)).unwrap();
+            numapilot::vkbench::compile(&pack_glsl(128, 72, px)).unwrap();
         }
-        assert_eq!(format_order(vk::Format::B8G8R8A8_SRGB), Some(true));
-        assert_eq!(format_order(vk::Format::R8G8B8A8_UNORM), Some(false));
-        assert_eq!(format_order(vk::Format::A2B10G10R10_UNORM_PACK32), None);
+        assert_eq!(format_px(vk::Format::B8G8R8A8_SRGB), Some(Px::Bgra8));
+        assert_eq!(format_px(vk::Format::R8G8B8A8_UNORM), Some(Px::Rgba8));
+        assert_eq!(
+            format_px(vk::Format::A2B10G10R10_UNORM_PACK32),
+            Some(Px::Rgb10A2)
+        );
+        assert_eq!(
+            format_px(vk::Format::A2R10G10B10_UNORM_PACK32),
+            Some(Px::Bgr10A2)
+        );
+        assert_eq!(format_px(vk::Format::R16G16B16A16_SFLOAT), None);
     }
 }
