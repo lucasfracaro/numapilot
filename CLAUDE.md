@@ -240,6 +240,12 @@ placa do gamescope; no modo aninhado padrão a camada não dispara. Motor `lsfg-
 via `LSFGVK_CONFIG` no ambiente do gamescope (o `[global]` do usuário fica, os perfis dele saem para
 o jogo não gerar também); nunca escrever o `conf.toml` do usuário. O fork dual GPU, o `fg_gpu` do
 perfil e o `LSFGVK_GPU` saíram (`run --fg-gpu` só avisa).
+Upscaler próprio (docs/PRESENT-CHAIN.md): ncnn (SRVGG 323 ms, RIFE 598 ms) não serve; Anime4K como
+compute Vulkan (`src/vkbench.rs` roda shaders do mpv; `present-bench --compute`) mediu 0,5–3 ms na MI50.
+Camada `layer/` (VK_LAYER_NUMAPILOT_upscale, implícita, `ENABLE_NUMAPILOT_UPSCALE=1`, só age no
+gamescope): mente o tamanho da janela pela metade e amplia na apresentação. Testada no lavapipe com
+vkcube (Xvfb); falta testar no servidor e junto do `lsfg-out`. Próximos: FSRCNN/ESPCN, FSR 2 com
+movimento estimado.
 
 ## Capturas do README
 

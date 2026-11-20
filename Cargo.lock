@@ -1644,6 +1644,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "numapilot-upscale-layer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ash",
+ "numapilot",
+]
+
+[[package]]
 name = "objc-sys"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

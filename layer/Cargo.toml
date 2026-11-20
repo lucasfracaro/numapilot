@@ -1,0 +1,15 @@
+[package]
+name = "numapilot-upscale-layer"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Vulkan layer for gamescope: composes at a lower resolution and upscales at present (Anime4K as compute)"
+
+[lib]
+name = "numapilot_upscale"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ash = "0.38"
+anyhow = "1"
+numapilot = { path = "..", default-features = false }

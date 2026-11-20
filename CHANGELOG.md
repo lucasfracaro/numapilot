@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Own upscaler in gamescope (M1): Anime4K CNN 2× S/M/L as upscaling models of the presentation
+  block.** New Vulkan layer `VK_LAYER_NUMAPILOT_upscale` (`layer/`, built with the rest and
+  installed by install.sh / the PKGBUILD as an implicit layer that only turns on with
+  `ENABLE_NUMAPILOT_UPSCALE=1`, and only acts in gamescope): gamescope sees a window half the size
+  and composes the game there; at present the layer upscales each frame with Anime4K as Vulkan
+  compute into the real swapchain. Choosing Anime4K in Adjust → Presentation starts gamescope
+  with `--backend sdl` and the layer. Without the layer installed, the profile falls back to
+  FSR 1 with a warning. Measured on the MI50 (M0b): 0.5–3 ms per frame. Tested on lavapipe;
+  first test on the server pending. The old value `anime4k` means M.
 - **Own upscaler, step M0b: `numapilot present-bench --gpu gfx906-1 --compute`.** Runs the
   upscaling models as Vulkan compute on the chosen card, offscreen and with no files or external
   tools, and reports the GPU time of each (median of `--runs`, slowest pass): bilinear 2× as the
