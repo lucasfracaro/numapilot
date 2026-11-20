@@ -2334,7 +2334,7 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("monitor", "monitor"),
     (
-        "Set by the Presentation block: frame generation runs on its output card.",
-        "Definido pelo bloco de Apresentação: a geração de quadros roda na placa de saída dele.",
+        "Set by the Presentation block: it points lsfg-vk at the output card, but official lsfg-vk still generates on the game's card.",
+        "Definido pelo bloco de Apresentação: ele aponta o lsfg-vk para a placa de saída, mas o lsfg-vk oficial continua gerando na placa do jogo.",
     ),
 ];

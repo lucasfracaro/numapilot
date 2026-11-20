@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Presentation: official lsfg-vk generates frames on the game's card.** Tested on the server:
+  lsfg-vk 2.0 has no card setting and ignores `LSFGVK_GPU`, so with the game on gfx906-0 and the
+  output on gfx906-1 the 2× generation ran on gfx906-0. `run` and the Adjust window now say so
+  instead of promising the output card (which only a dual-GPU build of lsfg-vk uses); the output
+  card still does the upscaling and shows the image.
 - **Presentation: one card renders, the other upscales and generates frames.** The gamescope card
   choice now shows each card's socket, PCIe width, monitor and PCI address. With the presentation
   block on and lsfg-vk frame generation, the frame generation card is the output card (the
