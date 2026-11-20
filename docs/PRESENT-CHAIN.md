@@ -138,13 +138,19 @@ All within the 6 ms goal. Slowest passes: M's 4x1x1x56 convolution, the depth-to
 `VK_LAYER_NUMAPILOT_upscale`, an implicit layer turned on by `ENABLE_NUMAPILOT_UPSCALE=1`, acting
 only in gamescope (`NUMAPILOT_UPSCALE_PROCS`, default `gamescope,gamescope-wl`):
 
-- it reports the window's size divided by 2 in `vkGetPhysicalDeviceSurfaceCapabilities(2)KHR`,
-  so gamescope composes at the game's size and does no upscaling of its own;
-- `vkCreateSwapchainKHR` makes the real swapchain at the window's size and the layer gives
-  gamescope images of the small size (`vkGetSwapchainImagesKHR`), one per swapchain image;
-- `vkQueuePresentKHR` copies the small image to a buffer, runs unpack → model passes → pack as
-  compute (`numapilot::vkbench`, the same runner as `present-bench --compute`), copies the result
-  into the real image and presents it, waiting on a semaphore of its own.
+- gamescope always composes at its output size (`g_nOutputWidth`, from -W/-H and then the
+  window's size; the swapchain's `imageExtent` is that size, whatever the surface reports). The
+  first version told gamescope the window was half its size; gamescope ignored it and composed at
+  the full size into the half-size image, so only the top-left quarter showed (server test,
+  2026-11-20).
+- So gamescope runs with `-S integer -F nearest`: the game is drawn as blocks of k×k identical
+  pixels (k = floor of the smaller ratio, centered, like `calc_scale_factor_scaler`). The layer
+  gives gamescope swapchain images of its own (same size); at present it copies the composed
+  image to a buffer, reads one texel per block (the game's frame back at its size,
+  `NUMAPILOT_UPSCALE_SRC=WxH` from the profile's game resolution, else half the window), runs
+  unpack → model passes → pack as compute (`numapilot::vkbench`), and copies the 2× result
+  centered into the real image, black around it when the window is larger than 2×.
+- When the window is less than 2× the game, it passes through (gamescope's nearest picture).
 
 Model: `NUMAPILOT_UPSCALE_MODEL` (anime4k-s, anime4k-m, anime4k-l, artcnn-c4f16, artcnn-c4f32,
 fsrcnnx, fsrcnnx-16, bilinear, or a path to an mpv user shader). Debug messages with
@@ -152,15 +158,16 @@ fsrcnnx, fsrcnnx-16, bilinear, or a path to an mpv user shader). Debug messages 
 gamescope's SDL backend picks on the server); anything else, or any
 error while building the chain, passes through untouched.
 
-In the profile: Adjust → Presentation → upscaling model "Anime4K CNN 2× S/M/L"; `present::plan`
-adds `--backend sdl` to gamescope and the two variables to gamescope's environment. Set the
+In the profile: Adjust → Presentation → upscaling model; `present::plan` adds `--backend sdl -S
+integer -F nearest` to gamescope and the variables to gamescope's environment. Set the
 gamescope block to game resolution = half the output (e.g. 1280×720 → 2560×1440).
 
 Tested so far with vkcube on lavapipe under Xvfb (320×180 → 640×360, all models). To test by hand:
 
 ```
-ENABLE_NUMAPILOT_UPSCALE=1 NUMAPILOT_UPSCALE_MODEL=anime4k-l NUMAPILOT_UPSCALE_DEBUG=1 \
-  gamescope --backend sdl -w 1280 -h 720 -W 2560 -H 1440 -- vkcube
+ENABLE_NUMAPILOT_UPSCALE=1 NUMAPILOT_UPSCALE_MODEL=anime4k-l NUMAPILOT_UPSCALE_SRC=1280x720 \
+  NUMAPILOT_UPSCALE_DEBUG=1 gamescope --backend sdl -S integer -F nearest \
+  -w 1280 -h 720 -W 2560 -H 1440 -- vkcube
 ```
 
 Not tested yet: together with `lsfg-out` (both layers wrap gamescope's swapchain; their order is

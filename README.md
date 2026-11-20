@@ -553,8 +553,9 @@ teach numapilot about special boards.
   output card, adds the copy between the cards and says whether the chain fits in one real frame;
   `--compute` times the upscaling models as Vulkan compute on the card (GPU time, no files).
   Anime4K CNN S/M/L, ArtCNN C4F16/C4F32 and FSRCNNX (downloaded on first use, LGPL) are upscaling
-  models of the presentation block: a Vulkan layer in gamescope (`layer/`) has gamescope compose
-  at half the size and upscales 2× at present.
+  models of the presentation block: gamescope draws the game with integer nearest scaling and a
+  Vulkan layer in gamescope (`layer/`) takes the game's frame back from it and upscales it 2× at
+  present.
 - **Upscaling per game** (in Adjust…), depending on the card:
 
 | Mode | For | How |
