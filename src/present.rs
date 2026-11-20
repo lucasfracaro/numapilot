@@ -14,14 +14,53 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-/// Upscaling models: (value, name, ready). The planned ones fall back to FSR 1 for now.
-pub const UPSCALERS: [(&str, &str, bool); 5] = [
+/// Upscaling models: (value, name, ready). The planned ones fall back to FSR 1 for now. The
+/// Anime4K ones run in numapilot's Vulkan layer inside gamescope (`layer/`, docs/PRESENT-CHAIN.md);
+/// without the layer installed they fall back to FSR 1 too.
+pub const UPSCALERS: [(&str, &str, bool); 8] = [
     ("none", "none (output at the game's resolution)", true),
     ("fsr1", "FSR 1 (gamescope)", true),
     ("nis", "NIS (gamescope)", true),
-    ("anime4k", "Anime4K (planned)", false),
+    ("anime4k-s", "Anime4K CNN 2× S (fastest)", true),
+    ("anime4k-m", "Anime4K CNN 2× M", true),
+    ("anime4k-l", "Anime4K CNN 2× L (sharpest)", true),
+    ("anime4k", "Anime4K (= M)", true),
     ("srvgg", "SRVGGNetCompact (planned)", false),
 ];
+
+/// Model of numapilot's upscaling layer for an upscaler value, if it is one of its models.
+pub fn layer_model(upscaler: &str) -> Option<&'static str> {
+    match upscaler {
+        "anime4k-s" => Some("anime4k-s"),
+        "anime4k-m" | "anime4k" => Some("anime4k-m"),
+        "anime4k-l" => Some("anime4k-l"),
+        _ => None,
+    }
+}
+
+/// Manifest of numapilot's upscaling layer (VK_LAYER_NUMAPILOT_upscale).
+pub const LAYER_MANIFEST: &str = "numapilot_upscale.json";
+
+/// Is the upscaling layer installed where the Vulkan loader looks for implicit layers?
+pub fn upscale_layer_installed() -> bool {
+    let mut dirs: Vec<PathBuf> = vec![];
+    if let Some(h) = std::env::var_os("XDG_DATA_HOME") {
+        dirs.push(PathBuf::from(h));
+    } else if let Some(h) = std::env::var_os("HOME") {
+        dirs.push(PathBuf::from(h).join(".local/share"));
+    }
+    let data = std::env::var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+    dirs.extend(data.split(':').map(PathBuf::from));
+    dirs.push("/etc".into());
+    dirs.iter().any(|d| {
+        d.join("vulkan/implicit_layer.d")
+            .join(LAYER_MANIFEST)
+            .is_file()
+    })
+}
 
 /// Frame generators: (value, name, ready). lsfg-vk is a Vulkan layer: "lsfg" loads it in the game
 /// (generates on the game's card, with the user's own lsfg-vk settings), "lsfg-out" only in
@@ -133,11 +172,24 @@ impl Plan {
 /// Builds the launch: `gs` is the gamescope block in effect (the profile's or the default one),
 /// `out` the output card when it is not the game's (`decide::resolve_out_gpu`).
 pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg) -> Plan {
+    plan_with(pr, gs, out, lsfg, upscale_layer_installed())
+}
+
+/// `plan` with whether numapilot's upscaling layer is installed given (tests).
+pub fn plan_with(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg, layer: bool) -> Plan {
     let mut warnings = vec![];
     let mut g = gs.clone();
     g.fsr = false;
     let mut a = g.argv();
-    let up = if upscaler_ready(&pr.upscaler) {
+    let mut gamescope_env = vec![];
+    let up = if layer_model(&pr.upscaler).is_some() && !layer {
+        warnings.push(crate::tf!(
+            "numapilot's upscaling layer is not installed (reinstall numapilot): using FSR 1 instead of {}",
+            "a camada de upscaling do numapilot não está instalada (reinstale o numapilot): usando FSR 1 no lugar de {}",
+            pr.upscaler
+        ));
+        "fsr1"
+    } else if upscaler_ready(&pr.upscaler) {
         pr.upscaler.as_str()
     } else {
         warnings.push(crate::tf!(
@@ -151,6 +203,28 @@ pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg) -> Plan
         "fsr1" => a.extend(["-F".into(), "fsr".into()]),
         "nis" => a.extend(["-F".into(), "nis".into()]),
         _ => {}
+    }
+    if let Some(model) = layer_model(up) {
+        // The layer only acts in gamescope (the game inherits the variables and is left alone).
+        // gamescope must present through a Vulkan swapchain: SDL backend, like lsfg-out. The layer
+        // tells gamescope the window is half its size, so gamescope composes at the game's size
+        // and the layer upscales 2× at present.
+        if !a.iter().any(|x| x == "--backend") {
+            a.extend(["--backend".into(), "sdl".into()]);
+        }
+        set(&mut gamescope_env, "ENABLE_NUMAPILOT_UPSCALE", "1".into());
+        set(&mut gamescope_env, "NUMAPILOT_UPSCALE_MODEL", model.into());
+        if let (Some(rw), Some(ow)) = (g.render_w, g.out_w)
+            && rw * 2 != ow
+        {
+            warnings.push(crate::tf!(
+                "Anime4K upscales exactly 2×: with the game at {} wide the output should be {} wide (it is {}); gamescope scales the rest itself",
+                "o Anime4K amplia exatamente 2×: com o jogo em {} de largura a saída deveria ter {} (está em {}); o gamescope ajusta o resto sozinho",
+                rw,
+                rw * 2,
+                ow
+            ));
+        }
     }
     if up != "none" && g.render_w.is_none() && g.render_h.is_none() {
         warnings.push(
@@ -170,7 +244,6 @@ pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg) -> Plan
         ));
     }
     let game_env = vec![];
-    let mut gamescope_env = vec![];
     let mut lsfg_out = false;
     let mut multiplier = pr.multiplier.max(1);
     if multiplier > 1 {
@@ -601,6 +674,82 @@ mod tests {
     }
 
     #[test]
+    fn anime4k_through_the_layer() {
+        let gs = Gamescope {
+            render_w: Some(1280),
+            render_h: Some(720),
+            out_w: Some(2560),
+            out_h: Some(1440),
+            ..Default::default()
+        };
+        let pr = Present {
+            upscaler: "anime4k-l".into(),
+            multiplier: 1,
+            ..Default::default()
+        };
+        let p = plan_with(&pr, &gs, None, Lsfg::Ready, true);
+        assert!(
+            !p.gamescope.contains(&"-F".to_string()),
+            "{:?}",
+            p.gamescope
+        );
+        assert!(p.gamescope.windows(2).any(|w| w == ["--backend", "sdl"]));
+        assert!(
+            p.gamescope_env
+                .contains(&("ENABLE_NUMAPILOT_UPSCALE".into(), "1".into()))
+        );
+        assert!(
+            p.gamescope_env
+                .contains(&("NUMAPILOT_UPSCALE_MODEL".into(), "anime4k-l".into()))
+        );
+        assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+        // the old value is M; an output that is not 2× warns
+        let p = plan_with(
+            &Present {
+                upscaler: "anime4k".into(),
+                multiplier: 1,
+                ..Default::default()
+            },
+            &Gamescope {
+                out_w: Some(1920),
+                out_h: Some(1080),
+                ..gs.clone()
+            },
+            None,
+            Lsfg::Ready,
+            true,
+        );
+        assert!(
+            p.gamescope_env
+                .contains(&("NUMAPILOT_UPSCALE_MODEL".into(), "anime4k-m".into()))
+        );
+        assert!(
+            p.warnings.iter().any(|w| w.contains("2×")),
+            "{:?}",
+            p.warnings
+        );
+        // without the layer: FSR 1 in gamescope
+        let p = plan_with(&pr, &gs, None, Lsfg::Ready, false);
+        assert!(p.gamescope.windows(2).any(|w| w == ["-F", "fsr"]));
+        assert!(p.gamescope_env.is_empty());
+        assert!(p.warnings.iter().any(|w| w.contains("layer")));
+        // with lsfg-out on top: one --backend only
+        let p = plan_with(
+            &Present {
+                engine: "lsfg-out".into(),
+                multiplier: 2,
+                ..pr.clone()
+            },
+            &gs,
+            None,
+            Lsfg::Ready,
+            true,
+        );
+        assert_eq!(p.gamescope.iter().filter(|x| *x == "--backend").count(), 1);
+        assert_eq!(p.gamescope_env.len(), 3);
+    }
+
+    #[test]
     fn lsfg_on_the_output_card() {
         let b = gpu("gfx906-1", "0000:83:00.0", 0x66af, true);
         let pr = Present {
@@ -662,7 +811,7 @@ mod tests {
     #[test]
     fn same_card_and_planned_parts() {
         let pr = Present {
-            upscaler: "anime4k".into(),
+            upscaler: "srvgg".into(),
             multiplier: 2,
             engine: "rife".into(),
             ..Default::default()

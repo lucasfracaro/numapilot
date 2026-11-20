@@ -24,8 +24,8 @@ jobs:
           v="${GITHUB_REF_NAME#v}"
           d="numapilot-$v-x86_64-linux"
           mkdir -p "$d/target/release"
-          cp target/release/numapilot target/release/numapilot-gui "$d/target/release/"
-          cp -r packaging container docs README.md LICENSE install.sh uninstall.sh "$d/"
+          cp target/release/numapilot target/release/numapilot-gui target/release/libnumapilot_upscale.so "$d/target/release/"
+          cp -r packaging container docs layer README.md LICENSE install.sh uninstall.sh "$d/"
           cp assets/fonts/OFL.txt "$d/OFL-Inter.txt"
           # O install.sh pula a compilação quando os binários já vêm prontos.
           touch "$d/.prebuilt"

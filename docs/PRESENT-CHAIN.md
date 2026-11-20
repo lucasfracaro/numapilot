@@ -119,3 +119,49 @@ numapilot present-bench --gpu gfx906-1 --compute --size 1920x1080           # 10
 
 The tools read and write PNGs on the processor, so their times are an upper bound of the GPU
 work. Results are kept per card in `~/.local/state/numapilot/present-bench.json`.
+
+## M0b result (server, 2026-11-20)
+
+`present-bench --gpu gfx906-1 --compute`, median of 50 runs, GPU time (card confirmed by fdinfo):
+
+| Model | 720p → 1440p | 1080p → 4K |
+|---|---|---|
+| bilinear 2× | 0.20 ms | 0.41 ms |
+| Anime4K CNN x2 S | 0.47 ms | 0.93 ms |
+| Anime4K CNN x2 M | 1.07 ms | 2.31 ms |
+| Anime4K CNN x2 L | 1.26 ms | 2.97 ms |
+
+All within the 6 ms goal. Slowest passes: M's 4x1x1x56 convolution, the depth-to-space of S and L.
+
+## M1: the layer (`layer/`)
+
+`VK_LAYER_NUMAPILOT_upscale`, an implicit layer turned on by `ENABLE_NUMAPILOT_UPSCALE=1`, acting
+only in gamescope (`NUMAPILOT_UPSCALE_PROCS`, default `gamescope,gamescope-wl`):
+
+- it reports the window's size divided by 2 in `vkGetPhysicalDeviceSurfaceCapabilities(2)KHR`,
+  so gamescope composes at the game's size and does no upscaling of its own;
+- `vkCreateSwapchainKHR` makes the real swapchain at the window's size and the layer gives
+  gamescope images of the small size (`vkGetSwapchainImagesKHR`), one per swapchain image;
+- `vkQueuePresentKHR` copies the small image to a buffer, runs unpack → model passes → pack as
+  compute (`numapilot::vkbench`, the same runner as `present-bench --compute`), copies the result
+  into the real image and presents it, waiting on a semaphore of its own.
+
+Model: `NUMAPILOT_UPSCALE_MODEL` (anime4k-s, anime4k-m, anime4k-l, bilinear). Debug messages with
+`NUMAPILOT_UPSCALE_DEBUG=1`. 8-bit swapchain formats only (BGRA/RGBA); anything else, or any
+error while building the chain, passes through untouched.
+
+In the profile: Adjust → Presentation → upscaling model "Anime4K CNN 2× S/M/L"; `present::plan`
+adds `--backend sdl` to gamescope and the two variables to gamescope's environment. Set the
+gamescope block to game resolution = half the output (e.g. 1280×720 → 2560×1440).
+
+Tested so far with vkcube on lavapipe under Xvfb (320×180 → 640×360, all models). To test by hand:
+
+```
+ENABLE_NUMAPILOT_UPSCALE=1 NUMAPILOT_UPSCALE_MODEL=anime4k-l NUMAPILOT_UPSCALE_DEBUG=1 \
+  gamescope --backend sdl -w 1280 -h 720 -W 2560 -H 1440 -- vkcube
+```
+
+Not tested yet: together with `lsfg-out` (both layers wrap gamescope's swapchain; their order is
+up to the loader), HDR / 10-bit swapchains (passed through), and the cost per frame on the MI50
+inside a game.
+

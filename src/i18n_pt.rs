@@ -1553,6 +1553,16 @@ pub const PT: &[(&str, &str)] = &[
         "nenhum (saída na resolução do jogo)",
     ),
     ("Anime4K (planned)", "Anime4K (planejado)"),
+    (
+        "Anime4K CNN 2× S (fastest)",
+        "Anime4K CNN 2× S (mais rápido)",
+    ),
+    ("Anime4K CNN 2× M", "Anime4K CNN 2× M"),
+    (
+        "Anime4K CNN 2× L (sharpest)",
+        "Anime4K CNN 2× L (mais nítido)",
+    ),
+    ("Anime4K (= M)", "Anime4K (= M)"),
     ("SRVGGNetCompact (planned)", "SRVGGNetCompact (planejado)"),
     (
         "Lossless Scaling on the game's card (lsfg-vk)",

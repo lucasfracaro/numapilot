@@ -59,6 +59,9 @@ package() {
   cd numapilot
   install -Dm755 target/release/numapilot "$pkgdir/usr/bin/numapilot"
   install -Dm755 target/release/numapilot-gui "$pkgdir/usr/bin/numapilot-gui"
+  install -Dm755 target/release/libnumapilot_upscale.so "$pkgdir/usr/lib/numapilot/libnumapilot_upscale.so"
+  sed 's#@LIB@#/usr/lib/numapilot/libnumapilot_upscale.so#' layer/manifest/numapilot_upscale.json |
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/vulkan/implicit_layer.d/numapilot_upscale.json"
   install -Dm755 packaging/gfx906-rocm "$pkgdir/usr/bin/gfx906-rocm"
   install -d "$pkgdir/usr/lib/systemd/system"
   sed 's#/usr/local/bin/#/usr/bin/#' packaging/numapilot.service >"$pkgdir/usr/lib/systemd/system/numapilot.service"

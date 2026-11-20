@@ -534,6 +534,8 @@ ensinam o numapilot sobre placas especiais.
   --game-gpu gfx906-0` mede o SRVGGNetCompact e o RIFE (ncnn no Vulkan) por quadro na placa de
   saída, soma a cópia entre as placas e diz se a cadeia cabe em um quadro real; `--compute` mede o
   Anime4K CNN x2 S/M/L como compute Vulkan na placa (tempo da GPU, sem arquivos).
+  Anime4K S/M/L são modelos de upscaling do bloco de apresentação: uma camada Vulkan no gamescope
+  (`layer/`) faz o gamescope compor na metade do tamanho e amplia 2× na hora de mostrar.
 - **Upscaling por jogo** (no Ajustar…), conforme a placa:
 
 | Modo | Para quem | Como |

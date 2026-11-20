@@ -254,6 +254,12 @@ fi
 step "Installing the files"
 sudo install -Dm755 target/release/numapilot /usr/local/bin/numapilot
 sudo install -Dm755 target/release/numapilot-gui /usr/local/bin/numapilot-gui
+# upscaling layer for gamescope (Anime4K in the presentation block); only acts when a profile turns it on
+if [[ -e target/release/libnumapilot_upscale.so ]]; then
+    sudo install -Dm755 target/release/libnumapilot_upscale.so /usr/local/lib/numapilot/libnumapilot_upscale.so
+    sed 's#@LIB@#/usr/local/lib/numapilot/libnumapilot_upscale.so#' layer/manifest/numapilot_upscale.json |
+        sudo install -Dm644 /dev/stdin /usr/local/share/vulkan/implicit_layer.d/numapilot_upscale.json
+fi
 sudo install -Dm644 packaging/numapilot-gui.desktop /usr/local/share/applications/numapilot.desktop
 sudo install -Dm755 packaging/gfx906-rocm /usr/local/bin/gfx906-rocm
 # where it was installed from (the interface's "Update numapilot" uses it to fetch the new version)
