@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **gamescope on another card than the game.** A profile's gamescope can run on its own card
+  ("gamescope card" in the editor, `gamescope.output_gpu`, or `numapilot run --out-gpu`): the
+  game keeps its card (DRI_PRIME and the rest, given back through `env` after gamescope's `--`)
+  and gamescope gets `--prefer-vk-device` plus an environment that shows it only the output card.
+  The two MI50s share vendor:device, so the card is picked by PCI address (DRI_PRIME +
+  MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE); `--prefer-vk-device` alone would take the first.
+  First step of the "render on one MI50, upscale on the other" plan; `run --dry-run` shows both
+  environments.
 - **Adjust warns when the program was opened directly.** The graphics card of a saved choice
   only reaches a program opened through numapilot (`numapilot run`, its menu shortcut, the Steam
   line). The Longshot launcher opened from its own shortcut always went to the boot card

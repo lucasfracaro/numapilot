@@ -848,11 +848,31 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             ui.checkbox(&mut g.fsr, crate::i18n::tr("Upscale with FSR"));
                         });
                         ui.end_row();
+                        if app.topo.gpus.len() > 1 {
+                            ui.label(crate::i18n::tr("gamescope card"));
+                            let shown = match g.output_gpu.as_deref() {
+                                None => crate::i18n::tr("same as the game").to_string(),
+                                Some("display") => crate::i18n::tr("the one with the monitor").to_string(),
+                                Some(a) => app.topo.gpus.iter().find(|x| x.alias == a).map(|x| format!("{} ({})", x.alias, x.short_name())).unwrap_or_else(|| a.to_string()),
+                            };
+                            egui::ComboBox::from_id_salt("ed-gs-out").selected_text(shown).show_ui(ui, |ui| {
+                                ui.selectable_value(&mut g.output_gpu, None, crate::i18n::tr("same as the game"));
+                                ui.selectable_value(&mut g.output_gpu, Some("display".to_string()), crate::i18n::tr("the one with the monitor"));
+                                for x in &app.topo.gpus {
+                                    ui.selectable_value(&mut g.output_gpu, Some(x.alias.clone()), format!("{} ({}, {})", x.alias, x.short_name(), x.pci.trim_start_matches("0000:")));
+                                }
+                            });
+                            ui.end_row();
+                        }
                     });
                     ui.label(
-                        RichText::new(crate::i18n::tr("gamescope uses the same card chosen above. Good for running the game at a lower resolution and upscaling with FSR, or capping the FPS."))
-                            .small()
-                            .weak(),
+                        RichText::new(if g.output_gpu.is_none() {
+                            crate::i18n::tr("gamescope uses the same card chosen above. Good for running the game at a lower resolution and upscaling with FSR, or capping the FPS.")
+                        } else {
+                            crate::i18n::tr("The game renders on the card chosen above and gamescope (upscaling, FPS limit, image on the screen) runs on the other one: the frame crosses PCIe once. Cards with the same model are told apart by the PCI address.")
+                        })
+                        .small()
+                        .weak(),
                     );
                 }
 

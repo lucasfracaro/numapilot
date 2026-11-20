@@ -536,7 +536,10 @@ teach numapilot about special boards.
 
 - **Steam on every game** (`numapilot steam enable` or the Steam menu in the Programs tab): puts
   `numapilot run --` before `%command%` keeping what was already there; Steam must be closed.
-- **gamescope per game**: game and output resolution, FPS limit, FSR, on the same chosen GPU.
+- **gamescope per game**: game and output resolution, FPS limit, FSR, on the same chosen GPU or
+  on another one ("gamescope card"; `numapilot run --out-gpu gfx906-1`): the game renders on its
+  card and gamescope upscales and shows the image on the other. Two cards of the same model (the
+  MI50s) are told apart by the PCI address.
 - **Upscaling per game** (in Adjust…), depending on the card:
 
 | Mode | For | How |

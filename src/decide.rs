@@ -5,7 +5,7 @@ use crate::learned::Learned;
 use crate::procfs;
 use crate::profiles::Profiles;
 use crate::topo::{Gpu, GpuRole, Topology};
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -817,6 +817,103 @@ pub fn env_for_gpu_full(
     gpu_env(&d, topo)
 }
 
+/// gamescope's output card (profile `gamescope.output_gpu` or `run --out-gpu`): "" | "same" |
+/// "auto" = the game's card (None); "display" = the first card with a monitor; else alias/PCI.
+/// Also None when it is the game's own card or the game does not use a card for graphics.
+pub fn resolve_out_gpu(name: &str, d: &Decision, topo: &Topology) -> Result<Option<Gpu>> {
+    let out = match name {
+        "" | "same" | "auto" => return Ok(None),
+        "display" => topo.gpus.iter().find(|g| g.display_connected),
+        n => Some(topo.gpus.iter().find(|g| g.matches(n)).with_context(|| {
+            crate::tf!(
+                "gamescope output GPU '{n}' not found",
+                "GPU de saída do gamescope '{n}' não encontrada"
+            )
+        })?),
+    };
+    Ok(match (out, d.gpus.first()) {
+        (Some(o), Some(g)) if d.kind == Kind::Graphics && o.pci != g.pci => Some(o.clone()),
+        _ => None,
+    })
+}
+
+/// gamescope on one card, the game inside it on another.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GamescopeSplit {
+    /// `--prefer-vk-device` value (vendor:device in hex).
+    pub prefer: String,
+    /// Environment of the gamescope process (replaces the game's `set`/`unset`).
+    pub set: Vec<(String, String)>,
+    pub unset: Vec<String>,
+    /// `env -u … VAR=value …` put in front of the game's command (after gamescope's `--`), so
+    /// the game gets back its own card's variables.
+    pub child: Vec<String>,
+}
+
+/// Splits the environment: gamescope sees only the output card (DRI_PRIME with the PCI address
+/// plus MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE, which also separates the two MI50s with the
+/// same vendor:device; `--prefer-vk-device` alone would take the first of them), and the game
+/// keeps the card chosen for it. `parent` reads the inherited environment: a variable the output
+/// card changes but the game's choice does not touch goes back to its inherited value.
+pub fn gamescope_split(
+    out: &Gpu,
+    topo: &Topology,
+    game_set: &[(String, String)],
+    game_unset: &[String],
+    parent: &dyn Fn(&str) -> Option<String>,
+) -> GamescopeSplit {
+    let (out_set, out_unset) = env_for_gpu_full(out, topo);
+    let touched: Vec<&str> = out_set
+        .iter()
+        .map(|(k, _)| k.as_str())
+        .chain(out_unset.iter().map(String::as_str))
+        .collect();
+    let mut set: Vec<(String, String)> = game_set
+        .iter()
+        .filter(|(k, _)| !touched.contains(&k.as_str()))
+        .cloned()
+        .collect();
+    set.extend(out_set.iter().cloned());
+    let mut unset: Vec<String> = game_unset
+        .iter()
+        .filter(|k| !touched.contains(&k.as_str()))
+        .cloned()
+        .collect();
+    unset.extend(out_unset.iter().cloned());
+    let mut dels = vec![];
+    let mut adds = vec![];
+    let mut seen: Vec<&str> = vec![];
+    for k in touched {
+        if seen.contains(&k) {
+            continue;
+        }
+        seen.push(k);
+        let game = if let Some((_, v)) = game_set.iter().rev().find(|(x, _)| x == k) {
+            Some(v.clone())
+        } else if game_unset.iter().any(|x| x == k) {
+            None
+        } else {
+            parent(k)
+        };
+        match game {
+            Some(v) => adds.push(format!("{k}={v}")),
+            None => {
+                dels.push("-u".to_string());
+                dels.push(k.to_string());
+            }
+        }
+    }
+    let mut child = vec!["env".to_string()];
+    child.extend(dels);
+    child.extend(adds);
+    GamescopeSplit {
+        prefer: format!("{:04x}:{:04x}", out.vendor, out.device),
+        set,
+        unset,
+        child,
+    }
+}
+
 /// Variables for a program to run on a single card (graphics), without going through the service.
 pub fn env_for_gpu(g: &crate::topo::Gpu, topo: &Topology) -> Vec<(String, String)> {
     let d = Decision {
@@ -881,6 +978,127 @@ mod env_tests {
             ],
             default_graphics: None,
         }
+    }
+
+    /// Server: two MI50s with the same vendor:device + RX 470 (monitor).
+    fn server() -> Topology {
+        Topology {
+            nodes: vec![],
+            gpus: vec![
+                gpu(
+                    "gfx906-0",
+                    "0000:03:00.0",
+                    0x1002,
+                    0x66af,
+                    "renderD128",
+                    GpuRole::Compute,
+                ),
+                gpu(
+                    "gfx906-1",
+                    "0000:83:00.0",
+                    0x1002,
+                    0x66af,
+                    "renderD129",
+                    GpuRole::Compute,
+                ),
+                gpu(
+                    "gfx803-0",
+                    "0000:84:00.0",
+                    0x1002,
+                    0x67df,
+                    "renderD130",
+                    GpuRole::Display,
+                ),
+            ],
+            default_graphics: None,
+        }
+    }
+
+    fn graphics_on(g: &Gpu) -> Decision {
+        Decision {
+            nodes: vec![],
+            cpus: vec![],
+            gpus: vec![g.clone()],
+            kind: Kind::Graphics,
+            mem: crate::config::MemSpec::Local,
+            manual: true,
+            limit_visible: false,
+            priority: "normal".into(),
+            needs_daemon: false,
+            fg_gpu: None,
+            reasons: vec![],
+        }
+    }
+
+    fn get<'a>(set: &'a [(String, String)], k: &str) -> Option<&'a str> {
+        set.iter()
+            .rev()
+            .find(|(x, _)| x == k)
+            .map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn gamescope_on_the_other_mi50() {
+        let t = server();
+        let d = graphics_on(&t.gpus[0]);
+        let (set, unset) = gpu_env(&d, &t);
+        let out = resolve_out_gpu("gfx906-1", &d, &t).unwrap().unwrap();
+        let s = gamescope_split(&out, &t, &set, &unset, &|_| None);
+        assert_eq!(s.prefer, "1002:66af");
+        // gamescope sees only the second MI50: by PCI, since the ID is the same on both
+        assert_eq!(get(&s.set, "DRI_PRIME"), Some("pci-0000_83_00_0"));
+        assert_eq!(
+            get(&s.set, "MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE"),
+            Some("1")
+        );
+        assert!(s.unset.contains(&"MESA_VK_DEVICE_SELECT".to_string()));
+        assert!(get(&s.set, "MESA_VK_DEVICE_SELECT").is_none());
+        // the game gets the first one back
+        assert_eq!(s.child[0], "env");
+        assert!(s.child.contains(&"DRI_PRIME=pci-0000_03_00_0".to_string()));
+        assert!(s.child.contains(&"LSFGVK_GPU=3:0.0".to_string()));
+        assert!(
+            s.child
+                .windows(2)
+                .any(|w| w[0] == "-u" && w[1] == "MESA_VK_DEVICE_SELECT")
+        );
+        // options before the assignments
+        let first_assign = s.child.iter().position(|a| a.contains('=')).unwrap();
+        assert!(s.child[first_assign..].iter().all(|a| a != "-u"));
+    }
+
+    #[test]
+    fn gamescope_on_a_unique_card_restores_the_inherited_value() {
+        let t = server();
+        let d = graphics_on(&t.gpus[1]);
+        let (set, unset) = gpu_env(&d, &t);
+        let out = resolve_out_gpu("display", &d, &t).unwrap().unwrap();
+        assert_eq!(out.alias, "gfx803-0");
+        let s = gamescope_split(&out, &t, &set, &unset, &|k| {
+            (k == "MESA_VK_DEVICE_SELECT").then(|| "1234:5678".to_string())
+        });
+        assert_eq!(s.prefer, "1002:67df");
+        assert_eq!(get(&s.set, "MESA_VK_DEVICE_SELECT"), Some("1002:67df"));
+        assert_eq!(get(&s.set, "DRI_PRIME"), Some("pci-0000_84_00_0"));
+        // the game (an MI50) had it removed: removed again inside gamescope
+        assert!(
+            s.child
+                .windows(2)
+                .any(|w| w[0] == "-u" && w[1] == "MESA_VK_DEVICE_SELECT")
+        );
+        assert!(s.child.contains(&"DRI_PRIME=pci-0000_83_00_0".to_string()));
+    }
+
+    #[test]
+    fn gamescope_output_same_card_or_unknown() {
+        let t = server();
+        let d = graphics_on(&t.gpus[0]);
+        assert!(resolve_out_gpu("same", &d, &t).unwrap().is_none());
+        assert!(resolve_out_gpu("0000:03:00.0", &d, &t).unwrap().is_none());
+        assert!(resolve_out_gpu("gfx906-9", &d, &t).is_err());
+        let mut c = d.clone();
+        c.kind = Kind::Compute;
+        assert!(resolve_out_gpu("gfx906-1", &c, &t).unwrap().is_none());
     }
 
     /// What a program started from the integrated GPU (Steam from startup) passes on.

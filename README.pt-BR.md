@@ -516,7 +516,10 @@ ensinam o numapilot sobre placas especiais.
 
 - **Steam em todos os jogos** (`numapilot steam enable` ou menu Steam na aba Programas): coloca
   `numapilot run --` antes do `%command%` mantendo o que já existia; a Steam precisa estar fechada.
-- **gamescope por jogo**: resolução do jogo e de saída, limite de FPS, FSR, na mesma GPU escolhida.
+- **gamescope por jogo**: resolução do jogo e de saída, limite de FPS, FSR, na mesma GPU escolhida ou
+  em outra ("Placa do gamescope"; `numapilot run --out-gpu gfx906-1`): o jogo renderiza na placa
+  dele e o gamescope amplia e mostra a imagem na outra. Duas placas do mesmo modelo (as MI50) são
+  separadas pelo endereço PCI.
 - **Upscaling por jogo** (no Ajustar…), conforme a placa:
 
 | Modo | Para quem | Como |

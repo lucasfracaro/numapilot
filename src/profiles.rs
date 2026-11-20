@@ -106,6 +106,10 @@ pub struct Gamescope {
     pub fsr: bool,
     #[serde(default)]
     pub fps_limit: Option<u32>,
+    /// Card that runs gamescope (upscaling, composition, output): None = the game's card.
+    /// Alias/PCI, or "display" (the card with a monitor). The game keeps its own card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_gpu: Option<String>,
 }
 
 impl Default for Gamescope {
@@ -118,6 +122,7 @@ impl Default for Gamescope {
             fullscreen: true,
             fsr: false,
             fps_limit: None,
+            output_gpu: None,
         }
     }
 }
@@ -476,6 +481,13 @@ pub fn import_text(
             }
             if p.fg_gpu != "same" && !gpu_aliases.contains(&p.fg_gpu) {
                 p.fg_gpu = same();
+            }
+            if let Some(g) = p.gamescope.as_mut()
+                && g.output_gpu
+                    .as_ref()
+                    .is_some_and(|o| o != "display" && !gpu_aliases.contains(o))
+            {
+                g.output_gpu = None;
             }
         }
         match p.validate() {
