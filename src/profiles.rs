@@ -243,6 +243,20 @@ impl Profile {
         self.needs_scope() || self.priority == "high"
     }
 
+    /// Something that only reaches the program when it starts through `numapilot run`: the
+    /// graphics card (and the frame generation one), what it sees, gamescope or the upscaler.
+    /// A program opened directly from its own shortcut misses these.
+    pub fn needs_launcher(&self) -> bool {
+        self.gpu != "auto"
+            || self.fg_gpu != "same"
+            || self.gamescope.is_some()
+            || self
+                .upscale
+                .as_ref()
+                .is_some_and(|u| u.mode != "nenhum" && !u.mode.is_empty())
+            || (self.limit_visible && self.has_cpu_choice())
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if !["auto", "strict", "prefer", "interleave", "free"].contains(&self.memory.as_str()) {
             return Err(crate::tf!(

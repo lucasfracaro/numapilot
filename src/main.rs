@@ -333,6 +333,18 @@ enum ProfileCmd {
     },
     /// Deletes a profile (the program goes back to automatic).
     Rm { key: String },
+    /// The program's own shortcuts (menu and desktop) and whether they open it through
+    /// numapilot. Saving a choice that needs it (graphics card, what it sees, upscaler) adjusts
+    /// them on its own.
+    Shortcuts {
+        key: String,
+        /// Puts them back as they were and stops adjusting them for this program.
+        #[arg(long, conflicts_with = "apply")]
+        undo: bool,
+        /// Adjusts them again for the saved choice (after an --undo).
+        #[arg(long)]
+        apply: bool,
+    },
     /// Writes all choices to a file, to take to another PC or share.
     Export {
         /// File (default: ~/numapilot-escolhas-MACHINE.json).
@@ -2475,17 +2487,79 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
                 ..Default::default()
             };
             let r = ctl::send(&ctl::Request::SetProfile {
-                key,
-                profile,
+                key: key.clone(),
+                profile: profile.clone(),
                 pid: None,
             })?;
             println!("{}", r.message);
-            if r.ok { Ok(()) } else { bail!("falhou") }
+            if r.ok {
+                print_launcher_sync(&key, Some(&profile));
+                Ok(())
+            } else {
+                bail!("falhou")
+            }
         }
         ProfileCmd::Rm { key } => {
-            let r = ctl::send(&ctl::Request::DeleteProfile { key, pid: None })?;
+            let r = ctl::send(&ctl::Request::DeleteProfile {
+                key: key.clone(),
+                pid: None,
+            })?;
             println!("{}", r.message);
-            if r.ok { Ok(()) } else { bail!("falhou") }
+            if r.ok {
+                print_launcher_sync(&key, None);
+                Ok(())
+            } else {
+                bail!("falhou")
+            }
+        }
+        ProfileCmd::Shortcuts { key, undo, apply } => {
+            use numapilot::desktop;
+            let found = desktop::find_launchers(&key, None, &desktop::launcher_places(), &|e| {
+                numapilot::apps::key_for_exec(e).map(|(k, _)| k)
+            });
+            if undo {
+                let files: Vec<_> = found
+                    .iter()
+                    .filter(|l| l.wrapped)
+                    .map(|l| l.path.clone())
+                    .collect();
+                desktop::undo_launchers(&key, &files)?;
+                desktop::refresh_menu();
+                println!(
+                    "{}",
+                    numapilot::tf!(
+                        "{} shortcut(s) put back as they were.",
+                        "{} atalho(s) de volta como eram.",
+                        files.len()
+                    )
+                );
+                return Ok(());
+            }
+            if apply {
+                desktop::forget_off(&key);
+                let prof = numapilot::profiles::Profiles::load();
+                print_launcher_sync(&key, prof.get(&key));
+                return Ok(());
+            }
+            if found.is_empty() {
+                println!(
+                    "{}",
+                    numapilot::i18n::tr("No menu or desktop shortcut starts this program.")
+                );
+            }
+            for l in &found {
+                println!(
+                    "{}  {}  {}",
+                    if l.wrapped {
+                        numapilot::t2!("through numapilot", "pelo numapilot")
+                    } else {
+                        numapilot::t2!("direct", "direto")
+                    },
+                    l.name,
+                    l.path.display()
+                );
+            }
+            Ok(())
         }
         ProfileCmd::Export { file } => {
             let f = file.unwrap_or_else(numapilot::profiles::export_path);
@@ -3940,4 +4014,42 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The program's own shortcuts follow the saved choice (see `desktop::sync_launchers`); only for
+/// the user's own session (root has no menu of its own to adjust).
+fn print_launcher_sync(key: &str, profile: Option<&Profile>) {
+    if numapilot::util::is_root() {
+        return;
+    }
+    let r = numapilot::desktop::sync_launchers(key, profile, None);
+    for (f, _) in &r.wrapped {
+        println!(
+            "{}",
+            numapilot::tf!(
+                "Shortcut {} now opens it through numapilot (undo: numapilot profile shortcuts {key} --undo)",
+                "Atalho {} agora abre pelo numapilot (desfazer: numapilot profile shortcuts {key} --undo)",
+                f.display()
+            )
+        );
+    }
+    for f in &r.restored {
+        println!(
+            "{}",
+            numapilot::tf!(
+                "Shortcut {} back to the original",
+                "Atalho {} de volta ao original",
+                f.display()
+            )
+        );
+    }
+    for e in &r.errors {
+        eprintln!(
+            "{}",
+            numapilot::tf!("shortcut not adjusted: {e}", "atalho não ajustado: {e}")
+        );
+    }
+    if r.changed() {
+        numapilot::desktop::refresh_menu();
+    }
 }

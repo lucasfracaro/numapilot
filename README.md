@@ -170,8 +170,10 @@ A task-manager-style table, with programs grouped (Steam games by AppId) into **
   NVIDIA with a recent driver);
 - the arrow (or a double-click) opens the program's processes and the controls: **Processor**
   (automatic, the GPU's socket, one socket or both; applies right away), **Graphics card** (applies
-  on start: **Reopen**, **Use in the menu** or the Steam option), **Lossless Scaling**, **Adjust…**
-  and **Open at startup**;
+  on start: **Reopen**, **Use in the menu** or the Steam option; saving a card choice also makes
+  the program's own menu and desktop shortcuts open it through numapilot, with **Undo**, and
+  `numapilot profile shortcuts KEY` lists them), **Lossless Scaling**, **Adjust…** and
+  **Open at startup**;
 - **End** (SIGTERM) and **Force stop** (SIGKILL, with confirmation) only for your own session
   programs; never the kernel, the system, other users, the graphical session or numapilot itself;
 - **Search** by name or PID, **Only mine**, **Steam** menu (apply to all games).

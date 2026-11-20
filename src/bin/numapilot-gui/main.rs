@@ -429,6 +429,9 @@ pub(crate) struct App {
     only_mine: bool,
     desktop_cache: HashMap<String, Option<PathBuf>>,
     bg_msgs: Arc<Mutex<Vec<(String, bool)>>>,
+    /// Shortcuts of a program adjusted when its choice was saved: (key, what changed, when),
+    /// shown with an Undo button.
+    launchers: Arc<Mutex<Option<(String, numapilot::desktop::LauncherSync, Instant)>>>,
     pub(crate) cpu_opts: Vec<(String, String)>,
     pub(crate) gpu_opts: Vec<(String, String, String)>,
 }
@@ -600,6 +603,7 @@ impl App {
             only_mine: true,
             desktop_cache: HashMap::new(),
             bg_msgs: Arc::new(Mutex::new(vec![])),
+            launchers: Arc::new(Mutex::new(None)),
             cpu_opts,
             gpu_opts,
         };
@@ -856,7 +860,148 @@ impl App {
         }
     }
 
+    /// Card that says which shortcuts saving a choice adjusted, with Undo (20 s).
+    fn launcher_notice(&mut self, ui: &mut egui::Ui) {
+        let p = crate::theme::pal(ui);
+        let cur = self.launchers.lock().ok().and_then(|g| g.clone());
+        let Some((key, r, t)) = cur.filter(|c| c.2.elapsed() < Duration::from_secs(20)) else {
+            return;
+        };
+        let mut undo = false;
+        let mut close = false;
+        egui::Area::new(ui.make_persistent_id("launcher-notice"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -76.0))
+            .order(egui::Order::Foreground)
+            .show(ui.ctx(), |ui| {
+                egui::Frame::popup(ui.style())
+                    .inner_margin(egui::Margin::symmetric(14, 10))
+                    .show(ui, |ui| {
+                        ui.set_max_width(460.0);
+                        if !r.wrapped.is_empty() {
+                            let names: Vec<String> = r
+                                .wrapped
+                                .iter()
+                                .map(|(f, n)| {
+                                    let n = if n.is_empty() {
+                                        f.file_name().unwrap_or_default().to_string_lossy().to_string()
+                                    } else {
+                                        n.clone()
+                                    };
+                                    let at = if numapilot::desktop::desktop_folder()
+                                        .is_some_and(|d| f.starts_with(d))
+                                    {
+                                        crate::i18n::tr("desktop")
+                                    } else {
+                                        crate::i18n::tr("menu")
+                                    };
+                                    format!("{n} ({at})")
+                                })
+                                .collect();
+                            ui.label(
+                                RichText::new(crate::tf!(
+                                    "These shortcuts now open the program through numapilot, so the chosen card applies: {}",
+                                    "Estes atalhos agora abrem o programa pelo numapilot, para a placa escolhida valer: {}",
+                                    names.join(", ")
+                                ))
+                                .color(p.text),
+                            );
+                        } else {
+                            ui.label(
+                                RichText::new(crate::tf!(
+                                    "{} shortcut(s) back to the original (the choice no longer needs numapilot to open the program).",
+                                    "{} atalho(s) de volta ao original (a escolha não precisa mais do numapilot para abrir o programa).",
+                                    r.restored.len()
+                                ))
+                                .color(p.text),
+                            );
+                        }
+                        ui.horizontal(|ui| {
+                            if !r.wrapped.is_empty()
+                                && ui
+                                    .button(crate::i18n::tr("Undo"))
+                                    .on_hover_text(crate::i18n::tr(
+                                        "Puts the shortcuts back as they were; saving this program's choice will not change them again (\"Use in the menu\" does).",
+                                    ))
+                                    .clicked()
+                            {
+                                undo = true;
+                            }
+                            if ui.button(crate::i18n::tr("OK")).clicked() {
+                                close = true;
+                            }
+                        });
+                    });
+            });
+        ui.ctx().request_repaint_after(Duration::from_millis(500));
+        if undo {
+            let files: Vec<PathBuf> = r.wrapped.iter().map(|(f, _)| f.clone()).collect();
+            match numapilot::desktop::undo_launchers(&key, &files) {
+                Ok(()) => {
+                    numapilot::desktop::refresh_menu();
+                    self.toast(crate::i18n::tr("Shortcuts put back as they were"), true);
+                }
+                Err(e) => self.toast(
+                    crate::tf!("Could not undo: {e}", "Não consegui desfazer: {e}"),
+                    false,
+                ),
+            }
+        }
+        if (undo || close)
+            && let Ok(mut g) = self.launchers.lock()
+            && g.as_ref().is_some_and(|c| c.2 == t)
+        {
+            *g = None;
+        }
+    }
+
     pub(crate) fn send(&mut self, req: Request) {
+        // the program's own shortcuts open it through numapilot when the choice needs it
+        // (graphics card, what it sees, upscaler), and go back when it no longer does
+        let sync = match &req {
+            Request::SetProfile { key, profile, pid } => {
+                Some((key.clone(), Some(profile.clone()), *pid))
+            }
+            Request::DeleteProfile { key, pid } => Some((key.clone(), None, *pid)),
+            _ => None,
+        };
+        if let Some((key, profile, pid)) = sync {
+            let out = self.launchers.clone();
+            let ctx = self.ctx.clone();
+            std::thread::spawn(move || {
+                let exe = pid.and_then(numapilot::procfs::exe);
+                let r = numapilot::desktop::sync_launchers(&key, profile.as_ref(), exe.as_deref());
+                if !r.changed() && r.errors.is_empty() {
+                    return;
+                }
+                for e in &r.errors {
+                    numapilot::log::warn(&crate::tf!(
+                        "shortcut not adjusted: {e}",
+                        "atalho não ajustado: {e}"
+                    ));
+                }
+                for (f, _) in &r.wrapped {
+                    numapilot::log::info(&crate::tf!(
+                        "shortcut {} now opens {key} through numapilot",
+                        "atalho {} agora abre {key} pelo numapilot",
+                        f.display()
+                    ));
+                }
+                for f in &r.restored {
+                    numapilot::log::info(&crate::tf!(
+                        "shortcut {} restored to the original",
+                        "atalho {} voltou ao original",
+                        f.display()
+                    ));
+                }
+                if r.changed() {
+                    numapilot::desktop::refresh_menu();
+                }
+                if let Ok(mut g) = out.lock() {
+                    *g = Some((key, r, Instant::now()));
+                }
+                ctx.request_repaint();
+            });
+        }
         // the request, summarized (without the large data)
         let what = match &req {
             // may contain the notification topic/password
@@ -1856,6 +2001,7 @@ impl App {
                 });
             ui.ctx().request_repaint_after(Duration::from_millis(500));
         }
+        self.launcher_notice(ui);
         egui::CentralPanel::no_frame()
             .frame(egui::Frame::new().fill(p.bg).inner_margin(egui::Margin {
                 left: 22,
