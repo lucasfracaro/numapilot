@@ -42,6 +42,10 @@ enum Cmd {
         /// GPU for Lossless Scaling frame generation (lsfg-vk). Default: the same as the game.
         #[arg(long)]
         fg_gpu: Option<String>,
+        /// Card that runs gamescope (upscaling and output): alias/PCI | display | same. The game
+        /// stays on its own card. Opens inside gamescope even without it in the profile.
+        #[arg(long)]
+        out_gpu: Option<String>,
         /// Shortcut for --use compute.
         #[arg(long, conflicts_with_all = ["graphics", "usage"])]
         compute: bool,
@@ -333,6 +337,18 @@ enum ProfileCmd {
     },
     /// Deletes a profile (the program goes back to automatic).
     Rm { key: String },
+    /// The program's own shortcuts (menu and desktop) and whether they open it through
+    /// numapilot. Saving a choice that needs it (graphics card, what it sees, upscaler) adjusts
+    /// them on its own.
+    Shortcuts {
+        key: String,
+        /// Puts them back as they were and stops adjusting them for this program.
+        #[arg(long, conflicts_with = "apply")]
+        undo: bool,
+        /// Adjusts them again for the saved choice (after an --undo).
+        #[arg(long)]
+        apply: bool,
+    },
     /// Writes all choices to a file, to take to another PC or share.
     Export {
         /// File (default: ~/numapilot-escolhas-MACHINE.json).
@@ -408,6 +424,7 @@ fn real_main() -> Result<()> {
             mem,
             usage,
             fg_gpu,
+            out_gpu,
             compute,
             graphics,
             dry_run,
@@ -419,7 +436,9 @@ fn real_main() -> Result<()> {
                 (_, _, Some(u)) => Kind::parse_usage(&u)?,
                 _ => None,
             };
-            cmd_run(&cfg, cpu, gpu, mem, usage, fg_gpu, dry_run, command)
+            cmd_run(
+                &cfg, cpu, gpu, mem, usage, fg_gpu, out_gpu, dry_run, command,
+            )
         }
         Cmd::Profile { action } => cmd_profile(action),
         Cmd::Doctor { json, report } => {
@@ -1990,6 +2009,7 @@ fn cmd_run(
     mem: Option<String>,
     usage: Option<Kind>,
     fg_gpu: Option<String>,
+    out_gpu: Option<String>,
     dry_run: bool,
     command: Vec<String>,
 ) -> Result<()> {
@@ -2078,78 +2098,84 @@ fn cmd_run(
         fg_gpu,
     };
     let d = decide_launch(cfg, &topo, &learned, &profiles, &loads, &inp)?;
-    let (mut set, unset) = gpu_env(&d, &topo);
+    let (mut set, mut unset) = gpu_env(&d, &topo);
     set.extend(numapilot::decide::dx_filter(&d, &topo, &set, &unset));
+    // gamescope: from the profile, or the default one when only --out-gpu asked for it.
+    let gamescope = profiles
+        .get(&pkey)
+        .and_then(|p| p.gamescope.clone())
+        .or_else(|| {
+            // --out-gpu or a presentation block opens gamescope even without one in the profile
+            (out_gpu.is_some() || profiles.get(&pkey).is_some_and(|p| p.present.is_some()))
+                .then(numapilot::profiles::Gamescope::default)
+        })
+        .filter(|_| {
+            std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_none()
+                && basename(&command[0]) != "gamescope"
+        });
+    // gamescope on another card than the game (e.g. the game on one MI50, upscaling and the
+    // monitor on the other): gamescope's own environment points at the output card and the
+    // game gets its card's variables back through `env` in front of its command.
+    let split = match gamescope.as_ref().and_then(|g| {
+        out_gpu
+            .clone()
+            .or_else(|| g.output_gpu.clone())
+            .filter(|_| which("gamescope").is_some())
+    }) {
+        Some(name) => numapilot::decide::resolve_out_gpu(&name, &d, &topo)?.map(|o| {
+            let s = numapilot::decide::gamescope_split(&o, &topo, &set, &unset, &|k| {
+                std::env::var(k).ok()
+            });
+            (o, s)
+        }),
+        None => None,
+    };
 
-    // Presentation profile: gamescope composes on the output card; the game's card variables
-    // (and MangoHud) go to the game only, after gamescope's "--".
-    let inside_gamescope = std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some()
-        || basename(&command[0]) == "gamescope";
+    // Presentation block: upscaling model, frame generation and the real × shown measurement on
+    // top of the gamescope above (and its output card).
     let mut present_run: Option<(numapilot::profiles::Present, numapilot::present::Plan)> = None;
-    if let Some(p) = profiles.get(&pkey)
-        && let Some(pr) = p.present.clone()
-        && !inside_gamescope
+    if let Some(g) = gamescope.as_ref()
+        && let Some(pr) = profiles.get(&pkey).and_then(|p| p.present.clone())
+        && which("gamescope").is_some()
     {
-        if which("gamescope").is_some() {
-            // variables the user already set win (same rule as below)
-            let game_set: Vec<(String, String)> = set
-                .iter()
-                .filter(|(k, _)| {
-                    !(numapilot::decide::SOFT_THREAD_VARS.contains(&k.as_str())
-                        && std::env::var_os(k).is_some())
-                })
-                .cloned()
-                .collect();
-            let mut plan = numapilot::present::plan(
-                &pr,
-                p.gamescope.as_ref(),
-                d.gpus.first(),
-                &topo,
-                &game_set,
-                &unset,
-                numapilot::present::lsfg_installed(),
-            );
-            if pr.measure && tuning.is_none() {
-                if which("mangohud").is_some() {
-                    plan.measuring = true;
-                    if !dry_run {
-                        plan.game_env
-                            .extend(numapilot::present::mangohud_env(&pkey));
-                    }
-                } else {
-                    plan.warnings.push(
-                        numapilot::i18n::tr(
-                            "MangoHud is not installed: no real × shown measurement (sudo pacman -S mangohud)",
-                        )
-                        .into(),
-                    );
+        let mut plan = numapilot::present::plan(
+            &pr,
+            g,
+            split.as_ref().map(|(o, _)| o),
+            numapilot::present::lsfg_installed(),
+        );
+        if pr.measure && tuning.is_none() {
+            if which("mangohud").is_some() {
+                plan.measuring = true;
+                if !dry_run {
+                    plan.game_env
+                        .extend(numapilot::present::mangohud_env(&pkey));
                 }
-            }
-            for w in &plan.warnings {
-                eprintln!(
-                    "{}",
-                    numapilot::tf!("numapilot: warning: {}", "numapilot: aviso: {}", w)
+            } else {
+                plan.warnings.push(
+                    numapilot::i18n::tr(
+                        "MangoHud is not installed: no real × shown measurement (sudo pacman -S mangohud)",
+                    )
+                    .into(),
                 );
             }
-            if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
-                eprintln!("gamescope: {}", plan.gamescope.join(" "));
-                for (k, v) in &plan.game_env {
-                    eprintln!(
-                        "{}",
-                        numapilot::tf!("game env : {k}={v}", "env jogo : {k}={v}")
-                    );
-                }
-            }
-            present_run = Some((pr, plan));
-        } else {
+        }
+        for w in &plan.warnings {
             eprintln!(
                 "{}",
-                numapilot::tf!(
-                    "numapilot: warning: gamescope not installed (sudo pacman -S gamescope); opening without it",
-                    "numapilot: aviso: gamescope não instalado (sudo pacman -S gamescope); abrindo sem ele"
-                )
+                numapilot::tf!("numapilot: warning: {}", "numapilot: aviso: {}", w)
             );
         }
+        if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
+            eprintln!("gamescope: {}", plan.gamescope.join(" "));
+            for (k, v) in &plan.game_env {
+                eprintln!(
+                    "{}",
+                    numapilot::tf!("game env : {k}={v}", "env jogo : {k}={v}")
+                );
+            }
+        }
+        present_run = Some((pr, plan));
     }
 
     if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
@@ -2235,6 +2261,28 @@ fn cmd_run(
         for k in &unset {
             eprintln!("env      : unset {k}");
         }
+        if let Some((o, s)) = &split {
+            eprintln!(
+                "{}",
+                numapilot::tf!(
+                    "gamescope: on the {} ({}), --prefer-vk-device {}; the game stays on the GPU above",
+                    "gamescope: na {} ({}), --prefer-vk-device {}; o jogo fica na GPU acima",
+                    o.alias,
+                    o.pci,
+                    s.prefer
+                )
+            );
+            for (k, v) in &s.set {
+                if !set.contains(&(k.clone(), v.clone())) {
+                    eprintln!("gamescope: {k}={v}");
+                }
+            }
+            for k in &s.unset {
+                if !unset.contains(k) {
+                    eprintln!("gamescope: unset {k}");
+                }
+            }
+        }
         if dry_run {
             return Ok(());
         }
@@ -2304,20 +2352,28 @@ fn cmd_run(
     if tuning.is_some() && which("mangohud").is_some() && basename(&argv[0]) != "mangohud" {
         argv.insert(0, "mangohud".into());
     }
-    if let Some((_, plan)) = present_run.as_mut() {
-        if plan.measuring && basename(&argv[0]) != "mangohud" {
-            argv.insert(0, "mangohud".into());
-        }
-        argv = plan.wrap(argv);
-    }
-    if let Some(g) = profiles.get(&pkey).and_then(|p| p.gamescope.clone())
-        && present_run.is_none()
-        && !inside_gamescope
-        && basename(&command[0]) != "gamescope"
-    {
+    if let Some(g) = gamescope {
         if which("gamescope").is_some() {
-            let mut a = g.argv();
+            let mut a = match &present_run {
+                Some((_, p)) => p.gamescope.clone(),
+                None => g.argv(),
+            };
+            let mut child = vec![];
+            if let Some((_, s)) = split {
+                a.push("--prefer-vk-device".into());
+                a.push(s.prefer);
+                child = s.child;
+                set = s.set;
+                unset = s.unset;
+            }
             a.push("--".into());
+            if let Some((_, p)) = &present_run {
+                if p.measuring && basename(&argv[0]) != "mangohud" {
+                    argv.insert(0, "mangohud".into());
+                }
+                child = p.game_prefix(child);
+            }
+            a.extend(child);
             a.append(&mut argv);
             argv = a;
         } else {
@@ -2333,15 +2389,6 @@ fn cmd_run(
     let mut c = std::process::Command::new(&argv[0]);
     c.args(&argv[1..]);
     // Remove first, then set (same order as gpu-test, so what it checks is what runs).
-    // With another output card, the game's card variables went to the game alone.
-    let to_game = present_run
-        .as_ref()
-        .is_some_and(|(_, p)| p.out_pci.is_some());
-    let (set, unset) = if to_game {
-        (vec![], vec![])
-    } else {
-        (set, unset)
-    };
     for k in unset {
         c.env_remove(k);
     }
@@ -2594,17 +2641,79 @@ fn cmd_profile(action: ProfileCmd) -> Result<()> {
                 ..Default::default()
             };
             let r = ctl::send(&ctl::Request::SetProfile {
-                key,
-                profile,
+                key: key.clone(),
+                profile: profile.clone(),
                 pid: None,
             })?;
             println!("{}", r.message);
-            if r.ok { Ok(()) } else { bail!("falhou") }
+            if r.ok {
+                print_launcher_sync(&key, Some(&profile));
+                Ok(())
+            } else {
+                bail!("falhou")
+            }
         }
         ProfileCmd::Rm { key } => {
-            let r = ctl::send(&ctl::Request::DeleteProfile { key, pid: None })?;
+            let r = ctl::send(&ctl::Request::DeleteProfile {
+                key: key.clone(),
+                pid: None,
+            })?;
             println!("{}", r.message);
-            if r.ok { Ok(()) } else { bail!("falhou") }
+            if r.ok {
+                print_launcher_sync(&key, None);
+                Ok(())
+            } else {
+                bail!("falhou")
+            }
+        }
+        ProfileCmd::Shortcuts { key, undo, apply } => {
+            use numapilot::desktop;
+            let found = desktop::find_launchers(&key, None, &desktop::launcher_places(), &|e| {
+                numapilot::apps::key_for_exec(e).map(|(k, _)| k)
+            });
+            if undo {
+                let files: Vec<_> = found
+                    .iter()
+                    .filter(|l| l.wrapped)
+                    .map(|l| l.path.clone())
+                    .collect();
+                desktop::undo_launchers(&key, &files)?;
+                desktop::refresh_menu();
+                println!(
+                    "{}",
+                    numapilot::tf!(
+                        "{} shortcut(s) put back as they were.",
+                        "{} atalho(s) de volta como eram.",
+                        files.len()
+                    )
+                );
+                return Ok(());
+            }
+            if apply {
+                desktop::forget_off(&key);
+                let prof = numapilot::profiles::Profiles::load();
+                print_launcher_sync(&key, prof.get(&key));
+                return Ok(());
+            }
+            if found.is_empty() {
+                println!(
+                    "{}",
+                    numapilot::i18n::tr("No menu or desktop shortcut starts this program.")
+                );
+            }
+            for l in &found {
+                println!(
+                    "{}  {}  {}",
+                    if l.wrapped {
+                        numapilot::t2!("through numapilot", "pelo numapilot")
+                    } else {
+                        numapilot::t2!("direct", "direto")
+                    },
+                    l.name,
+                    l.path.display()
+                );
+            }
+            Ok(())
         }
         ProfileCmd::Export { file } => {
             let f = file.unwrap_or_else(numapilot::profiles::export_path);
@@ -4059,4 +4168,42 @@ fn cmd_bench_cores(cfg: &Config, show: bool, clear: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The program's own shortcuts follow the saved choice (see `desktop::sync_launchers`); only for
+/// the user's own session (root has no menu of its own to adjust).
+fn print_launcher_sync(key: &str, profile: Option<&Profile>) {
+    if numapilot::util::is_root() {
+        return;
+    }
+    let r = numapilot::desktop::sync_launchers(key, profile, None);
+    for (f, _) in &r.wrapped {
+        println!(
+            "{}",
+            numapilot::tf!(
+                "Shortcut {} now opens it through numapilot (undo: numapilot profile shortcuts {key} --undo)",
+                "Atalho {} agora abre pelo numapilot (desfazer: numapilot profile shortcuts {key} --undo)",
+                f.display()
+            )
+        );
+    }
+    for f in &r.restored {
+        println!(
+            "{}",
+            numapilot::tf!(
+                "Shortcut {} back to the original",
+                "Atalho {} de volta ao original",
+                f.display()
+            )
+        );
+    }
+    for e in &r.errors {
+        eprintln!(
+            "{}",
+            numapilot::tf!("shortcut not adjusted: {e}", "atalho não ajustado: {e}")
+        );
+    }
+    if r.changed() {
+        numapilot::desktop::refresh_menu();
+    }
 }

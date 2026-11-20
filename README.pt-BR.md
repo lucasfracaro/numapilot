@@ -167,7 +167,9 @@ AppId) em **Aplicativos** e **Sessão e sistema**:
   DRM (amdgpu, Intel, NVIDIA com driver novo);
 - a seta (ou dois cliques) abre os processos do programa e os controles: **Processador**
   (automático, socket da GPU, um socket ou os dois; vale na hora), **Placa de vídeo** (vale ao abrir:
-  **Reabrir**, **Usar no menu** ou a opção da Steam), **Lossless Scaling**, **Ajustar…** e
+  **Reabrir**, **Usar no menu** ou a opção da Steam; salvar a escolha da placa também faz os atalhos
+  do próprio programa no menu e na área de trabalho abrirem pelo numapilot, com **Desfazer**, e
+  `numapilot profile shortcuts CHAVE` lista eles), **Lossless Scaling**, **Ajustar…** e
   **Abrir ao iniciar**;
 - **Encerrar** (SIGTERM) e **Forçar parada** (SIGKILL, com confirmação) só para programas seus da
   sessão; nunca o kernel, o sistema, outros usuários, a sessão gráfica ou o próprio numapilot;
@@ -516,7 +518,10 @@ ensinam o numapilot sobre placas especiais.
 
 - **Steam em todos os jogos** (`numapilot steam enable` ou menu Steam na aba Programas): coloca
   `numapilot run --` antes do `%command%` mantendo o que já existia; a Steam precisa estar fechada.
-- **gamescope por jogo**: resolução do jogo e de saída, limite de FPS, FSR, na mesma GPU escolhida.
+- **gamescope por jogo**: resolução do jogo e de saída, limite de FPS, FSR, na mesma GPU escolhida ou
+  em outra ("Placa do gamescope"; `numapilot run --out-gpu gfx906-1`): o jogo renderiza na placa
+  dele e o gamescope amplia e mostra a imagem na outra. Duas placas do mesmo modelo (as MI50) são
+  separadas pelo endereço PCI.
 - **Upscaling por jogo** (no Ajustar…), conforme a placa:
 
 | Modo | Para quem | Como |

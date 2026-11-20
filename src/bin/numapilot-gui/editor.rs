@@ -404,6 +404,10 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
     });
     if on != ed.p.present.is_some() {
         ed.p.present = on.then(numapilot::profiles::Present::default);
+        // the block runs on gamescope: its card choice (output card) lives in the gamescope block
+        if on && ed.p.gamescope.is_none() {
+            ed.p.gamescope = Some(numapilot::profiles::Gamescope::default());
+        }
     }
     let game_gpu = app
         .topo
@@ -411,6 +415,18 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         .iter()
         .find(|g| g.matches(&ed.p.gpu))
         .or_else(|| app.topo.gaming_gpu())
+        .cloned();
+    let gs = ed.p.gamescope.clone().unwrap_or_default();
+    // output card as `decide::resolve_out_gpu` picks it: "display" = the first card with a monitor
+    let out_gpu = gs
+        .output_gpu
+        .as_deref()
+        .and_then(|n| match n {
+            "" | "same" | "auto" => None,
+            "display" => app.topo.gpus.iter().find(|g| g.display_connected),
+            n => app.topo.gpus.iter().find(|g| g.matches(n)),
+        })
+        .filter(|o| game_gpu.as_ref().is_none_or(|g| g.pci != o.pci))
         .cloned();
     let Some(pr) = ed.p.present.as_mut() else {
         return;
@@ -420,31 +436,16 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         .spacing([10.0, 4.0])
         .show(ui, |ui| {
             ui.label(crate::i18n::tr("Output card"));
-            let cur = if pr.out_gpu == "same" {
-                crate::i18n::tr("the game's card").to_string()
-            } else {
-                pr.out_gpu.clone()
-            };
-            egui::ComboBox::from_id_salt("ed-pr-out")
-                .selected_text(cur)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut pr.out_gpu,
-                        "same".to_string(),
-                        crate::i18n::tr("the game's card"),
-                    );
-                    for g in &app.topo.gpus {
-                        if game_gpu.as_ref().is_some_and(|x| x.pci == g.pci) {
-                            continue;
-                        }
-                        let txt = if g.display_connected {
-                            crate::tf!("{} (monitor)", "{} (monitor)", g.alias)
-                        } else {
-                            crate::tf!("{} (no monitor)", "{} (sem monitor)", g.alias)
-                        };
-                        ui.selectable_value(&mut pr.out_gpu, g.alias.clone(), txt);
-                    }
-                });
+            ui.label(
+                RichText::new(match &out_gpu {
+                    Some(o) => o.alias.clone(),
+                    None => crate::i18n::tr("the game's card").to_string(),
+                })
+                .strong(),
+            )
+            .on_hover_text(crate::i18n::tr(
+                "Chosen in the gamescope block above (\"gamescope card\").",
+            ));
             ui.end_row();
 
             ui.label(crate::i18n::tr("Upscaling model"));
@@ -550,11 +551,8 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
     // What the launch will do on this machine (same plan as numapilot run).
     let plan = numapilot::present::plan(
         pr,
-        ed.p.gamescope.as_ref(),
-        game_gpu.as_ref(),
-        &app.topo,
-        &[],
-        &[],
+        &gs,
+        out_gpu.as_ref(),
         numapilot::present::lsfg_installed(),
     );
     let route = match (&game_gpu, &plan.out_pci) {
@@ -1093,11 +1091,31 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             ui.checkbox(&mut g.fsr, crate::i18n::tr("Upscale with FSR"));
                         });
                         ui.end_row();
+                        if app.topo.gpus.len() > 1 {
+                            ui.label(crate::i18n::tr("gamescope card"));
+                            let shown = match g.output_gpu.as_deref() {
+                                None => crate::i18n::tr("same as the game").to_string(),
+                                Some("display") => crate::i18n::tr("the one with the monitor").to_string(),
+                                Some(a) => app.topo.gpus.iter().find(|x| x.alias == a).map(|x| format!("{} ({})", x.alias, x.short_name())).unwrap_or_else(|| a.to_string()),
+                            };
+                            egui::ComboBox::from_id_salt("ed-gs-out").selected_text(shown).show_ui(ui, |ui| {
+                                ui.selectable_value(&mut g.output_gpu, None, crate::i18n::tr("same as the game"));
+                                ui.selectable_value(&mut g.output_gpu, Some("display".to_string()), crate::i18n::tr("the one with the monitor"));
+                                for x in &app.topo.gpus {
+                                    ui.selectable_value(&mut g.output_gpu, Some(x.alias.clone()), format!("{} ({}, {})", x.alias, x.short_name(), x.pci.trim_start_matches("0000:")));
+                                }
+                            });
+                            ui.end_row();
+                        }
                     });
                     ui.label(
-                        RichText::new(crate::i18n::tr("gamescope uses the same card chosen above. Good for running the game at a lower resolution and upscaling with FSR, or capping the FPS."))
-                            .small()
-                            .weak(),
+                        RichText::new(if g.output_gpu.is_none() {
+                            crate::i18n::tr("gamescope uses the same card chosen above. Good for running the game at a lower resolution and upscaling with FSR, or capping the FPS.")
+                        } else {
+                            crate::i18n::tr("The game renders on the card chosen above and gamescope (upscaling, FPS limit, image on the screen) runs on the other one: the frame crosses PCIe once. Cards with the same model are told apart by the PCI address.")
+                        })
+                        .small()
+                        .weak(),
                     );
                 }
 

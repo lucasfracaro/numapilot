@@ -1415,6 +1415,10 @@ pub const PT: &[(&str, &str)] = &[
     ("turning on", "ligando"),
     ("exclusive", "exclusivo"),
     ("asleep", "dormindo"),
+    (
+        "No menu or desktop shortcut starts this program.",
+        "Nenhum atalho do menu ou da área de trabalho abre este programa.",
+    ),
     // recipes/default.toml (community programs and tips)
     (
         "does everything on the BC-250: GPU governor and voltage lab, CPU overclock, fan, 40 CUs live, 8 cores, GPU memory (TTM), telemetry. The author's own -git package: updating rebuilds from the newest code",

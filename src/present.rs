@@ -9,7 +9,7 @@
 //! the multiplier applied only while the base FPS is above the minimum.
 
 use crate::profiles::{Gamescope, Present};
-use crate::topo::{Gpu, Topology};
+use crate::topo::Gpu;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -60,17 +60,17 @@ pub fn lsfg_installed() -> bool {
     })
 }
 
-/// How a launch is put together.
+/// What the presentation block adds to a gamescope launch. The output card itself and the split
+/// of the environment (gamescope sees only the output card, the game keeps its own) come from
+/// `Gamescope::output_gpu` / `run --out-gpu` and `decide::gamescope_split`.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Plan {
-    /// gamescope and its arguments, without the final "--".
+    /// gamescope and its arguments (upscaling filter included), without the final "--".
     pub gamescope: Vec<String>,
     /// Output card (None = the game's card composes too).
     pub out_pci: Option<String>,
-    /// Variables only for the game: they go after "--" through `env`, so gamescope does not pick
-    /// the game's card (DRI_PRIME, device select) nor load MangoHud.
+    /// Variables only for the game (frame generation card, MangoHud): they go after "--".
     pub game_env: Vec<(String, String)>,
-    pub game_unset: Vec<String>,
     /// Frames shown per real frame that will really be generated (1 if the generator is missing).
     pub multiplier: u8,
     pub warnings: Vec<String>,
@@ -79,38 +79,25 @@ pub struct Plan {
 }
 
 impl Plan {
-    /// gamescope … -- env -u X K=V … command
-    pub fn wrap(&self, command: Vec<String>) -> Vec<String> {
-        let mut a = self.gamescope.clone();
-        a.push("--".into());
-        if !self.game_env.is_empty() || !self.game_unset.is_empty() {
-            a.push("env".into());
-            for k in &self.game_unset {
-                a.push("-u".into());
-                a.push(k.clone());
+    /// What goes between gamescope's "--" and the game: `child` is `decide::gamescope_split`'s
+    /// `env …` (empty without another output card), followed by this plan's game variables.
+    pub fn game_prefix(&self, child: Vec<String>) -> Vec<String> {
+        let mut c = child;
+        if !self.game_env.is_empty() {
+            if c.is_empty() {
+                c.push("env".into());
             }
-            for (k, v) in &self.game_env {
-                a.push(format!("{k}={v}"));
-            }
+            c.extend(self.game_env.iter().map(|(k, v)| format!("{k}={v}")));
         }
-        a.extend(command);
-        a
+        c
     }
 }
 
-/// Builds the launch. `gpu_set`/`gpu_unset` are the variables that steer the game to its card
-/// (`decide::gpu_env`); with another output card they go to the game only.
-pub fn plan(
-    pr: &Present,
-    gs: Option<&Gamescope>,
-    game: Option<&Gpu>,
-    topo: &Topology,
-    gpu_set: &[(String, String)],
-    gpu_unset: &[String],
-    lsfg: bool,
-) -> Plan {
+/// Builds the launch: `gs` is the gamescope block in effect (the profile's or the default one),
+/// `out` the output card when it is not the game's (`decide::resolve_out_gpu`).
+pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: bool) -> Plan {
     let mut warnings = vec![];
-    let mut g = gs.cloned().unwrap_or_default();
+    let mut g = gs.clone();
     g.fsr = false;
     let mut a = g.argv();
     let up = if upscaler_ready(&pr.upscaler) {
@@ -136,49 +123,16 @@ pub fn plan(
             .into(),
         );
     }
-    let out = if matches!(pr.out_gpu.as_str(), "" | "same" | "auto") {
-        None
-    } else {
-        match topo.gpus.iter().find(|x| x.matches(&pr.out_gpu)) {
-            None => {
-                warnings.push(crate::tf!(
-                    "output card '{}' not found: showing on the game's card",
-                    "placa de saída '{}' não encontrada: mostrando na placa do jogo",
-                    pr.out_gpu
-                ));
-                None
-            }
-            Some(o) if game.is_some_and(|x| x.pci == o.pci) => None,
-            Some(o) => Some(o),
-        }
-    };
-    let mut game_env = vec![];
-    let mut game_unset = vec![];
-    if let Some(o) = out {
-        a.push("--prefer-vk-device".into());
-        a.push(format!("{:04x}:{:04x}", o.vendor, o.device));
-        if let Some(twin) = topo
-            .gpus
-            .iter()
-            .find(|x| x.pci != o.pci && x.vendor == o.vendor && x.device == o.device)
-        {
-            warnings.push(crate::tf!(
-                "gamescope chooses the card by vendor:device and {} has the same ID as {}: it may compose on either (check the use of each card while it runs)",
-                "o gamescope escolhe a placa por fabricante:modelo e a {} tem o mesmo ID da {}: ele pode compor em qualquer uma (confira o uso de cada placa enquanto roda)",
-                o.alias,
-                twin.alias
-            ));
-        }
-        if !o.display_connected {
-            warnings.push(crate::tf!(
-                "no monitor on the {}: the image only shows up through a monitor connected to it",
-                "nenhum monitor na {}: a imagem só aparece num monitor ligado nela",
-                o.alias
-            ));
-        }
-        game_env = gpu_set.to_vec();
-        game_unset = gpu_unset.to_vec();
+    if let Some(o) = out
+        && !o.display_connected
+    {
+        warnings.push(crate::tf!(
+            "no monitor on the {}: the image only shows up through a monitor connected to it",
+            "nenhum monitor na {}: a imagem só aparece num monitor ligado nela",
+            o.alias
+        ));
     }
+    let mut game_env = vec![];
     let mut multiplier = pr.multiplier.max(1);
     if multiplier > 1 {
         if !engine_ready(&pr.engine) {
@@ -218,7 +172,6 @@ pub fn plan(
         gamescope: a,
         out_pci: out.map(|o| o.pci.clone()),
         game_env,
-        game_unset,
         multiplier,
         warnings,
         measuring: false,
@@ -434,88 +387,64 @@ mod tests {
         }
     }
 
-    fn topo(gpus: Vec<Gpu>) -> Topology {
-        Topology {
-            nodes: vec![],
-            gpus,
-            default_graphics: None,
-        }
-    }
-
     #[test]
-    fn game_env_moves_after_gamescope_with_another_output() {
-        let a = gpu("gfx906-0", "0000:03:00.0", 0x66af, false);
-        let b = gpu("gfx906-1", "0000:83:00.0", 0x66af, true);
-        let t = topo(vec![a.clone(), b]);
-        let pr = Present {
-            out_gpu: "gfx906-1".into(),
-            ..Default::default()
-        };
+    fn filter_once_and_game_env_after_the_split() {
+        let b = gpu("gfx906-1", "0000:83:00.0", 0x66af, false);
         let gs = Gamescope {
             render_w: Some(1920),
             render_h: Some(1080),
             fsr: true,
             ..Default::default()
         };
-        let set = vec![("DRI_PRIME".to_string(), a.dri_prime())];
-        let unset = vec!["MESA_VK_DEVICE_SELECT".to_string()];
-        let p = plan(&pr, Some(&gs), Some(&a), &t, &set, &unset, false);
+        let pr = Present {
+            upscaler: "nis".into(),
+            multiplier: 2,
+            ..Default::default()
+        };
+        let p = plan(&pr, &gs, Some(&b), true);
         assert_eq!(p.out_pci.as_deref(), Some("0000:83:00.0"));
-        let fs = p.gamescope.iter().filter(|x| *x == "-F").count();
-        assert_eq!(fs, 1, "FSR only once: {:?}", p.gamescope);
+        assert_eq!(p.gamescope.iter().filter(|x| *x == "-F").count(), 1);
+        assert!(p.gamescope.windows(2).any(|w| w == ["-F", "nis"]));
         assert!(
-            p.gamescope
-                .windows(2)
-                .any(|w| w == ["--prefer-vk-device", "1002:66af"])
-        );
-        assert!(
-            p.warnings.iter().any(|w| w.contains("same ID")),
+            p.warnings.iter().any(|w| w.contains("no monitor")),
             "{:?}",
             p.warnings
         );
-        let argv = p.wrap(vec!["game".into(), "-x".into()]);
-        let dd = argv.iter().position(|x| x == "--").unwrap();
+        assert_eq!(p.multiplier, 2);
+        let child = vec!["env".to_string(), "DRI_PRIME=pci-0000_03_00_0".to_string()];
         assert_eq!(
-            &argv[dd + 1..],
+            p.game_prefix(child),
             [
                 "env",
-                "-u",
-                "MESA_VK_DEVICE_SELECT",
                 "DRI_PRIME=pci-0000_03_00_0",
-                "game",
-                "-x"
+                "LSFGVK_GPU=131:0.0",
+                "NUMAPILOT_FG_GPU=0000:83:00.0"
             ]
         );
     }
 
     #[test]
     fn same_card_and_planned_parts() {
-        let a = gpu("rx470", "0000:05:00.0", 0x67df, true);
-        let t = topo(vec![a.clone()]);
         let pr = Present {
             upscaler: "anime4k".into(),
             multiplier: 2,
             engine: "rife".into(),
             ..Default::default()
         };
-        let p = plan(&pr, None, Some(&a), &t, &[], &[], true);
+        let mut p = plan(&pr, &Gamescope::default(), None, true);
         assert_eq!(p.out_pci, None);
-        assert!(p.game_env.is_empty());
         assert_eq!(p.multiplier, 1, "RIFE is not ready");
         assert!(p.gamescope.windows(2).any(|w| w == ["-F", "fsr"]));
-        let argv = p.wrap(vec!["game".into()]);
-        assert_eq!(argv.last().unwrap(), "game");
-        assert!(!argv.contains(&"env".to_string()));
+        assert!(p.game_prefix(vec![]).is_empty());
+        p.game_env.push(("MANGOHUD".into(), "1".into()));
+        assert_eq!(p.game_prefix(vec![]), ["env", "MANGOHUD=1"]);
         let p = plan(
             &Present {
                 multiplier: 2,
                 ..Default::default()
             },
+            &Gamescope::default(),
             None,
-            Some(&a),
-            &t,
-            &[],
-            &[],
             false,
         );
         assert_eq!(p.multiplier, 1, "without lsfg-vk there is no generation");

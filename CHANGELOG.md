@@ -3,16 +3,34 @@
 ## Unreleased
 
 - **Presentation block in the profile ("render on one card, improve on the other").** Adjust →
-  Presentation picks the output card, the upscaling model (FSR 1 or NIS through gamescope;
-  Anime4K and SRVGGNetCompact listed as planned), frame generation (off/2×/3×/4×, lsfg-vk today;
-  block matching and RIFE planned) and the minimum base FPS under which generation turns off.
-  `numapilot run` opens the game inside gamescope with `--prefer-vk-device` on the output card
-  and passes the game's card variables (DRI_PRIME, device select) to the game only, after
-  gamescope's `--`, so gamescope does not follow them. With "measure" on, MangoHud logs the game's
-  frames and, when the game closes, numapilot stores real FPS × shown FPS (calculated: the
+  Presentation picks the upscaling model (FSR 1 or NIS through gamescope; Anime4K and
+  SRVGGNetCompact listed as planned), frame generation (off/2×/3×/4×, lsfg-vk today; block
+  matching and RIFE planned) and the minimum base FPS under which generation turns off. It runs on
+  the gamescope block and its output card (`gamescope.output_gpu` / `--out-gpu`, below), and opens
+  gamescope even without one in the profile. With "measure" on, MangoHud logs the game's frames
+  (in the game only) and, when it closes, numapilot stores real FPS × shown FPS (calculated: the
   multiplier while the base FPS is above the minimum) and how many times generation turned off;
-  the Adjust window shows the last session. Both MI50s share one PCI ID, so gamescope may compose
-  on either: the window and `run` warn about it (to confirm on the server, step M0 of the plan).
+  the Adjust window shows the last session.
+- **gamescope on another card than the game.** A profile's gamescope can run on its own card
+  ("gamescope card" in the editor, `gamescope.output_gpu`, or `numapilot run --out-gpu`): the
+  game keeps its card (DRI_PRIME and the rest, given back through `env` after gamescope's `--`)
+  and gamescope gets `--prefer-vk-device` plus an environment that shows it only the output card.
+  The two MI50s share vendor:device, so the card is picked by PCI address (DRI_PRIME +
+  MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE); `--prefer-vk-device` alone would take the first.
+  First step of the "render on one MI50, upscale on the other" plan; `run --dry-run` shows both
+  environments.
+- **Saving a choice adjusts the program's own shortcuts.** A choice that only reaches a program
+  started through numapilot (graphics card, frame generation card, what it sees, gamescope,
+  upscaler) now makes every menu and desktop shortcut of that program open it with
+  `numapilot run`, found by the same key the service gives the running program (so launcher
+  scripts count). The Longshot launcher kept opening on gfx906-0 (PCIe x8) from its own
+  shortcuts. Menu shortcuts of the system get a copy in `~/.local/share/applications` (the
+  original stays); the user's own and desktop icons are changed in place, keeping their
+  permissions, with the original command kept to undo. A card shows which ones changed, with
+  **Undo** (saving that program does not change them again until **Use in the menu** or
+  `numapilot profile shortcuts KEY --apply`); a choice that goes back to automatic or is deleted
+  puts them back. Steam games are left to their launch option. `numapilot profile shortcuts KEY`
+  lists them; `profile set`/`rm` adjust them too.
 - **Adjust warns when the program was opened directly.** The graphics card of a saved choice
   only reaches a program opened through numapilot (`numapilot run`, its menu shortcut, the Steam
   line). The Longshot launcher opened from its own shortcut always went to the boot card

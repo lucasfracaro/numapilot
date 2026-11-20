@@ -222,15 +222,16 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
 
 ## Apresentação em outra placa (2026-11-20)
 
-`Profile.present` (`profiles::Present`) e `src/present.rs`: placa de saída (`out_gpu`), modelo de
+`Profile.present` (`profiles::Present`) e `src/present.rs`: modelo de
 upscaling (`UPSCALERS`: fsr1/nis prontos pelo gamescope; anime4k/srvgg planejados, caem no FSR 1),
 geração de quadros (`multiplier` 1–4, `ENGINES`: lsfg pronto; blockmatch/rife planejados), FPS
-mínimo de base e `measure`. `present::plan` monta o gamescope (`--prefer-vk-device
-vendor:device` da placa de saída) e põe as variáveis da placa do jogo só no jogo (`env` depois do
-`--`). Medição: MangoHud só no jogo (log em `~/.local/state/numapilot/present-logs/`), resultado
+mínimo de base e `measure`. A placa de saída é a do gamescope (`Gamescope.output_gpu` /
+`run --out-gpu`, PR #2): `decide::gamescope_split` dá ao gamescope só a placa de saída (separa as
+duas MI50 pelo PCI) e devolve ao jogo as variáveis da placa dele (`env` depois do `--`);
+`present::plan` só acrescenta o filtro (`-F`), as variáveis do jogo (lsfg, MangoHud) e a medição. Medição: MangoHud só no jogo (log em `~/.local/state/numapilot/present-logs/`), resultado
 em `present.json`; o mostrado é **calculado** (real × multiplicador enquanto a base fica acima do
 mínimo), não contado na saída. Plano completo no PDF do projeto (etapas M0–M4). Falta testar no
-servidor: se o gamescope separa as duas MI50 (mesmo ID) e se a saída de vídeo da MI50 funciona.
+servidor: se a saída de vídeo da MI50 funciona e a medição real × mostrado numa sessão de jogo.
 
 ## Capturas do README
 

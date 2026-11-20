@@ -170,8 +170,10 @@ A task-manager-style table, with programs grouped (Steam games by AppId) into **
   NVIDIA with a recent driver);
 - the arrow (or a double-click) opens the program's processes and the controls: **Processor**
   (automatic, the GPU's socket, one socket or both; applies right away), **Graphics card** (applies
-  on start: **Reopen**, **Use in the menu** or the Steam option), **Lossless Scaling**, **Adjust…**
-  and **Open at startup**;
+  on start: **Reopen**, **Use in the menu** or the Steam option; saving a card choice also makes
+  the program's own menu and desktop shortcuts open it through numapilot, with **Undo**, and
+  `numapilot profile shortcuts KEY` lists them), **Lossless Scaling**, **Adjust…** and
+  **Open at startup**;
 - **End** (SIGTERM) and **Force stop** (SIGKILL, with confirmation) only for your own session
   programs; never the kernel, the system, other users, the graphical session or numapilot itself;
 - **Search** by name or PID, **Only mine**, **Steam** menu (apply to all games).
@@ -536,7 +538,10 @@ teach numapilot about special boards.
 
 - **Steam on every game** (`numapilot steam enable` or the Steam menu in the Programs tab): puts
   `numapilot run --` before `%command%` keeping what was already there; Steam must be closed.
-- **gamescope per game**: game and output resolution, FPS limit, FSR, on the same chosen GPU.
+- **gamescope per game**: game and output resolution, FPS limit, FSR, on the same chosen GPU or
+  on another one ("gamescope card"; `numapilot run --out-gpu gfx906-1`): the game renders on its
+  card and gamescope upscales and shows the image on the other. Two cards of the same model (the
+  MI50s) are told apart by the PCI address.
 - **Upscaling per game** (in Adjust…), depending on the card:
 
 | Mode | For | How |

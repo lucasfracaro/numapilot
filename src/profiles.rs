@@ -92,14 +92,12 @@ pub struct Upscale {
 }
 
 /// "Render on one card, improve on the other": the game renders on the profile's card; the output
-/// card takes the finished image (one copy over PCIe), upscales it, generates frames and shows it
-/// through its own video output. Works only with the final image (like Lossless Scaling), so the
+/// card (`Gamescope::output_gpu`) takes the finished image (one copy over PCIe), upscales it,
+/// generates frames and shows it through its own video output. Works only with the final image (like Lossless Scaling), so the
 /// real FPS and the input delay stay the game's. See `crate::present`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Present {
-    /// Card that composes and shows the image: "same" (the game's) or a GPU alias/PCI address.
-    pub out_gpu: String,
     /// Upscaling of the finished image: none | fsr1 | nis | anime4k | srvgg
     /// (`present::UPSCALERS` says which are ready).
     pub upscaler: String,
@@ -116,7 +114,6 @@ pub struct Present {
 impl Default for Present {
     fn default() -> Self {
         Present {
-            out_gpu: same(),
             upscaler: "fsr1".into(),
             multiplier: 1,
             engine: "lsfg".into(),
@@ -174,6 +171,10 @@ pub struct Gamescope {
     pub fsr: bool,
     #[serde(default)]
     pub fps_limit: Option<u32>,
+    /// Card that runs gamescope (upscaling, composition, output): None = the game's card.
+    /// Alias/PCI, or "display" (the card with a monitor). The game keeps its own card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_gpu: Option<String>,
 }
 
 impl Default for Gamescope {
@@ -186,6 +187,7 @@ impl Default for Gamescope {
             fullscreen: true,
             fsr: false,
             fps_limit: None,
+            output_gpu: None,
         }
     }
 }
@@ -310,6 +312,20 @@ impl Profile {
 
     pub fn needs_daemon(&self) -> bool {
         self.needs_scope() || self.priority == "high"
+    }
+
+    /// Something that only reaches the program when it starts through `numapilot run`: the
+    /// graphics card (and the frame generation one), what it sees, gamescope or the upscaler.
+    /// A program opened directly from its own shortcut misses these.
+    pub fn needs_launcher(&self) -> bool {
+        self.gpu != "auto"
+            || self.fg_gpu != "same"
+            || self.gamescope.is_some()
+            || self
+                .upscale
+                .as_ref()
+                .is_some_and(|u| u.mode != "nenhum" && !u.mode.is_empty())
+            || (self.limit_visible && self.has_cpu_choice())
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -550,11 +566,12 @@ pub fn import_text(
             if p.fg_gpu != "same" && !gpu_aliases.contains(&p.fg_gpu) {
                 p.fg_gpu = same();
             }
-            if let Some(pr) = p.present.as_mut()
-                && pr.out_gpu != "same"
-                && !gpu_aliases.contains(&pr.out_gpu)
+            if let Some(g) = p.gamescope.as_mut()
+                && g.output_gpu
+                    .as_ref()
+                    .is_some_and(|o| o != "display" && !gpu_aliases.contains(o))
             {
-                pr.out_gpu = same();
+                g.output_gpu = None;
             }
         }
         match p.validate() {
