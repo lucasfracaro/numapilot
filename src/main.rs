@@ -325,7 +325,7 @@ enum Cmd {
         /// Only shows the last saved measurement of each card.
         #[arg(long)]
         show: bool,
-        /// Upscaling as Vulkan compute (bilinear, Anime4K CNN x2 S/M/L) with GPU timestamps,
+        /// Upscaling as Vulkan compute (bilinear, Anime4K CNN x2 S/M/L, ArtCNN, FSRCNNX downloaded on first use) with GPU timestamps,
         /// no files and no external tools (step M0b).
         #[arg(long)]
         compute: bool,
@@ -2232,6 +2232,23 @@ fn cmd_run(
         // pacman and the Steam libraries are read only when lsfg-vk will be used
         let lsfg = (pr.multiplier > 1 && numapilot::present::is_lsfg(&pr.engine))
             .then(numapilot::lsfg::status);
+        // FSRCNNX is not shipped (LGPL): downloaded the first time a profile asks for it
+        if !dry_run
+            && numapilot::present::model_missing(&pr.upscaler)
+            && let Some(m) = numapilot::present::layer_model(&pr.upscaler)
+        {
+            eprintln!(
+                "{}",
+                numapilot::tf!(
+                    "Downloading the upscaling model {} (once)…",
+                    "Baixando o modelo de upscaling {} (só desta vez)…",
+                    m
+                )
+            );
+            if let Err(e) = numapilot::vkbench::fetch(m) {
+                eprintln!("{m}: {e:#}");
+            }
+        }
         let mut plan = numapilot::present::plan(
             &pr,
             g,

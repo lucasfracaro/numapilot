@@ -638,7 +638,8 @@ pub struct ComputeReport {
     pub models: Vec<ComputeModel>,
 }
 
-/// Runs every model of `vkbench::MODELS` on `g` (only that card visible to Vulkan).
+/// Runs every model of `vkbench::model_names()` on `g` (only that card visible to Vulkan),
+/// downloading the ones that are not shipped.
 pub fn compute(g: &Gpu, w: u32, h: u32, runs: u32) -> anyhow::Result<ComputeReport> {
     for (k, v) in card_env(g) {
         // single-threaded at this point (the CLI, before any Vulkan call)
@@ -658,8 +659,18 @@ pub fn compute(g: &Gpu, w: u32, h: u32, runs: u32) -> anyhow::Result<ComputeRepo
         ));
     }
     let mut models = vec![];
-    for (id, name, src) in crate::vkbench::MODELS {
-        let r = crate::vkbench::run(&ctx, src, w, h, runs, None, false);
+    for (id, name) in crate::vkbench::model_names() {
+        // FSRCNNX is downloaded the first time (LGPL, not shipped)
+        let src = crate::vkbench::model_source(id).or_else(|| {
+            crate::vkbench::fetch(id).ok()?;
+            crate::vkbench::model_source(id)
+        });
+        let r = match &src {
+            Some(src) => crate::vkbench::run(&ctx, src, w, h, runs, None, false),
+            None => Err(anyhow::anyhow!(crate::i18n::tr(
+                "could not download the model"
+            ))),
+        };
         models.push(match r {
             Ok((t, _)) => ComputeModel {
                 model: id.into(),

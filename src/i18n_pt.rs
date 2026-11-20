@@ -1563,6 +1563,23 @@ pub const PT: &[(&str, &str)] = &[
         "Anime4K CNN 2× L (mais nítido)",
     ),
     ("Anime4K (= M)", "Anime4K (= M)"),
+    (
+        "could not download the model",
+        "não foi possível baixar o modelo",
+    ),
+    (
+        "ArtCNN C4F16 (light, sharp edges)",
+        "ArtCNN C4F16 (leve, bordas nítidas)",
+    ),
+    ("ArtCNN C4F32", "ArtCNN C4F32"),
+    (
+        "FSRCNNX 8 (downloaded on first use)",
+        "FSRCNNX 8 (baixado no primeiro uso)",
+    ),
+    (
+        "FSRCNNX 16 (downloaded on first use)",
+        "FSRCNNX 16 (baixado no primeiro uso)",
+    ),
     ("SRVGGNetCompact (planned)", "SRVGGNetCompact (planejado)"),
     (
         "Lossless Scaling on the game's card (lsfg-vk)",

@@ -9,8 +9,9 @@
 //!
 //! Turned on by the implicit layer manifest's `ENABLE_NUMAPILOT_UPSCALE=1`; it only acts in
 //! processes named in `NUMAPILOT_UPSCALE_PROCS` (default: gamescope), so a game that inherits the
-//! variable is passed through untouched. Model: `NUMAPILOT_UPSCALE_MODEL` (anime4k-s, anime4k-m,
-//! anime4k-l, bilinear; default anime4k-m). Any failure falls back to passing everything through.
+//! variable is passed through untouched. Model: `NUMAPILOT_UPSCALE_MODEL` (anime4k-s|m|l,
+//! artcnn-c4f16|c4f32, fsrcnnx(-16) once downloaded, bilinear, or a path to an mpv user shader;
+//! default anime4k-m). Any failure falls back to passing everything through.
 
 #![allow(clippy::missing_safety_doc, non_snake_case)]
 
@@ -69,12 +70,10 @@ pub fn model_name() -> String {
     std::env::var("NUMAPILOT_UPSCALE_MODEL").unwrap_or_else(|_| "anime4k-m".into())
 }
 
-/// The mpv user shader of the model (`numapilot::vkbench::MODELS`).
-pub fn model_shader(name: &str) -> Option<&'static str> {
-    numapilot::vkbench::MODELS
-        .iter()
-        .find(|m| m.0 == name)
-        .map(|m| m.2)
+/// The mpv user shader of the model: shipped (`numapilot::vkbench::MODELS`), downloaded
+/// (FSRCNNX, `numapilot::vkbench::shader_dir()`) or a path to an mpv user shader.
+pub fn model_shader(name: &str) -> Option<std::borrow::Cow<'static, str>> {
+    numapilot::vkbench::model_source(name)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -625,7 +624,7 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
     };
     let model = model_name();
     let Some(shader) = model_shader(&model) else {
-        eprintln!("numapilot-upscale: unknown model '{model}': passing through");
+        eprintln!("numapilot-upscale: unknown or not downloaded model '{model}': passing through");
         return pass();
     };
     // the real caps, without our scaling
@@ -655,7 +654,7 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
         return r;
     }
     let sc = unsafe { *out };
-    match unsafe { chain::Chain::new(&d, sc, info, real, small, px, shader) } {
+    match unsafe { chain::Chain::new(&d, sc, info, real, small, px, &shader) } {
         Ok(chain) => {
             eprintln!(
                 "numapilot-upscale: {}x{} → {}x{} with {model}",
@@ -844,7 +843,14 @@ mod tests {
         assert!(!proc_matches("skyrim.exe", "gamescope,gamescope-wl"));
         assert!(proc_matches("vkcube", "*"));
         assert!(!proc_matches("gamescope", ""));
-        for m in ["anime4k-s", "anime4k-m", "anime4k-l", "bilinear"] {
+        for m in [
+            "anime4k-s",
+            "anime4k-m",
+            "anime4k-l",
+            "bilinear",
+            "artcnn-c4f16",
+            "artcnn-c4f32",
+        ] {
             assert!(model_shader(m).is_some(), "{m}");
         }
         assert!(model_shader("rife").is_none());
