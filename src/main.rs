@@ -39,8 +39,9 @@ enum Cmd {
         /// How to use the GPU: graphics (game, even on an MI50) | compute (ROCm) | auto
         #[arg(long = "use", short = 'u')]
         usage: Option<String>,
-        /// GPU for Lossless Scaling frame generation (lsfg-vk). Default: the same as the game.
-        #[arg(long)]
+        /// Removed (frame generation on another card is the profile's Presentation block:
+        /// "Lossless Scaling on the output card"). Accepted and ignored.
+        #[arg(long, hide = true)]
         fg_gpu: Option<String>,
         /// Card that runs gamescope (upscaling and output): alias/PCI | display | same. The game
         /// stays on its own card. Opens inside gamescope even without it in the profile.
@@ -440,9 +441,16 @@ fn real_main() -> Result<()> {
                 (_, _, Some(u)) => Kind::parse_usage(&u)?,
                 _ => None,
             };
-            cmd_run(
-                &cfg, cpu, gpu, mem, usage, fg_gpu, out_gpu, dry_run, command,
-            )
+            if fg_gpu.is_some() {
+                eprintln!(
+                    "{}",
+                    numapilot::tf!(
+                        "numapilot: warning: --fg-gpu was removed: frame generation on another card is the profile's Presentation block (Lossless Scaling on the output card)",
+                        "numapilot: aviso: --fg-gpu saiu: a geração de quadros em outra placa é o bloco Apresentação do perfil (Lossless Scaling na placa de saída)"
+                    )
+                );
+            }
+            cmd_run(&cfg, cpu, gpu, mem, usage, out_gpu, dry_run, command)
         }
         Cmd::Profile { action } => cmd_profile(action),
         Cmd::Doctor { json, report } => {
@@ -2012,7 +2020,6 @@ fn cmd_run(
     gpu: Option<String>,
     mem: Option<String>,
     usage: Option<Kind>,
-    fg_gpu: Option<String>,
     out_gpu: Option<String>,
     dry_run: bool,
     command: Vec<String>,
@@ -2099,7 +2106,6 @@ fn cmd_run(
         gpu: gpu.as_deref().map(GpuSpec::parse).transpose()?,
         mem: mem.as_deref().map(MemSpec::parse).transpose()?,
         usage,
-        fg_gpu,
     };
     let d = decide_launch(cfg, &topo, &learned, &profiles, &loads, &inp)?;
     let (mut set, mut unset) = gpu_env(&d, &topo);
@@ -2142,17 +2148,31 @@ fn cmd_run(
         && let Some(pr) = profiles.get(&pkey).and_then(|p| p.present.clone())
         && which("gamescope").is_some()
     {
+        // pacman and the Steam libraries are read only when lsfg-vk will be used
+        let lsfg = (pr.multiplier > 1 && numapilot::present::is_lsfg(&pr.engine))
+            .then(numapilot::lsfg::status);
         let mut plan = numapilot::present::plan(
             &pr,
             g,
             split.as_ref().map(|(o, _)| o),
-            // pacman and the Steam libraries are read only when lsfg-vk will be used
-            if pr.multiplier > 1 && pr.engine == "lsfg" {
-                numapilot::present::Lsfg::of(&numapilot::lsfg::status())
-            } else {
-                numapilot::present::Lsfg::Missing
-            },
+            lsfg.as_ref()
+                .map(numapilot::present::Lsfg::of)
+                .unwrap_or(numapilot::present::Lsfg::Missing),
         );
+        // lsfg-vk inside gamescope: numapilot's own config (the user's is only read)
+        if plan.lsfg_out
+            && !dry_run
+            && let Some(st) = &lsfg
+            && let Err(e) = numapilot::present::write_lsfg_out(st, plan.multiplier)
+        {
+            plan.warnings.push(numapilot::tf!(
+                "could not write the lsfg-vk config for gamescope ({}): no frame generation",
+                "não deu para gravar a configuração do lsfg-vk do gamescope ({}): sem geração de quadros",
+                e
+            ));
+            plan.gamescope_env.clear();
+            plan.multiplier = 1;
+        }
         if pr.measure && tuning.is_none() {
             if which("mangohud").is_some() {
                 plan.measuring = true;
@@ -2177,6 +2197,12 @@ fn cmd_run(
         }
         if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
             eprintln!("gamescope: {}", plan.gamescope.join(" "));
+            for (k, v) in &plan.gamescope_env {
+                eprintln!(
+                    "{}",
+                    numapilot::tf!("gamescope env: {k}={v}", "env gamescope: {k}={v}")
+                );
+            }
             for (k, v) in &plan.game_env {
                 eprintln!(
                     "{}",
@@ -2375,6 +2401,13 @@ fn cmd_run(
                 child = s.child;
                 set = s.set;
                 unset = s.unset;
+            }
+            if let Some((_, p)) = &present_run {
+                // gamescope's own variables (lsfg-vk config); the game inherits them
+                for (k, v) in &p.gamescope_env {
+                    set.retain(|(x, _)| x != k);
+                    set.push((k.clone(), v.clone()));
+                }
             }
             a.push("--".into());
             if let Some((_, p)) = &present_run {

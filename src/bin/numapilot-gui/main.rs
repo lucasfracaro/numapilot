@@ -1480,7 +1480,6 @@ impl App {
         // Graphics card
         let cur = (prof.gpu.clone(), prof.usage.clone());
         let mut sel = cur.clone();
-        let mut fg = prof.fg_gpu.clone();
         let gpu_text = self
             .gpu_opts
             .iter()
@@ -1494,33 +1493,6 @@ impl App {
                 .show_ui(ui, |ui| {
                     for (gg, u, t) in &self.gpu_opts {
                         ui.selectable_value(&mut sel, (gg.clone(), u.clone()), t);
-                    }
-                });
-            // Lossless Scaling (lsfg-vk): which GPU generates the frames.
-            let fg_text = if fg == "same" {
-                crate::i18n::tr("Lossless Scaling: same GPU").to_string()
-            } else {
-                format!("Lossless Scaling: {fg} (dual GPU)")
-            };
-            egui::ComboBox::from_id_salt(format!("fg-{}", g.key))
-                .selected_text(RichText::new(fg_text).small())
-                .width(250.0)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut fg,
-                        "same".to_string(),
-                        crate::i18n::tr("Same GPU as the game (official lsfg-vk)"),
-                    );
-                    for gg in &self.topo.gpus {
-                        ui.selectable_value(
-                            &mut fg,
-                            gg.alias.clone(),
-                            crate::tf!(
-                                "{} — dual GPU (needs an lsfg-vk fork)",
-                                "{} — dual GPU (precisa de fork do lsfg-vk)",
-                                gg.alias
-                            ),
-                        );
                     }
                 });
             if prof.gpu != "auto"
@@ -1584,13 +1556,12 @@ impl App {
             }
         });
 
-        if cpu != prof.cpu || sel != cur || fg != prof.fg_gpu {
+        if cpu != prof.cpu || sel != cur {
             let profile = Profile {
                 label: g.label.clone(),
                 cpu,
                 gpu: sel.0,
                 usage: sel.1,
-                fg_gpu: fg,
                 ..prof.clone()
             };
             self.send(Request::SetProfile {
@@ -1770,7 +1741,7 @@ impl App {
                         crate::i18n::tr("Processor"),
                         crate::i18n::tr("Graphics card"),
                         crate::i18n::tr("GPU usage"),
-                        "Lossless Scaling",
+                        crate::i18n::tr("Frame generation"),
                         "",
                     ] {
                         ui.label(RichText::new(h).strong());
@@ -1827,10 +1798,13 @@ impl App {
                             "compute" => crate::i18n::tr("AI / ROCm"),
                             _ => crate::i18n::tr("automatic"),
                         });
-                        ui.label(if p.fg_gpu == "same" {
-                            crate::i18n::tr("same GPU").to_string()
-                        } else {
-                            p.fg_gpu.clone()
+                        ui.label(match p.present.as_ref().filter(|pr| pr.multiplier > 1) {
+                            Some(pr) => format!(
+                                "{}× {}",
+                                pr.multiplier,
+                                crate::i18n::tr(numapilot::present::engine_name(&pr.engine))
+                            ),
+                            None => crate::i18n::tr("off").to_string(),
                         });
                         ui.horizontal(|ui| {
                             if ui.button(crate::i18n::tr("Adjust…")).clicked() {

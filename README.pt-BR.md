@@ -384,12 +384,12 @@ numapilot run --cpu all --mem interleave -- ./banco-de-dados
 | `--gpu` | `auto`, `display`, `compute`, `compute:2`, `compute:all`, `none`, apelido ou PCI |
 | `--mem` | `local` (padrão), `interleave`, `bind` |
 | `--use` | `auto`, `graphics`, `compute` |
-| `--fg-gpu` | GPU do frame generation do Lossless Scaling |
+| `--out-gpu` | placa que roda o gamescope (upscaling, geração de quadros na placa de saída, monitor) |
 
 No automático, a placa com monitor vai para programas gráficos e as de computação (MI50) para IA
 (`llama-*`, `ollama`, `comfyui`, `vllm`, `whisper*`...), sempre a menos ocupada. Ele configura
 `DRI_PRIME`, `MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE`, `ROCR_VISIBLE_DEVICES`,
-`CUDA_VISIBLE_DEVICES`, PRIME da NVIDIA e `LSFGVK_GPU`, e exporta `NUMAPILOT_CPUS`,
+`CUDA_VISIBLE_DEVICES` e PRIME da NVIDIA, e exporta `NUMAPILOT_CPUS`,
 `NUMAPILOT_MEMS` e `NUMAPILOT_RENDER` para scripts e containers.
 
 ### Regras permanentes
@@ -420,7 +420,10 @@ Interrupções das GPUs, placas de rede e NVMe vão para o socket de cada placa 
 
 DirectX roda pelo Proton (DXVK/VKD3D → Vulkan), então tudo que vale para Vulkan vale para os dois.
 Para jogar **numa MI50**: escolha "gfx906-N — jogo/gráfico" (com o monitor na MI50, ou PRIME para a
-RX 470). **Lossless Scaling** (lsfg-vk): gera os quadros na GPU do jogo; dual GPU precisa de um fork.
+RX 470). **Lossless Scaling** (lsfg-vk), no bloco Apresentação do perfil: "na placa do jogo" (lsfg-vk no
+jogo, com as suas configurações do lsfg-vk) ou "na placa de saída" (lsfg-vk só dentro do gamescope,
+com o backend SDL e uma configuração própria do numapilot em
+`~/.local/state/numapilot/lsfg-vk-output.toml`; o seu `conf.toml` só é lido).
 **Instale antes o Lossless Scaling pela Steam**: o lsfg-vk precisa dele comprado e instalado, no ramo `lsfg-vk`
 (Propriedades → Betas); `numapilot lsfg` (e o painel em Ajustar → Apresentação e em Configurações)
 mostra o que falta e instala pelo AUR (`lsfg-vk`) num terminal. Configurações: `lsfg-vk-ui` ou

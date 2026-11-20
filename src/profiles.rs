@@ -24,10 +24,6 @@ pub struct Profile {
     /// "auto" | "graphics" | "compute": how to use the chosen GPU.
     #[serde(default = "auto", rename = "use")]
     pub usage: String,
-    /// GPU for Lossless Scaling frame generation (lsfg-vk): "same" = the game's.
-    /// Another GPU only works with an lsfg-vk version that supports dual GPU.
-    #[serde(default = "same")]
-    pub fg_gpu: String,
     /// How many logical CPUs the program may use (None = all of the chosen sockets').
     #[serde(default)]
     pub cores: Option<usize>,
@@ -218,9 +214,6 @@ impl Gamescope {
     }
 }
 
-fn same() -> String {
-    "same".into()
-}
 fn yes() -> bool {
     true
 }
@@ -235,7 +228,6 @@ impl Default for Profile {
             cpu: auto(),
             gpu: auto(),
             usage: auto(),
-            fg_gpu: same(),
             cores: None,
             smt: true,
             cpu_list: None,
@@ -315,11 +307,10 @@ impl Profile {
     }
 
     /// Something that only reaches the program when it starts through `numapilot run`: the
-    /// graphics card (and the frame generation one), what it sees, gamescope or the upscaler.
+    /// graphics card, what it sees, gamescope or the upscaler.
     /// A program opened directly from its own shortcut misses these.
     pub fn needs_launcher(&self) -> bool {
         self.gpu != "auto"
-            || self.fg_gpu != "same"
             || self.gamescope.is_some()
             || self
                 .upscale
@@ -386,7 +377,6 @@ impl Profile {
             label: base.label.clone(),
             gpu: base.gpu.clone(),
             usage: base.usage.clone(),
-            fg_gpu: base.fg_gpu.clone(),
             gamescope: base.gamescope.clone(),
             upscale: base.upscale.clone(),
             present: base.present.clone(),
@@ -562,9 +552,6 @@ pub fn import_text(
             p.cpu_list = None;
             if !["auto", "display"].contains(&p.gpu.as_str()) && !gpu_aliases.contains(&p.gpu) {
                 p.gpu = auto();
-            }
-            if p.fg_gpu != "same" && !gpu_aliases.contains(&p.fg_gpu) {
-                p.fg_gpu = same();
             }
             if let Some(g) = p.gamescope.as_mut()
                 && g.output_gpu

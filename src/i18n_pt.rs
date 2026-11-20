@@ -1554,6 +1554,14 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("Anime4K (planned)", "Anime4K (planejado)"),
     ("SRVGGNetCompact (planned)", "SRVGGNetCompact (planejado)"),
+    (
+        "Lossless Scaling on the game's card (lsfg-vk)",
+        "Lossless Scaling na placa do jogo (lsfg-vk)",
+    ),
+    (
+        "Lossless Scaling on the output card (lsfg-vk in gamescope)",
+        "Lossless Scaling na placa de saída (lsfg-vk no gamescope)",
+    ),
     ("block matching (planned)", "block matching (planejado)"),
     ("RIFE v4 lite (planned)", "RIFE v4 lite (planejado)"),
     ("lsfg-vk is not installed", "lsfg-vk não instalado"),

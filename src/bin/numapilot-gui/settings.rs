@@ -231,7 +231,7 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(8.0);
         crate::theme::title(ui, crate::i18n::tr("Tips"));
         ui.label(crate::i18n::tr("• Game on an MI50: choose \"MI50 — game/graphics\" in the Programs tab."));
-        ui.label(crate::i18n::tr("• Lossless Scaling (lsfg-vk): the official one generates the frames on the same GPU as the game."));
+        ui.label(crate::i18n::tr("• Lossless Scaling (lsfg-vk): on the game's card, or on another card through the profile's Presentation block (\"on the output card\": lsfg-vk inside gamescope)."));
         ui.label(crate::i18n::tr("• Advanced settings: /etc/numapilot.toml (rules) and /etc/gfx906-rocm.conf (lab/ROCm)."));
         ui.add_space(4.0);
         crate::lsfg::panel(app, ui, "settings", false);

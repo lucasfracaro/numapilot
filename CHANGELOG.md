@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Presentation: frame generation on the output card.** New frame generator "Lossless Scaling
+  on the output card (lsfg-vk in gamescope)", next to "on the game's card". Tested on the server:
+  official lsfg-vk loaded only in gamescope, with gamescope's SDL backend, generates where
+  gamescope runs (gfx906-1) while the game stays on its card (gfx906-0); in the default nested
+  mode the layer is not triggered. `run` adds `--backend sdl` and points gamescope at a config of
+  numapilot's own (`lsfg-vk-output.toml` in the user state folder, rewritten at every start): the
+  user's top-level keys and `[global]` (DLL path…) are kept, their profiles are left out (so the
+  game does not generate as well) and one profile matches `gamescope`/`gamescope-wl` with the
+  chosen multiplier and the other settings of the user's first profile. The user's
+  `conf.toml` is never written.
+- Removed the dual-GPU lsfg-vk fork choice: the "Lossless Scaling" card under Graphics card in
+  Adjust and in the Programs tab, `LSFGVK_GPU`/`NUMAPILOT_FG_GPU` (official lsfg-vk ignores them)
+  and the profile field `fg_gpu` (old profiles still load). `run --fg-gpu` is accepted with a
+  warning and does nothing. The Profiles list shows the frame generation of the Presentation
+  block instead.
 - **Presentation: official lsfg-vk generates frames on the game's card.** Tested on the server:
   lsfg-vk 2.0 has no card setting and ignores `LSFGVK_GPU`, so with the game on gfx906-0 and the
   output on gfx906-1 the 2× generation ran on gfx906-0. `run` and the Adjust window now say so

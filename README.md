@@ -399,12 +399,12 @@ numapilot run --cpu all --mem interleave -- ./database
 | `--gpu` | `auto`, `display`, `compute`, `compute:2`, `compute:all`, `none`, alias or PCI |
 | `--mem` | `local` (default), `interleave`, `bind` |
 | `--use` | `auto`, `graphics`, `compute` |
-| `--fg-gpu` | GPU for Lossless Scaling frame generation |
+| `--out-gpu` | card that runs gamescope (upscaling, frame generation on the output card, monitor) |
 
 On automatic, the card with the monitor goes to graphical programs and the compute ones (MI50) to
 AI (`llama-*`, `ollama`, `comfyui`, `vllm`, `whisper*`...), always the least busy. It sets
 `DRI_PRIME`, `MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE`, `ROCR_VISIBLE_DEVICES`,
-`CUDA_VISIBLE_DEVICES`, NVIDIA PRIME and `LSFGVK_GPU`, and exports `NUMAPILOT_CPUS`,
+`CUDA_VISIBLE_DEVICES` and NVIDIA PRIME, and exports `NUMAPILOT_CPUS`,
 `NUMAPILOT_MEMS` and `NUMAPILOT_RENDER` for scripts and containers.
 
 ### Permanent rules
@@ -435,8 +435,10 @@ Interrupts from GPUs, network cards and NVMe go to each device's socket (`device
 
 DirectX runs through Proton (DXVK/VKD3D → Vulkan), so everything that holds for Vulkan holds for
 both. To play **on an MI50**: choose "gfx906-N — game/graphics" (with the monitor on the MI50, or
-PRIME to the RX 470). **Lossless Scaling** (lsfg-vk): generates the frames on the game's GPU; dual
-GPU needs a fork. **Install Lossless Scaling through Steam first**: lsfg-vk needs it bought and installed, on the
+PRIME to the RX 470). **Lossless Scaling** (lsfg-vk), in the profile's Presentation block: "on the game's
+card" (lsfg-vk in the game, with your own lsfg-vk settings) or "on the output card" (lsfg-vk only
+inside gamescope, with its SDL backend and a config of numapilot's own in
+`~/.local/state/numapilot/lsfg-vk-output.toml`; your `conf.toml` is only read). **Install Lossless Scaling through Steam first**: lsfg-vk needs it bought and installed, on the
 `lsfg-vk` branch (Properties → Betas); `numapilot lsfg` (and the panel in Adjust → Presentation
 and in Settings) shows what is missing and installs it from the AUR (`lsfg-vk`) in a terminal.
 Its settings: `lsfg-vk-ui` or `~/.config/lsfg-vk/conf.toml`.
