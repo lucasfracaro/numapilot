@@ -113,6 +113,8 @@ numapilot present-bench --gpu gfx906-1 --game-gpu gfx906-0                 # 720
 numapilot present-bench --gpu gfx906-1 --game-gpu gfx906-0 --size 1920x1080 # 1080p → 4K
 numapilot present-bench --gpu gfx906-1 --pictures ~/Pictures/skyrim         # game captures
 numapilot present-bench --show
+numapilot present-bench --gpu gfx906-1 --compute                            # M0b, 720p → 1440p
+numapilot present-bench --gpu gfx906-1 --compute --size 1920x1080           # 1080p → 4K
 ```
 
 The tools read and write PNGs on the processor, so their times are an upper bound of the GPU

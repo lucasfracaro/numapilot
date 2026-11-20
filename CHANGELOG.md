@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Own upscaler, step M0b: `numapilot present-bench --gpu gfx906-1 --compute`.** Runs the
+  upscaling models as Vulkan compute on the chosen card, offscreen and with no files or external
+  tools, and reports the GPU time of each (median of `--runs`, slowest pass): bilinear 2× as the
+  floor and Anime4K CNN x2 S/M/L (MIT, shipped in `shaders/anime4k`). `src/vkbench.rs` runs mpv
+  user shaders (the format Anime4K ships in) as compute passes over storage buffers, with GLSL
+  turned into SPIR-V by naga at run time and libvulkan loaded at run time (new dependencies:
+  `ash`, `naga`). The same runner becomes the core of the gamescope layer (M1). It checks through
+  VK_EXT_pci_bus_info that Vulkan opened the card that was asked for.
 - docs/PRESENT-CHAIN.md: M0 result on the server (ncnn SRVGG 323 ms and RIFE 598 ms per frame,
   copy 0.62 ms) and the revised plan: frame generation stays with lsfg-vk on the output card, our
   own upscaling becomes tiny models (Anime4K CNN, FSRCNN, FSR 2 with estimated motion) run as

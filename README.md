@@ -550,7 +550,8 @@ teach numapilot about special boards.
 - **Own upscaler and frame generation on the second card** (in progress, plan in
   [docs/PRESENT-CHAIN.md](docs/PRESENT-CHAIN.md)): `numapilot present-bench --gpu gfx906-1
   --game-gpu gfx906-0` measures SRVGGNetCompact and RIFE (ncnn on Vulkan) per frame on the
-  output card, adds the copy between the cards and says whether the chain fits in one real frame.
+  output card, adds the copy between the cards and says whether the chain fits in one real frame;
+  `--compute` times Anime4K CNN x2 S/M/L as Vulkan compute on the card (GPU time, no files).
 - **Upscaling per game** (in Adjust…), depending on the card:
 
 | Mode | For | How |

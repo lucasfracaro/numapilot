@@ -612,6 +612,134 @@ pub fn render(r: &Report) -> String {
     s
 }
 
+// ---------------------------------------------------------------------------------------------
+// Upscaling as Vulkan compute (M0b): no files, GPU timestamps.
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ComputeModel {
+    pub model: String,
+    pub name: String,
+    pub ms: Option<f64>,
+    /// Slowest pass (name, ms).
+    pub slowest: Option<(String, f64)>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ComputeReport {
+    pub gpu: String,
+    pub pci: String,
+    /// What Vulkan used (name, PCI when the driver tells it).
+    pub vk_name: String,
+    pub vk_pci: Option<String>,
+    pub game_w: u32,
+    pub game_h: u32,
+    pub runs: u32,
+    pub models: Vec<ComputeModel>,
+}
+
+/// Runs every model of `vkbench::MODELS` on `g` (only that card visible to Vulkan).
+pub fn compute(g: &Gpu, w: u32, h: u32, runs: u32) -> anyhow::Result<ComputeReport> {
+    for (k, v) in card_env(g) {
+        // single-threaded at this point (the CLI, before any Vulkan call)
+        unsafe { std::env::set_var(k, v) };
+    }
+    let ctx = crate::vkbench::Ctx::open()?;
+    let vk_pci = ctx.pci();
+    if let Some(p) = &vk_pci
+        && !p.eq_ignore_ascii_case(&g.pci)
+    {
+        anyhow::bail!(crate::tf!(
+            "Vulkan opened {} ({p}), not the {} ({}): the card filter did not apply",
+            "o Vulkan abriu a {} ({p}), não a {} ({}): o filtro de placa não valeu",
+            ctx.name,
+            g.alias,
+            g.pci
+        ));
+    }
+    let mut models = vec![];
+    for (id, name, src) in crate::vkbench::MODELS {
+        let r = crate::vkbench::run(&ctx, src, w, h, runs, None, false);
+        models.push(match r {
+            Ok((t, _)) => ComputeModel {
+                model: id.into(),
+                name: name.into(),
+                ms: Some(t.total_ms),
+                slowest: t.passes.iter().max_by(|a, b| a.1.total_cmp(&b.1)).cloned(),
+                error: None,
+            },
+            Err(e) => ComputeModel {
+                model: id.into(),
+                name: name.into(),
+                ms: None,
+                slowest: None,
+                error: Some(format!("{e:#}")),
+            },
+        });
+    }
+    Ok(ComputeReport {
+        gpu: g.alias.clone(),
+        pci: g.pci.clone(),
+        vk_name: ctx.name.clone(),
+        vk_pci,
+        game_w: w,
+        game_h: h,
+        runs,
+        models,
+    })
+}
+
+pub fn render_compute(r: &ComputeReport) -> String {
+    let mut s = crate::tf!(
+        "{} ({}, Vulkan: {}): {}×{} → {}×{}, median of {} runs, GPU time\n",
+        "{} ({}, Vulkan: {}): {}×{} → {}×{}, mediana de {} rodadas, tempo da GPU\n",
+        r.gpu,
+        r.pci,
+        r.vk_name,
+        r.game_w,
+        r.game_h,
+        r.game_w * 2,
+        r.game_h * 2,
+        r.runs
+    );
+    for m in &r.models {
+        match (m.ms, &m.error) {
+            (Some(ms), _) => {
+                let verdict = if ms <= GOAL_UPSCALE_MS {
+                    crate::tf!(
+                        "within the goal ({:.0} ms)",
+                        "dentro da meta ({:.0} ms)",
+                        GOAL_UPSCALE_MS
+                    )
+                } else {
+                    crate::tf!(
+                        "above the goal ({:.0} ms)",
+                        "acima da meta ({:.0} ms)",
+                        GOAL_UPSCALE_MS
+                    )
+                };
+                s.push_str(&format!("  {:<20} {ms:8.2} ms  {verdict}\n", m.name));
+                if let Some((p, pms)) = &m.slowest {
+                    s.push_str(&crate::tf!(
+                        "  {:<20} slowest pass: {} ({:.2} ms)\n",
+                        "  {:<20} etapa mais lenta: {} ({:.2} ms)\n",
+                        "",
+                        p,
+                        pms
+                    ));
+                }
+            }
+            (None, e) => s.push_str(&format!(
+                "  {:<20} {}: {}\n",
+                m.name,
+                crate::t2!("failed", "falhou"),
+                e.as_deref().unwrap_or("")
+            )),
+        }
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
