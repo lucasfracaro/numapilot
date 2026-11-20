@@ -283,13 +283,6 @@ pub fn decide_launch(
         reasons.push(crate::i18n::tr("known compute program → ROCm GPU").into());
     }
     let (gpus, kind) = pick_gpus(topo, &gpu, usage, hint)?;
-    if kind == Kind::Graphics && gpus.iter().any(|g| g.role == GpuRole::Compute) {
-        reasons.push(crate::tf!(
-            "renders on the {} and the image goes to the card with the monitor (PRIME offload)",
-            "renderiza na {} e a imagem vai para a placa com monitor (PRIME offload)",
-            gpus[0].alias
-        ));
-    }
 
     let gpu_nodes: Vec<usize> = {
         let mut v: Vec<usize> = gpus.iter().filter_map(|g| g.numa_node).collect();
@@ -815,6 +808,28 @@ pub fn env_for_gpu_full(
         reasons: vec![],
     };
     gpu_env(&d, topo)
+}
+
+/// Where the image of a game on a compute card goes, for `run --dry-run`. None when the card is
+/// not a compute card or gamescope shows the image on another card (`out`), which says it itself.
+pub fn offload_note(d: &Decision, out: Option<&Gpu>) -> Option<String> {
+    let g = d.gpus.first()?;
+    if d.kind != Kind::Graphics || g.role != GpuRole::Compute || out.is_some() {
+        return None;
+    }
+    Some(if g.display_connected {
+        crate::tf!(
+            "renders on the {} and shows the image on its own monitor",
+            "renderiza na {} e mostra a imagem no monitor dela",
+            g.alias
+        )
+    } else {
+        crate::tf!(
+            "renders on the {} and the image goes to the card with the monitor (PRIME offload)",
+            "renderiza na {} e a imagem vai para a placa com monitor (PRIME offload)",
+            g.alias
+        )
+    })
 }
 
 /// gamescope's output card (profile `gamescope.output_gpu` or `run --out-gpu`): "" | "same" |

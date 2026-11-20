@@ -2249,7 +2249,8 @@ fn cmd_run(
                     .join(", ")
             }
         );
-        for r in &d.reasons {
+        let note = numapilot::decide::offload_note(&d, split.as_ref().map(|(o, _)| o));
+        for r in d.reasons.iter().chain(note.as_ref()) {
             eprintln!("{}", numapilot::tf!("reason   : {r}", "motivo   : {r}"));
         }
         for w in numapilot::decide::game_warnings(&topo, &d) {
