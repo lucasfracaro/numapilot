@@ -442,8 +442,8 @@ pub fn decide_launch(
         n => match topo.gpus.iter().find(|g| g.matches(n)) {
             Some(g) if gpus.first().is_none_or(|x| x.pci != g.pci) => {
                 reasons.push(crate::tf!(
-                    "frame generation (lsfg-vk) on the {}: requires lsfg-vk with dual GPU",
-                    "frame generation (lsfg-vk) na {}: requer lsfg-vk com dual GPU",
+                    "frame generation (lsfg-vk) on the {}: only with a dual-GPU build of lsfg-vk (the official one generates on the game's card)",
+                    "geração de quadros (lsfg-vk) na {}: só com uma versão do lsfg-vk com dual GPU (a oficial gera na placa do jogo)",
                     g.alias
                 ));
                 Some(g.clone())

@@ -169,9 +169,11 @@ pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg) -> Plan
                     crate::decide::pci_decimal(&o.pci),
                 );
                 set(&mut game_env, "NUMAPILOT_FG_GPU", o.pci.clone());
+                // tested on the server (2026-11-20): official lsfg-vk 2.0 has no card setting and
+                // ignores LSFGVK_GPU, so the generation stays on the game's card
                 warnings.push(crate::tf!(
-                    "frame generation (lsfg-vk) on the {}: requires lsfg-vk with dual GPU",
-                    "frame generation (lsfg-vk) na {}: requer lsfg-vk com dual GPU",
+                    "official lsfg-vk generates the frames on the game's card, not on the {}: it has no card setting (only a dual-GPU build of lsfg-vk uses the output card)",
+                    "o lsfg-vk oficial gera os quadros na placa do jogo, não na {}: ele não tem escolha de placa (só uma versão do lsfg-vk com dual GPU usa a placa de saída)",
                     o.alias
                 ));
             }

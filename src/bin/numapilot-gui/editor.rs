@@ -596,16 +596,15 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         );
     }
     if want_lsfg {
-        let fg_card = out_gpu
+        let game_card = game_gpu
             .as_ref()
-            .or(game_gpu.as_ref())
             .map(|g| g.alias.clone())
             .unwrap_or_else(|| "?".into());
         ui.label(
             RichText::new(crate::tf!(
-                "Frame generation runs on the {} (the output card); the \"Lossless Scaling\" choice under Graphics card does not apply with this block on.",
-                "A geração de quadros roda na {} (a placa de saída); a escolha \"Lossless Scaling\" em Placa de vídeo não vale com este bloco ligado.",
-                fg_card
+                "Frame generation runs on the game's card ({}): official lsfg-vk has no card setting. The output card upscales and shows the image.",
+                "A geração de quadros roda na placa do jogo ({}): o lsfg-vk oficial não tem escolha de placa. A placa de saída faz o upscaling e mostra a imagem.",
+                game_card
             ))
             .small(),
         );
@@ -1057,7 +1056,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                     ui.selectable_value(&mut ed.p.fg_gpu, g.alias.clone(), format!("{} (dual GPU, fork)", g.alias));
                                 }
                             });
-                        }).response.on_disabled_hover_text(crate::i18n::tr("Set by the Presentation block: frame generation runs on its output card.")));
+                        }).response.on_disabled_hover_text(crate::i18n::tr("Set by the Presentation block: it points lsfg-vk at the output card, but official lsfg-vk still generates on the game's card.")));
                     });
                     ui.end_row();
                 });

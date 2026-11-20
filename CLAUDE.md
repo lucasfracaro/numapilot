@@ -231,7 +231,8 @@ duas MI50 pelo PCI) e devolve ao jogo as variáveis da placa dele (`env` depois 
 `present::plan` só acrescenta o filtro (`-F`), as variáveis do jogo (lsfg, MangoHud) e a medição. Medição: MangoHud só no jogo (log em `~/.local/state/numapilot/present-logs/`), resultado
 em `present.json`; o mostrado é **calculado** (real × multiplicador enquanto a base fica acima do
 mínimo), não contado na saída. Plano completo no PDF do projeto (etapas M0–M4). Falta testar no
-servidor: se a saída de vídeo da MI50 funciona e a medição real × mostrado numa sessão de jogo.
+servidor: a medição real × mostrado numa sessão de jogo. Testado (2026-11-20): o lsfg-vk oficial 2.0 não
+tem escolha de placa e ignora `LSFGVK_GPU`; a geração 2× roda na placa do jogo, não na de saída.
 
 ## Capturas do README
 
