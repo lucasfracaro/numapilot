@@ -616,9 +616,9 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
         return pass();
     }
     let info = unsafe { &*ci };
-    let Some(bgra) = chain::format_order(info.image_format) else {
-        log!(
-            "format {:?} not handled: passing through",
+    let Some(px) = chain::format_px(info.image_format) else {
+        eprintln!(
+            "numapilot-upscale: format {:?} not handled: passing through",
             info.image_format
         );
         return pass();
@@ -655,7 +655,7 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
         return r;
     }
     let sc = unsafe { *out };
-    match unsafe { chain::Chain::new(&d, sc, info, real, small, bgra, shader) } {
+    match unsafe { chain::Chain::new(&d, sc, info, real, small, px, shader) } {
         Ok(chain) => {
             eprintln!(
                 "numapilot-upscale: {}x{} → {}x{} with {model}",

@@ -147,7 +147,8 @@ only in gamescope (`NUMAPILOT_UPSCALE_PROCS`, default `gamescope,gamescope-wl`):
   into the real image and presents it, waiting on a semaphore of its own.
 
 Model: `NUMAPILOT_UPSCALE_MODEL` (anime4k-s, anime4k-m, anime4k-l, bilinear). Debug messages with
-`NUMAPILOT_UPSCALE_DEBUG=1`. 8-bit swapchain formats only (BGRA/RGBA); anything else, or any
+`NUMAPILOT_UPSCALE_DEBUG=1`. 32-bit swapchain formats (8-bit BGRA/RGBA and 10-bit A2B10G10R10/A2R10G10B10, the one
+gamescope's SDL backend picks on the server); anything else, or any
 error while building the chain, passes through untouched.
 
 In the profile: Adjust → Presentation → upscaling model "Anime4K CNN 2× S/M/L"; `present::plan`
@@ -162,6 +163,6 @@ ENABLE_NUMAPILOT_UPSCALE=1 NUMAPILOT_UPSCALE_MODEL=anime4k-l NUMAPILOT_UPSCALE_D
 ```
 
 Not tested yet: together with `lsfg-out` (both layers wrap gamescope's swapchain; their order is
-up to the loader), HDR / 10-bit swapchains (passed through), and the cost per frame on the MI50
+up to the loader), HDR colour spaces (PQ, scRGB) and 16-bit float swapchains (passed through), and the cost per frame on the MI50
 inside a game.
 
