@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Settings: the lsfg-vk panel has its own section near the top ("Frame generation (Lossless
+  Scaling)"), open, instead of the end of the page; it says when `lsfg-vk-ui` is missing.
 - lsfg-vk panel and `numapilot lsfg`: say first that Lossless Scaling has to be installed through
   Steam (and on the `lsfg-vk` branch) before lsfg-vk; its buttons come before the AUR install.
 - **lsfg-vk setup.** `numapilot lsfg` (status | install | healthcheck | config) and a panel in

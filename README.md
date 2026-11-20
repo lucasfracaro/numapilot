@@ -438,7 +438,7 @@ both. To play **on an MI50**: choose "gfx906-N — game/graphics" (with the moni
 PRIME to the RX 470). **Lossless Scaling** (lsfg-vk): generates the frames on the game's GPU; dual
 GPU needs a fork. **Install Lossless Scaling through Steam first**: lsfg-vk needs it bought and installed, on the
 `lsfg-vk` branch (Properties → Betas); `numapilot lsfg` (and the panel in Adjust → Presentation
-and in Settings) shows what is missing and installs it from the AUR (`lsfg-vk`) in a terminal.
+and at the top of Settings) shows what is missing and installs it from the AUR (`lsfg-vk`) in a terminal.
 Its settings: `lsfg-vk-ui` or `~/.config/lsfg-vk/conf.toml`.
 
 ## AI and lab

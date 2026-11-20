@@ -422,7 +422,7 @@ DirectX roda pelo Proton (DXVK/VKD3D → Vulkan), então tudo que vale para Vulk
 Para jogar **numa MI50**: escolha "gfx906-N — jogo/gráfico" (com o monitor na MI50, ou PRIME para a
 RX 470). **Lossless Scaling** (lsfg-vk): gera os quadros na GPU do jogo; dual GPU precisa de um fork.
 **Instale antes o Lossless Scaling pela Steam**: o lsfg-vk precisa dele comprado e instalado, no ramo `lsfg-vk`
-(Propriedades → Betas); `numapilot lsfg` (e o painel em Ajustar → Apresentação e em Configurações)
+(Propriedades → Betas); `numapilot lsfg` (e o painel em Ajustar → Apresentação e no topo de Configurações)
 mostra o que falta e instala pelo AUR (`lsfg-vk`) num terminal. Configurações: `lsfg-vk-ui` ou
 `~/.config/lsfg-vk/conf.toml`.
 

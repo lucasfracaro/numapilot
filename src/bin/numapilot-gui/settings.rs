@@ -65,6 +65,10 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         }
 
         ui.add_space(8.0);
+        crate::theme::title(ui, crate::i18n::tr("Frame generation (Lossless Scaling)"));
+        crate::lsfg::panel(app, ui, "settings", true);
+
+        ui.add_space(8.0);
         crate::theme::title(ui, crate::i18n::tr("Language"));
         ui.horizontal(|ui| {
             let en = !crate::i18n::portuguese();
@@ -233,8 +237,6 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         ui.label(crate::i18n::tr("• Game on an MI50: choose \"MI50 — game/graphics\" in the Programs tab."));
         ui.label(crate::i18n::tr("• Lossless Scaling (lsfg-vk): the official one generates the frames on the same GPU as the game."));
         ui.label(crate::i18n::tr("• Advanced settings: /etc/numapilot.toml (rules) and /etc/gfx906-rocm.conf (lab/ROCm)."));
-        ui.add_space(4.0);
-        crate::lsfg::panel(app, ui, "settings", false);
     });
 }
 

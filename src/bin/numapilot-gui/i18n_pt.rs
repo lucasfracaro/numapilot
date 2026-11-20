@@ -2332,4 +2332,12 @@ pub const PT: &[(&str, &str)] = &[
         "lsfg-vk-cli healthcheck: legacy, duplicate or missing files",
         "lsfg-vk-cli healthcheck: arquivos antigos, duplicados ou faltando",
     ),
+    (
+        "Frame generation (Lossless Scaling)",
+        "Geração de quadros (Lossless Scaling)",
+    ),
+    (
+        "lsfg-vk-ui not found: it comes with lsfg-vk 2.x and needs Qt 6 (sudo pacman -S qt6-base qt6-declarative)",
+        "lsfg-vk-ui não encontrado: vem com o lsfg-vk 2.x e precisa do Qt 6 (sudo pacman -S qt6-base qt6-declarative)",
+    ),
 ];

@@ -127,6 +127,16 @@ fn buttons(app: &mut App, ui: &mut egui::Ui, s: &lsfg::Status) {
             open(app, lsfg::DOCS_URL);
         }
     }
+    if s.installed() && s.ui.is_none() {
+        ui.label(
+            RichText::new(crate::i18n::tr(
+                "lsfg-vk-ui not found: it comes with lsfg-vk 2.x and needs Qt 6 \
+                 (sudo pacman -S qt6-base qt6-declarative)",
+            ))
+            .small()
+            .color(crate::theme::warn()),
+        );
+    }
     if let Some(ui_bin) = &s.ui
         && crate::theme::small(ui, crate::i18n::tr("Configure (lsfg-vk-ui)"))
             .on_hover_text(crate::i18n::tr(
