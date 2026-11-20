@@ -4243,6 +4243,11 @@ fn cmd_lsfg(action: &str) -> Result<()> {
                     }
                 );
             }
+            let no_ls = s.lossless.is_none() && s.dll_override.is_none();
+            if no_ls {
+                println!("{}", numapilot::i18n::tr(lsfg::BEFORE));
+                println!("  Steam: {}", lsfg::STORE_URL);
+            }
             if !s.installed() {
                 match s.install_command() {
                     Some(c) => println!(
@@ -4264,17 +4269,6 @@ fn cmd_lsfg(action: &str) -> Result<()> {
                     ),
                 }
             }
-            if s.lossless.is_none() && s.dll_override.is_none() {
-                println!(
-                    "{}",
-                    numapilot::tf!(
-                        "Lossless Scaling: buy/install it on Steam ({}) and pick the \"{}\" branch in Properties → Betas",
-                        "Lossless Scaling: compre/instale na Steam ({}) e escolha o ramo \"{}\" em Propriedades → Betas",
-                        lsfg::STORE_URL,
-                        lsfg::STEAM_BRANCH
-                    )
-                );
-            }
             Ok(())
         }
         "install" => {
@@ -4285,6 +4279,9 @@ fn cmd_lsfg(action: &str) -> Result<()> {
                     lsfg::DOCS_URL
                 ))
             })?;
+            if s.lossless.is_none() && s.dll_override.is_none() {
+                eprintln!("{}", numapilot::i18n::tr(lsfg::BEFORE));
+            }
             println!("$ {}", c.join(" "));
             run(&c)
         }

@@ -609,13 +609,6 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             ))
             .small(),
         );
-        ui.label(
-            RichText::new(crate::i18n::tr(
-                "Lossless Scaling must be bought and installed through Steam first (Properties → Betas → \"lsfg-vk\"): lsfg-vk only uses its files.",
-            ))
-            .small()
-            .color(crate::theme::warn()),
-        );
         crate::lsfg::panel(app, ui, "editor", false);
     }
     match &ed.present_last {
