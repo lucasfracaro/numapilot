@@ -24,6 +24,9 @@ pub const BUILDS_URL: &str = "https://builds.lsfg-vk.dev";
 pub const STEAM_INSTALL_URL: &str = "steam://install/993090";
 pub const STORE_URL: &str = "https://store.steampowered.com/app/993090/Lossless_Scaling/";
 
+/// Shown before any install step: lsfg-vk is useless without Lossless Scaling.
+pub const BEFORE: &str = "Before lsfg-vk: buy and install Lossless Scaling through Steam (app 993090) and switch it to the \"lsfg-vk\" branch (Properties → Betas). lsfg-vk uses its DLL and generates nothing without it.";
+
 /// Lossless Scaling in the Steam libraries.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Lossless {

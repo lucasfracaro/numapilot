@@ -36,6 +36,14 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui, id: &str, open: bool) {
     .id_salt(("lsfg-panel", id))
     .default_open(open || missing > 0)
     .show(ui, |ui| {
+        // Lossless Scaling comes first: without its DLL lsfg-vk does nothing.
+        let no_ls = s.lossless.is_none() && s.dll_override.is_none();
+        let before = RichText::new(crate::i18n::tr(lsfg::BEFORE)).small();
+        ui.label(if no_ls {
+            before.color(p.warn).strong()
+        } else {
+            before.weak()
+        });
         for (ok, l) in &lines {
             ui.horizontal_wrapped(|ui| {
                 crate::theme::chip(
@@ -69,13 +77,33 @@ fn buttons(app: &mut App, ui: &mut egui::Ui, s: &lsfg::Status) {
             app.toast(e.to_string(), false);
         }
     };
+    if s.lossless.is_none() && s.dll_override.is_none() {
+        if crate::theme::small(ui, crate::i18n::tr("Install Lossless Scaling (Steam)"))
+            .on_hover_text(crate::i18n::tr(
+                "Opens Steam to install it (it has to be bought first). Then pick the \
+                 \"lsfg-vk\" branch in Properties → Betas.",
+            ))
+            .clicked()
+        {
+            open(app, lsfg::STEAM_INSTALL_URL);
+        }
+        if crate::theme::small(ui, crate::i18n::tr("Store page")).clicked() {
+            open(app, lsfg::STORE_URL);
+        }
+    } else if s.wrong_branch()
+        && crate::theme::small(ui, crate::i18n::tr("Open in Steam"))
+            .on_hover_text(crate::i18n::tr("Properties → Betas → choose \"lsfg-vk\""))
+            .clicked()
+    {
+        open(app, "steam://nav/games/details/993090");
+    }
     if !s.installed() {
         match s.install_command() {
             Some(cmd) => {
                 if crate::theme::small(ui, crate::i18n::tr("Install lsfg-vk (AUR)"))
                     .on_hover_text(crate::tf!(
-                        "Runs in a terminal (asks for the password): {}",
-                        "Roda num terminal (pede a senha): {}",
+                        "Runs in a terminal (asks for the password): {}. Install Lossless Scaling through Steam first.",
+                        "Roda num terminal (pede a senha): {}. Instale antes o Lossless Scaling pela Steam.",
                         cmd.join(" ")
                     ))
                     .clicked()
@@ -98,26 +126,6 @@ fn buttons(app: &mut App, ui: &mut egui::Ui, s: &lsfg::Status) {
         if crate::theme::small(ui, crate::i18n::tr("Install guide")).clicked() {
             open(app, lsfg::DOCS_URL);
         }
-    }
-    if s.lossless.is_none() && s.dll_override.is_none() {
-        if crate::theme::small(ui, crate::i18n::tr("Install Lossless Scaling (Steam)"))
-            .on_hover_text(crate::i18n::tr(
-                "Opens Steam to install it (it has to be bought first). Then pick the \
-                 \"lsfg-vk\" branch in Properties → Betas.",
-            ))
-            .clicked()
-        {
-            open(app, lsfg::STEAM_INSTALL_URL);
-        }
-        if crate::theme::small(ui, crate::i18n::tr("Store page")).clicked() {
-            open(app, lsfg::STORE_URL);
-        }
-    } else if s.wrong_branch()
-        && crate::theme::small(ui, crate::i18n::tr("Open in Steam"))
-            .on_hover_text(crate::i18n::tr("Properties → Betas → choose \"lsfg-vk\""))
-            .clicked()
-    {
-        open(app, "steam://nav/games/details/993090");
     }
     if let Some(ui_bin) = &s.ui
         && crate::theme::small(ui, crate::i18n::tr("Configure (lsfg-vk-ui)"))
