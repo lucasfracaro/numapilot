@@ -2146,7 +2146,12 @@ fn cmd_run(
             &pr,
             g,
             split.as_ref().map(|(o, _)| o),
-            numapilot::present::lsfg_installed(),
+            // pacman and the Steam libraries are read only when lsfg-vk will be used
+            if pr.multiplier > 1 && pr.engine == "lsfg" {
+                numapilot::present::Lsfg::of(&numapilot::lsfg::status())
+            } else {
+                numapilot::present::Lsfg::Missing
+            },
         );
         if pr.measure && tuning.is_none() {
             if which("mangohud").is_some() {

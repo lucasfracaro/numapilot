@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Presentation: one card renders, the other upscales and generates frames.** The gamescope card
+  choice now shows each card's socket, PCIe width, monitor and PCI address. With the presentation
+  block on and lsfg-vk frame generation, the frame generation card is the output card (the
+  separate "Lossless Scaling" card under Graphics card is greyed out, since the block sets it),
+  and the block says so. Frame generation needs Lossless Scaling bought and installed through
+  Steam ("lsfg-vk" branch): the block says it up front, and `run` turns generation off with a
+  warning when lsfg-vk is there but the Lossless Scaling files are not.
 - lsfg-vk panel and `numapilot lsfg`: say first that Lossless Scaling has to be installed through
   Steam (and on the `lsfg-vk` branch) before lsfg-vk; its buttons come before the AUR install.
 - **lsfg-vk setup.** `numapilot lsfg` (status | install | healthcheck | config) and a panel in

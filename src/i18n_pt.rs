@@ -1566,6 +1566,10 @@ pub const PT: &[(&str, &str)] = &[
         "Lossless Scaling fora do ramo \"lsfg-vk\" (Steam → Propriedades → Betas)",
     ),
     (
+        "Lossless Scaling is not installed through Steam (lsfg-vk only works with its files): buy and install it there first, \"lsfg-vk\" branch; no frame generation",
+        "Lossless Scaling não está instalado pela Steam (o lsfg-vk só funciona com os arquivos dele): compre e instale lá primeiro, ramo \"lsfg-vk\"; sem geração de quadros",
+    ),
+    (
         "Before lsfg-vk: buy and install Lossless Scaling through Steam (app 993090) and switch it to the \"lsfg-vk\" branch (Properties → Betas). lsfg-vk uses its DLL and generates nothing without it.",
         "Antes do lsfg-vk: compre e instale o Lossless Scaling pela Steam (app 993090) e mude para o ramo \"lsfg-vk\" (Propriedades → Betas). O lsfg-vk usa a DLL dele e não gera nada sem ela.",
     ),

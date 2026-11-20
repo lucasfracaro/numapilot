@@ -550,12 +550,20 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         });
     let want_lsfg = pr.multiplier > 1 && pr.engine == "lsfg";
     // What the launch will do on this machine (same plan as numapilot run).
-    let plan = numapilot::present::plan(
-        pr,
-        &gs,
-        out_gpu.as_ref(),
-        numapilot::present::lsfg_installed(),
-    );
+    // same status the lsfg-vk panel shows (read in a thread, every 5 s)
+    let lsfg = if want_lsfg {
+        crate::bg::cached(
+            "lsfg-status",
+            std::time::Duration::from_secs(5),
+            ui.ctx(),
+            numapilot::lsfg::status,
+        )
+        .map(|s| numapilot::present::Lsfg::of(&s))
+        .unwrap_or(numapilot::present::Lsfg::Ready)
+    } else {
+        numapilot::present::Lsfg::Ready
+    };
+    let plan = numapilot::present::plan(pr, &gs, out_gpu.as_ref(), lsfg);
     let route = match (&game_gpu, &plan.out_pci) {
         (Some(g), Some(o)) => {
             let out = app
@@ -588,6 +596,19 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         );
     }
     if want_lsfg {
+        let fg_card = out_gpu
+            .as_ref()
+            .or(game_gpu.as_ref())
+            .map(|g| g.alias.clone())
+            .unwrap_or_else(|| "?".into());
+        ui.label(
+            RichText::new(crate::tf!(
+                "Frame generation runs on the {} (the output card); the \"Lossless Scaling\" choice under Graphics card does not apply with this block on.",
+                "A geração de quadros roda na {} (a placa de saída); a escolha \"Lossless Scaling\" em Placa de vídeo não vale com este bloco ligado.",
+                fg_card
+            ))
+            .small(),
+        );
         crate::lsfg::panel(app, ui, "editor", false);
     }
     match &ed.present_last {
@@ -1027,7 +1048,8 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                 }
                             });
                         });
-                        ui.horizontal(|ui| {
+                        let by_present = ed.p.present.as_ref().is_some_and(|pr| pr.multiplier > 1 && pr.engine == "lsfg");
+                        ui.add_enabled_ui(!by_present, |ui| ui.horizontal(|ui| {
                             ui.label(RichText::new("Lossless Scaling:").small());
                             egui::ComboBox::from_id_salt("ed-fg").selected_text(if ed.p.fg_gpu == "same" { crate::i18n::tr("same GPU").to_string() } else { ed.p.fg_gpu.clone() }).show_ui(ui, |ui| {
                                 ui.selectable_value(&mut ed.p.fg_gpu, "same".to_string(), crate::i18n::tr("same GPU as the game"));
@@ -1035,7 +1057,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                     ui.selectable_value(&mut ed.p.fg_gpu, g.alias.clone(), format!("{} (dual GPU, fork)", g.alias));
                                 }
                             });
-                        });
+                        }).response.on_disabled_hover_text(crate::i18n::tr("Set by the Presentation block: frame generation runs on its output card.")));
                     });
                     ui.end_row();
                 });
@@ -1100,13 +1122,13 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             let shown = match g.output_gpu.as_deref() {
                                 None => crate::i18n::tr("same as the game").to_string(),
                                 Some("display") => crate::i18n::tr("the one with the monitor").to_string(),
-                                Some(a) => app.topo.gpus.iter().find(|x| x.alias == a).map(|x| format!("{} ({})", x.alias, x.short_name())).unwrap_or_else(|| a.to_string()),
+                                Some(a) => app.topo.gpus.iter().find(|x| x.alias == a).map(|x| crate::gpu_place(x, app.topo.gpus.len() > 1)).unwrap_or_else(|| a.to_string()),
                             };
                             egui::ComboBox::from_id_salt("ed-gs-out").selected_text(shown).show_ui(ui, |ui| {
                                 ui.selectable_value(&mut g.output_gpu, None, crate::i18n::tr("same as the game"));
                                 ui.selectable_value(&mut g.output_gpu, Some("display".to_string()), crate::i18n::tr("the one with the monitor"));
                                 for x in &app.topo.gpus {
-                                    ui.selectable_value(&mut g.output_gpu, Some(x.alias.clone()), format!("{} ({}, {})", x.alias, x.short_name(), x.pci.trim_start_matches("0000:")));
+                                    ui.selectable_value(&mut g.output_gpu, Some(x.alias.clone()), crate::gpu_place(x, app.topo.gpus.len() > 1));
                                 }
                             });
                             ui.end_row();

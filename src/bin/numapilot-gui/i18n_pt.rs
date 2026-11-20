@@ -2332,4 +2332,9 @@ pub const PT: &[(&str, &str)] = &[
         "lsfg-vk-cli healthcheck: legacy, duplicate or missing files",
         "lsfg-vk-cli healthcheck: arquivos antigos, duplicados ou faltando",
     ),
+    ("monitor", "monitor"),
+    (
+        "Set by the Presentation block: frame generation runs on its output card.",
+        "Definido pelo bloco de Apresentação: a geração de quadros roda na placa de saída dele.",
+    ),
 ];
