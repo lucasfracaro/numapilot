@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Own upscaler on the second card, step M0.** `numapilot present-bench` measures on the card
+  that would do the work (the output card) how long SRVGGNetCompact (`realesrgan-ncnn-vulkan`,
+  `realesr-animevideov3` 2×) and RIFE v4 (`rife-ncnn-vulkan`) take per frame, calculates the
+  copy of the game's image between the cards from the narrowest PCIe link up to the root port,
+  and puts together the budget of one real frame (fits / does not fit, highest base FPS it
+  holds). The card is chosen by PCI address like gamescope's output card, so the two MI50s are
+  told apart; game captures can replace the test picture (`--pictures`). Results per card in
+  `present-bench.json`; `--show` lists them. Plan of the whole chain (M0–M4) in
+  `docs/PRESENT-CHAIN.md`.
 - **Presentation: official lsfg-vk generates frames on the game's card.** Tested on the server:
   lsfg-vk 2.0 has no card setting and ignores `LSFGVK_GPU`, so with the game on gfx906-0 and the
   output on gfx906-1 the 2× generation ran on gfx906-0. `run` and the Adjust window now say so
