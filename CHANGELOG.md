@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Presentation, lsfg-vk on the output card: numapilot's own lsfg-vk config now always has
+  `version = 2`. Without a `conf.toml` of the user (server test) lsfg-vk refused the file
+  ("Unsupported configuration version (must be 2)") and generated nothing.
 - **Presentation: frame generation on the output card.** New frame generator "Lossless Scaling
   on the output card (lsfg-vk in gamescope)", next to "on the game's card". Tested on the server:
   official lsfg-vk loaded only in gamescope, with gamescope's SDL backend, generates where
