@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- docs/PRESENT-CHAIN.md: M0 result on the server (ncnn SRVGG 323 ms and RIFE 598 ms per frame,
+  copy 0.62 ms) and the revised plan: frame generation stays with lsfg-vk on the output card, our
+  own upscaling becomes tiny models (Anime4K CNN, FSRCNN, FSR 2 with estimated motion) run as
+  Vulkan compute in a layer loaded only in gamescope.
 - Presentation, lsfg-vk on the output card: numapilot's own lsfg-vk config now always has
   `version = 2`. Without a `conf.toml` of the user (server test) lsfg-vk refused the file
   ("Unsupported configuration version (must be 2)") and generated nothing.
