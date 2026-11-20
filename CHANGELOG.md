@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **lsfg-vk setup.** `numapilot lsfg` (status | install | healthcheck | config) and a panel in
+  Adjust → Presentation (when frame generation uses lsfg-vk) and in Settings show what frame
+  generation still needs: the lsfg-vk Vulkan layer (and its AUR package), Lossless Scaling in the
+  Steam libraries with its DLL and Steam branch (`lsfg-vk`), the config file and the
+  configurator. Buttons install lsfg-vk from the AUR in a terminal (`paru/yay -S lsfg-vk`), open
+  Steam to install Lossless Scaling (app 993090), open `lsfg-vk-ui` or the config file and run
+  `lsfg-vk-cli healthcheck`. Off Arch, they point to the official builds. numapilot never ships
+  lsfg-vk itself (CC BY-NC-ND 4.0 since 2.0).
 - **Presentation block in the profile ("render on one card, improve on the other").** Adjust →
   Presentation picks the upscaling model (FSR 1 or NIS through gamescope; Anime4K and
   SRVGGNetCompact listed as planned), frame generation (off/2×/3×/4×, lsfg-vk today; block

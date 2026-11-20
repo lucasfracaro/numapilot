@@ -291,6 +291,9 @@ enum Cmd {
     },
     /// Turbo by awake cores: the processor's table and how many cores are awake right now.
     Turbo,
+    /// Lossless Scaling frame generation (lsfg-vk): status | install (AUR, asks for the password)
+    /// | healthcheck | config
+    Lsfg { action: Option<String> },
     /// Shows the end of the logs (service, graphical program, command line) and of the journal.
     Log {
         /// Lines from each log.
@@ -392,6 +395,7 @@ fn real_main() -> Result<()> {
         Cmd::Topo => cmd_topo(&cfg),
         Cmd::Log { lines, which } => cmd_log(lines, which.as_deref()),
         Cmd::Turbo => cmd_turbo(&cfg),
+        Cmd::Lsfg { action } => cmd_lsfg(action.as_deref().unwrap_or("status")),
         Cmd::Clock { program, watch } => cmd_clock(&cfg, program.as_deref(), watch),
         Cmd::BenchCores { show, clear } => cmd_bench_cores(&cfg, show, clear),
         Cmd::GpuTest { gpu, json } => cmd_gpu_test(&cfg, gpu.as_deref(), json),
@@ -4205,5 +4209,92 @@ fn print_launcher_sync(key: &str, profile: Option<&Profile>) {
     }
     if r.changed() {
         numapilot::desktop::refresh_menu();
+    }
+}
+
+/// `numapilot lsfg`: what lsfg-vk needs on this machine, and the install through the AUR helper.
+fn cmd_lsfg(action: &str) -> Result<()> {
+    use numapilot::lsfg;
+    let s = lsfg::status();
+    let run = |argv: &[String]| -> Result<()> {
+        let st = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .status()?;
+        if !st.success() {
+            anyhow::bail!("{} ({st})", argv.join(" "));
+        }
+        Ok(())
+    };
+    match action {
+        "status" => {
+            for (ok, line) in lsfg::report(&s) {
+                println!(
+                    "{} {line}",
+                    if ok {
+                        "OK     "
+                    } else {
+                        numapilot::t2!("MISSING", "FALTA  ")
+                    }
+                );
+            }
+            if !s.installed() {
+                match s.install_command() {
+                    Some(c) => println!(
+                        "{}",
+                        numapilot::tf!(
+                            "Install: numapilot lsfg install  (runs: {})",
+                            "Instalar: numapilot lsfg install  (roda: {})",
+                            c.join(" ")
+                        )
+                    ),
+                    None => println!(
+                        "{}",
+                        numapilot::tf!(
+                            "Install: download a build from {} and extract it with tar -xf FILE -C ~/.local ({})",
+                            "Instalar: baixe uma versão em {} e extraia com tar -xf ARQUIVO -C ~/.local ({})",
+                            lsfg::BUILDS_URL,
+                            lsfg::DOCS_URL
+                        )
+                    ),
+                }
+            }
+            if s.lossless.is_none() && s.dll_override.is_none() {
+                println!(
+                    "{}",
+                    numapilot::tf!(
+                        "Lossless Scaling: buy/install it on Steam ({}) and pick the \"{}\" branch in Properties → Betas",
+                        "Lossless Scaling: compre/instale na Steam ({}) e escolha o ramo \"{}\" em Propriedades → Betas",
+                        lsfg::STORE_URL,
+                        lsfg::STEAM_BRANCH
+                    )
+                );
+            }
+            Ok(())
+        }
+        "install" => {
+            let c = s.install_command().ok_or_else(|| {
+                anyhow::anyhow!(numapilot::tf!(
+                    "the AUR install needs an Arch system with paru or yay: install by hand from {}",
+                    "a instalação pelo AUR precisa de um sistema Arch com paru ou yay: instale à mão por {}",
+                    lsfg::DOCS_URL
+                ))
+            })?;
+            println!("$ {}", c.join(" "));
+            run(&c)
+        }
+        "healthcheck" => {
+            let cli = s
+                .cli
+                .ok_or_else(|| anyhow::anyhow!(numapilot::i18n::tr("lsfg-vk is not installed")))?;
+            run(&[cli.to_string_lossy().into(), "healthcheck".into()])
+        }
+        "config" => {
+            println!("{}", s.config.display());
+            Ok(())
+        }
+        other => anyhow::bail!(numapilot::tf!(
+            "unknown action: {other} (status | install | healthcheck | config)",
+            "ação desconhecida: {other} (status | install | healthcheck | config)"
+        )),
     }
 }

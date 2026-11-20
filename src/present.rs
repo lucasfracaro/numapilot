@@ -41,23 +41,7 @@ pub fn engine_ready(v: &str) -> bool {
 
 /// Is the lsfg-vk Vulkan layer installed (system or user)?
 pub fn lsfg_installed() -> bool {
-    let mut dirs = vec![
-        PathBuf::from("/usr/share/vulkan/implicit_layer.d"),
-        PathBuf::from("/etc/vulkan/implicit_layer.d"),
-    ];
-    if let Some(h) = std::env::var_os("HOME") {
-        dirs.push(PathBuf::from(h).join(".local/share/vulkan/implicit_layer.d"));
-    }
-    dirs.iter().any(|d| {
-        std::fs::read_dir(d).is_ok_and(|r| {
-            r.flatten().any(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .to_lowercase()
-                    .contains("lsfg")
-            })
-        })
-    })
+    crate::lsfg::layer_manifest().is_some()
 }
 
 /// What the presentation block adds to a gamescope launch. The output card itself and the split

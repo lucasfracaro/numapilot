@@ -2292,4 +2292,44 @@ pub const PT: &[(&str, &str)] = &[
         "Chosen in the gamescope block above (\"gamescope card\").",
         "Escolhida no bloco do gamescope acima (\"Placa do gamescope\").",
     ),
+    (
+        "Lossless Scaling (lsfg-vk): ready",
+        "Lossless Scaling (lsfg-vk): pronto",
+    ),
+    (
+        "lsfg-vk is not part of numapilot (its license forbids redistributing it): the buttons install it from the AUR or open the official pages. On the command line: numapilot lsfg",
+        "O lsfg-vk não vem com o numapilot (a licença dele não permite redistribuir): os botões instalam pelo AUR ou abrem as páginas oficiais. Na linha de comando: numapilot lsfg",
+    ),
+    ("Install lsfg-vk (AUR)", "Instalar lsfg-vk (AUR)"),
+    ("Download lsfg-vk", "Baixar lsfg-vk"),
+    (
+        "Official builds: extract the file with tar -xf FILE -C ~/.local",
+        "Versões oficiais: extraia o arquivo com tar -xf ARQUIVO -C ~/.local",
+    ),
+    ("Install guide", "Guia de instalação"),
+    (
+        "Install Lossless Scaling (Steam)",
+        "Instalar Lossless Scaling (Steam)",
+    ),
+    (
+        "Opens Steam to install it (it has to be bought first). Then pick the \"lsfg-vk\" branch in Properties → Betas.",
+        "Abre a Steam para instalar (precisa estar comprado). Depois escolha o ramo \"lsfg-vk\" em Propriedades → Betas.",
+    ),
+    ("Store page", "Página na loja"),
+    ("Open in Steam", "Abrir na Steam"),
+    (
+        "Properties → Betas → choose \"lsfg-vk\"",
+        "Propriedades → Betas → escolha \"lsfg-vk\"",
+    ),
+    ("Configure (lsfg-vk-ui)", "Configurar (lsfg-vk-ui)"),
+    (
+        "Multiplier, flow scale and per-game profiles of lsfg-vk",
+        "Multiplicador, escala do fluxo e perfis por jogo do lsfg-vk",
+    ),
+    ("Open config file", "Abrir arquivo de configuração"),
+    ("Check (healthcheck)", "Verificar (healthcheck)"),
+    (
+        "lsfg-vk-cli healthcheck: legacy, duplicate or missing files",
+        "lsfg-vk-cli healthcheck: arquivos antigos, duplicados ou faltando",
+    ),
 ];
