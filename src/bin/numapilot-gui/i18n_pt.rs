@@ -577,8 +577,6 @@ pub const PT: &[(&str, &str)] = &[
         "Click a core to use both threads; right-click = only 1 thread.",
         "Clique num núcleo para usar os 2 threads; botão direito = só 1 thread.",
     ),
-    ("same GPU as the game", "mesma GPU do jogo"),
-    ("same GPU", "mesma GPU"),
     ("video", "vídeo"),
     ("compute (AI/ROCm)", "computação (IA/ROCm)"),
     ("3D fullscreen (game)", "3D tela cheia (jogo)"),
@@ -1600,7 +1598,6 @@ pub const PT: &[(&str, &str)] = &[
         "Same GPU as the game (official lsfg-vk)",
         "Mesma GPU do jogo (lsfg-vk oficial)",
     ),
-    ("Lossless Scaling: same GPU", "Lossless Scaling: mesma GPU"),
     (
         "Part of the memory is on the other socket: every access to it is slower.",
         "Parte da memória está no outro socket: cada acesso a ela é mais lento.",
@@ -1986,8 +1983,8 @@ pub const PT: &[(&str, &str)] = &[
         "• Configurações avançadas: /etc/numapilot.toml (regras) e /etc/gfx906-rocm.conf (laboratório/ROCm).",
     ),
     (
-        "• Lossless Scaling (lsfg-vk): the official one generates the frames on the same GPU as the game.",
-        "• Lossless Scaling (lsfg-vk): o oficial gera os quadros na mesma GPU do jogo.",
+        "• Lossless Scaling (lsfg-vk): on the game's card, or on another card through the profile's Presentation block (\"on the output card\": lsfg-vk inside gamescope).",
+        "• Lossless Scaling (lsfg-vk): na placa do jogo, ou em outra placa pelo bloco Apresentação do perfil (\"na placa de saída\": lsfg-vk dentro do gamescope).",
     ),
     (
         "• Game on an MI50: choose \"MI50 — game/graphics\" in the Programs tab.",
@@ -2333,8 +2330,4 @@ pub const PT: &[(&str, &str)] = &[
         "lsfg-vk-cli healthcheck: arquivos antigos, duplicados ou faltando",
     ),
     ("monitor", "monitor"),
-    (
-        "Set by the Presentation block: it points lsfg-vk at the output card, but official lsfg-vk still generates on the game's card.",
-        "Definido pelo bloco de Apresentação: ele aponta o lsfg-vk para a placa de saída, mas o lsfg-vk oficial continua gerando na placa do jogo.",
-    ),
 ];

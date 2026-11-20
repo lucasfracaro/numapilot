@@ -233,6 +233,13 @@ em `present.json`; o mostrado é **calculado** (real × multiplicador enquanto a
 mínimo), não contado na saída. Plano completo no PDF do projeto (etapas M0–M4). Falta testar no
 servidor: a medição real × mostrado numa sessão de jogo. Testado (2026-11-20): o lsfg-vk oficial 2.0 não
 tem escolha de placa e ignora `LSFGVK_GPU`; a geração 2× roda na placa do jogo, não na de saída.
+Geração na placa de saída (2026-11-20, provado no servidor): o lsfg-vk carregado **só no gamescope**
+(perfil com `active_in = ["gamescope","gamescope-wl"]`) e o gamescope com `--backend sdl` geram na
+placa do gamescope; no modo aninhado padrão a camada não dispara. Motor `lsfg-out` do bloco
+(`present::lsfg_out_config`/`write_lsfg_out`): config própria em `state_dir()/lsfg-vk-output.toml`
+via `LSFGVK_CONFIG` no ambiente do gamescope (o `[global]` do usuário fica, os perfis dele saem para
+o jogo não gerar também); nunca escrever o `conf.toml` do usuário. O fork dual GPU, o `fg_gpu` do
+perfil e o `LSFGVK_GPU` saíram (`run --fg-gpu` só avisa).
 
 ## Capturas do README
 

@@ -548,7 +548,7 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             });
             ui.end_row();
         });
-    let want_lsfg = pr.multiplier > 1 && pr.engine == "lsfg";
+    let want_lsfg = pr.multiplier > 1 && numapilot::present::is_lsfg(&pr.engine);
     // What the launch will do on this machine (same plan as numapilot run).
     // same status the lsfg-vk panel shows (read in a thread, every 5 s)
     let lsfg = if want_lsfg {
@@ -600,14 +600,24 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             .as_ref()
             .map(|g| g.alias.clone())
             .unwrap_or_else(|| "?".into());
-        ui.label(
-            RichText::new(crate::tf!(
-                "Frame generation runs on the game's card ({}): official lsfg-vk has no card setting. The output card upscales and shows the image.",
-                "A geração de quadros roda na placa do jogo ({}): o lsfg-vk oficial não tem escolha de placa. A placa de saída faz o upscaling e mostra a imagem.",
+        let out_card = out_gpu
+            .as_ref()
+            .map(|g| g.alias.clone())
+            .unwrap_or_else(|| game_card.clone());
+        let note = if pr.engine == "lsfg-out" {
+            crate::tf!(
+                "Frame generation runs on the output card ({}): lsfg-vk is loaded only in gamescope (SDL backend), with a config of numapilot's own and this multiplier. Your lsfg-vk settings are not changed and are not used for this game.",
+                "A geração de quadros roda na placa de saída ({}): o lsfg-vk é carregado só no gamescope (backend SDL), com uma configuração própria do numapilot e este multiplicador. As suas configurações do lsfg-vk não mudam e não valem para este jogo.",
+                out_card
+            )
+        } else {
+            crate::tf!(
+                "Frame generation runs on the game's card ({}), with your lsfg-vk settings (lsfg-vk-ui). The output card upscales and shows the image.",
+                "A geração de quadros roda na placa do jogo ({}), com as suas configurações do lsfg-vk (lsfg-vk-ui). A placa de saída faz o upscaling e mostra a imagem.",
                 game_card
-            ))
-            .small(),
-        );
+            )
+        };
+        ui.label(RichText::new(note).small());
         crate::lsfg::panel(app, ui, "editor", false);
     }
     match &ed.present_last {
@@ -1047,16 +1057,6 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                                 }
                             });
                         });
-                        let by_present = ed.p.present.as_ref().is_some_and(|pr| pr.multiplier > 1 && pr.engine == "lsfg");
-                        ui.add_enabled_ui(!by_present, |ui| ui.horizontal(|ui| {
-                            ui.label(RichText::new("Lossless Scaling:").small());
-                            egui::ComboBox::from_id_salt("ed-fg").selected_text(if ed.p.fg_gpu == "same" { crate::i18n::tr("same GPU").to_string() } else { ed.p.fg_gpu.clone() }).show_ui(ui, |ui| {
-                                ui.selectable_value(&mut ed.p.fg_gpu, "same".to_string(), crate::i18n::tr("same GPU as the game"));
-                                for g in &app.topo.gpus {
-                                    ui.selectable_value(&mut ed.p.fg_gpu, g.alias.clone(), format!("{} (dual GPU, fork)", g.alias));
-                                }
-                            });
-                        }).response.on_disabled_hover_text(crate::i18n::tr("Set by the Presentation block: it points lsfg-vk at the output card, but official lsfg-vk still generates on the game's card.")));
                     });
                     ui.end_row();
                 });
@@ -1161,7 +1161,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                 let mut profs = Profiles::default();
                 profs.map.insert(ed.key.clone(), ed.p.clone());
                 let idents = vec![ed.label.clone()];
-                let inp = LaunchInput { idents: &idents, learn_key: "", key: &ed.key, cpu: None, gpu: None, mem: None, usage: None, fg_gpu: None };
+                let inp = LaunchInput { idents: &idents, learn_key: "", key: &ed.key, cpu: None, gpu: None, mem: None, usage: None };
                 match decide_launch(&app.cfg, &app.topo, &Learned::default(), &profs, &app.loads, &inp) {
                     Ok(d) => {
                         ui.label(RichText::new(crate::tf!(

@@ -48,8 +48,6 @@ pub struct Decision {
     pub priority: String,
     /// Needs the service (cgroup / high priority) before exec.
     pub needs_daemon: bool,
-    /// Frame generation GPU (lsfg-vk), if different from the game's.
-    pub fg_gpu: Option<Gpu>,
     pub reasons: Vec<String>,
 }
 
@@ -209,8 +207,6 @@ pub struct LaunchInput<'a> {
     pub gpu: Option<GpuSpec>,
     pub mem: Option<MemSpec>,
     pub usage: Option<Kind>,
-    /// lsfg-vk frame generation GPU ("same" = the game's).
-    pub fg_gpu: Option<String>,
 }
 
 pub fn decide_launch(
@@ -432,32 +428,6 @@ pub fn decide_launch(
             crate::tf!("no CPU selected", "nenhum CPU selecionado")
         );
     }
-    let fg_name = inp
-        .fg_gpu
-        .clone()
-        .or_else(|| profile.map(|p| p.fg_gpu.clone()))
-        .unwrap_or_else(|| "same".into());
-    let fg_gpu = match fg_name.as_str() {
-        "" | "same" | "auto" => None,
-        n => match topo.gpus.iter().find(|g| g.matches(n)) {
-            Some(g) if gpus.first().is_none_or(|x| x.pci != g.pci) => {
-                reasons.push(crate::tf!(
-                    "frame generation (lsfg-vk) on the {}: only with a dual-GPU build of lsfg-vk (the official one generates on the game's card)",
-                    "geração de quadros (lsfg-vk) na {}: só com uma versão do lsfg-vk com dual GPU (a oficial gera na placa do jogo)",
-                    g.alias
-                ));
-                Some(g.clone())
-            }
-            Some(_) => None,
-            None => bail!(
-                "{}",
-                crate::tf!(
-                    "frame generation GPU '{n}' not found",
-                    "GPU de frame generation '{n}' não encontrada"
-                )
-            ),
-        },
-    };
     let total = topo.all_cpus().len();
     Ok(Decision {
         manual: cpu != CpuSpec::Auto || profile.is_some_and(|p| p.has_cpu_choice()),
@@ -471,20 +441,8 @@ pub fn decide_launch(
         gpus,
         kind,
         mem,
-        fg_gpu,
         reasons,
     })
-}
-
-/// "0000:83:00.0" → "131:0.0" (decimal PCI bus format used by lsfg-vk)
-pub fn pci_decimal(pci: &str) -> String {
-    let p: Vec<&str> = pci.split([':', '.']).collect();
-    if p.len() == 4 {
-        let h = |s: &str| u32::from_str_radix(s, 16).unwrap_or(0);
-        format!("{}:{}.{}", h(p[1]), h(p[2]), h(p[3]))
-    } else {
-        pci.to_string()
-    }
 }
 
 /// Environment variables that steer the program to the chosen GPU(s).
@@ -516,11 +474,6 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
                 } else {
                     unset.push("MESA_VK_DEVICE_SELECT".into());
                 }
-                // Lossless Scaling (lsfg-vk): by default generates frames on the same GPU as the game
-                // (official lsfg-vk requires it); with a dual-GPU profile, on the chosen GPU.
-                let fg = d.fg_gpu.as_ref().unwrap_or(g);
-                set.push(("LSFGVK_GPU".into(), pci_decimal(&fg.pci)));
-                set.push(("NUMAPILOT_FG_GPU".into(), fg.pci.clone()));
                 // Official NVIDIA driver (PRIME render offload): OpenGL and Vulkan on the NVIDIA,
                 // or the opposite when the chosen one is the other card on a PC with NVIDIA.
                 let has_nv = topo.gpus.iter().any(|o| o.is_nvidia());
@@ -804,7 +757,6 @@ pub fn env_for_gpu_full(
         limit_visible: false,
         priority: "normal".into(),
         needs_daemon: false,
-        fg_gpu: None,
         reasons: vec![],
     };
     gpu_env(&d, topo)
@@ -941,7 +893,6 @@ pub fn env_for_gpu(g: &crate::topo::Gpu, topo: &Topology) -> Vec<(String, String
         limit_visible: false,
         priority: "normal".into(),
         needs_daemon: false,
-        fg_gpu: None,
         reasons: vec![],
     };
     gpu_env(&d, topo).0
@@ -1040,7 +991,6 @@ mod env_tests {
             limit_visible: false,
             priority: "normal".into(),
             needs_daemon: false,
-            fg_gpu: None,
             reasons: vec![],
         }
     }
@@ -1071,7 +1021,6 @@ mod env_tests {
         // the game gets the first one back
         assert_eq!(s.child[0], "env");
         assert!(s.child.contains(&"DRI_PRIME=pci-0000_03_00_0".to_string()));
-        assert!(s.child.contains(&"LSFGVK_GPU=3:0.0".to_string()));
         assert!(
             s.child
                 .windows(2)

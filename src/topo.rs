@@ -948,7 +948,6 @@ pub mod tests {
                 gpu: gpu.map(|g| GpuSpec::parse(g).unwrap()),
                 mem: None,
                 usage,
-                fg_gpu: None,
             };
             decide_launch(&cfg, &t, learned, profiles, &loads, &inp).unwrap()
         };
@@ -1008,7 +1007,7 @@ pub mod tests {
         assert_eq!(d.nodes, vec![0, 1]);
 
         // Game on an MI50 (graphics use): DRI_PRIME on the MI50, no MESA_VK_DEVICE_SELECT
-        // (both MI50s have the same ID), lsfg-vk on the same GPU, the MI50's socket.
+        // (both MI50s have the same ID), the MI50's socket.
         let d = run_full(
             &["meujogo"],
             None,
@@ -1020,7 +1019,6 @@ pub mod tests {
         assert_eq!((d.kind, d.nodes.clone()), (Kind::Graphics, vec![1]));
         let (env, unset) = gpu_env(&d, &t);
         assert!(env.contains(&("DRI_PRIME".into(), "pci-0000_83_00_0".into())));
-        assert!(env.contains(&("LSFGVK_GPU".into(), "131:0.0".into())));
         assert!(
             !env.iter()
                 .any(|(k, _)| k == "MESA_VK_DEVICE_SELECT" || k == "ROCR_VISIBLE_DEVICES")
@@ -1035,7 +1033,6 @@ pub mod tests {
                 label: "Cyberpunk2077.exe".into(),
                 gpu: "gfx906-0".into(),
                 usage: "graphics".into(),
-                fg_gpu: "gfx906-1".into(),
                 ..Default::default()
             },
         );
@@ -1046,8 +1043,8 @@ pub mod tests {
         ); // cpu auto in the profile → the "jogos" rule applies (GPU's socket)
         let (env, _) = gpu_env(&d, &t);
         assert!(
-            env.contains(&("LSFGVK_GPU".into(), "131:0.0".into())),
-            "frame gen na outra MI50"
+            env.iter()
+                .any(|(k, v)| k == "DRI_PRIME" && *v == d.gpus[0].dri_prime())
         );
 
         // An MI50 with a monitor connected is still a compute GPU (and can game directly).
