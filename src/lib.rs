@@ -39,6 +39,7 @@ pub mod nvctl;
 pub mod nvml;
 pub mod origin;
 pub mod peers;
+pub mod present;
 pub mod procctl;
 pub mod procevents;
 pub mod procfs;

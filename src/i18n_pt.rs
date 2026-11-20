@@ -1520,4 +1520,36 @@ pub const PT: &[(&str, &str)] = &[
         "Broadwell-EP: uncore at maximum and games on a single socket make the biggest difference; mitigations are expensive on this generation.",
         "Broadwell-EP: uncore no máximo e jogos num socket só fazem a maior diferença; mitigações custam caro nesta geração.",
     ),
+    (
+        "frame generation: from 1× (off) to 4×",
+        "geração de quadros: de 1× (desligada) a 4×",
+    ),
+    (
+        "minimum base FPS: from 10 to 240",
+        "FPS mínimo de base: de 10 a 240",
+    ),
+    (
+        "MangoHud is not installed: no real × shown measurement (sudo pacman -S mangohud)",
+        "MangoHud não instalado: sem medição de real × mostrado (sudo pacman -S mangohud)",
+    ),
+    (
+        "numapilot: MangoHud did not record this session (played less than ~10 s?)",
+        "numapilot: o MangoHud não gravou esta sessão (jogou menos de ~10 s?)",
+    ),
+    (
+        "upscaling needs a game resolution lower than the output (gamescope block)",
+        "o upscaling precisa de uma resolução do jogo menor que a de saída (bloco do gamescope)",
+    ),
+    (
+        "lsfg-vk is not installed: no frame generation",
+        "lsfg-vk não instalado: sem geração de quadros",
+    ),
+    (
+        "none (output at the game's resolution)",
+        "nenhum (saída na resolução do jogo)",
+    ),
+    ("Anime4K (planned)", "Anime4K (planejado)"),
+    ("SRVGGNetCompact (planned)", "SRVGGNetCompact (planejado)"),
+    ("block matching (planned)", "block matching (planejado)"),
+    ("RIFE v4 lite (planned)", "RIFE v4 lite (planejado)"),
 ];

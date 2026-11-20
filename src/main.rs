@@ -2081,6 +2081,77 @@ fn cmd_run(
     let (mut set, unset) = gpu_env(&d, &topo);
     set.extend(numapilot::decide::dx_filter(&d, &topo, &set, &unset));
 
+    // Presentation profile: gamescope composes on the output card; the game's card variables
+    // (and MangoHud) go to the game only, after gamescope's "--".
+    let inside_gamescope = std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some()
+        || basename(&command[0]) == "gamescope";
+    let mut present_run: Option<(numapilot::profiles::Present, numapilot::present::Plan)> = None;
+    if let Some(p) = profiles.get(&pkey)
+        && let Some(pr) = p.present.clone()
+        && !inside_gamescope
+    {
+        if which("gamescope").is_some() {
+            // variables the user already set win (same rule as below)
+            let game_set: Vec<(String, String)> = set
+                .iter()
+                .filter(|(k, _)| {
+                    !(numapilot::decide::SOFT_THREAD_VARS.contains(&k.as_str())
+                        && std::env::var_os(k).is_some())
+                })
+                .cloned()
+                .collect();
+            let mut plan = numapilot::present::plan(
+                &pr,
+                p.gamescope.as_ref(),
+                d.gpus.first(),
+                &topo,
+                &game_set,
+                &unset,
+                numapilot::present::lsfg_installed(),
+            );
+            if pr.measure && tuning.is_none() {
+                if which("mangohud").is_some() {
+                    plan.measuring = true;
+                    if !dry_run {
+                        plan.game_env
+                            .extend(numapilot::present::mangohud_env(&pkey));
+                    }
+                } else {
+                    plan.warnings.push(
+                        numapilot::i18n::tr(
+                            "MangoHud is not installed: no real × shown measurement (sudo pacman -S mangohud)",
+                        )
+                        .into(),
+                    );
+                }
+            }
+            for w in &plan.warnings {
+                eprintln!(
+                    "{}",
+                    numapilot::tf!("numapilot: warning: {}", "numapilot: aviso: {}", w)
+                );
+            }
+            if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
+                eprintln!("gamescope: {}", plan.gamescope.join(" "));
+                for (k, v) in &plan.game_env {
+                    eprintln!(
+                        "{}",
+                        numapilot::tf!("game env : {k}={v}", "env jogo : {k}={v}")
+                    );
+                }
+            }
+            present_run = Some((pr, plan));
+        } else {
+            eprintln!(
+                "{}",
+                numapilot::tf!(
+                    "numapilot: warning: gamescope not installed (sudo pacman -S gamescope); opening without it",
+                    "numapilot: aviso: gamescope não instalado (sudo pacman -S gamescope); abrindo sem ele"
+                )
+            );
+        }
+    }
+
     if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
         eprintln!(
             "{}",
@@ -2233,8 +2304,15 @@ fn cmd_run(
     if tuning.is_some() && which("mangohud").is_some() && basename(&argv[0]) != "mangohud" {
         argv.insert(0, "mangohud".into());
     }
+    if let Some((_, plan)) = present_run.as_mut() {
+        if plan.measuring && basename(&argv[0]) != "mangohud" {
+            argv.insert(0, "mangohud".into());
+        }
+        argv = plan.wrap(argv);
+    }
     if let Some(g) = profiles.get(&pkey).and_then(|p| p.gamescope.clone())
-        && std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_none()
+        && present_run.is_none()
+        && !inside_gamescope
         && basename(&command[0]) != "gamescope"
     {
         if which("gamescope").is_some() {
@@ -2255,6 +2333,15 @@ fn cmd_run(
     let mut c = std::process::Command::new(&argv[0]);
     c.args(&argv[1..]);
     // Remove first, then set (same order as gpu-test, so what it checks is what runs).
+    // With another output card, the game's card variables went to the game alone.
+    let to_game = present_run
+        .as_ref()
+        .is_some_and(|(_, p)| p.out_pci.is_some());
+    let (set, unset) = if to_game {
+        (vec![], vec![])
+    } else {
+        (set, unset)
+    };
     for k in unset {
         c.env_remove(k);
     }
@@ -2337,6 +2424,38 @@ fn cmd_run(
                 )
             ),
             _ => {}
+        }
+        std::process::exit(st.code().unwrap_or(1));
+    }
+    if let Some((pr, plan)) = present_run.filter(|(_, p)| p.measuring) {
+        let start = numapilot::history::now();
+        let st = c.status().with_context(|| {
+            numapilot::tf!("could not run '{}'", "não consegui executar '{}'", argv[0])
+        })?;
+        let ft = numapilot::tuner::newest_csv(&numapilot::present::log_dir(&pkey), start)
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .map(|s| numapilot::present::frametimes(&s))
+            .unwrap_or_default();
+        match numapilot::present::measure(&ft, plan.multiplier, pr.min_fps) {
+            Some(mut m) => {
+                m.out_pci = plan.out_pci.clone();
+                eprintln!("numapilot: {}", numapilot::present::summary(&m));
+                if let Err(e) = numapilot::present::store_result(&pkey, &m) {
+                    eprintln!(
+                        "{}",
+                        numapilot::tf!(
+                            "numapilot: measurement not stored ({e})",
+                            "numapilot: medição não guardada ({e})"
+                        )
+                    );
+                }
+            }
+            None => eprintln!(
+                "{}",
+                numapilot::i18n::tr(
+                    "numapilot: MangoHud did not record this session (played less than ~10 s?)"
+                )
+            ),
         }
         std::process::exit(st.code().unwrap_or(1));
     }

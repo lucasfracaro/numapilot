@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Presentation block in the profile ("render on one card, improve on the other").** Adjust →
+  Presentation picks the output card, the upscaling model (FSR 1 or NIS through gamescope;
+  Anime4K and SRVGGNetCompact listed as planned), frame generation (off/2×/3×/4×, lsfg-vk today;
+  block matching and RIFE planned) and the minimum base FPS under which generation turns off.
+  `numapilot run` opens the game inside gamescope with `--prefer-vk-device` on the output card
+  and passes the game's card variables (DRI_PRIME, device select) to the game only, after
+  gamescope's `--`, so gamescope does not follow them. With "measure" on, MangoHud logs the game's
+  frames and, when the game closes, numapilot stores real FPS × shown FPS (calculated: the
+  multiplier while the base FPS is above the minimum) and how many times generation turned off;
+  the Adjust window shows the last session. Both MI50s share one PCI ID, so gamescope may compose
+  on either: the window and `run` warn about it (to confirm on the server, step M0 of the plan).
 - **Adjust warns when the program was opened directly.** The graphics card of a saved choice
   only reaches a program opened through numapilot (`numapilot run`, its menu shortcut, the Steam
   line). The Longshot launcher opened from its own shortcut always went to the boot card

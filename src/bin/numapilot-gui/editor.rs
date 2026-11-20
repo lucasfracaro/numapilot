@@ -26,6 +26,8 @@ pub struct Editor {
     /// The open program was started directly, not through `numapilot run`: the card, what it
     /// sees and the upscaler of this adjustment do not reach it.
     pub direct: bool,
+    /// Last real × shown measurement of the presentation block (read when the window opens).
+    pub present_last: Option<numapilot::present::Measured>,
 }
 
 impl Editor {
@@ -61,6 +63,7 @@ impl Editor {
             } else {
                 numapilot::desktop::own_shortcut(key)
             },
+            present_last: numapilot::present::load_results().remove(key),
             p: Profile {
                 label: label.into(),
                 ..p
@@ -367,12 +370,254 @@ fn tuner_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
     if let Some(mut p) = apply_best {
         p.label = ed.label.clone();
         p.gamescope = ed.p.gamescope.clone();
+        p.present = ed.p.present.clone();
         ed.p = p.clone();
         app.send(Request::SetProfile {
             key: ed.key.clone(),
             profile: p,
             pid: ed.main_pid,
         });
+    }
+}
+
+/// "Render on one card, improve on the other": output card, upscaling model, frame generation,
+/// minimum base FPS, and the last real × shown measurement.
+fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
+    use numapilot::present::{ENGINES, UPSCALERS};
+    let mut on = ed.p.present.is_some();
+    ui.horizontal(|ui| {
+        ui.checkbox(
+            &mut on,
+            RichText::new(crate::i18n::tr("Presentation: upscaling and frame generation")).strong(),
+        )
+        .on_hover_text(crate::i18n::tr(
+            "The game renders on the card above; the output card takes the finished image (one copy over PCIe), \
+             upscales it, generates frames and shows it through its own video output. Opens inside gamescope.",
+        ));
+        if !app.has_gamescope {
+            ui.label(
+                RichText::new(crate::i18n::tr("(not installed: sudo pacman -S gamescope)"))
+                    .small()
+                    .color(crate::theme::warn()),
+            );
+        }
+    });
+    if on != ed.p.present.is_some() {
+        ed.p.present = on.then(numapilot::profiles::Present::default);
+    }
+    let game_gpu = app
+        .topo
+        .gpus
+        .iter()
+        .find(|g| g.matches(&ed.p.gpu))
+        .or_else(|| app.topo.gaming_gpu())
+        .cloned();
+    let Some(pr) = ed.p.present.as_mut() else {
+        return;
+    };
+    egui::Grid::new("ed-present")
+        .num_columns(2)
+        .spacing([10.0, 4.0])
+        .show(ui, |ui| {
+            ui.label(crate::i18n::tr("Output card"));
+            let cur = if pr.out_gpu == "same" {
+                crate::i18n::tr("the game's card").to_string()
+            } else {
+                pr.out_gpu.clone()
+            };
+            egui::ComboBox::from_id_salt("ed-pr-out")
+                .selected_text(cur)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut pr.out_gpu,
+                        "same".to_string(),
+                        crate::i18n::tr("the game's card"),
+                    );
+                    for g in &app.topo.gpus {
+                        if game_gpu.as_ref().is_some_and(|x| x.pci == g.pci) {
+                            continue;
+                        }
+                        let txt = if g.display_connected {
+                            crate::tf!("{} (monitor)", "{} (monitor)", g.alias)
+                        } else {
+                            crate::tf!("{} (no monitor)", "{} (sem monitor)", g.alias)
+                        };
+                        ui.selectable_value(&mut pr.out_gpu, g.alias.clone(), txt);
+                    }
+                });
+            ui.end_row();
+
+            ui.label(crate::i18n::tr("Upscaling model"));
+            let name = |v: &str| {
+                UPSCALERS
+                    .iter()
+                    .find(|u| u.0 == v)
+                    .map(|u| crate::i18n::tr(u.1))
+                    .unwrap_or("?")
+            };
+            egui::ComboBox::from_id_salt("ed-pr-up")
+                .selected_text(name(&pr.upscaler))
+                .show_ui(ui, |ui| {
+                    for (v, l, ready) in UPSCALERS {
+                        ui.add_enabled_ui(ready || pr.upscaler == v, |ui| {
+                            ui.selectable_value(
+                                &mut pr.upscaler,
+                                v.to_string(),
+                                crate::i18n::tr(l),
+                            );
+                        });
+                    }
+                });
+            ui.end_row();
+
+            ui.label(crate::i18n::tr("Frame generation"));
+            ui.horizontal(|ui| {
+                let mults = [
+                    (1u8, numapilot::t2!("off", "desligada")),
+                    (2, "2×"),
+                    (3, "3×"),
+                    (4, "4×"),
+                ];
+                let cur = mults
+                    .iter()
+                    .find(|m| m.0 == pr.multiplier)
+                    .map(|m| m.1)
+                    .unwrap_or("?");
+                egui::ComboBox::from_id_salt("ed-pr-mult")
+                    .selected_text(cur)
+                    .show_ui(ui, |ui| {
+                        for (k, l) in mults {
+                            ui.selectable_value(&mut pr.multiplier, k, l);
+                        }
+                    });
+                ui.add_enabled_ui(pr.multiplier > 1, |ui| {
+                    let ename = ENGINES
+                        .iter()
+                        .find(|e| e.0 == pr.engine)
+                        .map(|e| crate::i18n::tr(e.1))
+                        .unwrap_or("?");
+                    egui::ComboBox::from_id_salt("ed-pr-eng")
+                        .selected_text(ename)
+                        .show_ui(ui, |ui| {
+                            for (v, l, ready) in ENGINES {
+                                ui.add_enabled_ui(ready || pr.engine == v, |ui| {
+                                    ui.selectable_value(
+                                        &mut pr.engine,
+                                        v.to_string(),
+                                        crate::i18n::tr(l),
+                                    );
+                                });
+                            }
+                        });
+                });
+            });
+            ui.end_row();
+
+            ui.label(crate::i18n::tr("Minimum base FPS"));
+            ui.horizontal(|ui| {
+                ui.add_enabled(
+                    pr.multiplier > 1,
+                    egui::DragValue::new(&mut pr.min_fps)
+                        .range(10..=240)
+                        .suffix(" FPS"),
+                );
+                ui.label(
+                    RichText::new(crate::i18n::tr(
+                        "under this the generation turns off (it looks bad below ~40)",
+                    ))
+                    .small()
+                    .weak(),
+                );
+            });
+            ui.end_row();
+
+            ui.label("");
+            ui.horizontal(|ui| {
+                ui.checkbox(
+                    &mut pr.measure,
+                    crate::i18n::tr("Measure real × shown FPS (MangoHud)"),
+                );
+                if pr.measure && !app.has_mangohud {
+                    ui.label(
+                        RichText::new(crate::i18n::tr("Needs MangoHud: sudo pacman -S mangohud"))
+                            .small()
+                            .color(crate::theme::warn()),
+                    );
+                }
+            });
+            ui.end_row();
+        });
+    // What the launch will do on this machine (same plan as numapilot run).
+    let plan = numapilot::present::plan(
+        pr,
+        ed.p.gamescope.as_ref(),
+        game_gpu.as_ref(),
+        &app.topo,
+        &[],
+        &[],
+        numapilot::present::lsfg_installed(),
+    );
+    let route = match (&game_gpu, &plan.out_pci) {
+        (Some(g), Some(o)) => {
+            let out = app
+                .topo
+                .gpus
+                .iter()
+                .find(|x| x.pci == *o)
+                .map(|x| x.alias.clone())
+                .unwrap_or_else(|| o.clone());
+            crate::tf!(
+                "Renders on the {} → improves and shows on the {}",
+                "Renderiza na {} → melhora e mostra na {}",
+                g.alias,
+                out
+            )
+        }
+        (Some(g), None) => crate::tf!(
+            "Renders, improves and shows on the {}",
+            "Renderiza, melhora e mostra na {}",
+            g.alias
+        ),
+        _ => crate::i18n::tr("Renders, improves and shows on the same card").to_string(),
+    };
+    ui.label(RichText::new(route).small());
+    for w in &plan.warnings {
+        ui.label(
+            RichText::new(crate::tf!("Warning: {w}", "Atenção: {w}"))
+                .small()
+                .color(crate::theme::warn()),
+        );
+    }
+    match &ed.present_last {
+        Some(m) => {
+            ui.label(
+                RichText::new(crate::tf!(
+                    "Last session: {}",
+                    "Última sessão: {}",
+                    numapilot::present::summary(m)
+                ))
+                .strong(),
+            );
+            if !m.shown_measured {
+                ui.label(
+                    RichText::new(crate::i18n::tr(
+                        "Real FPS is counted by MangoHud in the game; shown FPS is the real one times the \
+                         multiplier while the base FPS stays above the minimum.",
+                    ))
+                    .small()
+                    .weak(),
+                );
+            }
+        }
+        None => {
+            ui.label(
+                RichText::new(crate::i18n::tr(
+                    "No measurement yet: open the game through numapilot run (menu shortcut or Steam).",
+                ))
+                .small()
+                .weak(),
+            );
+        }
     }
 }
 
@@ -855,6 +1100,10 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
                             .weak(),
                     );
                 }
+
+                // Presentation: another card shows the image (upscaling, frame generation)
+                ui.separator();
+                present_ui(app, ui, &mut ed);
 
                 // Upscaling
                 ui.separator();

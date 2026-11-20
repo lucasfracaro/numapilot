@@ -64,6 +64,10 @@ pub struct Profile {
     /// Game upscaling (FSR 4/DLSS/XeSS through Proton, or OptiScaler).
     #[serde(default)]
     pub upscale: Option<Upscale>,
+    /// Presentation: which card shows the image and how the finished image is improved there
+    /// (upscaling model, frame generation). Opens the game inside gamescope.
+    #[serde(default)]
+    pub present: Option<Present>,
     /// Machine mode while the program is open (jogo, ia, silencioso); goes back when it closes.
     #[serde(default)]
     pub machine_mode: Option<String>,
@@ -85,6 +89,70 @@ pub struct Upscale {
     pub indicator: bool,
     /// OptiScaler: forces FSR 4 INT8 on cards without official support (experimental).
     pub int8: bool,
+}
+
+/// "Render on one card, improve on the other": the game renders on the profile's card; the output
+/// card takes the finished image (one copy over PCIe), upscales it, generates frames and shows it
+/// through its own video output. Works only with the final image (like Lossless Scaling), so the
+/// real FPS and the input delay stay the game's. See `crate::present`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Present {
+    /// Card that composes and shows the image: "same" (the game's) or a GPU alias/PCI address.
+    pub out_gpu: String,
+    /// Upscaling of the finished image: none | fsr1 | nis | anime4k | srvgg
+    /// (`present::UPSCALERS` says which are ready).
+    pub upscaler: String,
+    /// Frames shown per real frame: 1 = no frame generation, 2 = 2×, 3 = 3×.
+    pub multiplier: u8,
+    /// Frame generator: lsfg | blockmatch | rife (`present::ENGINES`).
+    pub engine: String,
+    /// Base FPS under which frame generation turns off (below ~40 it looks bad).
+    pub min_fps: u32,
+    /// Measures real FPS (MangoHud in the game) against shown FPS on every start.
+    pub measure: bool,
+}
+
+impl Default for Present {
+    fn default() -> Self {
+        Present {
+            out_gpu: same(),
+            upscaler: "fsr1".into(),
+            multiplier: 1,
+            engine: "lsfg".into(),
+            min_fps: 40,
+            measure: true,
+        }
+    }
+}
+
+impl Present {
+    pub fn validate(&self) -> Result<(), String> {
+        if !crate::present::UPSCALERS
+            .iter()
+            .any(|u| u.0 == self.upscaler)
+        {
+            return Err(crate::tf!(
+                "invalid upscaling model: {}",
+                "modelo de upscaling inválido: {}",
+                self.upscaler
+            ));
+        }
+        if !crate::present::ENGINES.iter().any(|e| e.0 == self.engine) {
+            return Err(crate::tf!(
+                "invalid frame generator: {}",
+                "gerador de quadros inválido: {}",
+                self.engine
+            ));
+        }
+        if !(1..=4).contains(&self.multiplier) {
+            return Err(crate::i18n::tr("frame generation: from 1× (off) to 4×").into());
+        }
+        if !(10..=240).contains(&self.min_fps) {
+            return Err(crate::i18n::tr("minimum base FPS: from 10 to 240").into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -178,6 +246,7 @@ impl Default for Profile {
             gpu_power: auto(),
             gamescope: None,
             upscale: None,
+            present: None,
             machine_mode: None,
             cpu_max_pct: None,
             turbo_max: false,
@@ -289,6 +358,9 @@ impl Profile {
                 "lista de CPUs inválida: {l}"
             ));
         }
+        if let Some(pr) = &self.present {
+            pr.validate()?;
+        }
         Ok(())
     }
 
@@ -301,6 +373,7 @@ impl Profile {
             fg_gpu: base.fg_gpu.clone(),
             gamescope: base.gamescope.clone(),
             upscale: base.upscale.clone(),
+            present: base.present.clone(),
             machine_mode: base.machine_mode.clone(),
             ..Default::default()
         };
@@ -476,6 +549,12 @@ pub fn import_text(
             }
             if p.fg_gpu != "same" && !gpu_aliases.contains(&p.fg_gpu) {
                 p.fg_gpu = same();
+            }
+            if let Some(pr) = p.present.as_mut()
+                && pr.out_gpu != "same"
+                && !gpu_aliases.contains(&pr.out_gpu)
+            {
+                pr.out_gpu = same();
             }
         }
         match p.validate() {
