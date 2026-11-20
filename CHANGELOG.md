@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- lsfg-vk panel and `numapilot lsfg`: say first that Lossless Scaling has to be installed through
+  Steam (and on the `lsfg-vk` branch) before lsfg-vk; its buttons come before the AUR install.
 - **lsfg-vk setup.** `numapilot lsfg` (status | install | healthcheck | config) and a panel in
   Adjust → Presentation (when frame generation uses lsfg-vk) and in Settings show what frame
   generation still needs: the lsfg-vk Vulkan layer (and its AUR package), Lossless Scaling in the
