@@ -188,7 +188,7 @@ fn set(env: &mut Vec<(String, String)>, k: &str, v: String) {
 
 /// Where MangoHud writes the CSVs of the presentation measurement for one program.
 pub fn log_dir(key: &str) -> PathBuf {
-    crate::tuner::user_state_dir()
+    state_dir()
         .join("present-logs")
         .join(crate::tuner::safe_key(key))
 }
@@ -313,7 +313,15 @@ pub fn measure(ft: &[f64], multiplier: u8, min_fps: u32) -> Option<Measured> {
 
 /// Last measurement of each program (key → result), in the user's state.
 pub fn results_path() -> PathBuf {
-    crate::tuner::user_state_dir().join("present.json")
+    state_dir().join("present.json")
+}
+
+/// The user's state folder, or `NUMAPILOT_STATE_DIR` when it is set (tests and separate
+/// checkouts keep their measurements away from the installed numapilot's).
+fn state_dir() -> PathBuf {
+    std::env::var_os("NUMAPILOT_STATE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(crate::tuner::user_state_dir)
 }
 
 pub fn load_results() -> BTreeMap<String, Measured> {
