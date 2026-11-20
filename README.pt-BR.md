@@ -167,7 +167,9 @@ AppId) em **Aplicativos** e **Sessão e sistema**:
   DRM (amdgpu, Intel, NVIDIA com driver novo);
 - a seta (ou dois cliques) abre os processos do programa e os controles: **Processador**
   (automático, socket da GPU, um socket ou os dois; vale na hora), **Placa de vídeo** (vale ao abrir:
-  **Reabrir**, **Usar no menu** ou a opção da Steam), **Lossless Scaling**, **Ajustar…** e
+  **Reabrir**, **Usar no menu** ou a opção da Steam; salvar a escolha da placa também faz os atalhos
+  do próprio programa no menu e na área de trabalho abrirem pelo numapilot, com **Desfazer**, e
+  `numapilot profile shortcuts CHAVE` lista eles), **Lossless Scaling**, **Ajustar…** e
   **Abrir ao iniciar**;
 - **Encerrar** (SIGTERM) e **Forçar parada** (SIGKILL, com confirmação) só para programas seus da
   sessão; nunca o kernel, o sistema, outros usuários, a sessão gráfica ou o próprio numapilot;

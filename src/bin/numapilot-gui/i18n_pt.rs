@@ -825,6 +825,17 @@ pub const PT: &[(&str, &str)] = &[
     ("Enabling OverDrive", "Ativando o OverDrive"),
     ("Test the card selection", "Testar a escolha da placa"),
     ("Undo", "Desfazer"),
+    ("desktop", "área de trabalho"),
+    ("menu", "menu"),
+    ("OK", "OK"),
+    (
+        "Shortcuts put back as they were",
+        "Atalhos de volta como eram",
+    ),
+    (
+        "Puts the shortcuts back as they were; saving this program's choice will not change them again (\"Use in the menu\" does).",
+        "Põe os atalhos de volta como eram; salvar a escolha deste programa não muda mais eles (o \"Usar no menu\" muda).",
+    ),
     (
         "After 1 min idle, the card stays at the lowest clock and voltage level until it is used again. Helps on the MI50s, which draw a lot when idle; the first request afterwards takes a fraction of a second longer.",
         "Parada há 1 min, a placa fica no nível mais baixo de clock e voltagem até voltar a ser usada. Ajuda nas MI50, que gastam bastante paradas; o primeiro pedido depois demora uma fração de segundo a mais.",
