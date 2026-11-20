@@ -1,5 +1,6 @@
-//! The work done at each present: small image → buffer → unpack → upscaler passes → pack →
-//! real swapchain image. Storage buffers only (no storage images), so it works with any 32-bit
+//! The work done at each present: the image gamescope composed (window size, the game scaled 2×
+//! or more with integer nearest scaling) → buffer → unpack (one sample per game pixel, back at
+//! the game's size) → upscaler passes → pack → real swapchain image. Storage buffers only (no storage images), so it works with any 32-bit
 //! swapchain format the driver can copy to (8-bit RGBA/BGRA and 10-bit A2B10G10R10/A2R10G10B10).
 
 use crate::DeviceData;
@@ -34,6 +35,34 @@ pub fn format_px(f: vk::Format) -> Option<Px> {
     }
 }
 
+/// Where the game is in the picture gamescope composed: gamescope draws it `stride` times larger
+/// (integer scaling, nearest filter) at `offset`, so one texel per `stride`×`stride` block gives
+/// back the game's own pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Src {
+    pub size: (u32, u32),
+    pub offset: (u32, u32),
+    pub stride: u32,
+}
+
+impl Src {
+    /// The game at `game` (gamescope's -w/-h) in a window of `real`, as gamescope's integer
+    /// scaler places it (`calc_scale_factor_scaler`: floor of the smaller ratio; centered,
+    /// truncated). None when gamescope would not scale it at least 2×.
+    pub fn of(real: (u32, u32), game: (u32, u32)) -> Option<Src> {
+        let (gw, gh) = (game.0.max(1), game.1.max(1));
+        let k = (real.0 / gw).min(real.1 / gh);
+        if k < 2 {
+            return None;
+        }
+        Some(Src {
+            size: (gw, gh),
+            offset: ((real.0 - gw * k) / 2, (real.1 - gh * k) / 2),
+            stride: k,
+        })
+    }
+}
+
 const GROUP: u32 = numapilot::vkbench::GROUP;
 
 /// GLSL that turns one u32 pixel `v` into vec4 RGBA.
@@ -48,9 +77,14 @@ fn unpack_expr(px: Px) -> &'static str {
     }
 }
 
-/// u32 pixels (as copied from the swapchain image) → vec4 RGBA.
-pub fn unpack_glsl(w: u32, h: u32, px: Px) -> String {
+/// u32 pixels of the composed picture (`real_w` wide, as copied from the swapchain image) → vec4
+/// RGBA at the game's size, one sample from the middle of each block.
+pub fn unpack_glsl(src: &Src, real_w: u32, px: Px) -> String {
     let e = unpack_expr(px);
+    let (w, h) = src.size;
+    let (ox, oy) = src.offset;
+    let k = src.stride;
+    let c = k / 2;
     let sw = if px == Px::Bgr10A2 { ".zyxw" } else { "" };
     format!(
         "#version 450
@@ -62,9 +96,8 @@ void main() {{
     if (g.x >= {w} || g.y >= {h}) {{
         return;
     }}
-    int i = g.y * {w} + g.x;
-    uint v = in_d[i];
-    out_d[i] = ({e}){sw};
+    uint v = in_d[({oy} + g.y * {k} + {c}) * {real_w} + {ox} + g.x * {k} + {c}];
+    out_d[g.y * {w} + g.x] = ({e}){sw};
 }}
 "
     )
@@ -126,10 +159,11 @@ pub struct Chain {
     small: Vec<vk::Image>,
     small_mem: Vec<vk::DeviceMemory>,
     real: Vec<vk::Image>,
-    small_ext: vk::Extent2D,
     real_ext: vk::Extent2D,
-    /// What the passes produce (2 × small).
+    src: Src,
+    /// What the passes produce (2 × the game), placed at `out_at` in the real image.
     out_ext: vk::Extent2D,
+    out_at: (u32, u32),
     bufs: Vec<Buf>,
     raw_in: usize,
     raw_out: usize,
@@ -196,7 +230,7 @@ impl Chain {
         sc: vk::SwapchainKHR,
         info: &vk::SwapchainCreateInfoKHR<'_>,
         real_ext: vk::Extent2D,
-        small_ext: vk::Extent2D,
+        src: Src,
         px: Px,
         shader: &str,
     ) -> Result<Chain> {
@@ -215,9 +249,10 @@ impl Chain {
             small: vec![],
             small_mem: vec![],
             real,
-            small_ext,
             real_ext,
-            out_ext: small_ext,
+            src,
+            out_ext: real_ext,
+            out_at: (0, 0),
             bufs: vec![],
             raw_in: 0,
             raw_out: 0,
@@ -242,7 +277,7 @@ impl Chain {
         shader: &str,
     ) -> Result<()> {
         let dev = &d.dev;
-        // the small images gamescope draws into
+        // the images gamescope draws into (window size, like the real ones)
         let mut flags = vk::ImageCreateFlags::empty();
         if info
             .flags
@@ -263,8 +298,8 @@ impl Chain {
                 .image_type(vk::ImageType::TYPE_2D)
                 .format(info.image_format)
                 .extent(vk::Extent3D {
-                    width: self.small_ext.width,
-                    height: self.small_ext.height,
+                    width: self.real_ext.width,
+                    height: self.real_ext.height,
                     depth: 1,
                 })
                 .mip_levels(1)
@@ -305,20 +340,25 @@ impl Chain {
         }
 
         // compute passes: unpack, the upscaler, pack
-        let (sw, sh) = (self.small_ext.width, self.small_ext.height);
+        let (sw, sh) = self.src.size;
+        let (rw, rh) = (self.real_ext.width, self.real_ext.height);
         let hooks = numapilot::vkbench::parse_hooks(shader);
         let (planned, sizes) = numapilot::vkbench::plan(&hooks, sw, sh)?;
         let (ow, oh) = sizes["MAIN"];
+        if ow > rw || oh > rh {
+            bail!("{ow}x{oh} does not fit in the {rw}x{rh} window");
+        }
         self.out_ext = vk::Extent2D {
             width: ow,
             height: oh,
         };
+        self.out_at = ((rw - ow) / 2, (rh - oh) / 2);
         let usage = vk::BufferUsageFlags::STORAGE_BUFFER
             | vk::BufferUsageFlags::TRANSFER_SRC
             | vk::BufferUsageFlags::TRANSFER_DST;
         let bytes = |w: u32, h: u32, b: u64| w as u64 * h as u64 * b;
         self.bufs
-            .push(unsafe { buffer(d, bytes(sw, sh, 4), usage) }?);
+            .push(unsafe { buffer(d, bytes(rw, rh, 4), usage) }?);
         self.raw_in = 0;
         self.bufs
             .push(unsafe { buffer(d, bytes(sw, sh, 16), usage) }?);
@@ -326,7 +366,7 @@ impl Chain {
         cur.insert("MAIN".into(), 1);
         // (spirv, out size, out buffer, in buffers)
         let mut specs: Vec<(Vec<u32>, (u32, u32), usize, Vec<usize>)> = vec![(
-            numapilot::vkbench::compile(&unpack_glsl(sw, sh, px))?,
+            numapilot::vkbench::compile(&unpack_glsl(&self.src, rw, px))?,
             (sw, sh),
             1,
             vec![0],
@@ -462,7 +502,7 @@ impl Chain {
         Ok(())
     }
 
-    pub fn small_images(&self) -> &[vk::Image] {
+    pub fn images(&self) -> &[vk::Image] {
         &self.small
     }
 
@@ -591,8 +631,8 @@ impl Chain {
                 &[vk::BufferImageCopy::default()
                     .image_subresource(layers)
                     .image_extent(vk::Extent3D {
-                        width: self.small_ext.width,
-                        height: self.small_ext.height,
+                        width: self.real_ext.width,
+                        height: self.real_ext.height,
                         depth: 1,
                     })],
             );
@@ -638,12 +678,9 @@ impl Chain {
                 vk::PipelineStageFlags::TOP_OF_PIPE,
                 vk::PipelineStageFlags::TRANSFER,
             );
-            let (cw, ch) = (
-                self.out_ext.width.min(self.real_ext.width),
-                self.out_ext.height.min(self.real_ext.height),
-            );
+            let (cw, ch) = (self.out_ext.width, self.out_ext.height);
             if (cw, ch) != (self.real_ext.width, self.real_ext.height) {
-                // odd window: the last row/column the upscaler does not cover stays black
+                // the window is not exactly 2× the game: black around the upscaled picture
                 dev.cmd_clear_color_image(
                     cb,
                     real,
@@ -669,6 +706,11 @@ impl Chain {
                     .buffer_row_length(self.out_ext.width)
                     .buffer_image_height(self.out_ext.height)
                     .image_subresource(layers)
+                    .image_offset(vk::Offset3D {
+                        x: self.out_at.0 as i32,
+                        y: self.out_at.1 as i32,
+                        z: 0,
+                    })
                     .image_extent(vk::Extent3D {
                         width: cw,
                         height: ch,
@@ -747,9 +789,28 @@ mod tests {
     #[test]
     fn pack_and_unpack_compile() {
         for px in [Px::Rgba8, Px::Bgra8, Px::Rgb10A2, Px::Bgr10A2] {
-            numapilot::vkbench::compile(&unpack_glsl(64, 36, px)).unwrap();
+            let src = Src::of((128, 72), (64, 36)).unwrap();
+            numapilot::vkbench::compile(&unpack_glsl(&src, 128, px)).unwrap();
             numapilot::vkbench::compile(&pack_glsl(128, 72, px)).unwrap();
         }
+        // where gamescope's integer scaler puts the game
+        assert_eq!(
+            Src::of((2560, 1440), (1280, 720)),
+            Some(Src {
+                size: (1280, 720),
+                offset: (0, 0),
+                stride: 2
+            })
+        );
+        assert_eq!(
+            Src::of((2050, 1180), (640, 360)),
+            Some(Src {
+                size: (640, 360),
+                offset: (65, 50),
+                stride: 3
+            })
+        );
+        assert_eq!(Src::of((1920, 1022), (1280, 720)), None);
         assert_eq!(format_px(vk::Format::B8G8R8A8_SRGB), Some(Px::Bgra8));
         assert_eq!(format_px(vk::Format::R8G8B8A8_UNORM), Some(Px::Rgba8));
         assert_eq!(

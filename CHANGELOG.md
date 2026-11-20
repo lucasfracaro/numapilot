@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Upscaling layer: fixed the picture showing only its top-left quarter, 2× (server test).
+  gamescope composes at the window's size whatever the surface reports, so the layer no longer
+  shrinks the surface: gamescope runs with `-S integer -F nearest`, the layer reads one texel
+  per block to get the game's frame back (`NUMAPILOT_UPSCALE_SRC`, the profile's game
+  resolution) and writes the 2× result centered in the window. A window under 2× the game
+  passes through.
 - **More upscaling models: ArtCNN C4F16 / C4F32 and FSRCNNX.** ArtCNN (MIT, shipped in
   `shaders/artcnn`) are ESPCN-style luma doublers of 12 k and 48 k weights; FSRCNNX x2 8 and 16
   (LGPL 3, not shipped) are downloaded into `~/.local/share/numapilot/shaders` the first time a

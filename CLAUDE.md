@@ -243,7 +243,10 @@ perfil e o `LSFGVK_GPU` saíram (`run --fg-gpu` só avisa).
 Upscaler próprio (docs/PRESENT-CHAIN.md): ncnn (SRVGG 323 ms, RIFE 598 ms) não serve; Anime4K como
 compute Vulkan (`src/vkbench.rs` roda shaders do mpv; `present-bench --compute`) mediu 0,5–3 ms na MI50.
 Camada `layer/` (VK_LAYER_NUMAPILOT_upscale, implícita, `ENABLE_NUMAPILOT_UPSCALE=1`, só age no
-gamescope): mente o tamanho da janela pela metade e amplia na apresentação. Testada no lavapipe com
+gamescope): o gamescope compõe sempre no tamanho da janela (`g_nOutputWidth`) e ignora a
+superfície, então mentir o tamanho mostrou só um quarto da imagem no servidor. Agora o gamescope
+roda com `-S integer -F nearest`, a camada lê um texel por bloco (`chain::Src`, tamanho do jogo em
+`NUMAPILOT_UPSCALE_SRC`) e escreve o 2× centralizado; janela menor que 2× o jogo passa direto. Testada no lavapipe com
 vkcube (Xvfb). No servidor o gamescope `--backend sdl` usa swapchain A2B10G10R10 (10 bits): a camada
 trata 8 e 10 bits. Modelos de luma (ArtCNN C4F16/C4F32, MIT, no lugar do ESPCN; FSRCNNX, LGPL,
 baixado em ~/.local/share/numapilot/shaders no primeiro uso, nunca no repositório): o vkbench faz

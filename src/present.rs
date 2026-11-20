@@ -232,20 +232,29 @@ pub fn plan_with(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg, la
     }
     if let Some(model) = layer_model(up) {
         // The layer only acts in gamescope (the game inherits the variables and is left alone).
-        // gamescope must present through a Vulkan swapchain: SDL backend, like lsfg-out. The layer
-        // tells gamescope the window is half its size, so gamescope composes at the game's size
-        // and the layer upscales 2× at present.
+        // gamescope must present through a Vulkan swapchain: SDL backend, like lsfg-out.
+        // gamescope always composes at the window's size, so it scales the game with integer
+        // nearest scaling (each game pixel a block of k×k) and the layer reads one texel per
+        // block back, runs the model at the game's size and writes the 2× result.
         if !a.iter().any(|x| x == "--backend") {
             a.extend(["--backend".into(), "sdl".into()]);
         }
+        a.extend(["-S".into(), "integer".into(), "-F".into(), "nearest".into()]);
         set(&mut gamescope_env, "ENABLE_NUMAPILOT_UPSCALE", "1".into());
         set(&mut gamescope_env, "NUMAPILOT_UPSCALE_MODEL", model.into());
+        if let (Some(w), Some(h)) = (g.render_w, g.render_h) {
+            set(
+                &mut gamescope_env,
+                "NUMAPILOT_UPSCALE_SRC",
+                format!("{w}x{h}"),
+            );
+        }
         if let (Some(rw), Some(ow)) = (g.render_w, g.out_w)
             && rw * 2 != ow
         {
             warnings.push(crate::tf!(
-                "the layer's models upscale exactly 2×: with the game at {} wide the output should be {} wide (it is {}); gamescope scales the rest itself",
-                "os modelos da camada ampliam exatamente 2×: com o jogo em {} de largura a saída deveria ter {} (está em {}); o gamescope ajusta o resto sozinho",
+                "the layer's models upscale exactly 2×: with the game at {} wide the output should be {} wide (it is {}); smaller than that the layer does nothing, larger leaves a black border",
+                "os modelos da camada ampliam exatamente 2×: com o jogo em {} de largura a saída deveria ter {} (está em {}); menor que isso a camada não age, maior deixa uma borda preta",
                 rw,
                 rw * 2,
                 ow
@@ -714,10 +723,17 @@ mod tests {
             ..Default::default()
         };
         let p = plan_with(&pr, &gs, None, Lsfg::Ready, true);
+        // gamescope scales by whole blocks, the layer reads one texel per block
         assert!(
-            !p.gamescope.contains(&"-F".to_string()),
+            p.gamescope.windows(2).any(|w| w == ["-F", "nearest"])
+                && p.gamescope.windows(2).any(|w| w == ["-S", "integer"])
+                && !p.gamescope.windows(2).any(|w| w == ["-F", "fsr"]),
             "{:?}",
             p.gamescope
+        );
+        assert!(
+            p.gamescope_env
+                .contains(&("NUMAPILOT_UPSCALE_SRC".into(), "1280x720".into()))
         );
         assert!(p.gamescope.windows(2).any(|w| w == ["--backend", "sdl"]));
         assert!(
@@ -792,7 +808,7 @@ mod tests {
             true,
         );
         assert_eq!(p.gamescope.iter().filter(|x| *x == "--backend").count(), 1);
-        assert_eq!(p.gamescope_env.len(), 3);
+        assert_eq!(p.gamescope_env.len(), 4);
     }
 
     #[test]

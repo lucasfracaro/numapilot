@@ -1,11 +1,12 @@
 //! VK_LAYER_NUMAPILOT_upscale: step M1 of docs/PRESENT-CHAIN.md.
 //!
-//! Loaded only in gamescope (SDL backend, so gamescope presents through a Vulkan swapchain). The
-//! layer tells gamescope that the window is `scale` times smaller, so gamescope composes the game
-//! at that size and does no upscaling of its own; it creates the real swapchain at the window's
-//! size and gives gamescope images of the small size instead of the swapchain's. At present, each
-//! small image goes through the upscaler (an mpv user shader such as Anime4K, run as compute by
-//! `numapilot::vkbench`) into the real swapchain image, which is then presented.
+//! Loaded only in gamescope (SDL backend, so gamescope presents through a Vulkan swapchain).
+//! gamescope composes at the window's size and, started with `-S integer -F nearest`, draws the
+//! game as blocks of k×k identical pixels (k ≥ 2). The layer gives gamescope images of its own
+//! for the swapchain; at present it reads one texel per block (the game's frame at its own size,
+//! `NUMAPILOT_UPSCALE_SRC=WxH`), runs the upscaler (an mpv user shader such as Anime4K, run as
+//! compute by `numapilot::vkbench`) and writes the 2× result into the real swapchain image, which
+//! is then presented.
 //!
 //! Turned on by the implicit layer manifest's `ENABLE_NUMAPILOT_UPSCALE=1`; it only acts in
 //! processes named in `NUMAPILOT_UPSCALE_PROCS` (default: gamescope), so a game that inherits the
@@ -24,7 +25,6 @@ use std::ffi::{CStr, c_char, c_void};
 use std::sync::{Arc, Mutex, OnceLock};
 
 pub const LAYER_NAME: &CStr = c"VK_LAYER_NUMAPILOT_upscale";
-pub const SCALE: u32 = 2;
 
 macro_rules! log {
     ($($a:tt)*) => {
@@ -141,7 +141,6 @@ pub(crate) struct InstanceData {
     gipa: vk::PFN_vkGetInstanceProcAddr,
     fp: ash::InstanceFnV1_0,
     surface: ash::khr::surface::InstanceFn,
-    caps2: ash::khr::get_surface_capabilities2::InstanceFn,
 }
 
 pub(crate) struct DeviceData {
@@ -260,14 +259,6 @@ pub unsafe extern "system" fn numapilot_GetInstanceProcAddr(
         b"vkEnumeratePhysicalDevices" => {
             pfn(numapilot_EnumeratePhysicalDevices as vk::PFN_vkEnumeratePhysicalDevices)
         }
-        b"vkGetPhysicalDeviceSurfaceCapabilitiesKHR" => {
-            pfn(numapilot_GetPhysicalDeviceSurfaceCapabilitiesKHR
-                as vk::PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR)
-        }
-        b"vkGetPhysicalDeviceSurfaceCapabilities2KHR" => {
-            pfn(numapilot_GetPhysicalDeviceSurfaceCapabilities2KHR
-                as vk::PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR)
-        }
         _ => device_fn(n),
     };
     if ours.is_some() {
@@ -333,7 +324,6 @@ unsafe extern "system" fn numapilot_CreateInstance(
             gipa,
             fp: ash::InstanceFnV1_0::load(load),
             surface: ash::khr::surface::InstanceFn::load(load),
-            caps2: ash::khr::get_surface_capabilities2::InstanceFn::load(load),
         };
         st().instances.insert(inst.as_raw(), Arc::new(data));
         r
@@ -519,86 +509,22 @@ unsafe extern "system" fn numapilot_GetDeviceQueue2(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Surface: gamescope sees a window `SCALE` times smaller.
+// Swapchain. gamescope composes at its output size (-W/-H, then the window's size) whatever the
+// surface says, so the layer cannot make it compose smaller. Instead gamescope scales the game
+// with integer nearest scaling (`-S integer -F nearest`, set by numapilot's profile), each game
+// pixel becomes a block, and the layer reads one texel per block to get the game's frame back.
 
-/// Caps as gamescope should see them: a fixed window size divided by the scale.
-pub fn scaled_caps(c: &mut vk::SurfaceCapabilitiesKHR) {
-    if c.current_extent.width == u32::MAX {
-        // the app picks the size (Wayland): the swapchain size decides, see create_swapchain
-        return;
-    }
-    let w = (c.current_extent.width / SCALE).max(1);
-    let h = (c.current_extent.height / SCALE).max(1);
-    c.current_extent = vk::Extent2D {
-        width: w,
-        height: h,
-    };
-    c.min_image_extent = vk::Extent2D {
-        width: c.min_image_extent.width.min(w),
-        height: c.min_image_extent.height.min(h),
-    };
-    c.max_image_extent = vk::Extent2D {
-        width: w,
-        height: h,
-    };
-}
-
-unsafe extern "system" fn numapilot_GetPhysicalDeviceSurfaceCapabilitiesKHR(
-    pdev: vk::PhysicalDevice,
-    surface: vk::SurfaceKHR,
-    out: *mut vk::SurfaceCapabilitiesKHR,
-) -> vk::Result {
-    let Some(i) = instance_of_pdev(pdev) else {
-        return vk::Result::ERROR_INITIALIZATION_FAILED;
-    };
-    let r = unsafe { (i.surface.get_physical_device_surface_capabilities_khr)(pdev, surface, out) };
-    if r == vk::Result::SUCCESS && active() {
-        unsafe { scaled_caps(&mut *out) };
-    }
-    r
-}
-
-unsafe extern "system" fn numapilot_GetPhysicalDeviceSurfaceCapabilities2KHR(
-    pdev: vk::PhysicalDevice,
-    info: *const vk::PhysicalDeviceSurfaceInfo2KHR<'_>,
-    out: *mut vk::SurfaceCapabilities2KHR<'_>,
-) -> vk::Result {
-    let Some(i) = instance_of_pdev(pdev) else {
-        return vk::Result::ERROR_INITIALIZATION_FAILED;
-    };
-    let r = unsafe { (i.caps2.get_physical_device_surface_capabilities2_khr)(pdev, info, out) };
-    if r == vk::Result::SUCCESS && active() {
-        unsafe { scaled_caps(&mut (*out).surface_capabilities) };
-    }
-    r
-}
-
-/// Real (window) size and the small size gamescope composes at, from what it asked for and the
-/// real caps.
-pub fn sizes(
-    asked: vk::Extent2D,
-    real: &vk::SurfaceCapabilitiesKHR,
-) -> (vk::Extent2D, vk::Extent2D) {
-    if real.current_extent.width != u32::MAX {
-        // fixed window: gamescope asked for the scaled size we told it
-        let w =
-            (asked.width * SCALE).clamp(real.min_image_extent.width, real.max_image_extent.width);
-        let h = (asked.height * SCALE)
-            .clamp(real.min_image_extent.height, real.max_image_extent.height);
-        (
-            vk::Extent2D {
-                width: w,
-                height: h,
-            },
-            asked,
-        )
-    } else {
-        let small = vk::Extent2D {
-            width: (asked.width / SCALE).max(1),
-            height: (asked.height / SCALE).max(1),
-        };
-        (asked, small)
-    }
+/// The game's size inside gamescope: `NUMAPILOT_UPSCALE_SRC=WxH` (numapilot passes gamescope's
+/// -w/-h), else half the window.
+pub fn game_size(real: (u32, u32)) -> (u32, u32) {
+    std::env::var("NUMAPILOT_UPSCALE_SRC")
+        .ok()
+        .and_then(|v| {
+            let (w, h) = v.split_once('x')?;
+            Some((w.trim().parse().ok()?, h.trim().parse().ok()?))
+        })
+        .filter(|&(w, h): &(u32, u32)| w > 0 && h > 0)
+        .unwrap_or(((real.0 / 2).max(1), (real.1 / 2).max(1)))
 }
 
 unsafe extern "system" fn numapilot_CreateSwapchainKHR(
@@ -627,7 +553,6 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
         eprintln!("numapilot-upscale: unknown or not downloaded model '{model}': passing through");
         return pass();
     };
-    // the real caps, without our scaling
     let Some(inst) = instance_of_pdev(d.pdev) else {
         return pass();
     };
@@ -638,7 +563,15 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
     if r != vk::Result::SUCCESS {
         return pass();
     }
-    let (real, small) = sizes(info.image_extent, &caps);
+    let real = info.image_extent;
+    let game = game_size((real.width, real.height));
+    let Some(src) = chain::Src::of((real.width, real.height), game) else {
+        eprintln!(
+            "numapilot-upscale: the {}x{} window is not at least 2× the game ({}x{}): passing through",
+            real.width, real.height, game.0, game.1
+        );
+        return pass();
+    };
     if !caps
         .supported_usage_flags
         .contains(vk::ImageUsageFlags::TRANSFER_DST)
@@ -647,18 +580,25 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
         return pass();
     }
     let mut ci2 = *info;
-    ci2.image_extent = real;
     ci2.image_usage |= vk::ImageUsageFlags::TRANSFER_DST;
     let r = unsafe { (d.swap.create_swapchain_khr)(device, &ci2, alloc, out) };
     if r != vk::Result::SUCCESS {
         return r;
     }
     let sc = unsafe { *out };
-    match unsafe { chain::Chain::new(&d, sc, info, real, small, px, &shader) } {
+    match unsafe { chain::Chain::new(&d, sc, info, real, src, px, &shader) } {
         Ok(chain) => {
             eprintln!(
-                "numapilot-upscale: {}x{} → {}x{} with {model}",
-                small.width, small.height, real.width, real.height
+                "numapilot-upscale: game {}x{} (drawn {}× at {},{}) → {}x{} in a {}x{} window with {model}",
+                src.size.0,
+                src.size.1,
+                src.stride,
+                src.offset.0,
+                src.offset.1,
+                src.size.0 * 2,
+                src.size.1 * 2,
+                real.width,
+                real.height
             );
             st().swaps.insert(
                 sc.as_raw(),
@@ -670,8 +610,7 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
             vk::Result::SUCCESS
         }
         Err(e) => {
-            // the swapchain is already the window's size: recreate it as gamescope asked, and
-            // gamescope composes at the small size it believes the window has (no upscaling)
+            // recreate it exactly as gamescope asked (no upscaling)
             eprintln!("numapilot-upscale: {e:#}; passing through");
             unsafe {
                 (d.swap.destroy_swapchain_khr)(device, sc, alloc);
@@ -715,7 +654,7 @@ unsafe extern "system" fn numapilot_GetSwapchainImagesKHR(
         return unsafe { (d.swap.get_swapchain_images_khr)(device, sc, count, out) };
     };
     let sw = sw.lock().unwrap_or_else(|e| e.into_inner());
-    let imgs = sw.chain.small_images();
+    let imgs = sw.chain.images();
     unsafe {
         if out.is_null() {
             *count = imgs.len() as u32;
@@ -857,87 +796,11 @@ mod tests {
     }
 
     #[test]
-    fn surface_sizes() {
-        let mut c = vk::SurfaceCapabilitiesKHR {
-            current_extent: vk::Extent2D {
-                width: 2560,
-                height: 1440,
-            },
-            min_image_extent: vk::Extent2D {
-                width: 2560,
-                height: 1440,
-            },
-            max_image_extent: vk::Extent2D {
-                width: 2560,
-                height: 1440,
-            },
-            ..Default::default()
-        };
-        let real = c;
-        scaled_caps(&mut c);
-        assert_eq!(
-            c.current_extent,
-            vk::Extent2D {
-                width: 1280,
-                height: 720
-            }
-        );
-        assert_eq!(c.min_image_extent, c.current_extent);
-        assert_eq!(c.max_image_extent, c.current_extent);
-        let (r, s) = sizes(c.current_extent, &real);
-        assert_eq!(r, real.current_extent);
-        assert_eq!(
-            s,
-            vk::Extent2D {
-                width: 1280,
-                height: 720
-            }
-        );
-        // odd window: the real swapchain stays the window's size
-        let odd = vk::SurfaceCapabilitiesKHR {
-            current_extent: vk::Extent2D {
-                width: 1921,
-                height: 1081,
-            },
-            min_image_extent: vk::Extent2D {
-                width: 1921,
-                height: 1081,
-            },
-            max_image_extent: vk::Extent2D {
-                width: 1921,
-                height: 1081,
-            },
-            ..Default::default()
-        };
-        let mut o = odd;
-        scaled_caps(&mut o);
-        let (r, s) = sizes(o.current_extent, &odd);
-        assert_eq!(
-            (r.width, r.height, s.width, s.height),
-            (1921, 1081, 960, 540)
-        );
-        // Wayland: the app picks the size, the small one is half of it
-        let wl = vk::SurfaceCapabilitiesKHR {
-            current_extent: vk::Extent2D {
-                width: u32::MAX,
-                height: u32::MAX,
-            },
-            max_image_extent: vk::Extent2D {
-                width: 16384,
-                height: 16384,
-            },
-            ..Default::default()
-        };
-        let mut w2 = wl;
-        scaled_caps(&mut w2);
-        assert_eq!(w2.current_extent.width, u32::MAX);
-        let (r, s) = sizes(
-            vk::Extent2D {
-                width: 3840,
-                height: 2160,
-            },
-            &wl,
-        );
-        assert_eq!((r.width, s.width, s.height), (3840, 1920, 1080));
+    fn game_sizes() {
+        // without NUMAPILOT_UPSCALE_SRC (not set in tests): half the window
+        if std::env::var_os("NUMAPILOT_UPSCALE_SRC").is_none() {
+            assert_eq!(game_size((2560, 1440)), (1280, 720));
+            assert_eq!(game_size((1, 1)), (1, 1));
+        }
     }
 }
