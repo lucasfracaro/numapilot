@@ -43,6 +43,19 @@ DLSS/FSR 2+ need), so the models are video models:
 | Frame generation, cheap | block matching (Longshot) | more artifacts; prototype |
 | Out | BasicVSR++ and other recurrent video SR | too heavy for real time on the MI50 |
 
+### Temporal upscaling with made-up inputs
+
+"DLSS5 For All" (ReShade add-ons on Windows) feeds the NVIDIA DLSS with motion vectors and depth
+estimated from the image alone (DLSS5-Feeder, LumeniteFX). DLSS itself does not run on AMD, but
+the idea fits this chain: the optical flow computed for frame generation (block matching or
+RIFE's flow) is the motion vector field for free, and a temporal upscaler that runs on any Vulkan
+card can take it: FSR 2 / FSR 3.1 upscaler (FidelityFX SDK, MIT, compute shaders, works on
+gfx906). Depth can be left flat or estimated cheaply; FSR 2 uses it mainly for disocclusion.
+Expected: better detail than a spatial model at a lower cost than SRVGG, with ghosting where the
+estimated vectors are wrong (HUD, transparencies). It goes in M2 as a third upscaling candidate;
+code from the Windows add-ons is only a reference until their licenses are checked (they are
+ReShade/DirectX add-ons, so little of it would be reused anyway).
+
 ## Milestones
 
 Each one ends with a measurement that decides whether the next one is worth doing.
