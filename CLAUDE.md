@@ -220,6 +220,19 @@ env/`sh -c`/intérpretes/flatpak; `source_from_path` npm/pipx/flatpak/comunidade
   `container/lab-start`, `docs/TESTES.md`, `tools/capturas/README.md`, entradas antigas do
   CHANGELOG, este arquivo; e testar tudo isso em hardware real.
 
+## Apresentação em outra placa (2026-11-20)
+
+`Profile.present` (`profiles::Present`) e `src/present.rs`: modelo de
+upscaling (`UPSCALERS`: fsr1/nis prontos pelo gamescope; anime4k/srvgg planejados, caem no FSR 1),
+geração de quadros (`multiplier` 1–4, `ENGINES`: lsfg pronto; blockmatch/rife planejados), FPS
+mínimo de base e `measure`. A placa de saída é a do gamescope (`Gamescope.output_gpu` /
+`run --out-gpu`, PR #2): `decide::gamescope_split` dá ao gamescope só a placa de saída (separa as
+duas MI50 pelo PCI) e devolve ao jogo as variáveis da placa dele (`env` depois do `--`);
+`present::plan` só acrescenta o filtro (`-F`), as variáveis do jogo (lsfg, MangoHud) e a medição. Medição: MangoHud só no jogo (log em `~/.local/state/numapilot/present-logs/`), resultado
+em `present.json`; o mostrado é **calculado** (real × multiplicador enquanto a base fica acima do
+mínimo), não contado na saída. Plano completo no PDF do projeto (etapas M0–M4). Falta testar no
+servidor: se a saída de vídeo da MI50 funciona e a medição real × mostrado numa sessão de jogo.
+
 ## Capturas do README
 
 `tools/capturas` (veja o README de lá): sysfs de mentira do servidor, notebook e BC-250, carga por

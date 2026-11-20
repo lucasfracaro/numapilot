@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Presentation block in the profile ("render on one card, improve on the other").** Adjust →
+  Presentation picks the upscaling model (FSR 1 or NIS through gamescope; Anime4K and
+  SRVGGNetCompact listed as planned), frame generation (off/2×/3×/4×, lsfg-vk today; block
+  matching and RIFE planned) and the minimum base FPS under which generation turns off. It runs on
+  the gamescope block and its output card (`gamescope.output_gpu` / `--out-gpu`, below), and opens
+  gamescope even without one in the profile. With "measure" on, MangoHud logs the game's frames
+  (in the game only) and, when it closes, numapilot stores real FPS × shown FPS (calculated: the
+  multiplier while the base FPS is above the minimum) and how many times generation turned off;
+  the Adjust window shows the last session.
 - **gamescope on another card than the game.** A profile's gamescope can run on its own card
   ("gamescope card" in the editor, `gamescope.output_gpu`, or `numapilot run --out-gpu`): the
   game keeps its card (DRI_PRIME and the rest, given back through `env` after gamescope's `--`)

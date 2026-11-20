@@ -2105,9 +2105,9 @@ fn cmd_run(
         .get(&pkey)
         .and_then(|p| p.gamescope.clone())
         .or_else(|| {
-            out_gpu
-                .as_ref()
-                .map(|_| numapilot::profiles::Gamescope::default())
+            // --out-gpu or a presentation block opens gamescope even without one in the profile
+            (out_gpu.is_some() || profiles.get(&pkey).is_some_and(|p| p.present.is_some()))
+                .then(numapilot::profiles::Gamescope::default)
         })
         .filter(|_| {
             std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_none()
@@ -2130,6 +2130,53 @@ fn cmd_run(
         }),
         None => None,
     };
+
+    // Presentation block: upscaling model, frame generation and the real × shown measurement on
+    // top of the gamescope above (and its output card).
+    let mut present_run: Option<(numapilot::profiles::Present, numapilot::present::Plan)> = None;
+    if let Some(g) = gamescope.as_ref()
+        && let Some(pr) = profiles.get(&pkey).and_then(|p| p.present.clone())
+        && which("gamescope").is_some()
+    {
+        let mut plan = numapilot::present::plan(
+            &pr,
+            g,
+            split.as_ref().map(|(o, _)| o),
+            numapilot::present::lsfg_installed(),
+        );
+        if pr.measure && tuning.is_none() {
+            if which("mangohud").is_some() {
+                plan.measuring = true;
+                if !dry_run {
+                    plan.game_env
+                        .extend(numapilot::present::mangohud_env(&pkey));
+                }
+            } else {
+                plan.warnings.push(
+                    numapilot::i18n::tr(
+                        "MangoHud is not installed: no real × shown measurement (sudo pacman -S mangohud)",
+                    )
+                    .into(),
+                );
+            }
+        }
+        for w in &plan.warnings {
+            eprintln!(
+                "{}",
+                numapilot::tf!("numapilot: warning: {}", "numapilot: aviso: {}", w)
+            );
+        }
+        if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
+            eprintln!("gamescope: {}", plan.gamescope.join(" "));
+            for (k, v) in &plan.game_env {
+                eprintln!(
+                    "{}",
+                    numapilot::tf!("game env : {k}={v}", "env jogo : {k}={v}")
+                );
+            }
+        }
+        present_run = Some((pr, plan));
+    }
 
     if dry_run || std::env::var_os("NUMAPILOT_VERBOSE").is_some() {
         eprintln!(
@@ -2307,17 +2354,26 @@ fn cmd_run(
     }
     if let Some(g) = gamescope {
         if which("gamescope").is_some() {
-            let mut a = g.argv();
+            let mut a = match &present_run {
+                Some((_, p)) => p.gamescope.clone(),
+                None => g.argv(),
+            };
+            let mut child = vec![];
             if let Some((_, s)) = split {
                 a.push("--prefer-vk-device".into());
                 a.push(s.prefer);
-                a.push("--".into());
-                a.extend(s.child);
+                child = s.child;
                 set = s.set;
                 unset = s.unset;
-            } else {
-                a.push("--".into());
             }
+            a.push("--".into());
+            if let Some((_, p)) = &present_run {
+                if p.measuring && basename(&argv[0]) != "mangohud" {
+                    argv.insert(0, "mangohud".into());
+                }
+                child = p.game_prefix(child);
+            }
+            a.extend(child);
             a.append(&mut argv);
             argv = a;
         } else {
@@ -2415,6 +2471,38 @@ fn cmd_run(
                 )
             ),
             _ => {}
+        }
+        std::process::exit(st.code().unwrap_or(1));
+    }
+    if let Some((pr, plan)) = present_run.filter(|(_, p)| p.measuring) {
+        let start = numapilot::history::now();
+        let st = c.status().with_context(|| {
+            numapilot::tf!("could not run '{}'", "não consegui executar '{}'", argv[0])
+        })?;
+        let ft = numapilot::tuner::newest_csv(&numapilot::present::log_dir(&pkey), start)
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .map(|s| numapilot::present::frametimes(&s))
+            .unwrap_or_default();
+        match numapilot::present::measure(&ft, plan.multiplier, pr.min_fps) {
+            Some(mut m) => {
+                m.out_pci = plan.out_pci.clone();
+                eprintln!("numapilot: {}", numapilot::present::summary(&m));
+                if let Err(e) = numapilot::present::store_result(&pkey, &m) {
+                    eprintln!(
+                        "{}",
+                        numapilot::tf!(
+                            "numapilot: measurement not stored ({e})",
+                            "numapilot: medição não guardada ({e})"
+                        )
+                    );
+                }
+            }
+            None => eprintln!(
+                "{}",
+                numapilot::i18n::tr(
+                    "numapilot: MangoHud did not record this session (played less than ~10 s?)"
+                )
+            ),
         }
         std::process::exit(st.code().unwrap_or(1));
     }

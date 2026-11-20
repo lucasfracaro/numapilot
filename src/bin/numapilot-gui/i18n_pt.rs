@@ -2255,4 +2255,41 @@ pub const PT: &[(&str, &str)] = &[
     ("speed:", "velocidade:"),
     ("performance", "desempenho"),
     ("edge", "borda"),
+    (
+        "Presentation: upscaling and frame generation",
+        "Apresentação: upscaling e geração de quadros",
+    ),
+    (
+        "The game renders on the card above; the output card takes the finished image (one copy over PCIe), upscales it, generates frames and shows it through its own video output. Opens inside gamescope.",
+        "O jogo renderiza na placa acima; a placa de saída recebe a imagem pronta (uma cópia pelo PCIe), aumenta a resolução, gera quadros e mostra pela própria saída de vídeo. Abre dentro do gamescope.",
+    ),
+    ("Output card", "Placa de saída"),
+    ("the game's card", "a placa do jogo"),
+    ("Upscaling model", "Modelo de upscaling"),
+    ("Frame generation", "Geração de quadros"),
+    ("Minimum base FPS", "FPS mínimo de base"),
+    (
+        "under this the generation turns off (it looks bad below ~40)",
+        "abaixo disso a geração desliga (fica ruim abaixo de ~40)",
+    ),
+    (
+        "Measure real × shown FPS (MangoHud)",
+        "Medir FPS real × mostrado (MangoHud)",
+    ),
+    (
+        "Renders, improves and shows on the same card",
+        "Renderiza, melhora e mostra na mesma placa",
+    ),
+    (
+        "Real FPS is counted by MangoHud in the game; shown FPS is the real one times the multiplier while the base FPS stays above the minimum.",
+        "O FPS real é contado pelo MangoHud no jogo; o mostrado é o real vezes o multiplicador enquanto o FPS de base fica acima do mínimo.",
+    ),
+    (
+        "No measurement yet: open the game through numapilot run (menu shortcut or Steam).",
+        "Ainda sem medição: abra o jogo pelo numapilot run (atalho do menu ou Steam).",
+    ),
+    (
+        "Chosen in the gamescope block above (\"gamescope card\").",
+        "Escolhida no bloco do gamescope acima (\"Placa do gamescope\").",
+    ),
 ];
