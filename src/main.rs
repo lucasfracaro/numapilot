@@ -290,6 +290,44 @@ enum Cmd {
         #[arg(long = "clear", alias = "apagar")]
         clear: bool,
     },
+    /// Measures, on the card that would upscale and generate frames (the output card), how long
+    /// SRVGGNetCompact (realesrgan-ncnn-vulkan) and RIFE (rife-ncnn-vulkan) take per frame, adds
+    /// the copy between the cards and says whether the chain fits in one real frame (step M0 of
+    /// docs/PRESENT-CHAIN.md).
+    PresentBench {
+        /// Card that does the work (alias or PCI, e.g. gfx906-1).
+        #[arg(long)]
+        gpu: String,
+        /// The game's card, for the copy between the cards (alias or PCI).
+        #[arg(long)]
+        game_gpu: Option<String>,
+        /// Game resolution (WxH); the output is this × --scale.
+        #[arg(long, default_value = "1280x720")]
+        size: String,
+        #[arg(long, default_value_t = 2)]
+        scale: u32,
+        /// Base FPS (real frames) the budget is made for.
+        #[arg(long, default_value_t = 60)]
+        fps: u32,
+        /// Shown frames per real frame (1 = no generation).
+        #[arg(long, default_value_t = 2)]
+        multiplier: u8,
+        /// Frames per run (more = steadier numbers, slower).
+        #[arg(long, default_value_t = 24)]
+        frames: u32,
+        /// Folder with game captures (png/jpg/webp) instead of the test picture.
+        #[arg(long)]
+        pictures: Option<std::path::PathBuf>,
+        #[arg(long, default_value = "realesr-animevideov3")]
+        upscale_model: String,
+        #[arg(long, default_value = "rife-v4.6")]
+        rife_model: String,
+        /// Only shows the last saved measurement of each card.
+        #[arg(long)]
+        show: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Turbo by awake cores: the processor's table and how many cores are awake right now.
     Turbo,
     /// Lossless Scaling frame generation (lsfg-vk): status | install (AUR, asks for the password)
@@ -400,6 +438,39 @@ fn real_main() -> Result<()> {
         Cmd::Clock { program, watch } => cmd_clock(&cfg, program.as_deref(), watch),
         Cmd::BenchCores { show, clear } => cmd_bench_cores(&cfg, show, clear),
         Cmd::GpuTest { gpu, json } => cmd_gpu_test(&cfg, gpu.as_deref(), json),
+        Cmd::PresentBench {
+            gpu,
+            game_gpu,
+            size,
+            scale,
+            fps,
+            multiplier,
+            frames,
+            pictures,
+            upscale_model,
+            rife_model,
+            show,
+            json,
+        } => cmd_present_bench(
+            &cfg,
+            &gpu,
+            game_gpu.as_deref(),
+            numapilot::fgbench::Opts {
+                game_w: 0,
+                game_h: 0,
+                scale,
+                base_fps: fps,
+                multiplier,
+                frames,
+                upscale_model,
+                rife_model,
+                pictures,
+                game_pci: None,
+            },
+            &size,
+            show,
+            json,
+        ),
         Cmd::Selftest { out, quick, json } => {
             let r = numapilot::selftest::run(&cfg, !quick, &mut |l| {
                 if !json {
@@ -3869,6 +3940,104 @@ fn cmd_log(lines: usize, which: Option<&str>) -> Result<()> {
             "{}",
             numapilot::tf!("No logs yet.", "Nenhum registro ainda.")
         );
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_present_bench(
+    cfg: &Config,
+    gpu: &str,
+    game_gpu: Option<&str>,
+    mut o: numapilot::fgbench::Opts,
+    size: &str,
+    show: bool,
+    json: bool,
+) -> Result<()> {
+    use numapilot::fgbench;
+    if show {
+        let all = fgbench::load();
+        if json {
+            println!("{}", serde_json::to_string_pretty(&all)?);
+        } else if all.is_empty() {
+            println!(
+                "{}",
+                numapilot::tf!(
+                    "no measurement yet (numapilot present-bench --gpu <card>)",
+                    "nenhuma medição ainda (numapilot present-bench --gpu <placa>)"
+                )
+            );
+        }
+        if !json {
+            for r in all.values() {
+                print!("{}", fgbench::render(r));
+            }
+        }
+        return Ok(());
+    }
+    let (w, h) = size
+        .split_once(['x', 'X'])
+        .and_then(|(w, h)| Some((w.trim().parse().ok()?, h.trim().parse().ok()?)))
+        .with_context(|| {
+            numapilot::tf!(
+                "invalid size '{size}' (use WxH, e.g. 1280x720)",
+                "tamanho inválido '{size}' (use LxA, ex.: 1280x720)"
+            )
+        })?;
+    (o.game_w, o.game_h) = (w, h);
+    if o.scale == 0 || o.multiplier == 0 || o.multiplier > 4 {
+        bail!(numapilot::tf!(
+            "--scale must be at least 1 and --multiplier between 1 and 4",
+            "--scale precisa ser pelo menos 1 e --multiplier entre 1 e 4"
+        ));
+    }
+    let topo = Topology::load(cfg);
+    let find = |n: &str| {
+        topo.gpus
+            .iter()
+            .find(|g| g.matches(n))
+            .cloned()
+            .with_context(|| numapilot::tf!("GPU '{n}' not found", "GPU '{n}' não encontrada"))
+    };
+    let g = find(gpu)?;
+    if let Some(gg) = game_gpu {
+        let gg = find(gg)?;
+        if gg.pci == g.pci {
+            bail!(numapilot::tf!(
+                "the game's card and the working card are the same: nothing to copy",
+                "a placa do jogo e a que trabalha são a mesma: não há o que copiar"
+            ));
+        }
+        o.game_pci = Some(gg.pci);
+    }
+    if !numapilot::containers::which("ffmpeg") {
+        bail!(numapilot::tf!(
+            "ffmpeg is needed to make the test frames (pacman -S ffmpeg)",
+            "o ffmpeg é necessário para montar os quadros de teste (pacman -S ffmpeg)"
+        ));
+    }
+    let work = std::env::temp_dir().join(format!("numapilot-present-bench-{}", std::process::id()));
+    if !json {
+        eprintln!(
+            "{}",
+            numapilot::tf!(
+                "measuring on the {} ({}); leave the card idle, takes about a minute…",
+                "medindo na {} ({}); deixe a placa parada, leva cerca de um minuto…",
+                g.alias,
+                g.pci
+            )
+        );
+    }
+    let r = fgbench::run(&g, &o, &work);
+    let _ = std::fs::remove_dir_all(&work);
+    let r = r?;
+    if let Err(e) = fgbench::store(&r) {
+        eprintln!("numapilot: {e}");
+    }
+    if json {
+        println!("{}", serde_json::to_string_pretty(&r)?);
+    } else {
+        print!("{}", fgbench::render(&r));
     }
     Ok(())
 }

@@ -529,6 +529,10 @@ ensinam o numapilot sobre placas especiais.
   em outra ("Placa do gamescope"; `numapilot run --out-gpu gfx906-1`): o jogo renderiza na placa
   dele e o gamescope amplia e mostra a imagem na outra. Duas placas do mesmo modelo (as MI50) são
   separadas pelo endereço PCI.
+- **Upscaler e geração de quadros próprios na segunda placa** (em andamento, plano em
+  [docs/PRESENT-CHAIN.md](docs/PRESENT-CHAIN.md)): `numapilot present-bench --gpu gfx906-1
+  --game-gpu gfx906-0` mede o SRVGGNetCompact e o RIFE (ncnn no Vulkan) por quadro na placa de
+  saída, soma a cópia entre as placas e diz se a cadeia cabe em um quadro real.
 - **Upscaling por jogo** (no Ajustar…), conforme a placa:
 
 | Modo | Para quem | Como |
