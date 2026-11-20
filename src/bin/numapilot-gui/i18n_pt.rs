@@ -2332,4 +2332,13 @@ pub const PT: &[(&str, &str)] = &[
         "lsfg-vk-cli healthcheck: legacy, duplicate or missing files",
         "lsfg-vk-cli healthcheck: arquivos antigos, duplicados ou faltando",
     ),
+    ("monitor", "monitor"),
+    (
+        "Lossless Scaling must be bought and installed through Steam first (Properties → Betas → \"lsfg-vk\"): lsfg-vk only uses its files.",
+        "O Lossless Scaling precisa ser comprado e instalado pela Steam antes (Propriedades → Betas → \"lsfg-vk\"): o lsfg-vk só usa os arquivos dele.",
+    ),
+    (
+        "Set by the Presentation block: frame generation runs on its output card.",
+        "Definido pelo bloco de Apresentação: a geração de quadros roda na placa de saída dele.",
+    ),
 ];

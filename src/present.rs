@@ -44,6 +44,28 @@ pub fn lsfg_installed() -> bool {
     crate::lsfg::layer_manifest().is_some()
 }
 
+/// What frame generation through lsfg-vk has on this machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lsfg {
+    /// The lsfg-vk Vulkan layer is not installed.
+    Missing,
+    /// lsfg-vk is there, but not the DLL of Lossless Scaling (bought and installed through Steam).
+    NoDll,
+    Ready,
+}
+
+impl Lsfg {
+    pub fn of(s: &crate::lsfg::Status) -> Lsfg {
+        if !s.installed() {
+            Lsfg::Missing
+        } else if !s.has_dll() {
+            Lsfg::NoDll
+        } else {
+            Lsfg::Ready
+        }
+    }
+}
+
 /// What the presentation block adds to a gamescope launch. The output card itself and the split
 /// of the environment (gamescope sees only the output card, the game keeps its own) come from
 /// `Gamescope::output_gpu` / `run --out-gpu` and `decide::gamescope_split`.
@@ -79,7 +101,7 @@ impl Plan {
 
 /// Builds the launch: `gs` is the gamescope block in effect (the profile's or the default one),
 /// `out` the output card when it is not the game's (`decide::resolve_out_gpu`).
-pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: bool) -> Plan {
+pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg) -> Plan {
     let mut warnings = vec![];
     let mut g = gs.clone();
     g.fsr = false;
@@ -126,8 +148,16 @@ pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: bool) -> Plan
                 pr.engine
             ));
             multiplier = 1;
-        } else if pr.engine == "lsfg" && !lsfg {
+        } else if pr.engine == "lsfg" && lsfg == Lsfg::Missing {
             warnings.push(crate::i18n::tr("lsfg-vk is not installed: no frame generation").into());
+            multiplier = 1;
+        } else if pr.engine == "lsfg" && lsfg == Lsfg::NoDll {
+            warnings.push(
+                crate::i18n::tr(
+                    "Lossless Scaling is not installed through Steam (lsfg-vk only works with its files): buy and install it there first, \"lsfg-vk\" branch; no frame generation",
+                )
+                .into(),
+            );
             multiplier = 1;
         } else if pr.engine == "lsfg" {
             // lsfg-vk generates inside the game's process; on the output card it needs a version
@@ -393,7 +423,7 @@ mod tests {
             multiplier: 2,
             ..Default::default()
         };
-        let p = plan(&pr, &gs, Some(&b), true);
+        let p = plan(&pr, &gs, Some(&b), Lsfg::Ready);
         assert_eq!(p.out_pci.as_deref(), Some("0000:83:00.0"));
         assert_eq!(p.gamescope.iter().filter(|x| *x == "-F").count(), 1);
         assert!(p.gamescope.windows(2).any(|w| w == ["-F", "nis"]));
@@ -423,7 +453,7 @@ mod tests {
             engine: "rife".into(),
             ..Default::default()
         };
-        let mut p = plan(&pr, &Gamescope::default(), None, true);
+        let mut p = plan(&pr, &Gamescope::default(), None, Lsfg::Ready);
         assert_eq!(p.out_pci, None);
         assert_eq!(p.multiplier, 1, "RIFE is not ready");
         assert!(p.gamescope.windows(2).any(|w| w == ["-F", "fsr"]));
@@ -437,9 +467,23 @@ mod tests {
             },
             &Gamescope::default(),
             None,
-            false,
+            Lsfg::Missing,
         );
         assert_eq!(p.multiplier, 1, "without lsfg-vk there is no generation");
+        let p = plan(
+            &Present {
+                multiplier: 2,
+                ..Default::default()
+            },
+            &Gamescope::default(),
+            None,
+            Lsfg::NoDll,
+        );
+        assert_eq!(
+            p.multiplier, 1,
+            "without Lossless Scaling from Steam there is no generation"
+        );
+        assert!(p.warnings.iter().any(|w| w.contains("Steam")));
     }
 
     #[test]

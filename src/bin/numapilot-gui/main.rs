@@ -2216,6 +2216,25 @@ pub(crate) fn in_path(bin: &str) -> bool {
         .is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
 }
 
+/// "gfx906-1 (Radeon Pro VII, socket 0, PCIe x16, monitor, 09:00.0)": where a card sits, for
+/// picking the output card. `width` = show the PCIe width (only useful with more than one card).
+pub(crate) fn gpu_place(g: &numapilot::topo::Gpu, width: bool) -> String {
+    let mut parts = vec![g.short_name()];
+    parts.push(
+        g.numa_node
+            .map(|n| format!("socket {n}"))
+            .unwrap_or_else(|| "socket ?".into()),
+    );
+    if width && let Some(w) = pcie_width(&g.pci) {
+        parts.push(format!("PCIe x{w}"));
+    }
+    if g.display_connected {
+        parts.push(crate::i18n::tr("monitor").to_string());
+    }
+    parts.push(g.pci.trim_start_matches("0000:").to_string());
+    format!("{} ({})", g.alias, parts.join(", "))
+}
+
 /// Width of the slowest PCIe stretch between the card and the processor, read once.
 fn pcie_width(pci: &str) -> Option<u32> {
     static W: std::sync::Mutex<Option<std::collections::HashMap<String, Option<u32>>>> =
