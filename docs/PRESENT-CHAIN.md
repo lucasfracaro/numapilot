@@ -28,6 +28,21 @@ game (card A) ──present──▶ gamescope (card B, --prefer-vk-device + DRI
 - Generation turns off under the base FPS of the profile (`Present.min_fps`); the real × shown
   measurement (`present::measure`) already works this way.
 
+## Models: video only
+
+The chain sees only the finished image (no motion vectors, depth or jitter from the engine, which
+DLSS/FSR 2+ need), so the models are video models:
+
+| Use | Model | Notes |
+|---|---|---|
+| Upscaling, light | Anime4K (GLSL shaders) | real time by design; can sharpen edges too much on realistic textures |
+| Upscaling, light | FSRCNN / ESPCN | tiny CNNs; quality a little above FSR 1 |
+| Upscaling | SRVGGNetCompact: `realesr-animevideov3` (x2/x3/x4) | made for video, ~0.6 M parameters; the `present-bench` default |
+| Upscaling | SRVGGNetCompact: `realesr-general-x4v3` | realistic content, x4 only (2× = run at x4 on a smaller input, or train a x2) |
+| Frame generation | RIFE v4 (lite) | learned optical flow, any time fraction (2×, 3×) |
+| Frame generation, cheap | block matching (Longshot) | more artifacts; prototype |
+| Out | BasicVSR++ and other recurrent video SR | too heavy for real time on the MI50 |
+
 ## Milestones
 
 Each one ends with a measurement that decides whether the next one is worth doing.
