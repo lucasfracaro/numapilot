@@ -7,12 +7,16 @@ repository = "https://github.com/lucasfracaro/numapilot"
 
 [dependencies]
 anyhow = "1.0.104"
+# Vulkan compute for the upscaler of the presentation chain (libvulkan loaded at run time)
+ash = "0.38"
 clap = { version = "4.6.7", features = ["derive"] }
 eframe = { version = "0.37.0", optional = true, default-features = false, features = ["glow", "default_fonts", "x11", "wayland", "clipboard"] }
 # ícones monocromáticos (as fontes de emoji que o egui não traz por padrão)
 egui = { version = "0.37.0", optional = true, default-features = false, features = ["monochrome_emoji_fonts"] }
 ksni = { version = "0.3.7", features = ["blocking"], optional = true }
 libc = "0.2.191"
+# GLSL → SPIR-V for those compute passes (no glslc needed)
+naga = { version = "30", features = ["glsl-in", "spv-out"] }
 qrcode = { version = "0.14", optional = true, default-features = false }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"

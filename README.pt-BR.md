@@ -532,7 +532,8 @@ ensinam o numapilot sobre placas especiais.
 - **Upscaler e geração de quadros próprios na segunda placa** (em andamento, plano em
   [docs/PRESENT-CHAIN.md](docs/PRESENT-CHAIN.md)): `numapilot present-bench --gpu gfx906-1
   --game-gpu gfx906-0` mede o SRVGGNetCompact e o RIFE (ncnn no Vulkan) por quadro na placa de
-  saída, soma a cópia entre as placas e diz se a cadeia cabe em um quadro real.
+  saída, soma a cópia entre as placas e diz se a cadeia cabe em um quadro real; `--compute` mede o
+  Anime4K CNN x2 S/M/L como compute Vulkan na placa (tempo da GPU, sem arquivos).
 - **Upscaling por jogo** (no Ajustar…), conforme a placa:
 
 | Modo | Para quem | Como |

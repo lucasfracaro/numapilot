@@ -325,6 +325,13 @@ enum Cmd {
         /// Only shows the last saved measurement of each card.
         #[arg(long)]
         show: bool,
+        /// Upscaling as Vulkan compute (bilinear, Anime4K CNN x2 S/M/L) with GPU timestamps,
+        /// no files and no external tools (step M0b).
+        #[arg(long)]
+        compute: bool,
+        /// Runs per model with --compute.
+        #[arg(long, default_value_t = 50)]
+        runs: u32,
         #[arg(long)]
         json: bool,
     },
@@ -450,6 +457,8 @@ fn real_main() -> Result<()> {
             upscale_model,
             rife_model,
             show,
+            compute,
+            runs,
             json,
         } => cmd_present_bench(
             &cfg,
@@ -469,6 +478,7 @@ fn real_main() -> Result<()> {
             },
             &size,
             show,
+            compute.then_some(runs),
             json,
         ),
         Cmd::Selftest { out, quick, json } => {
@@ -3952,6 +3962,7 @@ fn cmd_present_bench(
     mut o: numapilot::fgbench::Opts,
     size: &str,
     show: bool,
+    compute: Option<u32>,
     json: bool,
 ) -> Result<()> {
     use numapilot::fgbench;
@@ -4000,6 +4011,15 @@ fn cmd_present_bench(
             .with_context(|| numapilot::tf!("GPU '{n}' not found", "GPU '{n}' não encontrada"))
     };
     let g = find(gpu)?;
+    if let Some(runs) = compute {
+        let r = fgbench::compute(&g, o.game_w, o.game_h, runs)?;
+        if json {
+            println!("{}", serde_json::to_string_pretty(&r)?);
+        } else {
+            print!("{}", fgbench::render_compute(&r));
+        }
+        return Ok(());
+    }
     if let Some(gg) = game_gpu {
         let gg = find(gg)?;
         if gg.pci == g.pci {
