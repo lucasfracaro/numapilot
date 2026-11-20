@@ -36,7 +36,7 @@ DLSS/FSR 2+ need), so the models are video models:
 | Use | Model | Notes |
 |---|---|---|
 | Upscaling, light | Anime4K (GLSL shaders) | real time by design; can sharpen edges too much on realistic textures |
-| Upscaling, light | FSRCNN / ESPCN | tiny CNNs; quality a little above FSR 1 |
+| Upscaling, light | FSRCNN / ESPCN | tiny CNNs; quality a little above FSR 1. In use: ArtCNN C4F16/C4F32 (ESPCN-style, MIT, shipped) and FSRCNNX x2 8/16 (LGPL, downloaded on first use) |
 | Upscaling | SRVGGNetCompact: `realesr-animevideov3` (x2/x3/x4) | made for video, ~0.6 M parameters; the `present-bench` default |
 | Upscaling | SRVGGNetCompact: `realesr-general-x4v3` | realistic content, x4 only (2× = run at x4 on a smaller input, or train a x2) |
 | Frame generation | RIFE v4 (lite) | learned optical flow, any time fraction (2×, 3×) |
@@ -146,7 +146,8 @@ only in gamescope (`NUMAPILOT_UPSCALE_PROCS`, default `gamescope,gamescope-wl`):
   compute (`numapilot::vkbench`, the same runner as `present-bench --compute`), copies the result
   into the real image and presents it, waiting on a semaphore of its own.
 
-Model: `NUMAPILOT_UPSCALE_MODEL` (anime4k-s, anime4k-m, anime4k-l, bilinear). Debug messages with
+Model: `NUMAPILOT_UPSCALE_MODEL` (anime4k-s, anime4k-m, anime4k-l, artcnn-c4f16, artcnn-c4f32,
+fsrcnnx, fsrcnnx-16, bilinear, or a path to an mpv user shader). Debug messages with
 `NUMAPILOT_UPSCALE_DEBUG=1`. 32-bit swapchain formats (8-bit BGRA/RGBA and 10-bit A2B10G10R10/A2R10G10B10, the one
 gamescope's SDL backend picks on the server); anything else, or any
 error while building the chain, passes through untouched.
@@ -166,3 +167,22 @@ Not tested yet: together with `lsfg-out` (both layers wrap gamescope's swapchain
 up to the loader), HDR colour spaces (PQ, scRGB) and 16-bit float swapchains (passed through), and the cost per frame on the MI50
 inside a game.
 
+
+## M2: luma models (ArtCNN, FSRCNNX)
+
+ArtCNN and FSRCNNX double only the luma, like mpv uses them. The runner adds a pass that turns
+the RGB picture into luma (BT.709 weights on the encoded values) before the model and one that
+adds the change in luma onto a bilinear RGB picture after it. ArtCNN's passes are mpv compute
+hooks (`//!COMPUTE`, a shared-memory tile per workgroup, `imageStore`): they are rewritten for
+the storage buffers (`texelFetch` reads zero outside the picture, the padding the networks were
+trained with). Two naga quirks are worked around in `vkbench`: multi-dimensional arrays come out
+with their dimensions reversed (the shared tiles are flattened by hand) and `barrier()` is read as
+a barrier on every scope, subgroups included (it becomes a workgroup barrier).
+
+FSRCNNX is LGPL 3 and numapilot is MIT, so it is not shipped: `vkbench::fetch` downloads it from
+the FSRCNN-TensorFlow releases into `~/.local/share/numapilot/shaders` the first time `run`,
+`present-bench --compute` or a profile asks for it.
+
+Checked on lavapipe: every pass compiles; on a smooth picture ArtCNN C4F16 stays within 0.02 of
+bilinear on average, and a real picture looks right with every model. To measure on the server:
+`numapilot present-bench --gpu gfx906-1 --compute`.

@@ -244,8 +244,13 @@ Upscaler próprio (docs/PRESENT-CHAIN.md): ncnn (SRVGG 323 ms, RIFE 598 ms) não
 compute Vulkan (`src/vkbench.rs` roda shaders do mpv; `present-bench --compute`) mediu 0,5–3 ms na MI50.
 Camada `layer/` (VK_LAYER_NUMAPILOT_upscale, implícita, `ENABLE_NUMAPILOT_UPSCALE=1`, só age no
 gamescope): mente o tamanho da janela pela metade e amplia na apresentação. Testada no lavapipe com
-vkcube (Xvfb); falta testar no servidor e junto do `lsfg-out`. Próximos: FSRCNN/ESPCN, FSR 2 com
-movimento estimado.
+vkcube (Xvfb). No servidor o gamescope `--backend sdl` usa swapchain A2B10G10R10 (10 bits): a camada
+trata 8 e 10 bits. Modelos de luma (ArtCNN C4F16/C4F32, MIT, no lugar do ESPCN; FSRCNNX, LGPL,
+baixado em ~/.local/share/numapilot/shaders no primeiro uso, nunca no repositório): o vkbench faz
+RGB → luma antes e soma a luma ampliada sobre o RGB bilinear depois; passes `//!COMPUTE` do mpv
+(memória compartilhada) viram buffers, e o naga inverte arrays multidimensionais e lê `barrier()`
+como de subgrupo (`flatten_shared`, `workgroup_barriers`). Falta: medir na MI50, testar junto do
+`lsfg-out`. Próximo: FSR 2 com movimento estimado.
 
 ## Capturas do README
 

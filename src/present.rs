@@ -14,10 +14,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-/// Upscaling models: (value, name, ready). The planned ones fall back to FSR 1 for now. The
-/// Anime4K ones run in numapilot's Vulkan layer inside gamescope (`layer/`, docs/PRESENT-CHAIN.md);
-/// without the layer installed they fall back to FSR 1 too.
-pub const UPSCALERS: [(&str, &str, bool); 8] = [
+/// Upscaling models: (value, name, ready). The planned ones fall back to FSR 1 for now. Anime4K,
+/// ArtCNN and FSRCNNX run in numapilot's Vulkan layer inside gamescope (`layer/`,
+/// docs/PRESENT-CHAIN.md); without the layer installed they fall back to FSR 1 too. FSRCNNX is
+/// downloaded on first use (LGPL, not shipped).
+pub const UPSCALERS: [(&str, &str, bool); 12] = [
     ("none", "none (output at the game's resolution)", true),
     ("fsr1", "FSR 1 (gamescope)", true),
     ("nis", "NIS (gamescope)", true),
@@ -25,6 +26,10 @@ pub const UPSCALERS: [(&str, &str, bool); 8] = [
     ("anime4k-m", "Anime4K CNN 2× M", true),
     ("anime4k-l", "Anime4K CNN 2× L (sharpest)", true),
     ("anime4k", "Anime4K (= M)", true),
+    ("artcnn-c4f16", "ArtCNN C4F16 (light, sharp edges)", true),
+    ("artcnn-c4f32", "ArtCNN C4F32", true),
+    ("fsrcnnx", "FSRCNNX 8 (downloaded on first use)", true),
+    ("fsrcnnx-16", "FSRCNNX 16 (downloaded on first use)", true),
     ("srvgg", "SRVGGNetCompact (planned)", false),
 ];
 
@@ -34,8 +39,20 @@ pub fn layer_model(upscaler: &str) -> Option<&'static str> {
         "anime4k-s" => Some("anime4k-s"),
         "anime4k-m" | "anime4k" => Some("anime4k-m"),
         "anime4k-l" => Some("anime4k-l"),
+        "artcnn-c4f16" => Some("artcnn-c4f16"),
+        "artcnn-c4f32" => Some("artcnn-c4f32"),
+        "fsrcnnx" => Some("fsrcnnx"),
+        "fsrcnnx-16" => Some("fsrcnnx-16"),
         _ => None,
     }
+}
+
+/// A layer model that is downloaded on first use and is not on this machine yet.
+pub fn model_missing(upscaler: &str) -> bool {
+    layer_model(upscaler).is_some_and(|m| {
+        crate::vkbench::DOWNLOADS.iter().any(|d| d.0 == m)
+            && crate::vkbench::model_source(m).is_none()
+    })
 }
 
 /// Manifest of numapilot's upscaling layer (VK_LAYER_NUMAPILOT_upscale).
@@ -172,7 +189,16 @@ impl Plan {
 /// Builds the launch: `gs` is the gamescope block in effect (the profile's or the default one),
 /// `out` the output card when it is not the game's (`decide::resolve_out_gpu`).
 pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg) -> Plan {
-    plan_with(pr, gs, out, lsfg, upscale_layer_installed())
+    let mut p = plan_with(pr, gs, out, lsfg, upscale_layer_installed());
+    if model_missing(&pr.upscaler) {
+        // `run` downloads it first; here only when that failed
+        p.warnings.push(crate::tf!(
+            "the upscaling model {} is not downloaded (no internet?): the layer passes the picture through without upscaling",
+            "o modelo de upscaling {} não foi baixado (sem internet?): a camada passa a imagem sem ampliar",
+            pr.upscaler
+        ));
+    }
+    p
 }
 
 /// `plan` with whether numapilot's upscaling layer is installed given (tests).
@@ -218,8 +244,8 @@ pub fn plan_with(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg, la
             && rw * 2 != ow
         {
             warnings.push(crate::tf!(
-                "Anime4K upscales exactly 2×: with the game at {} wide the output should be {} wide (it is {}); gamescope scales the rest itself",
-                "o Anime4K amplia exatamente 2×: com o jogo em {} de largura a saída deveria ter {} (está em {}); o gamescope ajusta o resto sozinho",
+                "the layer's models upscale exactly 2×: with the game at {} wide the output should be {} wide (it is {}); gamescope scales the rest itself",
+                "os modelos da camada ampliam exatamente 2×: com o jogo em {} de largura a saída deveria ter {} (está em {}); o gamescope ajusta o resto sozinho",
                 rw,
                 rw * 2,
                 ow
@@ -728,6 +754,26 @@ mod tests {
             "{:?}",
             p.warnings
         );
+        // ArtCNN and FSRCNNX go through the layer too
+        for m in ["artcnn-c4f16", "artcnn-c4f32", "fsrcnnx", "fsrcnnx-16"] {
+            assert!(upscaler_ready(m), "{m}");
+            let p = plan_with(
+                &Present {
+                    upscaler: m.into(),
+                    ..pr.clone()
+                },
+                &gs,
+                None,
+                Lsfg::Ready,
+                true,
+            );
+            assert!(
+                p.gamescope_env
+                    .contains(&("NUMAPILOT_UPSCALE_MODEL".into(), m.into())),
+                "{m}"
+            );
+        }
+        assert!(!model_missing("artcnn-c4f16") && !model_missing("fsr1"));
         // without the layer: FSR 1 in gamescope
         let p = plan_with(&pr, &gs, None, Lsfg::Ready, false);
         assert!(p.gamescope.windows(2).any(|w| w == ["-F", "fsr"]));

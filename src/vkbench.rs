@@ -30,13 +30,103 @@ vec4 hook() {
 }
 ";
 
-/// Models of the bench: (value, name, shader).
-pub const MODELS: [(&str, &str, &str); 4] = [
+/// ArtCNN C4F16 / C4F32 (MIT, Artoriuz), shipped in `shaders/artcnn`: luma doublers.
+pub const ARTCNN_C4F16: &str = include_str!("../shaders/artcnn/ArtCNN_C4F16.glsl");
+pub const ARTCNN_C4F32: &str = include_str!("../shaders/artcnn/ArtCNN_C4F32.glsl");
+
+/// Models shipped with numapilot: (value, name, shader).
+pub const MODELS: [(&str, &str, &str); 6] = [
     ("bilinear", "bilinear 2× (floor)", BILINEAR_X2),
     ("anime4k-s", "Anime4K CNN x2 S", ANIME4K_S),
     ("anime4k-m", "Anime4K CNN x2 M", ANIME4K_M),
     ("anime4k-l", "Anime4K CNN x2 L", ANIME4K_L),
+    ("artcnn-c4f16", "ArtCNN C4F16", ARTCNN_C4F16),
+    ("artcnn-c4f32", "ArtCNN C4F32", ARTCNN_C4F32),
 ];
+
+/// Models downloaded on first use, not shipped because of their license (LGPL 3, igv):
+/// (value, name, file, URL). Kept in `shader_dir()`.
+pub const DOWNLOADS: [(&str, &str, &str, &str); 2] = [
+    (
+        "fsrcnnx",
+        "FSRCNNX x2 8-0-4-1",
+        "FSRCNNX_x2_8-0-4-1.glsl",
+        "https://github.com/igv/FSRCNN-TensorFlow/releases/download/1.1/FSRCNNX_x2_8-0-4-1.glsl",
+    ),
+    (
+        "fsrcnnx-16",
+        "FSRCNNX x2 16-0-4-1",
+        "FSRCNNX_x2_16-0-4-1.glsl",
+        "https://github.com/igv/FSRCNN-TensorFlow/releases/download/1.1/FSRCNNX_x2_16-0-4-1.glsl",
+    ),
+];
+
+/// Where downloaded and user shaders live: `~/.local/share/numapilot/shaders`.
+pub fn shader_dir() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".local/share")))
+        .unwrap_or_else(|| "/tmp".into());
+    base.join("numapilot/shaders")
+}
+
+/// Every model id with its name, shipped and downloadable.
+pub fn model_names() -> Vec<(&'static str, &'static str)> {
+    MODELS
+        .iter()
+        .map(|m| (m.0, m.1))
+        .chain(DOWNLOADS.iter().map(|m| (m.0, m.1)))
+        .collect()
+}
+
+/// The shader of a model: shipped, downloaded (`shader_dir()`), or a path to an mpv user shader
+/// (`/…` or `~/…`, ending in `.glsl`). None when it is unknown or not downloaded yet.
+pub fn model_source(id: &str) -> Option<std::borrow::Cow<'static, str>> {
+    if let Some(m) = MODELS.iter().find(|m| m.0 == id) {
+        return Some(m.2.into());
+    }
+    let path = if let Some(d) = DOWNLOADS.iter().find(|m| m.0 == id) {
+        shader_dir().join(d.2)
+    } else if id.ends_with(".glsl") && (id.starts_with('/') || id.starts_with("~/")) {
+        match id.strip_prefix("~/") {
+            Some(rest) => std::path::Path::new(&std::env::var_os("HOME")?).join(rest),
+            None => id.into(),
+        }
+    } else {
+        return None;
+    };
+    let src = std::fs::read_to_string(path).ok()?;
+    (!parse_hooks(&src).is_empty()).then_some(src.into())
+}
+
+/// Downloads a model of `DOWNLOADS` into `shader_dir()` (curl). Returns the file.
+pub fn fetch(id: &str) -> Result<std::path::PathBuf> {
+    let Some(d) = DOWNLOADS.iter().find(|m| m.0 == id) else {
+        bail!("{id}: not a downloadable model");
+    };
+    let dir = shader_dir();
+    std::fs::create_dir_all(&dir).with_context(|| dir.display().to_string())?;
+    let file = dir.join(d.2);
+    let part = dir.join(format!("{}.part", d.2));
+    let st = std::process::Command::new("curl")
+        .args(["-fsSL", "--max-time", "120", "-o"])
+        .arg(&part)
+        .arg(d.3)
+        .status()
+        .context("curl")?;
+    if !st.success() {
+        let _ = std::fs::remove_file(&part);
+        bail!("curl {}: {st}", d.3);
+    }
+    let src = std::fs::read_to_string(&part).unwrap_or_default();
+    if parse_hooks(&src).is_empty() {
+        let _ = std::fs::remove_file(&part);
+        bail!("{}: not an mpv user shader", d.3);
+    }
+    std::fs::rename(&part, &file)?;
+    Ok(file)
+}
 
 // ---------------------------------------------------------------------------------------------
 // mpv hooks.
@@ -44,16 +134,46 @@ pub const MODELS: [(&str, &str, &str); 4] = [
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pass {
     pub desc: String,
+    /// The texture the pass hooks (MAIN, or LUMA for luma models).
+    pub hook: String,
     pub binds: Vec<String>,
     pub save: String,
     pub width: String,
     pub height: String,
-    /// Everything after the `//!` lines: defines and `vec4 hook()`.
+    /// `//!COMPUTE bw bh [tw th]`: a compute pass writing a bw×bh block per workgroup of
+    /// tw×th threads (it calls `imageStore` itself).
+    pub compute: Option<[u32; 4]>,
+    /// Everything after the `//!` lines: defines and `vec4 hook()` (`void hook()` in compute).
     pub body: String,
 }
 
-/// Splits a user shader into its passes.
-pub fn parse_hooks(src: &str) -> Vec<Pass> {
+/// RGB → luma before a luma model (BT.709 weights on the encoded values, like mpv's Y').
+const TO_LUMA: &str = "//!DESC rgb to luma
+//!HOOK MAIN
+//!BIND MAIN
+//!SAVE LUMA
+vec4 hook() {
+    return vec4(dot(MAIN_tex(MAIN_pos).rgb, vec3(0.2126, 0.7152, 0.0722)), 0.0, 0.0, 1.0);
+}
+";
+
+/// After a luma model: the bilinear RGB picture with its luma replaced by the model's.
+const FROM_LUMA: &str = "//!DESC luma onto bilinear rgb
+//!HOOK MAIN
+//!BIND MAIN
+//!BIND LUMA
+//!SAVE MAIN
+//!WIDTH LUMA.w
+//!HEIGHT LUMA.h
+vec4 hook() {
+    vec4 c = MAIN_tex(MAIN_pos);
+    float y = LUMA_tex(LUMA_pos).x;
+    c.rgb = clamp(c.rgb + (y - dot(c.rgb, vec3(0.2126, 0.7152, 0.0722))), 0.0, 1.0);
+    return vec4(c.rgb, 1.0);
+}
+";
+
+fn parse_raw(src: &str) -> Vec<Pass> {
     let mut passes: Vec<Pass> = vec![];
     let mut cur: Option<Pass> = None;
     let mut in_header = false;
@@ -67,10 +187,12 @@ pub fn parse_hooks(src: &str) -> Vec<Pass> {
                 }
                 cur = Some(Pass {
                     desc: String::new(),
+                    hook: String::new(),
                     binds: vec![],
                     save: String::new(),
                     width: String::new(),
                     height: String::new(),
+                    compute: None,
                     body: String::new(),
                 });
                 in_header = true;
@@ -78,10 +200,22 @@ pub fn parse_hooks(src: &str) -> Vec<Pass> {
             let p = cur.as_mut().expect("pass");
             match k {
                 "DESC" => p.desc = v,
+                "HOOK" => p.hook = v,
                 "BIND" => p.binds.push(v),
                 "SAVE" => p.save = v,
                 "WIDTH" => p.width = v,
                 "HEIGHT" => p.height = v,
+                "COMPUTE" => {
+                    let n: Vec<u32> = v
+                        .split_whitespace()
+                        .filter_map(|x| x.parse().ok())
+                        .collect();
+                    p.compute = match n[..] {
+                        [bw, bh, tw, th] => Some([bw, bh, tw, th]),
+                        [bw, bh] => Some([bw, bh, bw, bh]),
+                        _ => None,
+                    };
+                }
                 _ => {}
             }
             continue;
@@ -97,10 +231,29 @@ pub fn parse_hooks(src: &str) -> Vec<Pass> {
     }
     passes.extend(cur);
     for p in &mut passes {
+        if p.hook.is_empty() {
+            p.hook = "MAIN".into();
+        }
         if p.save.is_empty() {
-            p.save = "MAIN".into();
+            p.save = p.hook.clone();
         }
     }
+    passes
+}
+
+/// Splits a user shader into its passes. A luma model (passes hooking LUMA, like FSRCNNX and
+/// ArtCNN) gets a pass that makes LUMA from the RGB picture before it and one that puts the
+/// doubled luma back onto a bilinear RGB picture after it, so every model goes MAIN → MAIN.
+pub fn parse_hooks(src: &str) -> Vec<Pass> {
+    let mut passes = parse_raw(src);
+    if passes.iter().any(|p| p.hook == "LUMA") {
+        passes.retain(|p| p.hook == "LUMA");
+        let mut all = parse_raw(TO_LUMA);
+        all.append(&mut passes);
+        all.extend(parse_raw(FROM_LUMA));
+        return all;
+    }
+    passes.retain(|p| p.hook == "MAIN");
     passes
 }
 
@@ -140,11 +293,125 @@ pub struct Planned {
     /// Output texture and size.
     pub save: String,
     pub out: (u32, u32),
-    /// Bound textures (binding 1, 2, … in this order).
+    /// Bound textures (binding 1, 2, … in this order), by their real names (HOOKED resolved).
     pub binds: Vec<String>,
+    /// Workgroups to dispatch.
+    pub groups: (u32, u32),
 }
 
 pub const GROUP: u32 = 8;
+
+/// Reads `[a][b]…` at the start of `s`: the bracket contents and the length read.
+fn brackets(s: &str) -> (Vec<String>, usize) {
+    let mut out = vec![];
+    let mut i = 0;
+    let b = s.as_bytes();
+    while i < b.len() && b[i] == b'[' {
+        let mut depth = 0;
+        let start = i + 1;
+        let mut end = None;
+        for (j, &c) in b.iter().enumerate().skip(i) {
+            match c {
+                b'[' => depth += 1,
+                b']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(j);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(e) = end else { break };
+        out.push(s[start..e].to_string());
+        i = e + 1;
+    }
+    (out, i)
+}
+
+/// naga's GLSL front end reverses the dimensions of multi-dimensional arrays (`float a[2][3]`
+/// becomes 3 arrays of 2), which breaks the shared tiles of compute hooks: they become flat
+/// arrays with the index computed by hand.
+fn flatten_shared(src: &str) -> String {
+    let mut arrays: Vec<(String, Vec<String>)> = vec![];
+    let mut s = String::new();
+    for line in src.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("shared ")
+            && let Some((ty, decl)) = rest.split_once(' ')
+            && let Some(open) = decl.find('[')
+        {
+            let name = decl[..open].trim().to_string();
+            let (dims, _) = brackets(&decl[open..]);
+            if dims.len() >= 2 {
+                let total: Vec<String> = dims.iter().map(|d| format!("({d})")).collect();
+                s.push_str(&format!("shared {ty} {name}[{}];\n", total.join(" * ")));
+                arrays.push((name, dims));
+                continue;
+            }
+        }
+        s.push_str(line);
+        s.push('\n');
+    }
+    for (name, dims) in &arrays {
+        let mut out = String::new();
+        let mut rest = s.as_str();
+        let pat = format!("{name}[");
+        while let Some(at) = rest.find(&pat) {
+            let before_ok = rest[..at]
+                .chars()
+                .last()
+                .is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+            out.push_str(&rest[..at]);
+            let after = &rest[at + name.len()..];
+            let (idx, len) = brackets(after);
+            if !before_ok || idx.len() != dims.len() {
+                out.push_str(&pat);
+                rest = &after[1..];
+                continue;
+            }
+            let mut e = format!("({})", idx[0]);
+            for (i, d) in idx.iter().zip(dims.iter()).skip(1) {
+                e = format!("({e}) * ({d}) + ({i})");
+            }
+            out.push_str(&format!("{name}[{e}]"));
+            rest = &after[len..];
+        }
+        out.push_str(rest);
+        s = out;
+    }
+    s
+}
+
+/// Rewrites what a compute hook does with images into the buffer API of `plan`:
+/// `texelFetch(X_raw, p, 0)` → `X_fetch0(p, 0)` (zero outside, like the padding the networks
+/// were trained with), `imageStore(out_image, p, v)` → `out_store(p, v)`, `gl_WorkGroupSize` →
+/// a constant, function-local `const` → plain locals (naga wants constant initializers), and
+/// no float16 extension (the shaders fall back to 32-bit floats).
+fn compute_body(body: &str, binds: &[String], tw: u32, th: u32) -> String {
+    let mut b = body.replace("imageStore(out_image,", "out_store(");
+    for n in binds {
+        b = b.replace(&format!("texelFetch({n}_raw,"), &format!("{n}_fetch0("));
+    }
+    b = b.replace("gl_WorkGroupSize", &format!("uvec3({tw}u, {th}u, 1u)"));
+    let mut out = String::new();
+    for line in b.lines() {
+        if line.trim_start().starts_with("#extension") {
+            continue;
+        }
+        let indented = line.starts_with(' ') || line.starts_with('\t');
+        let t = line.trim_start();
+        if indented && let Some(rest) = t.strip_prefix("const ") {
+            out.push_str(&line[..line.len() - t.len()]);
+            out.push_str(rest);
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    flatten_shared(&out)
+}
 
 /// Turns the passes into compute shaders for an input of w×h. Returns the passes and the size of
 /// every texture (MAIN at the end = the output).
@@ -157,17 +424,39 @@ pub fn plan(
     sizes.insert("MAIN".to_string(), (w, h));
     let mut out = vec![];
     for p in passes {
-        let ow = eval_size(&p.width, &sizes)
-            .with_context(|| format!("{}: width '{}'", p.desc, p.width))?;
-        let oh = eval_size(&p.height, &sizes)
-            .with_context(|| format!("{}: height '{}'", p.desc, p.height))?;
+        let Some(&hooked) = sizes.get(&p.hook) else {
+            bail!("{}: hooks '{}' before it exists", p.desc, p.hook);
+        };
+        let dim = |e: &str, i: usize| -> Result<u32> {
+            if e.is_empty() {
+                return Ok(if i == 0 { hooked.0 } else { hooked.1 });
+            }
+            eval_size(e, &sizes).with_context(|| format!("{}: size '{e}'", p.desc))
+        };
+        let ow = dim(&p.width, 0)?;
+        let oh = dim(&p.height, 1)?;
+        let (tw, th) = match p.compute {
+            Some([_, _, tw, th]) => (tw, th),
+            None => (GROUP, GROUP),
+        };
+        let groups = match p.compute {
+            Some([bw, bh, _, _]) => (ow.div_ceil(bw), oh.div_ceil(bh)),
+            None => (ow.div_ceil(GROUP), oh.div_ceil(GROUP)),
+        };
+        let real = |b: &String| {
+            if b == "HOOKED" {
+                p.hook.clone()
+            } else {
+                b.clone()
+            }
+        };
         let mut g = String::from("#version 450\n");
         g.push_str(&format!(
-            "layout(local_size_x = {GROUP}, local_size_y = {GROUP}, local_size_z = 1) in;\n"
+            "layout(local_size_x = {tw}, local_size_y = {th}, local_size_z = 1) in;\n"
         ));
         g.push_str("layout(std430, set = 0, binding = 0) buffer Out_ { vec4 out_d[]; };\n");
         for (i, b) in p.binds.iter().enumerate() {
-            if !sizes.contains_key(b) {
+            if !sizes.contains_key(&real(b)) {
                 bail!("{}: texture '{b}' is bound before it is saved", p.desc);
             }
             g.push_str(&format!(
@@ -176,14 +465,30 @@ pub fn plan(
             ));
         }
         g.push_str("vec2 cur_pos;\n");
+        g.push_str(&format!(
+            "const vec2 target_size = vec2({ow}.0, {oh}.0);
+void out_store(ivec2 p, vec4 v) {{
+    if (p.x >= 0 && p.y >= 0 && p.x < {ow} && p.y < {oh}) {{
+        out_d[p.y * {ow} + p.x] = v;
+    }}
+}}
+"
+        ));
         for b in &p.binds {
-            let (bw, bh) = sizes[b];
+            let (bw, bh) = sizes[&real(b)];
             g.push_str(&format!(
                 "const vec2 {b}_size = vec2({bw}.0, {bh}.0);
 const vec2 {b}_pt = vec2(1.0 / {bw}.0, 1.0 / {bh}.0);
 #define {b}_pos cur_pos
+#define {b}_mul 1.0
 vec4 {b}_fetch(ivec2 p) {{
     p = clamp(p, ivec2(0, 0), ivec2({mw}, {mh}));
+    return {b}_d[p.y * {bw} + p.x];
+}}
+vec4 {b}_fetch0(ivec2 p, int lod) {{
+    if (p.x < 0 || p.y < 0 || p.x > {mw} || p.y > {mh}) {{
+        return vec4(0.0);
+    }}
     return {b}_d[p.y * {bw} + p.x];
 }}
 vec4 {b}_tex(vec2 pos) {{
@@ -195,36 +500,80 @@ vec4 {b}_tex(vec2 pos) {{
     vec4 c = mix({b}_fetch(i + ivec2(0, 1)), {b}_fetch(i + ivec2(1, 1)), f.x);
     return mix(a, c, f.y);
 }}
-vec4 {b}_texOff(vec2 off) {{
+vec4 {b}_texOff_(vec2 off) {{
     return {b}_fetch(ivec2(floor(cur_pos * {b}_size)) + ivec2(off));
 }}
+#define {b}_texOff(off) {b}_texOff_(vec2(off))
 ",
                 mw = bw - 1,
                 mh = bh - 1
             ));
         }
-        g.push_str(&p.body);
-        g.push_str(&format!(
-            "void main() {{
+        if p.compute.is_some() {
+            g.push_str(&compute_body(&p.body, &p.binds, tw, th));
+            g.push_str(&format!(
+                "void main() {{
+    cur_pos = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5, 0.5)) / target_size;
+    hook();
+}}
+"
+            ));
+        } else {
+            g.push_str(&p.body);
+            g.push_str(&format!(
+                "void main() {{
     ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
     if (gid.x >= {ow} || gid.y >= {oh}) {{
         return;
     }}
-    cur_pos = (vec2(gid) + vec2(0.5, 0.5)) / vec2({ow}.0, {oh}.0);
+    cur_pos = (vec2(gid) + vec2(0.5, 0.5)) / target_size;
     out_d[gid.y * {ow} + gid.x] = hook();
 }}
 "
-        ));
+            ));
+        }
         sizes.insert(p.save.clone(), (ow, oh));
         out.push(Planned {
             desc: p.desc.clone(),
             glsl: g,
             save: p.save.clone(),
             out: (ow, oh),
-            binds: p.binds.clone(),
+            binds: p.binds.iter().map(real).collect(),
+            groups,
         });
     }
     Ok((out, sizes))
+}
+
+/// naga reads GLSL's `barrier()` as a barrier on every scope, subgroups included, which needs
+/// the subgroup capability; in a compute shader it means the workgroup (shared memory and
+/// buffers), so that is what it becomes.
+fn workgroup_barriers(b: &mut naga::Block) {
+    use naga::{Barrier, Statement as S};
+    for st in b.iter_mut() {
+        match st {
+            S::ControlBarrier(x) | S::MemoryBarrier(x) => {
+                *x = Barrier::WORK_GROUP | Barrier::STORAGE;
+            }
+            S::Block(inner) => workgroup_barriers(inner),
+            S::If { accept, reject, .. } => {
+                workgroup_barriers(accept);
+                workgroup_barriers(reject);
+            }
+            S::Switch { cases, .. } => {
+                for c in cases.iter_mut() {
+                    workgroup_barriers(&mut c.body);
+                }
+            }
+            S::Loop {
+                body, continuing, ..
+            } => {
+                workgroup_barriers(body);
+                workgroup_barriers(continuing);
+            }
+            _ => {}
+        }
+    }
 }
 
 /// GLSL compute → SPIR-V words.
@@ -233,9 +582,15 @@ pub fn compile(glsl: &str) -> Result<Vec<u32>> {
     use naga::front::glsl;
     let mut fe = glsl::Frontend::default();
     let opts = glsl::Options::from(naga::ShaderStage::Compute);
-    let module = fe
+    let mut module = fe
         .parse(&opts, glsl)
         .map_err(|e| anyhow!("GLSL: {}", e.emit_to_string(glsl)))?;
+    for (_, f) in module.functions.iter_mut() {
+        workgroup_barriers(&mut f.body);
+    }
+    for e in module.entry_points.iter_mut() {
+        workgroup_barriers(&mut e.function.body);
+    }
     let info = naga::valid::Validator::new(
         naga::valid::ValidationFlags::all(),
         naga::valid::Capabilities::empty(),
@@ -643,7 +998,7 @@ pub fn run(
                 &[sets[i]],
                 &[],
             );
-            d.cmd_dispatch(cb, p.out.0.div_ceil(GROUP), p.out.1.div_ceil(GROUP), 1);
+            d.cmd_dispatch(cb, p.groups.0, p.groups.1, 1);
             barrier(
                 cb,
                 vk::AccessFlags::SHADER_WRITE,
@@ -688,7 +1043,7 @@ pub fn run(
                 &[vk::SubmitInfo::default().command_buffers(&cbs)],
                 fence,
             )
-            .and_then(|_| d.wait_for_fences(&[fence], true, 10_000_000_000))
+            .and_then(|_| d.wait_for_fences(&[fence], true, 60_000_000_000))
             .and_then(|_| d.reset_fences(&[fence]))
         };
         if let Err(e) = r {
@@ -799,6 +1154,41 @@ mod tests {
     }
 
     #[test]
+    fn luma_models_and_compute_hooks() {
+        let p = parse_hooks(ARTCNN_C4F16);
+        assert_eq!(p.first().unwrap().desc, "rgb to luma");
+        assert_eq!(p.last().unwrap().desc, "luma onto bilinear rgb");
+        assert!(p[1..p.len() - 1].iter().all(|x| x.hook == "LUMA"));
+        assert_eq!(p[1].compute, Some([24, 32, 12, 16]));
+        let (planned, sizes) = plan(&p, 1280, 720).unwrap();
+        assert_eq!(sizes["LUMA"], (2560, 1440));
+        assert_eq!(sizes["conv2d_6"], (1280, 720));
+        assert_eq!(
+            planned[1].groups,
+            (2560u32.div_ceil(24), 1440u32.div_ceil(32))
+        );
+        assert!(planned[1].glsl.contains("LUMA_fetch0("));
+        assert!(!planned[1].glsl.contains("imageStore"));
+        // a pass without WIDTH/HEIGHT/SAVE writes its hooked texture at its size
+        let src = "//!HOOK LUMA\n//!BIND LUMA\nvec4 hook() { return LUMA_texOff(0); }\n";
+        let p = parse_hooks(src);
+        assert_eq!(p.len(), 3);
+        assert_eq!(p[1].save, "LUMA");
+        let (_, sizes) = plan(&p, 64, 36).unwrap();
+        assert_eq!(sizes["MAIN"], (64, 36));
+        // naga reverses multi-dimensional arrays: shared tiles become flat
+        let f = flatten_shared("shared V4 inp[4][isize.y][isize.x];\nx = inp[0][y][x + 1];\n");
+        assert_eq!(
+            f,
+            "shared V4 inp[(4) * (isize.y) * (isize.x)];\n\
+             x = inp[(((0)) * (isize.y) + (y)) * (isize.x) + (x + 1)];\n"
+        );
+        assert_eq!(model_source("artcnn-c4f32").as_deref(), Some(ARTCNN_C4F32));
+        assert!(model_source("nonexistent").is_none());
+        assert!(model_names().iter().any(|m| m.0 == "fsrcnnx"));
+    }
+
+    #[test]
     fn every_pass_compiles() {
         for (name, _, src) in MODELS {
             let (planned, _) = plan(&parse_hooks(src), 64, 36).unwrap();
@@ -839,5 +1229,25 @@ mod tests {
         assert!(px.iter().all(|v| v.is_finite()));
         let inner = px[(16 * 64 + 32) * 4];
         assert!((inner - 0.5).abs() < 0.2, "{inner}");
+        // ArtCNN (luma, compute hooks with shared tiles) stays close to bilinear on a smooth picture
+        let (w, h) = (40usize, 24usize);
+        let mut pic = vec![1f32; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                let v = 0.5 + 0.3 * (x as f32 * 0.2).sin() * (y as f32 * 0.15).cos();
+                pic[(y * w + x) * 4] = v;
+                pic[(y * w + x) * 4 + 1] = v * 0.8;
+                pic[(y * w + x) * 4 + 2] = 1.0 - v;
+            }
+        }
+        let (_, base) = run(&ctx, BILINEAR_X2, w as u32, h as u32, 1, Some(&pic), true).unwrap();
+        let (_, px) = run(&ctx, ARTCNN_C4F16, w as u32, h as u32, 1, Some(&pic), true).unwrap();
+        let mean = base
+            .iter()
+            .zip(&px)
+            .map(|(a, b)| (a - b).abs())
+            .sum::<f32>()
+            / base.len() as f32;
+        assert!(mean < 0.02, "{mean}");
     }
 }

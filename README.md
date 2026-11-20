@@ -551,9 +551,10 @@ teach numapilot about special boards.
   [docs/PRESENT-CHAIN.md](docs/PRESENT-CHAIN.md)): `numapilot present-bench --gpu gfx906-1
   --game-gpu gfx906-0` measures SRVGGNetCompact and RIFE (ncnn on Vulkan) per frame on the
   output card, adds the copy between the cards and says whether the chain fits in one real frame;
-  `--compute` times Anime4K CNN x2 S/M/L as Vulkan compute on the card (GPU time, no files).
-  Anime4K S/M/L are upscaling models of the presentation block: a Vulkan layer in gamescope
-  (`layer/`) has gamescope compose at half the size and upscales 2× at present.
+  `--compute` times the upscaling models as Vulkan compute on the card (GPU time, no files).
+  Anime4K CNN S/M/L, ArtCNN C4F16/C4F32 and FSRCNNX (downloaded on first use, LGPL) are upscaling
+  models of the presentation block: a Vulkan layer in gamescope (`layer/`) has gamescope compose
+  at half the size and upscales 2× at present.
 - **Upscaling per game** (in Adjust…), depending on the card:
 
 | Mode | For | How |

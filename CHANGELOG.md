@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **More upscaling models: ArtCNN C4F16 / C4F32 and FSRCNNX.** ArtCNN (MIT, shipped in
+  `shaders/artcnn`) are ESPCN-style luma doublers of 12 k and 48 k weights; FSRCNNX x2 8 and 16
+  (LGPL 3, not shipped) are downloaded into `~/.local/share/numapilot/shaders` the first time a
+  profile, `run` or `present-bench --compute` asks for them. Both are new options in Adjust →
+  Presentation and models of the gamescope layer (`NUMAPILOT_UPSCALE_MODEL`, which also takes a
+  path to any mpv user shader). The runner (`src/vkbench.rs`) now handles luma models (RGB →
+  luma before, the doubled luma added onto bilinear RGB after), passes with no size or SAVE,
+  `HOOKED`, and mpv compute hooks (`//!COMPUTE`, shared-memory tiles, `imageStore`). Checked on
+  lavapipe against bilinear and by eye; not measured on the MI50 yet.
 - Upscaling layer: 10-bit swapchains (A2B10G10R10 / A2R10G10B10) are upscaled too. On the
   server, gamescope with `--backend sdl` makes an A2B10G10R10 swapchain and the layer passed it
   through untouched. Tested with vkcube on a 30-bit X screen (lavapipe).
