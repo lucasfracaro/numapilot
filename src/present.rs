@@ -301,6 +301,14 @@ pub fn lsfg_out_config(user: &str, dll: Option<&std::path::Path>, multiplier: u8
         "# Written by numapilot for frame generation inside gamescope (lsfg-vk on the output card).\n\
          # Made from your lsfg-vk config, which is left as it is. Rewritten at every start.\n",
     );
+    // lsfg-vk 2.x refuses a file without its format version ("Unsupported configuration
+    // version (must be 2)"): the user's is kept, else 2 (no conf.toml yet).
+    if !top
+        .iter()
+        .any(|l| l.split('=').next().is_some_and(|k| k.trim() == "version"))
+    {
+        top.insert(0, "version = 2");
+    }
     for l in &top {
         o.push_str(l);
         o.push('\n');
@@ -643,6 +651,12 @@ mod tests {
         let v: toml::Table = c.parse().expect(&c);
         assert_eq!(v["global"]["dll"].as_str(), Some("/s/LS/lsfg-vk.dll"));
         assert_eq!(v["profile"].as_array().unwrap().len(), 1);
+        assert_eq!(v["version"].as_integer(), Some(2), "{c}");
+        // a config with only [global] (no version line) gets one too, once
+        let c = lsfg_out_config("[global]\nallow_fp16 = false\n", None, 2);
+        let v: toml::Table = c.parse().expect(&c);
+        assert_eq!(v["version"].as_integer(), Some(2));
+        assert_eq!(c.matches("version").count(), 1);
     }
 
     #[test]
