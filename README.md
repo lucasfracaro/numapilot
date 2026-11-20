@@ -545,6 +545,10 @@ teach numapilot about special boards.
   on another one ("gamescope card"; `numapilot run --out-gpu gfx906-1`): the game renders on its
   card and gamescope upscales and shows the image on the other. Two cards of the same model (the
   MI50s) are told apart by the PCI address.
+- **Own upscaler and frame generation on the second card** (in progress, plan in
+  [docs/PRESENT-CHAIN.md](docs/PRESENT-CHAIN.md)): `numapilot present-bench --gpu gfx906-1
+  --game-gpu gfx906-0` measures SRVGGNetCompact and RIFE (ncnn on Vulkan) per frame on the
+  output card, adds the copy between the cards and says whether the chain fits in one real frame.
 - **Upscaling per game** (in Adjust…), depending on the card:
 
 | Mode | For | How |

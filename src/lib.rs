@@ -21,6 +21,7 @@ pub mod doctor;
 pub mod driver;
 pub mod energy;
 pub mod fans;
+pub mod fgbench;
 pub mod gpuctl;
 pub mod gputest;
 pub mod health;
