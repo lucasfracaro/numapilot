@@ -56,21 +56,44 @@ estimated vectors are wrong (HUD, transparencies). It goes in M2 as a third upsc
 code from the Windows add-ons is only a reference until their licenses are checked (they are
 ReShade/DirectX add-ons, so little of it would be reused anyway).
 
+## M0 result (server, 2026-11-20)
+
+`present-bench --gpu gfx906-1 --game-gpu gfx906-0`, 720p → 1440p, 2×:
+
+| Stage | Time | Goal |
+|---|---|---|
+| Copy between the cards (calculated) | 0.62 ms | ~0.7 ms |
+| SRVGGNetCompact `realesr-animevideov3` 2× | 323 ms | ≤ 6 ms |
+| RIFE v4.6 at 1440p | 598 ms | ≤ 4 ms |
+| Total | 924 ms | 16.7 ms |
+
+The card was at 88–99 % during the runs, so it is the models, not the PNG files: both are about
+two orders of magnitude too slow for real time on the MI50. The copy is not a problem.
+Conclusions:
+
+- Frame generation stays with **lsfg-vk on the output card** (`lsfg-out`, already in `main`:
+  the layer loaded only in gamescope with the SDL backend generates on gamescope's card). A
+  learned interpolator of our own is out until there is one ~100× lighter than RIFE.
+- Our own work goes into **upscaling with tiny models run directly as Vulkan compute** on the
+  output card, with no files and no ncnn: Anime4K CNN x2 (S/M/L, a few thousand to ~100 k
+  weights, MIT), FSRCNN, and FSR 2 fed with motion estimated at the game's resolution.
+- It runs where lsfg-vk already proved the path works: **a Vulkan layer loaded only in
+  gamescope**. The layer gives gamescope a swapchain at the game's resolution and presents into
+  the real one at the display's resolution, running the upscaler in between (GPU timestamps per
+  stage).
+
 ## Milestones
 
 Each one ends with a measurement that decides whether the next one is worth doing.
 
 | Step | What | Done when |
 |---|---|---|
-| M0 | `numapilot present-bench`: per-frame time of SRVGGNetCompact (`realesrgan-ncnn-vulkan`, 2×) and RIFE v4 (`rife-ncnn-vulkan`) on the output card, copy between the cards calculated from the PCIe links, budget of one real frame. Plus the gamescope split already in `main` (`run --out-gpu`) with `-F fsr`. | There are numbers for the budget table on the MI50. |
-| M1 | `numapilot-present` helper: reads gamescope's PipeWire node (dmabuf), runs FSR 1 + block matching in Vulkan compute, shows it full screen on card B. | 60 FPS of base shows at 120 Hz without visible stutter for 10 minutes. |
-| M2 | Models in the helper: Anime4K (GLSL → compute) and SRVGGNetCompact (ncnn) for upscaling, RIFE v4 lite for generation; side by side with the same captures. | One model of each kind fits the goal and beats FSR 1 / block matching by eye. |
-| M3 | The chain inside gamescope's composition path (patch, no PipeWire, no extra window). | Total delay drops against M1 and it also works in session mode. |
-| M4 | numapilot: the models become `ready` in `present::UPSCALERS`/`ENGINES`, one click turns it on, the panel shows real × shown FPS and time per stage. | One click turns everything on. |
-
-A cheaper side path for M2's upscaling: Anime4K ported to a ReShade `.fx` and loaded with
-gamescope's `--reshade-effect`, with no helper at all. Worth trying once M0 says the card has
-room.
+| M0 ✓ | `numapilot present-bench` (ncnn models, copy) | Done: ncnn SRVGG/RIFE are ~100× over the budget; the copy fits. |
+| M0b | `present-bench --anime4k`: Anime4K CNN x2 (S/M/L) through mpv's Vulkan renderer on the output card, ms per frame at 720p → 1440p and 1080p → 4K. | There is one Anime4K size under 6 ms on the MI50. |
+| M1 | `numapilot-upscale` Vulkan layer in gamescope (SDL backend, like `lsfg-out`): smaller swapchain for gamescope, compute upscale into the real one, first bilinear/FSR 1 (EASU) as the baseline, with GPU timestamps. | A game shows through the layer at 60 FPS with ≤ 1 ms of overhead; works together with `lsfg-out`. |
+| M2 | Anime4K CNN x2 ported from its GLSL hooks to the layer's compute shaders; then FSRCNN. | It fits the 6 ms and beats FSR 1 by eye. |
+| M3 | FSR 2 in the layer with motion estimated by block matching at the game's resolution (and flat depth). | Better than M2 in motion, ghosting acceptable. |
+| M4 | numapilot: the models become `ready` in `present::UPSCALERS`, one click turns it on, the panel shows real × shown FPS and time per stage. | One click turns everything on. |
 
 ## Budget (1080p → 1440p, 60 FPS of base, 2×)
 
