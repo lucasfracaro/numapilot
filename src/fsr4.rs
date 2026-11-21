@@ -99,7 +99,8 @@ fn gfx_of(g: &Gpu) -> Option<String> {
     }
     // without KFD (no ROCm) the driver does not say: the cards numapilot knows by PCI id
     let gfx = match g.device {
-        0x13fe => "gfx1013", // BC-250 (Cyan Skillfish)
+        0x13fe => "gfx1013",          // BC-250 (Cyan Skillfish)
+        0x163f | 0x1435 => "gfx1033", // Steam Deck LCD / OLED (Van Gogh)
         0x66a0 | 0x66a1 | 0x66a2 | 0x66a3 | 0x66a7 | 0x66af => "gfx906", // Vega 20: MI50/MI60, Radeon VII
         0x6860..=0x687f => "gfx900",                                     // Vega 10
         0x67c0..=0x67ff | 0x6fdf | 0x6980..=0x699f => "gfx803",          // Polaris
@@ -495,7 +496,7 @@ pub fn ini_settings(watermark: bool) -> Vec<(&'static str, &'static str, &'stati
         ("FSR", "UpscalerIndex", "0"),
         ("FSR", "Fsr4ForceModel", "2"),
         ("FSR", "FsrNonLinearColorSpace", "false"),
-        // explicit "false": with "auto" the FSR 4 INT8 DLL still drew its watermark (BC-250)
+        // written out, so a reinstall without --watermark turns an earlier "true" off
         ("FSR", "Fsr4EnableWatermark", mark),
         ("FrameGen", "Enabled", "false"),
         // the game's own frame generation goes through OptiScaler's FSR-FG, which has its own mark
@@ -656,6 +657,7 @@ mod tests {
     fn routes() {
         assert_eq!(route_for_gfx("gfx906"), Route::Wave64);
         assert_eq!(route_for_gfx("gfx1013"), Route::Wave32);
+        assert_eq!(route_for_gfx("gfx1033"), Route::Wave32); // Steam Deck
         assert_eq!(route_for_gfx("gfx1010"), Route::Unsupported);
         assert_eq!(route_for_gfx("gfx1035"), Route::Wave32);
         assert_eq!(route_for_gfx("gfx1100"), Route::Wave32);
