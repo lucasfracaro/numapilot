@@ -286,8 +286,12 @@ OptiPatcher e `nvngx_dlss.dll` da NVIDIA. **Nenhuma DLL no repositório** (decis
 baixado no PC com URL e **SHA-256 fixos** (`fsr4::Pinned`) e recusado se não bater. Servidor
 conferido (2026-11-21): as duas MI50 têm `integerDotProduct4x8BitPackedSignedAccelerated` e
 `shaderFloat16`, subgroup só 64; RX 570 nenhum dos dois. Com duas placas: FSR 4 no jogo + `lsfg-out`
-na outra (bloco de apresentação com upscaling "none"). Falta: testar num jogo DX12 com DLSS na MI50
-e na BC-250 (CUs e clock de fábrica) e medir o custo.
+na outra (bloco de apresentação com upscaling "none").
+Testado na BC-250 (2026-11-21, 40 CUs, Proton 11.0, Spider-Man Remastered com DLSS Qualidade e
+`WINEDLLOVERRIDES="dxgi=n,b" %command%`): marca d'água "FSR4-I8 UPSCALE 4.1.1R12" aparece (FSR 4
+INT8 rodando), GPU sem reset. Mas a VRAM da BIOS é só 512 MB (desktop usa ~316 MB): 71 erros
+`amdgpu_dm_plane_helper_prepare_fb: Failed to pin framebuffer: -ENOMEM` em 3,5 min. Falta: FPS
+(MangoHud), testar sem DLSS para ver se o ENOMEM é do FSR 4, UMA maior na BIOS; MI50 num jogo DX12.
 
 ## Capturas do README
 
