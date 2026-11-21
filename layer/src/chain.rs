@@ -179,6 +179,9 @@ pub struct Chain {
     hist_ready: bool,
     /// Parity of the next present.
     odd: bool,
+    /// Command pools per queue family, this chain's own: a pool must not be used from two
+    /// threads at once, and gamescope can present on one swapchain while it destroys another.
+    pools: std::collections::HashMap<u32, vk::CommandPool>,
 }
 
 unsafe fn mem_type(d: &DeviceData, bits: u32, want: vk::MemoryPropertyFlags) -> Option<u32> {
@@ -271,6 +274,7 @@ impl Chain {
             hist: vec![],
             hist_ready: false,
             odd: false,
+            pools: Default::default(),
         };
         match unsafe { c.build(d, info, px, shader) } {
             Ok(()) => Ok(c),
@@ -559,17 +563,30 @@ impl Chain {
         if i >= self.frames.len() {
             bail!("image index {i} out of range");
         }
+        let pool = match self.pools.get(&family) {
+            Some(&p) => p,
+            None => {
+                let p = unsafe {
+                    dev.create_command_pool(
+                        &vk::CommandPoolCreateInfo::default()
+                            .queue_family_index(family)
+                            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER),
+                        None,
+                    )
+                }?;
+                self.pools.insert(family, p);
+                p
+            }
+        };
         let f = &mut self.frames[i];
         unsafe {
             dev.wait_for_fences(&[f.fence], true, 5_000_000_000)?;
-            dev.reset_fences(&[f.fence])?;
         }
         let cb = match f.cb {
             Some((fam, cb)) if fam == family => cb,
             old => {
-                let pool = unsafe { d.pool(family) }?;
                 if let Some((ofam, ocb)) = old
-                    && let Ok(op) = unsafe { d.pool(ofam) }
+                    && let Some(&op) = self.pools.get(&ofam)
                 {
                     unsafe { dev.free_command_buffers(op, &[ocb]) };
                 }
@@ -586,6 +603,9 @@ impl Chain {
                 cb
             }
         };
+        // reset only once nothing can fail before the submit (a reset fence that is never
+        // submitted would stall the next present on this image)
+        unsafe { dev.reset_fences(&[f.fence]) }?;
         let first_use = !f.used;
         // with no history both sets are the same
         let parity = usize::from(self.odd && !self.hist.is_empty());
@@ -800,15 +820,19 @@ impl Chain {
     pub unsafe fn destroy(&mut self, d: &DeviceData) {
         let dev = &d.dev;
         unsafe {
+            // every submit of this chain signals one of these fences: once they are all
+            // signaled, nothing of it runs on the GPU any more
+            let fences: Vec<vk::Fence> = self.frames.iter().map(|f| f.fence).collect();
+            if !fences.is_empty() {
+                let _ = dev.wait_for_fences(&fences, true, 10_000_000_000);
+            }
             for f in self.frames.drain(..) {
-                let _ = dev.wait_for_fences(&[f.fence], true, 1_000_000_000);
-                if let Some((fam, cb)) = f.cb
-                    && let Ok(p) = d.pool(fam)
-                {
-                    dev.free_command_buffers(p, &[cb]);
-                }
                 dev.destroy_fence(f.fence, None);
                 dev.destroy_semaphore(f.sem, None);
+            }
+            // frees the command buffers too
+            for (_, p) in self.pools.drain() {
+                dev.destroy_command_pool(p, None);
             }
             for p in self.passes.drain(..) {
                 dev.destroy_pipeline(p.pipe, None);
