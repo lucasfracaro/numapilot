@@ -1349,7 +1349,7 @@ mod tests {
             .iter()
             .position(|x| x.desc == "luma onto bilinear rgb")
             .unwrap();
-        assert_eq!(p[i + 1].desc, "temporal: block matching");
+        assert_eq!(p[i + 1].desc, "temporal: luma");
         assert!(history(&plan(&parse_hooks(ANIME4K_S), 64, 36).unwrap().1).is_empty());
     }
 

@@ -201,7 +201,10 @@ bilinear on average, and a real picture looks right with every model. To measure
 FidelityFX FSR 2 code but the same idea reduced to what the picture alone gives:
 
 1. **Block matching** on the game's frame (INPUT) against the previous one (PREV_IN): 8×8 blocks,
-   16 luma samples each, search ±8 game pixels; standing still wins ties (HUD, flat areas).
+   16 luma samples each, ±8 game pixels; standing still wins ties (HUD, flat areas). Coarse to
+   fine: steps of 2 pixels on a 3×3-blurred luma (81 candidates), then ±1 around the two best on
+   the luma itself (18), instead of all 289. The full search cost 3.7 ms at 720p and 8.8 ms at
+   1080p on the MI50 (first server run).
 2. **Reproject and blend**: the previous output (PREV_OUT) is read where the block was, clamped
    to the min/max of the current 3×3 neighbourhood (the FSR 2 / TAA guard against ghosting) and
    mixed 80/20 with the current frame. A block that matches nothing well (new content) or a
