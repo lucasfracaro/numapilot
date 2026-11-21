@@ -1589,7 +1589,18 @@ pub const PT: &[(&str, &str)] = &[
         "Lossless Scaling on the output card (lsfg-vk in gamescope)",
         "Lossless Scaling na placa de saída (lsfg-vk no gamescope)",
     ),
-    ("block matching (planned)", "block matching (planejado)"),
+    (
+        "numapilot: block matching on the output card (2×, with a layer model)",
+        "numapilot: block matching na placa de saída (2×, com um modelo da camada)",
+    ),
+    (
+        "numapilot's frame generation runs in its upscaling layer: choose one of the layer's models (Anime4K, ArtCNN, FSRCNNX); no frame generation",
+        "a geração de quadros do numapilot roda na camada de upscaling dele: escolha um dos modelos da camada (Anime4K, ArtCNN, FSRCNNX); sem geração de quadros",
+    ),
+    (
+        "numapilot's frame generation makes 2× only: using 2×",
+        "a geração de quadros do numapilot faz só 2×: usando 2×",
+    ),
     ("RIFE v4 lite (planned)", "RIFE v4 lite (planejado)"),
     ("lsfg-vk is not installed", "lsfg-vk não instalado"),
     (

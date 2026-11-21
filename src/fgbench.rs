@@ -659,33 +659,33 @@ pub fn compute(g: &Gpu, w: u32, h: u32, runs: u32) -> anyhow::Result<ComputeRepo
         ));
     }
     let mut models = vec![];
-    // every model, then the temporal pass on top of two of them (its own cost)
+    // every model, then the temporal pass (0: none, 1: temporal, 2: temporal and frame
+    // generation) on top of two of them (their own cost)
     let list = crate::vkbench::model_names()
         .into_iter()
-        .map(|(id, name)| (id, name.to_string(), false))
-        .chain(
-            ["bilinear", "anime4k-m"]
-                .into_iter()
-                .map(|id| (id, format!("{id} + temporal"), true)),
-        )
+        .map(|(id, name)| (id, name.to_string(), 0u8))
+        .chain(["bilinear", "anime4k-m"].into_iter().flat_map(|id| {
+            [
+                (id, format!("{id} + temporal"), 1),
+                (id, format!("{id} + temporal + frame generation"), 2),
+            ]
+        }))
         .collect::<Vec<_>>();
-    for (id, name, temporal) in list {
+    for (id, name, extra) in list {
         // FSRCNNX is downloaded the first time (LGPL, not shipped)
         let src = crate::vkbench::model_source(id).or_else(|| {
             crate::vkbench::fetch(id).ok()?;
             crate::vkbench::model_source(id)
         });
-        let src = src.map(|s| {
-            if temporal {
-                crate::vkbench::with_temporal(&s)
-            } else {
-                s.into_owned()
-            }
+        let src = src.map(|s| match extra {
+            1 => crate::vkbench::with_temporal(&s),
+            2 => crate::vkbench::with_framegen(&s),
+            _ => s.into_owned(),
         });
-        let model = if temporal {
-            format!("{id}+temporal")
-        } else {
-            id.to_string()
+        let model = match extra {
+            1 => format!("{id}+temporal"),
+            2 => format!("{id}+temporal+fg"),
+            _ => id.to_string(),
         };
         let r = match &src {
             Some(src) => crate::vkbench::run(&ctx, src, w, h, runs, None, false),

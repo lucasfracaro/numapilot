@@ -94,7 +94,11 @@ pub const ENGINES: [(&str, &str, bool); 4] = [
         "Lossless Scaling on the output card (lsfg-vk in gamescope)",
         true,
     ),
-    ("blockmatch", "block matching (planned)", false),
+    (
+        "blockmatch",
+        "numapilot: block matching on the output card (2×, with a layer model)",
+        true,
+    ),
     ("rife", "RIFE v4 lite (planned)", false),
 ];
 
@@ -318,6 +322,27 @@ pub fn plan_with(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg, la
                 lsfg_out_path().to_string_lossy().into_owned(),
             );
             lsfg_out = true;
+        } else if pr.engine == "blockmatch" {
+            // numapilot's layer: the frame halfway between each two, from the temporal pass's
+            // motion, shown before each real one (FIFO swapchain only, the layer checks)
+            if layer_model(up).is_none() {
+                warnings.push(
+                    crate::i18n::tr(
+                        "numapilot's frame generation runs in its upscaling layer: choose one of the layer's models (Anime4K, ArtCNN, FSRCNNX); no frame generation",
+                    )
+                    .into(),
+                );
+                multiplier = 1;
+            } else {
+                if multiplier > 2 {
+                    warnings.push(
+                        crate::i18n::tr("numapilot's frame generation makes 2× only: using 2×")
+                            .into(),
+                    );
+                    multiplier = 2;
+                }
+                set(&mut gamescope_env, "NUMAPILOT_UPSCALE_FG", "2".into());
+            }
         } else if pr.engine == "lsfg" {
             // lsfg-vk inside the game, with the user's own settings (multiplier included).
             warnings.push(crate::tf!(
@@ -890,6 +915,45 @@ mod tests {
         let v: toml::Table = c.parse().expect(&c);
         assert_eq!(v["version"].as_integer(), Some(2));
         assert_eq!(c.matches("version").count(), 1);
+    }
+
+    #[test]
+    fn blockmatch_frame_generation() {
+        let gs = Gamescope {
+            render_w: Some(1280),
+            render_h: Some(720),
+            out_w: Some(2560),
+            out_h: Some(1440),
+            ..Default::default()
+        };
+        let fg = |up: &str, mult: u8| {
+            plan_with(
+                &Present {
+                    upscaler: up.into(),
+                    multiplier: mult,
+                    engine: "blockmatch".into(),
+                    ..Default::default()
+                },
+                &gs,
+                None,
+                Lsfg::Missing,
+                true,
+            )
+        };
+        let has_fg = |p: &Plan| {
+            p.gamescope_env
+                .contains(&("NUMAPILOT_UPSCALE_FG".into(), "2".into()))
+        };
+        // with a layer model: 2× in the layer, lsfg-vk not needed
+        let p = fg("anime4k-m", 2);
+        assert!(has_fg(&p) && p.multiplier == 2, "{:?}", p.warnings);
+        assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+        // 3× asked: 2× with a warning
+        let p = fg("anime4k-m", 3);
+        assert!(has_fg(&p) && p.multiplier == 2 && p.warnings.len() == 1);
+        // gamescope's own upscaler: no layer, no frame generation
+        let p = fg("fsr1", 2);
+        assert!(!has_fg(&p) && p.multiplier == 1 && !p.warnings.is_empty());
     }
 
     #[test]

@@ -84,6 +84,12 @@ pub fn forced_extent() -> bool {
         .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
 }
 
+/// `NUMAPILOT_UPSCALE_FG=2`: frame generation 2× (a frame halfway between each two, from the
+/// temporal pass's motion), shown before each real frame.
+pub fn framegen() -> bool {
+    std::env::var("NUMAPILOT_UPSCALE_FG").is_ok_and(|v| v == "2")
+}
+
 /// `NUMAPILOT_UPSCALE_TEMPORAL=1`: the temporal pass (estimated motion, history) after the model.
 pub fn temporal() -> bool {
     std::env::var("NUMAPILOT_UPSCALE_TEMPORAL").is_ok_and(|v| v == "1")
@@ -560,7 +566,24 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
         eprintln!("numapilot-upscale: unknown or not downloaded model '{model}': passing through");
         return pass();
     };
-    let (shader, model) = if temporal() {
+    // frame generation shows each generated frame on its own vblank: only with FIFO
+    let fifo = matches!(
+        info.present_mode,
+        vk::PresentModeKHR::FIFO | vk::PresentModeKHR::FIFO_RELAXED
+    );
+    let fg = framegen() && fifo;
+    if framegen() && !fifo {
+        eprintln!(
+            "numapilot-upscale: frame generation needs a FIFO (vsync) swapchain, this one is {:?}: upscaling only",
+            info.present_mode
+        );
+    }
+    let (shader, model) = if fg {
+        (
+            std::borrow::Cow::Owned(numapilot::vkbench::with_framegen(&shader)),
+            format!("{model} + temporal + frame generation 2×"),
+        )
+    } else if temporal() {
         (
             std::borrow::Cow::Owned(numapilot::vkbench::with_temporal(&shader)),
             format!("{model} + temporal"),
@@ -611,12 +634,19 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
     }
     let mut ci2 = *info;
     ci2.image_usage |= vk::ImageUsageFlags::TRANSFER_DST;
+    if fg {
+        // one more image: the layer holds one for the generated frame
+        ci2.min_image_count += 1;
+        if caps.max_image_count != 0 {
+            ci2.min_image_count = ci2.min_image_count.min(caps.max_image_count);
+        }
+    }
     let r = unsafe { (d.swap.create_swapchain_khr)(device, &ci2, alloc, out) };
     if r != vk::Result::SUCCESS {
         return r;
     }
     let sc = unsafe { *out };
-    match unsafe { chain::Chain::new(&d, sc, info, real, src, px, &shader) } {
+    match unsafe { chain::Chain::new(&d, sc, info, real, src, px, &shader, fg) } {
         Ok(chain) => {
             eprintln!(
                 "numapilot-upscale: game {}x{} (drawn {}× at {},{}) → {}x{} in a {}x{} window with {model}",
@@ -718,13 +748,15 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
     let scs = unsafe { std::slice::from_raw_parts(pi.p_swapchains, pi.swapchain_count as usize) };
     let idx =
         unsafe { std::slice::from_raw_parts(pi.p_image_indices, pi.swapchain_count as usize) };
-    let tracked: Vec<(Arc<Mutex<Swap>>, u32)> = {
+    let tracked: Vec<(Arc<Mutex<Swap>>, u32, vk::SwapchainKHR)> = {
         let s = st();
         scs.iter()
             .zip(idx)
-            .filter_map(|(sc, &i)| s.swaps.get(&sc.as_raw()).map(|w| (w.clone(), i)))
+            .filter_map(|(sc, &i)| s.swaps.get(&sc.as_raw()).map(|w| (w.clone(), i, *sc)))
             .collect()
     };
+    // frame generation only for the plain case: one swapchain per present
+    let fg_ok = tracked.len() == 1 && pi.swapchain_count == 1;
     if tracked.is_empty() {
         return unsafe { (d.swap.queue_present_khr)(queue, info) };
     }
@@ -737,10 +769,33 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
         vec![]
     };
     let mut signals = vec![];
-    for (sw, i) in tracked {
+    let mut generated = None;
+    for (sw, i, sc) in tracked {
         let mut sw = sw.lock().unwrap_or_else(|e| e.into_inner());
-        match unsafe { sw.chain.run(&d, queue, dq, i, &waits) } {
-            Ok(sem) => {
+        let device = d.dev.handle();
+        let mut acquire = |sem: vk::Semaphore| -> Option<u32> {
+            if !fg_ok {
+                return None;
+            }
+            let mut j = 0u32;
+            // a few ms at most: without a free image this frame goes without a generated one
+            let r = unsafe {
+                (d.swap.acquire_next_image_khr)(
+                    device,
+                    sc,
+                    4_000_000,
+                    sem,
+                    vk::Fence::null(),
+                    &mut j,
+                )
+            };
+            matches!(r, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR).then_some(j)
+        };
+        match unsafe { sw.chain.run(&d, queue, dq, i, &waits, &mut acquire) } {
+            Ok((sem, fg)) => {
+                if let Some((j, semfg)) = fg {
+                    generated = Some((sc, j, semfg));
+                }
                 // later chains (several swapchains) wait on the previous one
                 waits = vec![sem];
                 signals.push(sem);
@@ -752,6 +807,29 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
         }
     }
     // the present waits on the last chain, which waited on everything before it
+    if let Some((sc, j, semfg)) = generated {
+        // the generated frame goes first: FIFO shows it one vblank before the real one
+        let w = [semfg];
+        let s = [sc];
+        let ix = [j];
+        let r = unsafe {
+            (d.swap.queue_present_khr)(
+                queue,
+                &vk::PresentInfoKHR::default()
+                    .wait_semaphores(&w)
+                    .swapchains(&s)
+                    .image_indices(&ix),
+            )
+        };
+        if r != vk::Result::SUCCESS && r != vk::Result::SUBOPTIMAL_KHR {
+            log!("present of the generated frame: {r:?}");
+        }
+        static GENERATED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = GENERATED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if n == 0 || (n + 1) % 600 == 0 {
+            log!("{} generated frames shown", n + 1);
+        }
+    }
     let last = [*signals.last().expect("one chain at least")];
     let mut pi2 = *pi;
     pi2.wait_semaphore_count = 1;

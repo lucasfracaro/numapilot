@@ -153,6 +153,10 @@ struct Frame {
     cb: Option<(u32, vk::CommandBuffer)>,
     fence: vk::Fence,
     sem: vk::Semaphore,
+    /// Frame generation: signaled when the generated frame is in the extra image.
+    sem_fg: vk::Semaphore,
+    /// Frame generation: the acquire of the extra image signals it.
+    acq: vk::Semaphore,
     used: bool,
 }
 
@@ -168,6 +172,10 @@ pub struct Chain {
     bufs: Vec<Buf>,
     raw_in: usize,
     raw_out: usize,
+    /// Frame generation: the packed generated frame and the pass that packs it (index in
+    /// `passes`), run only on presents that show a generated frame.
+    raw_fg: usize,
+    fg_pack: Option<usize>,
     passes: Vec<Pass>,
     pool: vk::DescriptorPool,
     frames: Vec<Frame>,
@@ -245,6 +253,7 @@ impl Chain {
         src: Src,
         px: Px,
         shader: &str,
+        fg: bool,
     ) -> Result<Chain> {
         let dev = &d.dev;
         let device = dev.handle();
@@ -268,6 +277,8 @@ impl Chain {
             bufs: vec![],
             raw_in: 0,
             raw_out: 0,
+            raw_fg: 0,
+            fg_pack: None,
             passes: vec![],
             pool: vk::DescriptorPool::null(),
             frames: vec![],
@@ -276,7 +287,7 @@ impl Chain {
             odd: false,
             pools: Default::default(),
         };
-        match unsafe { c.build(d, info, px, shader) } {
+        match unsafe { c.build(d, info, px, shader, fg) } {
             Ok(()) => Ok(c),
             Err(e) => {
                 unsafe { c.destroy(d) };
@@ -291,6 +302,7 @@ impl Chain {
         info: &vk::SwapchainCreateInfoKHR<'_>,
         px: Px,
         shader: &str,
+        fg: bool,
     ) -> Result<()> {
         let dev = &d.dev;
         // the images gamescope draws into (window size, like the real ones)
@@ -418,6 +430,24 @@ impl Chain {
             self.raw_out,
             vec![cur["MAIN"]],
         ));
+        if fg {
+            let Some(&g) = cur.get("FG") else {
+                bail!("frame generation asked for, but the shader makes no FG texture");
+            };
+            if sizes["FG"] != (ow, oh) {
+                bail!("the generated frame is not the output's size");
+            }
+            self.bufs
+                .push(unsafe { buffer(d, bytes(ow, oh, 4), usage) }?);
+            self.raw_fg = self.bufs.len() - 1;
+            specs.push((
+                numapilot::vkbench::compile(&pack_glsl(ow, oh, px))?,
+                (ow, oh),
+                self.raw_fg,
+                vec![g],
+            ));
+            self.fg_pack = Some(specs.len() - 1);
+        }
 
         let max_b = 2 * specs.iter().map(|s| s.3.len() + 1).sum::<usize>() as u32;
         let hist = self.hist.clone();
@@ -537,6 +567,8 @@ impl Chain {
                         None,
                     )?,
                     sem: dev.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?,
+                    sem_fg: dev.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?,
+                    acq: dev.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?,
                     used: false,
                 });
             }
@@ -557,7 +589,8 @@ impl Chain {
         family: u32,
         i: u32,
         waits: &[vk::Semaphore],
-    ) -> Result<vk::Semaphore> {
+        acquire: &mut dyn FnMut(vk::Semaphore) -> Option<u32>,
+    ) -> Result<(vk::Semaphore, Option<(u32, vk::Semaphore)>)> {
         let dev = &d.dev;
         let i = i as usize;
         if i >= self.frames.len() {
@@ -613,6 +646,19 @@ impl Chain {
         f.used = true;
         let sem = f.sem;
         let fence = f.fence;
+        let (sem_fg, acq) = (f.sem_fg, f.acq);
+        // frame generation: an extra image of the real swapchain for the generated frame, shown
+        // before this one (none on the first present: there is no previous frame yet)
+        let fg_j = if self.fg_pack.is_some() && self.hist_ready {
+            acquire(acq)
+        } else {
+            None
+        };
+        if let Some(j) = fg_j
+            && j as usize >= self.real.len()
+        {
+            bail!("acquired image {j} out of range");
+        }
         let small = self.small[i];
         let real = self.real[i];
         let color = vk::ImageSubresourceRange {
@@ -722,7 +768,10 @@ impl Chain {
                 vk::PipelineStageFlags::TRANSFER,
                 vk::PipelineStageFlags::COMPUTE_SHADER,
             );
-            for p in &self.passes {
+            for (n, p) in self.passes.iter().enumerate() {
+                if Some(n) == self.fg_pack && fg_j.is_none() {
+                    continue;
+                }
                 dev.cmd_bind_pipeline(cb, vk::PipelineBindPoint::COMPUTE, p.pipe);
                 dev.cmd_bind_descriptor_sets(
                     cb,
@@ -740,71 +789,84 @@ impl Chain {
                     vk::PipelineStageFlags::COMPUTE_SHADER | vk::PipelineStageFlags::TRANSFER,
                 );
             }
-            img_barrier(
-                real,
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                vk::AccessFlags::empty(),
-                vk::AccessFlags::TRANSFER_WRITE,
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::TRANSFER,
-            );
-            let (cw, ch) = (self.out_ext.width, self.out_ext.height);
-            if (cw, ch) != (self.real_ext.width, self.real_ext.height) {
-                // the window is not exactly 2× the game: black around the upscaled picture
-                dev.cmd_clear_color_image(
+            // the generated frame into the extra image first, then this frame
+            let targets: Vec<(vk::Image, usize)> = fg_j
+                .map(|j| (self.real[j as usize], self.raw_fg))
+                .into_iter()
+                .chain([(real, self.raw_out)])
+                .collect();
+            for (real, raw) in targets {
+                img_barrier(
+                    real,
+                    vk::ImageLayout::UNDEFINED,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    vk::AccessFlags::empty(),
+                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::PipelineStageFlags::TOP_OF_PIPE,
+                    vk::PipelineStageFlags::TRANSFER,
+                );
+                let (cw, ch) = (self.out_ext.width, self.out_ext.height);
+                if (cw, ch) != (self.real_ext.width, self.real_ext.height) {
+                    // the window is not exactly 2× the game: black around the upscaled picture
+                    dev.cmd_clear_color_image(
+                        cb,
+                        real,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        &vk::ClearColorValue {
+                            float32: [0.0, 0.0, 0.0, 1.0],
+                        },
+                        &[color],
+                    );
+                    mem_barrier(
+                        vk::AccessFlags::TRANSFER_WRITE,
+                        vk::AccessFlags::TRANSFER_WRITE,
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::PipelineStageFlags::TRANSFER,
+                    );
+                }
+                dev.cmd_copy_buffer_to_image(
                     cb,
+                    self.bufs[raw].b,
                     real,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &vk::ClearColorValue {
-                        float32: [0.0, 0.0, 0.0, 1.0],
-                    },
-                    &[color],
+                    &[vk::BufferImageCopy::default()
+                        .buffer_row_length(self.out_ext.width)
+                        .buffer_image_height(self.out_ext.height)
+                        .image_subresource(layers)
+                        .image_offset(vk::Offset3D {
+                            x: self.out_at.0 as i32,
+                            y: self.out_at.1 as i32,
+                            z: 0,
+                        })
+                        .image_extent(vk::Extent3D {
+                            width: cw,
+                            height: ch,
+                            depth: 1,
+                        })],
                 );
-                mem_barrier(
+                img_barrier(
+                    real,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    vk::ImageLayout::PRESENT_SRC_KHR,
                     vk::AccessFlags::TRANSFER_WRITE,
-                    vk::AccessFlags::TRANSFER_WRITE,
+                    vk::AccessFlags::empty(),
                     vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                 );
             }
-            dev.cmd_copy_buffer_to_image(
-                cb,
-                self.bufs[self.raw_out].b,
-                real,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &[vk::BufferImageCopy::default()
-                    .buffer_row_length(self.out_ext.width)
-                    .buffer_image_height(self.out_ext.height)
-                    .image_subresource(layers)
-                    .image_offset(vk::Offset3D {
-                        x: self.out_at.0 as i32,
-                        y: self.out_at.1 as i32,
-                        z: 0,
-                    })
-                    .image_extent(vk::Extent3D {
-                        width: cw,
-                        height: ch,
-                        depth: 1,
-                    })],
-            );
-            img_barrier(
-                real,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                vk::ImageLayout::PRESENT_SRC_KHR,
-                vk::AccessFlags::TRANSFER_WRITE,
-                vk::AccessFlags::empty(),
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-            );
             dev.end_command_buffer(cb)?;
+            let mut waits = waits.to_vec();
+            let mut sigs = vec![sem];
+            if fg_j.is_some() {
+                waits.push(acq);
+                sigs.push(sem_fg);
+            }
             let stages = vec![vk::PipelineStageFlags::ALL_COMMANDS; waits.len()];
             let cbs = [cb];
-            let sigs = [sem];
             dev.queue_submit(
                 queue,
                 &[vk::SubmitInfo::default()
-                    .wait_semaphores(waits)
+                    .wait_semaphores(&waits)
                     .wait_dst_stage_mask(&stages)
                     .command_buffers(&cbs)
                     .signal_semaphores(&sigs)],
@@ -814,7 +876,7 @@ impl Chain {
         if first_use {
             crate::log!("first present on image {i}");
         }
-        Ok(sem)
+        Ok((sem, fg_j.map(|j| (j, sem_fg))))
     }
 
     pub unsafe fn destroy(&mut self, d: &DeviceData) {
@@ -829,6 +891,8 @@ impl Chain {
             for f in self.frames.drain(..) {
                 dev.destroy_fence(f.fence, None);
                 dev.destroy_semaphore(f.sem, None);
+                dev.destroy_semaphore(f.sem_fg, None);
+                dev.destroy_semaphore(f.acq, None);
             }
             // frees the command buffers too
             for (_, p) in self.pools.drain() {

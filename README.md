@@ -556,7 +556,9 @@ teach numapilot about special boards.
   models of the presentation block: gamescope draws the game with integer nearest scaling and a
   Vulkan layer in gamescope (`layer/`) takes the game's frame back from it and upscales it 2× at
   present. An optional temporal pass (motion estimated from the picture, FSR 2 style blending)
-  steadies the picture on top of any of them.
+  steadies the picture on top of any of them, and the same motion makes numapilot's own frame
+  generation (engine "block matching", 2×): the frame halfway between each two, made and shown
+  on the output card.
 - **Upscaling per game** (in Adjust…), depending on the card:
 
 | Mode | For | How |

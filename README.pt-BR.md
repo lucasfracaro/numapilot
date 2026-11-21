@@ -538,7 +538,9 @@ ensinam o numapilot sobre placas especiais.
   upscaling do bloco de apresentação: o gamescope desenha o jogo com escala inteira e vizinho mais
   próximo, e uma camada Vulkan no gamescope (`layer/`) recupera dali o quadro do jogo e o amplia 2×
   na hora de mostrar. Uma passada temporal opcional (movimento estimado da imagem, mistura no
-  estilo do FSR 2) deixa a imagem mais estável com qualquer um deles.
+  estilo do FSR 2) deixa a imagem mais estável com qualquer um deles, e o mesmo movimento faz a
+  geração de quadros própria do numapilot (motor "block matching", 2×): o quadro do meio entre
+  cada dois, feito e mostrado na placa de saída.
 - **Upscaling por jogo** (no Ajustar…), conforme a placa:
 
 | Modo | Para quem | Como |
