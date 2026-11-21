@@ -193,3 +193,27 @@ the FSRCNN-TensorFlow releases into `~/.local/share/numapilot/shaders` the first
 Checked on lavapipe: every pass compiles; on a smooth picture ArtCNN C4F16 stays within 0.02 of
 bilinear on average, and a real picture looks right with every model. To measure on the server:
 `numapilot present-bench --gpu gfx906-1 --compute`.
+
+## M3: temporal pass with estimated motion
+
+`shaders/temporal/temporal.glsl` (numapilot's own, MIT) is an option on top of any model
+(Adjust → Presentation → "Temporal", `NUMAPILOT_UPSCALE_TEMPORAL=1` for the layer). It is not the
+FidelityFX FSR 2 code but the same idea reduced to what the picture alone gives:
+
+1. **Block matching** on the game's frame (INPUT) against the previous one (PREV_IN): 8×8 blocks,
+   16 luma samples each, search ±8 game pixels; standing still wins ties (HUD, flat areas).
+2. **Reproject and blend**: the previous output (PREV_OUT) is read where the block was, clamped
+   to the min/max of the current 3×3 neighbourhood (the FSR 2 / TAA guard against ghosting) and
+   mixed 80/20 with the current frame. A block that matches nothing well (new content) or a
+   history outside the picture takes the current frame only.
+
+The runner keeps INPUT and MAIN of each present as PREV_IN / PREV_OUT for the next one (black at
+the start); the layer copies them at the end of each present.
+
+**Without jitter there is little new detail to gather**: the game renders the same pixel centres
+every frame, so the pass mostly steadies the picture (less shimmering and crawling edges in
+motion, softer noise) rather than adding resolution like the real FSR 2 with a jittered game.
+Flat depth is implied (no disocclusion test beyond the block match). Checked on lavapipe: the
+block matching finds a known (3, 2) shift, a still picture stays within 0.02 of the model alone,
+vkcube runs through the layer with it. Its cost on the MI50 is in `present-bench --compute`
+(`bilinear+temporal`, `anime4k-m+temporal`).

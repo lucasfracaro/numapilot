@@ -537,7 +537,8 @@ ensinam o numapilot sobre placas especiais.
   Anime4K CNN S/M/L, ArtCNN C4F16/C4F32 e FSRCNNX (baixado no primeiro uso, LGPL) são modelos de
   upscaling do bloco de apresentação: o gamescope desenha o jogo com escala inteira e vizinho mais
   próximo, e uma camada Vulkan no gamescope (`layer/`) recupera dali o quadro do jogo e o amplia 2×
-  na hora de mostrar.
+  na hora de mostrar. Uma passada temporal opcional (movimento estimado da imagem, mistura no
+  estilo do FSR 2) deixa a imagem mais estável com qualquer um deles.
 - **Upscaling por jogo** (no Ajustar…), conforme a placa:
 
 | Modo | Para quem | Como |

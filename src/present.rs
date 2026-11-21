@@ -242,6 +242,9 @@ pub fn plan_with(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg, la
         a.extend(["-S".into(), "integer".into(), "-F".into(), "nearest".into()]);
         set(&mut gamescope_env, "ENABLE_NUMAPILOT_UPSCALE", "1".into());
         set(&mut gamescope_env, "NUMAPILOT_UPSCALE_MODEL", model.into());
+        if pr.temporal {
+            set(&mut gamescope_env, "NUMAPILOT_UPSCALE_TEMPORAL", "1".into());
+        }
         if let (Some(w), Some(h)) = (g.render_w, g.render_h) {
             set(
                 &mut gamescope_env,
@@ -745,6 +748,25 @@ mod tests {
                 .contains(&("NUMAPILOT_UPSCALE_MODEL".into(), "anime4k-l".into()))
         );
         assert!(p.warnings.is_empty(), "{:?}", p.warnings);
+        assert!(
+            !p.gamescope_env
+                .iter()
+                .any(|(k, _)| k == "NUMAPILOT_UPSCALE_TEMPORAL")
+        );
+        let p = plan_with(
+            &Present {
+                temporal: true,
+                ..pr.clone()
+            },
+            &gs,
+            None,
+            Lsfg::Ready,
+            true,
+        );
+        assert!(
+            p.gamescope_env
+                .contains(&("NUMAPILOT_UPSCALE_TEMPORAL".into(), "1".into()))
+        );
         // the old value is M; an output that is not 2× warns
         let p = plan_with(
             &Present {

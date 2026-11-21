@@ -105,6 +105,8 @@ pub struct Present {
     pub min_fps: u32,
     /// Measures real FPS (MangoHud in the game) against shown FPS on every start.
     pub measure: bool,
+    /// Temporal pass after the layer's model: estimated motion and history (steadier picture).
+    pub temporal: bool,
 }
 
 impl Default for Present {
@@ -115,6 +117,7 @@ impl Default for Present {
             engine: "lsfg".into(),
             min_fps: 40,
             measure: true,
+            temporal: false,
         }
     }
 }

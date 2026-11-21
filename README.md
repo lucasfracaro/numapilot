@@ -555,7 +555,8 @@ teach numapilot about special boards.
   Anime4K CNN S/M/L, ArtCNN C4F16/C4F32 and FSRCNNX (downloaded on first use, LGPL) are upscaling
   models of the presentation block: gamescope draws the game with integer nearest scaling and a
   Vulkan layer in gamescope (`layer/`) takes the game's frame back from it and upscales it 2× at
-  present.
+  present. An optional temporal pass (motion estimated from the picture, FSR 2 style blending)
+  steadies the picture on top of any of them.
 - **Upscaling per game** (in Adjust…), depending on the card:
 
 | Mode | For | How |

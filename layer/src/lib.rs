@@ -12,7 +12,9 @@
 //! processes named in `NUMAPILOT_UPSCALE_PROCS` (default: gamescope), so a game that inherits the
 //! variable is passed through untouched. Model: `NUMAPILOT_UPSCALE_MODEL` (anime4k-s|m|l,
 //! artcnn-c4f16|c4f32, fsrcnnx(-16) once downloaded, bilinear, or a path to an mpv user shader;
-//! default anime4k-m). Any failure falls back to passing everything through.
+//! default anime4k-m); `NUMAPILOT_UPSCALE_TEMPORAL=1` adds the temporal pass
+//! (`shaders/temporal/temporal.glsl`, history kept between presents). Any failure falls back to
+//! passing everything through.
 
 #![allow(clippy::missing_safety_doc, non_snake_case)]
 
@@ -74,6 +76,11 @@ pub fn model_name() -> String {
 /// (FSRCNNX, `numapilot::vkbench::shader_dir()`) or a path to an mpv user shader.
 pub fn model_shader(name: &str) -> Option<std::borrow::Cow<'static, str>> {
     numapilot::vkbench::model_source(name)
+}
+
+/// `NUMAPILOT_UPSCALE_TEMPORAL=1`: the temporal pass (estimated motion, history) after the model.
+pub fn temporal() -> bool {
+    std::env::var("NUMAPILOT_UPSCALE_TEMPORAL").is_ok_and(|v| v == "1")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -552,6 +559,14 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
     let Some(shader) = model_shader(&model) else {
         eprintln!("numapilot-upscale: unknown or not downloaded model '{model}': passing through");
         return pass();
+    };
+    let (shader, model) = if temporal() {
+        (
+            std::borrow::Cow::Owned(numapilot::vkbench::with_temporal(&shader)),
+            format!("{model} + temporal"),
+        )
+    } else {
+        (shader, model)
     };
     let Some(inst) = instance_of_pdev(d.pdev) else {
         return pass();
