@@ -1113,7 +1113,7 @@ pub fn run_frames(
                 cb,
                 vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::TRANSFER_WRITE,
                 vk::AccessFlags::TRANSFER_READ,
-                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::PipelineStageFlags::COMPUTE_SHADER | vk::PipelineStageFlags::TRANSFER,
                 vk::PipelineStageFlags::TRANSFER,
             );
             d.cmd_copy_buffer(

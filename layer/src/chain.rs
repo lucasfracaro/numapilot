@@ -144,7 +144,8 @@ struct Pass {
     pipe: vk::Pipeline,
     layout: vk::PipelineLayout,
     dsl: vk::DescriptorSetLayout,
-    set: vk::DescriptorSet,
+    /// One set per parity: odd presents swap each kept buffer with its source (ping-pong).
+    sets: [vk::DescriptorSet; 2],
     groups: (u32, u32),
 }
 
@@ -170,10 +171,17 @@ pub struct Chain {
     passes: Vec<Pass>,
     pool: vk::DescriptorPool,
     frames: Vec<Frame>,
-    /// Kept from one present to the next (temporal pass): (kept buffer, source buffer, bytes).
-    hist: Vec<(usize, usize, u64)>,
+    /// Kept from one present to the next (temporal pass): (kept buffer, source buffer). They are
+    /// not copied: the descriptor sets of odd presents swap the two, so this present's output
+    /// is the next one's history.
+    hist: Vec<(usize, usize)>,
     /// The kept buffers were cleared.
     hist_ready: bool,
+    /// Parity of the next present.
+    odd: bool,
+    /// Command pools per queue family, this chain's own: a pool must not be used from two
+    /// threads at once, and gamescope can present on one swapchain while it destroys another.
+    pools: std::collections::HashMap<u32, vk::CommandPool>,
 }
 
 unsafe fn mem_type(d: &DeviceData, bits: u32, want: vk::MemoryPropertyFlags) -> Option<u32> {
@@ -265,6 +273,8 @@ impl Chain {
             frames: vec![],
             hist: vec![],
             hist_ready: false,
+            odd: false,
+            pools: Default::default(),
         };
         match unsafe { c.build(d, info, px, shader) } {
             Ok(()) => Ok(c),
@@ -398,13 +408,7 @@ impl Chain {
                 ins,
             ));
         }
-        self.hist = kept
-            .iter()
-            .map(|(k, src)| {
-                let (kw, kh) = sizes[*k];
-                (cur[*k], cur[*src], bytes(kw, kh, 16))
-            })
-            .collect();
+        self.hist = kept.iter().map(|(k, src)| (cur[*k], cur[*src])).collect();
         self.bufs
             .push(unsafe { buffer(d, bytes(ow, oh, 4), usage) }?);
         self.raw_out = self.bufs.len() - 1;
@@ -415,11 +419,25 @@ impl Chain {
             vec![cur["MAIN"]],
         ));
 
-        let max_b = specs.iter().map(|s| s.3.len() + 1).sum::<usize>() as u32;
+        let max_b = 2 * specs.iter().map(|s| s.3.len() + 1).sum::<usize>() as u32;
+        let hist = self.hist.clone();
+        let swap = move |bi: usize| {
+            hist.iter()
+                .find_map(|&(k, s)| {
+                    if bi == k {
+                        Some(s)
+                    } else if bi == s {
+                        Some(k)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(bi)
+        };
         self.pool = unsafe {
             dev.create_descriptor_pool(
                 &vk::DescriptorPoolCreateInfo::default()
-                    .max_sets(specs.len() as u32)
+                    .max_sets(2 * specs.len() as u32)
                     .pool_sizes(&[vk::DescriptorPoolSize {
                         ty: vk::DescriptorType::STORAGE_BUFFER,
                         descriptor_count: max_b,
@@ -472,37 +490,40 @@ impl Chain {
                         return Err(e);
                     }
                 };
-                let set = dev.allocate_descriptor_sets(
+                let sets = dev.allocate_descriptor_sets(
                     &vk::DescriptorSetAllocateInfo::default()
                         .descriptor_pool(self.pool)
-                        .set_layouts(&[dsl]),
-                )?[0];
-                let infos: Vec<[vk::DescriptorBufferInfo; 1]> = std::iter::once(o)
-                    .chain(ins.iter().copied())
-                    .map(|bi| {
-                        [vk::DescriptorBufferInfo::default()
-                            .buffer(self.bufs[bi].b)
-                            .offset(0)
-                            .range(vk::WHOLE_SIZE)]
-                    })
-                    .collect();
-                let writes: Vec<vk::WriteDescriptorSet> = infos
-                    .iter()
-                    .enumerate()
-                    .map(|(b, i)| {
-                        vk::WriteDescriptorSet::default()
-                            .dst_set(set)
-                            .dst_binding(b as u32)
-                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                            .buffer_info(i)
-                    })
-                    .collect();
-                dev.update_descriptor_sets(&writes, &[]);
+                        .set_layouts(&[dsl, dsl]),
+                )?;
+                for (parity, &set) in sets.iter().enumerate() {
+                    let infos: Vec<[vk::DescriptorBufferInfo; 1]> = std::iter::once(o)
+                        .chain(ins.iter().copied())
+                        .map(|bi| {
+                            let bi = if parity == 1 { swap(bi) } else { bi };
+                            [vk::DescriptorBufferInfo::default()
+                                .buffer(self.bufs[bi].b)
+                                .offset(0)
+                                .range(vk::WHOLE_SIZE)]
+                        })
+                        .collect();
+                    let writes: Vec<vk::WriteDescriptorSet> = infos
+                        .iter()
+                        .enumerate()
+                        .map(|(b, i)| {
+                            vk::WriteDescriptorSet::default()
+                                .dst_set(set)
+                                .dst_binding(b as u32)
+                                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                                .buffer_info(i)
+                        })
+                        .collect();
+                    dev.update_descriptor_sets(&writes, &[]);
+                }
                 self.passes.push(Pass {
                     pipe,
                     layout,
                     dsl,
-                    set,
+                    sets: [sets[0], sets[1]],
                     groups: (out.0.div_ceil(GROUP), out.1.div_ceil(GROUP)),
                 });
             }
@@ -542,17 +563,30 @@ impl Chain {
         if i >= self.frames.len() {
             bail!("image index {i} out of range");
         }
+        let pool = match self.pools.get(&family) {
+            Some(&p) => p,
+            None => {
+                let p = unsafe {
+                    dev.create_command_pool(
+                        &vk::CommandPoolCreateInfo::default()
+                            .queue_family_index(family)
+                            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER),
+                        None,
+                    )
+                }?;
+                self.pools.insert(family, p);
+                p
+            }
+        };
         let f = &mut self.frames[i];
         unsafe {
             dev.wait_for_fences(&[f.fence], true, 5_000_000_000)?;
-            dev.reset_fences(&[f.fence])?;
         }
         let cb = match f.cb {
             Some((fam, cb)) if fam == family => cb,
             old => {
-                let pool = unsafe { d.pool(family) }?;
                 if let Some((ofam, ocb)) = old
-                    && let Ok(op) = unsafe { d.pool(ofam) }
+                    && let Some(&op) = self.pools.get(&ofam)
                 {
                     unsafe { dev.free_command_buffers(op, &[ocb]) };
                 }
@@ -569,7 +603,13 @@ impl Chain {
                 cb
             }
         };
+        // reset only once nothing can fail before the submit (a reset fence that is never
+        // submitted would stall the next present on this image)
+        unsafe { dev.reset_fences(&[f.fence]) }?;
         let first_use = !f.used;
+        // with no history both sets are the same
+        let parity = usize::from(self.odd && !self.hist.is_empty());
+        self.odd = !self.odd;
         f.used = true;
         let sem = f.sem;
         let fence = f.fence;
@@ -639,7 +679,7 @@ impl Chain {
             );
             if !self.hist_ready {
                 // the history starts black
-                for &(dst, _, _) in &self.hist {
+                for &(dst, _) in &self.hist {
                     dev.cmd_fill_buffer(cb, self.bufs[dst].b, 0, vk::WHOLE_SIZE, 0);
                 }
                 self.hist_ready = true;
@@ -689,7 +729,7 @@ impl Chain {
                     vk::PipelineBindPoint::COMPUTE,
                     p.layout,
                     0,
-                    &[p.set],
+                    &[p.sets[parity]],
                     &[],
                 );
                 dev.cmd_dispatch(cb, p.groups.0, p.groups.1, 1);
@@ -698,15 +738,6 @@ impl Chain {
                     vk::AccessFlags::SHADER_READ | vk::AccessFlags::TRANSFER_READ,
                     vk::PipelineStageFlags::COMPUTE_SHADER,
                     vk::PipelineStageFlags::COMPUTE_SHADER | vk::PipelineStageFlags::TRANSFER,
-                );
-            }
-            // this frame's input and output become the next one's history
-            for &(dst, src, size) in &self.hist {
-                dev.cmd_copy_buffer(
-                    cb,
-                    self.bufs[src].b,
-                    self.bufs[dst].b,
-                    &[vk::BufferCopy::default().size(size)],
                 );
             }
             img_barrier(
@@ -789,15 +820,19 @@ impl Chain {
     pub unsafe fn destroy(&mut self, d: &DeviceData) {
         let dev = &d.dev;
         unsafe {
+            // every submit of this chain signals one of these fences: once they are all
+            // signaled, nothing of it runs on the GPU any more
+            let fences: Vec<vk::Fence> = self.frames.iter().map(|f| f.fence).collect();
+            if !fences.is_empty() {
+                let _ = dev.wait_for_fences(&fences, true, 10_000_000_000);
+            }
             for f in self.frames.drain(..) {
-                let _ = dev.wait_for_fences(&[f.fence], true, 1_000_000_000);
-                if let Some((fam, cb)) = f.cb
-                    && let Ok(p) = d.pool(fam)
-                {
-                    dev.free_command_buffers(p, &[cb]);
-                }
                 dev.destroy_fence(f.fence, None);
                 dev.destroy_semaphore(f.sem, None);
+            }
+            // frees the command buffers too
+            for (_, p) in self.pools.drain() {
+                dev.destroy_command_pool(p, None);
             }
             for p in self.passes.drain(..) {
                 dev.destroy_pipeline(p.pipe, None);

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Upscaling layer, temporal pass: the history is no longer copied every present (about 74 MB
+  per frame at 720p → 1440p, not counted by `present-bench`); odd presents use descriptor sets
+  with each kept buffer swapped with its source (ping-pong). On the BC-250 the temporal pass
+  dropped gamescope from ~59 to ~46 FPS in bursts with the GPU half idle.
+- Upscaling layer: fixed GPU page faults and device loss at gamescope start (BC-250, which then
+  froze). The command pools were shared by every swapchain of a device and used without a lock
+  while gamescope presented on a new swapchain and destroyed the old one from another thread,
+  and swapchain destroy called vkDeviceWaitIdle. Each swapchain now has its own pools and waits
+  on its own fences. It also passes through while Mesa (`vk_wsi_force_swapchain_to_current_extent`)
+  would make the images a different size than asked. Retested on the BC-250: no fault in four
+  runs; Anime4K M + temporal at ~57 FPS.
+
 - **Temporal pass for the layer's models (M3, FSR 2 style with estimated motion).** New
   "Temporal" option under the upscaler in Adjust → Presentation (`Present.temporal`,
   `NUMAPILOT_UPSCALE_TEMPORAL=1`): block matching on the game's frame against the previous one,

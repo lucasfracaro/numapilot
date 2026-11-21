@@ -78,6 +78,12 @@ pub fn model_shader(name: &str) -> Option<std::borrow::Cow<'static, str>> {
     numapilot::vkbench::model_source(name)
 }
 
+/// Mesa's `vk_wsi_force_swapchain_to_current_extent` (driconf, set by gamescope's environment).
+pub fn forced_extent() -> bool {
+    std::env::var("vk_wsi_force_swapchain_to_current_extent")
+        .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+}
+
 /// `NUMAPILOT_UPSCALE_TEMPORAL=1`: the temporal pass (estimated motion, history) after the model.
 pub fn temporal() -> bool {
     std::env::var("NUMAPILOT_UPSCALE_TEMPORAL").is_ok_and(|v| v == "1")
@@ -158,8 +164,6 @@ pub(crate) struct DeviceData {
     set_loader_data: Option<SetDeviceLoaderData>,
     pub(crate) mem: vk::PhysicalDeviceMemoryProperties,
     instance: vk::Instance,
-    /// Command pools per queue family, made on the first present on that family.
-    pools: Mutex<HashMap<u32, vk::CommandPool>>,
 }
 
 struct Swap {
@@ -439,7 +443,6 @@ unsafe extern "system" fn numapilot_CreateDevice(
             set_loader_data,
             mem,
             instance,
-            pools: Mutex::new(HashMap::new()),
         };
         st().devices.insert(device.as_raw(), Arc::new(data));
         r
@@ -473,9 +476,6 @@ unsafe extern "system" fn numapilot_DestroyDevice(
                 if let Ok(mut sw) = sw.lock() {
                     sw.chain.destroy(&d);
                 }
-            }
-            for (_, p) in d.pools.lock().unwrap_or_else(|e| e.into_inner()).drain() {
-                d.dev.destroy_command_pool(p, None);
             }
             (d.dev.fp_v1_0().destroy_device)(device, alloc);
         }
@@ -579,6 +579,21 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
         return pass();
     }
     let real = info.image_extent;
+    // gamescope sets vk_wsi_force_swapchain_to_current_extent: Mesa then makes the images the
+    // window's current size, not the size asked for. If those differ (the window is being
+    // resized), the images are not the size the chain would write: pass through, gamescope
+    // recreates the swapchain at the new size right after.
+    let cur = caps.current_extent;
+    if forced_extent()
+        && cur.width != u32::MAX
+        && (cur.width, cur.height) != (real.width, real.height)
+    {
+        eprintln!(
+            "numapilot-upscale: the window is {}x{}, the swapchain asks for {}x{}: passing through until they match",
+            cur.width, cur.height, real.width, real.height
+        );
+        return pass();
+    }
     let game = game_size((real.width, real.height));
     let Some(src) = chain::Src::of((real.width, real.height), game) else {
         eprintln!(
@@ -645,9 +660,8 @@ unsafe extern "system" fn numapilot_DestroySwapchainKHR(
     };
     let sw = st().swaps.remove(&sc.as_raw());
     if let Some(sw) = sw {
-        unsafe {
-            let _ = d.dev.device_wait_idle();
-        }
+        // no vkDeviceWaitIdle: it needs every queue of the device to itself, and gamescope may
+        // be submitting from another thread; the chain waits on its own fences instead
         if let Ok(mut sw) = sw.lock() {
             unsafe { sw.chain.destroy(&d) };
         }
@@ -746,24 +760,6 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
 }
 
 impl DeviceData {
-    /// Command pool for a queue family (made once).
-    pub(crate) unsafe fn pool(&self, family: u32) -> ash::prelude::VkResult<vk::CommandPool> {
-        let mut pools = self.pools.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(p) = pools.get(&family) {
-            return Ok(*p);
-        }
-        let p = unsafe {
-            self.dev.create_command_pool(
-                &vk::CommandPoolCreateInfo::default()
-                    .queue_family_index(family)
-                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER),
-                None,
-            )
-        }?;
-        pools.insert(family, p);
-        Ok(p)
-    }
-
     /// A command buffer made by the layer needs the loader's dispatch table.
     pub(crate) unsafe fn set_dispatch(&self, cb: vk::CommandBuffer) {
         let device = self.dev.handle();
