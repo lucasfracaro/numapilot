@@ -169,7 +169,25 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             .small()
             .weak(),
         );
-        if u.mode != "optiscaler" {
+        if u.mode == "fsr4-int8"
+            && let Some(g) = gpu.as_ref()
+        {
+            let r = numapilot::fsr4::route(g);
+            let text = crate::tf!("{}: {}", "{}: {}", g.alias, crate::i18n::tr(r.explain()));
+            ui.label(if r.installable() {
+                RichText::new(text).small().weak()
+            } else {
+                RichText::new(text).small().color(crate::theme::warn())
+            });
+            ui.label(
+                RichText::new(crate::i18n::tr(
+                    "With two cards: the game upscales on its card and lsfg-vk generates frames on the other (presentation block, generator \"Lossless Scaling on the output card\", upscaling \"none\").",
+                ))
+                .small()
+                .weak(),
+            );
+        }
+        if u.mode != "optiscaler" && u.mode != "fsr4-int8" {
             ui.label(
                 RichText::new(crate::i18n::tr(
                     "Needs proton-cachyos or GE-Proton as the game's compatibility tool.",
@@ -186,7 +204,21 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             }
         });
     }
-    if u.mode == "optiscaler" {
+    if u.mode == "optiscaler" || u.mode == "fsr4-int8" {
+        // what the install buttons run: plain OptiScaler, or OptiScaler with the FSR 4 INT8 DLL of
+        // the game's card
+        let mut extra: Vec<String> = vec![];
+        if u.mode == "fsr4-int8" {
+            extra.push("--fsr4".into());
+            if let Some(g) = gpu.as_ref() {
+                extra.extend(["--gpu".into(), g.alias.clone()]);
+            }
+            if u.indicator {
+                extra.push("--watermark".into());
+            }
+        } else if u.int8 {
+            extra.push("--int8".into());
+        }
         ui.label(
             RichText::new(crate::i18n::tr(
                 "Do not use OptiScaler in online games: the anti-cheat may ban you.",
@@ -199,24 +231,24 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             ui.horizontal(|ui| {
                 match dir.as_ref().and_then(|d| upscale::installed(d)) {
                     Some(i) => {
-                        ui.label(RichText::new(crate::tf!("OptiScaler {} installed", "OptiScaler {} instalado", i.version)).color(crate::theme::ok()));
+                        let what = match &i.fsr4 {
+                            Some(r) => format!("{} + FSR 4 INT8 ({r})", i.version),
+                            None => i.version.clone(),
+                        };
+                        ui.label(RichText::new(crate::tf!("OptiScaler {} installed", "OptiScaler {} instalado", what)).color(crate::theme::ok()));
                         if ui.button(crate::i18n::tr("Remove from the game")).clicked() {
                             app.start_job("OptiScaler", vec![crate::jobs::sibling("numapilot"), "upscale".into(), "remove".into(), id.into()]);
                         }
                         if ui.button(crate::i18n::tr("Reinstall (new version)")).clicked() {
                             let mut v = vec![crate::jobs::sibling("numapilot"), "upscale".into(), "install".into(), id.into()];
-                            if u.int8 {
-                                v.push("--int8".into());
-                            }
+                            v.extend(extra.iter().cloned());
                             app.start_job("OptiScaler", v);
                         }
                     }
                     None if dir.is_some() => {
                         if ui.button(RichText::new(crate::i18n::tr("Install in the game")).strong()).on_hover_text(crate::i18n::tr("Downloads the newest stable version and copies it to the executable's folder, keeping what belongs to the game")).clicked() {
                             let mut v = vec![crate::jobs::sibling("numapilot"), "upscale".into(), "install".into(), id.into()];
-                            if u.int8 {
-                                v.push("--int8".into());
-                            }
+                            v.extend(extra.iter().cloned());
                             app.start_job("OptiScaler", v);
                         }
                     }
