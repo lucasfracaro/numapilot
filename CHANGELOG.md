@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- FSR 4 downloads no longer give up after 10 minutes (OptiScaler's 57 MB never finished on the
+  BC-250's slow line): curl only stops when the transfer stalls, retries, and the next try resumes
+  the partial file; the SHA-256 check still decides.
 - `self-update`: a source folder left on a loose commit (detached HEAD, e.g. after testing a pull
   request) goes back to main before pulling when main already has that commit, and stops with
   what to do when it does not; the "new commits" check compares with origin/main there instead of

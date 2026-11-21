@@ -223,17 +223,36 @@ fn download(f: &Pinned, dest: &Path) -> Result<(), String> {
         std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
     }
     let part = dest.with_extension("part");
+    // an earlier try that finished the transfer but was stopped before the rename
+    if part.is_file() && check(&part, f.sha256, f.url).is_ok() {
+        return std::fs::rename(&part, dest).map_err(|e| e.to_string());
+    }
+    // no total time limit (57 MB over a slow line took longer than any fixed one): curl gives up
+    // only when the transfer stalls below 1 KB/s for 2 minutes, retries, and resumes the .part
+    // left by an earlier try (the SHA-256 below catches a bad resume)
     let st = Command::new("curl")
-        .args(["-fL", "--retry", "3", "--max-time", "600", "-o"])
+        .args([
+            "-fL",
+            "--retry",
+            "5",
+            "--retry-all-errors",
+            "--speed-limit",
+            "1024",
+            "--speed-time",
+            "120",
+            "--continue-at",
+            "-",
+            "-o",
+        ])
         .arg(&part)
         .arg(f.url)
         .status()
         .map_err(|e| e.to_string())?;
     if !st.success() {
-        let _ = std::fs::remove_file(&part);
+        // the .part stays: the next try resumes it
         return Err(crate::tf!(
-            "download failed: {}",
-            "o download falhou: {}",
+            "download failed (it resumes on the next try): {}",
+            "o download falhou (continua de onde parou na próxima vez): {}",
             f.url
         ));
     }
