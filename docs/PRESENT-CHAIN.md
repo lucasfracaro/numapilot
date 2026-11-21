@@ -218,5 +218,13 @@ every frame, so the pass mostly steadies the picture (less shimmering and crawli
 motion, softer noise) rather than adding resolution like the real FSR 2 with a jittered game.
 Flat depth is implied (no disocclusion test beyond the block match). Checked on lavapipe: the
 block matching finds a known (3, 2) shift, a still picture stays within 0.02 of the model alone,
-vkcube runs through the layer with it. Its cost on the MI50 is in `present-bench --compute`
-(`bilinear+temporal`, `anime4k-m+temporal`).
+vkcube runs through the layer with it. Measured on the second MI50 (server, 2026-11-21, `present-bench --compute`, median of 50):
+
+| | 720p → 1440p | 1080p → 4K |
+|---|---|---|
+| bilinear + temporal | 1.81 ms | 4.47 ms |
+| anime4k-m + temporal | 2.72 ms | 6.46 ms |
+| block matching alone | 1.24 ms | 3.18 ms |
+
+So at 720p → 1440p it fits with Anime4K M; at 1080p → 4K only with the lighter models. In gamescope
+(vkcube, 960x510 → 1920x1020) the picture was whole, with no trails or blocky tears.
