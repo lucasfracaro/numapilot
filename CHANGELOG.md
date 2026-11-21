@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- FSR 4 INT8: the FSR 4 and FSR frame generation watermarks are now off by default (written as
+  `false` in OptiScaler.ini; `auto` still showed the FSR 4 mark on the BC-250); `--watermark` turns
+  both on.
 - FSR 4 downloads no longer give up after 10 minutes (OptiScaler's 57 MB never finished on the
   BC-250's slow line): curl only stops when the transfer stalls, retries, and the next try resumes
   the partial file; the SHA-256 check still decides.

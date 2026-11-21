@@ -109,7 +109,7 @@ enum Cmd {
         /// Card the game runs on (default: the profile's, else the gaming card).
         #[arg(long)]
         gpu: Option<String>,
-        /// Shows FSR 4's watermark in the game (to check that it took effect).
+        /// Shows the FSR 4 and frame generation watermarks in the game (to check that they took effect).
         #[arg(long)]
         watermark: bool,
     },

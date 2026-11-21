@@ -484,8 +484,10 @@ pub fn set_ini(text: &str, section: &str, key: &str, value: &str) -> String {
 }
 
 /// The OptiScaler settings for FSR 4 INT8 (BC250 FSR4's guide): FFX backend, INT8 model,
-/// OptiScaler's own frame generation off (lsfg-vk does that), OptiPatcher loaded.
+/// OptiScaler's own frame generation off (lsfg-vk does that), OptiPatcher loaded, watermarks
+/// of the upscaler and of the game's frame generation off unless asked for.
 pub fn ini_settings(watermark: bool) -> Vec<(&'static str, &'static str, &'static str)> {
+    let mark = if watermark { "true" } else { "false" };
     vec![
         ("Upscalers", "Dx12Upscaler", "ffx"),
         ("Upscalers", "Dx11Upscaler", "ffx_12"),
@@ -493,12 +495,11 @@ pub fn ini_settings(watermark: bool) -> Vec<(&'static str, &'static str, &'stati
         ("FSR", "UpscalerIndex", "0"),
         ("FSR", "Fsr4ForceModel", "2"),
         ("FSR", "FsrNonLinearColorSpace", "false"),
-        (
-            "FSR",
-            "Fsr4EnableWatermark",
-            if watermark { "true" } else { "auto" },
-        ),
+        // explicit "false": with "auto" the FSR 4 INT8 DLL still drew its watermark (BC-250)
+        ("FSR", "Fsr4EnableWatermark", mark),
         ("FrameGen", "Enabled", "false"),
+        // the game's own frame generation goes through OptiScaler's FSR-FG, which has its own mark
+        ("FSRFG", "EnableWatermark", mark),
         ("Plugins", "LoadAsiPlugins", "true"),
     ]
 }
@@ -738,6 +739,7 @@ mod tests {
         let ini = std::fs::read_to_string(game.join("OptiScaler.ini")).unwrap();
         assert!(ini.contains("Dx12Upscaler=ffx\n") && ini.contains("Fsr4ForceModel=2"));
         assert!(ini.contains("Fsr4EnableWatermark=true") && ini.contains("LoadAsiPlugins=true"));
+        assert!(ini.contains("[FSRFG]\nEnableWatermark=true"));
         let m = crate::upscale::installed(&game).unwrap();
         assert_eq!(m.fsr4.as_deref(), Some("wave64"));
         crate::upscale::remove(&game).unwrap();
