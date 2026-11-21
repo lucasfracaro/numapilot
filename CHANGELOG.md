@@ -2,12 +2,11 @@
 
 ## Unreleased
 
-- Upscaling layer, frame generation: fixed a GPU page fault on the first generated frame on the
-  BC-250 (gfx10; compute ring reset, gamescope lost its device). The swapchain images there are
-  DCC-compressed; the layer now turns DCC off (`RADV_DEBUG=nodcc`) for gamescope's Vulkan
-  instance only when frame generation is on, and puts the variable back before the game starts.
-  Tested on the server on its own 120 Hz monitor: 30 → 60 and 60 → 120 FPS with one generated
-  frame per real frame.
+- Upscaling layer, frame generation: tested on the server on the output card's own 120 Hz
+  monitor (30 → 60 and 60 → 120 FPS, one generated frame per real frame). On the BC-250 it
+  sometimes faults the GPU at the first generated frames (compute ring reset, gamescope loses its
+  device; cause not found yet). `NUMAPILOT_UPSCALE_FG_TEST` holds diagnostics switches for that
+  (`noimage`, `nopass`, `noclear`, `fence`, `trace`, `lock`, `moreimages`, `nodcc`).
 - Upscaling layer, temporal pass: the history is no longer copied every present (about 74 MB
   per frame at 720p → 1440p, not counted by `present-bench`); odd presents use descriptor sets
   with each kept buffer swapped with its source (ping-pong). On the BC-250 the temporal pass

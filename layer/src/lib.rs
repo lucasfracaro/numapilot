@@ -105,7 +105,8 @@ fn no_dcc(cur: Option<&str>) -> String {
 /// extra image when the window is larger than the picture), `fence` (also wait for the extra
 /// image's acquire on the CPU), `trace` (log acquires and presents with the calling thread),
 /// `lock` (no acquire for the generated frame while gamescope acquires on another thread),
-/// `moreimages` (the two extra swapchain images also without frame generation).
+/// `moreimages` (the two extra swapchain images also without frame generation), `nodcc` (DCC
+/// off for gamescope's Vulkan instance).
 pub fn fg_test(flag: &str) -> bool {
     static T: OnceLock<String> = OnceLock::new();
     T.get_or_init(|| std::env::var("NUMAPILOT_UPSCALE_FG_TEST").unwrap_or_default())
@@ -383,13 +384,11 @@ unsafe extern "system" fn numapilot_CreateInstance(
             return vk::Result::ERROR_INITIALIZATION_FAILED;
         };
         let create: vk::PFN_vkCreateInstance = std::mem::transmute(create);
-        // Frame generation writes the generated frame into a swapchain image gamescope never
-        // touched, from gamescope's compute-only queue. On the BC-250 (gfx10) that image is
-        // DCC-compressed and the first generated frame faulted the GPU (TCP write, compute ring
-        // reset); with RADV_DEBUG=nodcc it ran clean. RADV reads RADV_DEBUG when the instance is
-        // created: add nodcc for gamescope's instance only and put the variable back, so the
-        // game gamescope starts later does not inherit it.
-        let saved = (framegen() && active()).then(|| std::env::var_os("RADV_DEBUG"));
+        // Diagnostics (`NUMAPILOT_UPSCALE_FG_TEST=nodcc`): DCC off for gamescope's instance only.
+        // RADV reads RADV_DEBUG when the instance is created; the variable is put back so the
+        // game gamescope starts later does not inherit it. On the BC-250 it did not stop the
+        // fault at the first generated frames.
+        let saved = (fg_test("nodcc") && active()).then(|| std::env::var_os("RADV_DEBUG"));
         if let Some(old) = &saved {
             let v = no_dcc(old.as_ref().and_then(|o| o.to_str()));
             log!("frame generation: RADV_DEBUG={v} for gamescope's instance (DCC off)");

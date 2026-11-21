@@ -262,15 +262,15 @@ measuring. Validation (sync + GPU-assisted) found no out-of-bounds access in the
 gamescope submits and presents on a compute-only queue family, so the layer's clear and
 buffer → image copies run as RADV compute shaders.
 
-BC-250 (gfx10, 2560×1440 at 60 Hz, 2026-11-21): the first generated frame faulted the GPU (gfxhub
-page fault from the TCP, write, then a compute ring reset and VK_ERROR_DEVICE_LOST in gamescope;
-the desktop survived). With `RADV_DEBUG=nodcc` on gamescope it ran clean twice (30 → 60, 660–840
-generated frames); without it the fault came back at once. The swapchain images there are
-DCC-compressed and the generated frame goes into one gamescope never touched. So with frame
-generation the layer adds `nodcc` to `RADV_DEBUG` while gamescope's Vulkan instance is created
-and restores the variable right after (the game gamescope starts does not inherit it). A first
-retest with that still faulted once in three runs, so the cause is not settled:
-`NUMAPILOT_UPSCALE_FG_TEST` (comma-separated `noimage`, `nopass`, `noclear`, `fence`) turns
-parts of the generated frame's path off to find which one faults. Cost of
+BC-250 (gfx10, 2560×1440 at 60 Hz, 40 CUs unlocked live, 2026-11-21): with frame generation the
+GPU faults in about one run in three, always at the first generated frames (gfxhub page fault
+from the TCP in gamescope's compute work, then a compute ring reset and VK_ERROR_DEVICE_LOST in
+gamescope; the desktop survived every time). Without frame generation it is clean, also with the
+two extra swapchain images (`moreimages`, 5 runs). The fault also came with DCC off (`nodcc`),
+with the extra image presented unwritten (`noimage`), without the generation passes (`nopass`)
+and with the acquire waited on the CPU (`fence`); every call runs on gamescope's one thread
+(`trace`), so it is not a race between threads. Not settled yet. `NUMAPILOT_UPSCALE_FG_TEST`
+(comma-separated `noimage`, `nopass`, `noclear`, `fence`, `trace`, `lock`, `moreimages`,
+`nodcc`) turns parts of the generated frame's path off or logs it. Cost of
 the pass on the MI50: +0.3 ms at 720p → 1440p, +0.7 ms at 1080p → 4K.
 
