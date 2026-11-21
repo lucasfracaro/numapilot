@@ -99,6 +99,18 @@ fn no_dcc(cur: Option<&str>) -> String {
     }
 }
 
+/// `NUMAPILOT_UPSCALE_FG_TEST`: diagnostics for the generated frame's path (BC-250 fault),
+/// comma-separated: `noimage` (present the extra image without writing it), `nopass` (copy the
+/// real frame there instead of running the generation passes), `noclear` (no black clear of the
+/// extra image when the window is larger than the picture), `fence` (also wait for the extra
+/// image's acquire on the CPU).
+pub fn fg_test(flag: &str) -> bool {
+    static T: OnceLock<String> = OnceLock::new();
+    T.get_or_init(|| std::env::var("NUMAPILOT_UPSCALE_FG_TEST").unwrap_or_default())
+        .split(',')
+        .any(|f| f.trim() == flag)
+}
+
 /// `NUMAPILOT_UPSCALE_TEMPORAL=1`: the temporal pass (estimated motion, history) after the model.
 pub fn temporal() -> bool {
     std::env::var("NUMAPILOT_UPSCALE_TEMPORAL").is_ok_and(|v| v == "1")
@@ -814,9 +826,22 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
             // no waiting: without a free image right now this frame goes without a generated
             // one rather than showing the real frame later (server test: waiting 4 ms timed out
             // anyway when the display took fewer frames than real + generated)
-            let r = unsafe {
-                (d.swap.acquire_next_image_khr)(device, sc, 0, sem, vk::Fence::null(), &mut j)
+            // diagnostics: also wait for the acquire on the CPU before the submit
+            let fence = if fg_test("fence") {
+                unsafe { d.dev.create_fence(&vk::FenceCreateInfo::default(), None) }
+                    .unwrap_or(vk::Fence::null())
+            } else {
+                vk::Fence::null()
             };
+            let r = unsafe { (d.swap.acquire_next_image_khr)(device, sc, 0, sem, fence, &mut j) };
+            if fence != vk::Fence::null() {
+                unsafe {
+                    if matches!(r, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR) {
+                        let _ = d.dev.wait_for_fences(&[fence], true, 1_000_000_000);
+                    }
+                    d.dev.destroy_fence(fence, None);
+                }
+            }
             let ok = matches!(r, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR);
             if !ok {
                 static MISSED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

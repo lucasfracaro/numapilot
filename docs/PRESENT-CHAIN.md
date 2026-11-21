@@ -268,6 +268,9 @@ the desktop survived). With `RADV_DEBUG=nodcc` on gamescope it ran clean twice (
 generated frames); without it the fault came back at once. The swapchain images there are
 DCC-compressed and the generated frame goes into one gamescope never touched. So with frame
 generation the layer adds `nodcc` to `RADV_DEBUG` while gamescope's Vulkan instance is created
-and restores the variable right after (the game gamescope starts does not inherit it). Cost of
+and restores the variable right after (the game gamescope starts does not inherit it). A first
+retest with that still faulted once in three runs, so the cause is not settled:
+`NUMAPILOT_UPSCALE_FG_TEST` (comma-separated `noimage`, `nopass`, `noclear`, `fence`) turns
+parts of the generated frame's path off to find which one faults. Cost of
 the pass on the MI50: +0.3 ms at 720p → 1440p, +0.7 ms at 1080p → 4K.
 
