@@ -176,6 +176,8 @@ pub struct Chain {
     /// `passes`), run only on presents that show a generated frame.
     raw_fg: usize,
     fg_pack: Option<usize>,
+    /// The generation pass itself (skipped with `NUMAPILOT_UPSCALE_FG_TEST=nopass`).
+    fg_pass: Option<usize>,
     passes: Vec<Pass>,
     pool: vk::DescriptorPool,
     frames: Vec<Frame>,
@@ -279,6 +281,7 @@ impl Chain {
             raw_out: 0,
             raw_fg: 0,
             fg_pack: None,
+            fg_pass: None,
             passes: vec![],
             pool: vk::DescriptorPool::null(),
             frames: vec![],
@@ -413,6 +416,10 @@ impl Chain {
                 .push(unsafe { buffer(d, bytes(p.out.0, p.out.1, 16), usage) }?);
             let o = self.bufs.len() - 1;
             cur.insert(p.save.clone(), o);
+            if p.save == "FG" {
+                // specs[0] is the unpack pass
+                self.fg_pass = Some(specs.len());
+            }
             specs.push((
                 numapilot::vkbench::compile(&p.glsl).with_context(|| p.desc.clone())?,
                 p.out,
@@ -769,7 +776,8 @@ impl Chain {
                 vk::PipelineStageFlags::COMPUTE_SHADER,
             );
             for (n, p) in self.passes.iter().enumerate() {
-                if Some(n) == self.fg_pack && fg_j.is_none() {
+                let skip_fg = fg_j.is_none() || crate::fg_test("nopass");
+                if skip_fg && (Some(n) == self.fg_pack || Some(n) == self.fg_pass) {
                     continue;
                 }
                 dev.cmd_bind_pipeline(cb, vk::PipelineBindPoint::COMPUTE, p.pipe);
@@ -790,12 +798,29 @@ impl Chain {
                 );
             }
             // the generated frame into the extra image first, then this frame
-            let targets: Vec<(vk::Image, usize)> = fg_j
-                .map(|j| (self.real[j as usize], self.raw_fg))
+            let fg_raw = if crate::fg_test("nopass") {
+                self.raw_out
+            } else {
+                self.raw_fg
+            };
+            let targets: Vec<(vk::Image, usize, bool)> = fg_j
+                .map(|j| (self.real[j as usize], fg_raw, true))
                 .into_iter()
-                .chain([(real, self.raw_out)])
+                .chain([(real, self.raw_out, false)])
                 .collect();
-            for (real, raw) in targets {
+            for (real, raw, extra) in targets {
+                if extra && crate::fg_test("noimage") {
+                    img_barrier(
+                        real,
+                        vk::ImageLayout::UNDEFINED,
+                        vk::ImageLayout::PRESENT_SRC_KHR,
+                        vk::AccessFlags::empty(),
+                        vk::AccessFlags::empty(),
+                        vk::PipelineStageFlags::TOP_OF_PIPE,
+                        vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                    );
+                    continue;
+                }
                 img_barrier(
                     real,
                     vk::ImageLayout::UNDEFINED,
@@ -806,7 +831,9 @@ impl Chain {
                     vk::PipelineStageFlags::TRANSFER,
                 );
                 let (cw, ch) = (self.out_ext.width, self.out_ext.height);
-                if (cw, ch) != (self.real_ext.width, self.real_ext.height) {
+                if (cw, ch) != (self.real_ext.width, self.real_ext.height)
+                    && !(extra && crate::fg_test("noclear"))
+                {
                     // the window is not exactly 2× the game: black around the upscaled picture
                     dev.cmd_clear_color_image(
                         cb,

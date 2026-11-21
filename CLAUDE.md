@@ -262,6 +262,15 @@ quadro do meio pelo MOTION do temporal; a camada pede uma imagem a mais ao swapc
 ela a cada present (sem esperar), escreve o gerado e o real no mesmo submit e apresenta o gerado
 antes; só com FIFO. Travamentos da BC-250 (2026-11-21): eram pools de comando compartilhados
 entre swapchains e `vkDeviceWaitIdle` no destroy (corrigido no #19); cada Chain tem os seus pools.
+Geração testada (2026-11-21): servidor em tela cheia no monitor da MI50 de saída (DP-8, 120 Hz):
+30 → 60 e 60 → 120 fps, 1 gerado por real; ~1 em 3 capturas com defeitos em bordas rápidas. Os
+"~20 fps" de antes eram os monitores em DPMS desligado (acordar com `kscreen-doctor --dpms on`
+antes de medir). O gamescope envia e apresenta numa fila só de compute. Na BC-250 (40 CUs
+liberadas ao vivo) a geração dá page fault em ~1 de 3 rodadas, sempre nos primeiros quadros
+gerados (reset da fila de compute, o gamescope perde o device, o desktop fica). Não é a DCC
+(`nodcc` também falhou), nem as escritas da camada na imagem extra (`noimage` falhou), nem
+corrida entre threads (tudo na thread gamescope-xwm); sem geração e com 6 imagens ficou limpo.
+Chaves de diagnóstico em `NUMAPILOT_UPSCALE_FG_TEST`. Causa ainda aberta.
 
 ## FSR 4 INT8 na placa do jogo (2026-11-21)
 

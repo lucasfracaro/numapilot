@@ -251,10 +251,26 @@ real frame is shown one vblank later than without frame generation, as with any 
 Tested on lavapipe with vkcube (Xvfb): every present after the first shows a generated frame,
 synchronization validation clean.
 
-Server test (MI50 09:00, gamescope SDL window under KWin, vkcube, 2026-11-21): with vkcube capped
-at 10 FPS about one generated frame per real frame (240 generated in ~250 real frames); at its
-~20 FPS most acquires of the extra image failed. That setup only took about 20 presents per
-second in all (vkcube runs at ~20 FPS there even without the layer, on a 120 Hz output; the
-window is likely shown on a monitor of the other card), so real + generated did not fit. Cost of
+Server test (MI50 09:00, gamescope fullscreen on its own 120 Hz monitor, vkcube, Anime4K M +
+temporal, 2026-11-21): with vkcube capped at 30 FPS, 30 → 60 shown; capped at 60, 60 → 120; one
+generated frame per real frame in both. Uncapped (vkcube already at ~116 FPS on 120 Hz) FIFO has
+no free vblank and only ~10% of the frames get a generated one. About one screenshot in three
+shows blocky tears or broken edges on fast-moving edges (block vectors), the real frames are
+clean. An earlier test at ~20 FPS was spoiled by the monitors being in DPMS standby (vkcube runs
+at 5–20 FPS then, with or without gamescope): wake them (`kscreen-doctor --dpms on`) before
+measuring. Validation (sync + GPU-assisted) found no out-of-bounds access in the layer's passes.
+gamescope submits and presents on a compute-only queue family, so the layer's clear and
+buffer → image copies run as RADV compute shaders.
+
+BC-250 (gfx10, 2560×1440 at 60 Hz, 40 CUs unlocked live, 2026-11-21): with frame generation the
+GPU faults in about one run in three, always at the first generated frames (gfxhub page fault
+from the TCP in gamescope's compute work, then a compute ring reset and VK_ERROR_DEVICE_LOST in
+gamescope; the desktop survived every time). Without frame generation it is clean, also with the
+two extra swapchain images (`moreimages`, 5 runs). The fault also came with DCC off (`nodcc`),
+with the extra image presented unwritten (`noimage`), without the generation passes (`nopass`)
+and with the acquire waited on the CPU (`fence`); every call runs on gamescope's one thread
+(`trace`), so it is not a race between threads. Not settled yet. `NUMAPILOT_UPSCALE_FG_TEST`
+(comma-separated `noimage`, `nopass`, `noclear`, `fence`, `trace`, `lock`, `moreimages`,
+`nodcc`) turns parts of the generated frame's path off or logs it. Cost of
 the pass on the MI50: +0.3 ms at 720p → 1440p, +0.7 ms at 1080p → 4K.
 
