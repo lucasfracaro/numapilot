@@ -1619,4 +1619,73 @@ pub const PT: &[(&str, &str)] = &[
         "Before lsfg-vk: buy and install Lossless Scaling through Steam (app 993090) and switch it to the \"lsfg-vk\" branch (Properties → Betas). lsfg-vk uses its DLL and generates nothing without it.",
         "Antes do lsfg-vk: compre e instale o Lossless Scaling pela Steam (app 993090) e mude para o ramo \"lsfg-vk\" (Propriedades → Betas). O lsfg-vk usa a DLL dele e não gera nada sem ela.",
     ),
+    (
+        "RDNA 4: official FSR 4; Proton's swap is enough (mode \"FSR 4 (RDNA 4)\")",
+        "RDNA 4: FSR 4 oficial; a troca do Proton basta (modo \"FSR 4 (RDNA 4)\")",
+    ),
+    (
+        "NVIDIA: use the game's own DLSS (mode \"Newest DLSS\")",
+        "NVIDIA: use o DLSS do próprio jogo (modo \"DLSS mais novo\")",
+    ),
+    (
+        "FSR 4 INT8 with the BC250 FSR4 DLL (INT8 dot product in hardware, waves of 32)",
+        "FSR 4 INT8 com a DLL do BC250 FSR4 (produto escalar INT8 em hardware, ondas de 32)",
+    ),
+    (
+        "FSR 4 INT8 with the wave64 rebuild of the BC250 FSR4 DLL (INT8 dot product in hardware)",
+        "FSR 4 INT8 com a versão wave64 da DLL do BC250 FSR4 (produto escalar INT8 em hardware)",
+    ),
+    (
+        "FSR 4 INT8 with the wave64 DLL, without an INT8 dot product: works, but costs about 5 ms per frame at 1080p",
+        "FSR 4 INT8 com a DLL wave64, sem produto escalar INT8: funciona, mas custa cerca de 5 ms por quadro em 1080p",
+    ),
+    (
+        "Polaris has no INT8 dot product: FSR 4 needs a patched RADV (github.com/Schaka/fsr4-gfx803), which numapilot does not install; use FSR 3.1 or XeSS",
+        "A Polaris não tem produto escalar INT8: o FSR 4 precisa de um RADV com patch (github.com/Schaka/fsr4-gfx803), que o numapilot não instala; use FSR 3.1 ou XeSS",
+    ),
+    (
+        "no FSR 4 on this card: use FSR 3.1 or XeSS",
+        "sem FSR 4 nesta placa: use FSR 3.1 ou XeSS",
+    ),
+    (
+        "could not extract the file (install 7zip: sudo pacman -S 7zip)",
+        "não consegui extrair o arquivo (instale o 7zip: sudo pacman -S 7zip)",
+    ),
+    ("downloading OptiPatcher", "baixando o OptiPatcher"),
+    (
+        "downloading NVIDIA's DLSS DLL (OptiScaler offers DLSS to the game through it)",
+        "baixando a DLL do DLSS da NVIDIA (o OptiScaler oferece o DLSS ao jogo por ela)",
+    ),
+    (
+        "downloading the wave64 FSR 4 DLL (fsr4-gfx803)",
+        "baixando a DLL wave64 do FSR 4 (fsr4-gfx803)",
+    ),
+    (
+        "FSR 4 INT8 on the game's card",
+        "FSR 4 INT8 na placa do jogo",
+    ),
+    (
+        "FSR 4.1 inside the game on cards without RDNA 4 (MI50, BC-250, RDNA 2/3): OptiScaler with a DLL made for them; the game must have DLSS, FSR 2+ or XeSS",
+        "FSR 4.1 dentro do jogo em placas sem RDNA 4 (MI50, BC-250, RDNA 2/3): OptiScaler com uma DLL feita para elas; o jogo precisa ter DLSS, FSR 2+ ou XeSS",
+    ),
+    (
+        "FSR 4 runs inside the game: only games with DLSS, FSR 2+ or XeSS, through Proton. Not in online games (anti-cheat).",
+        "O FSR 4 roda dentro do jogo: só jogos com DLSS, FSR 2+ ou XeSS, pelo Proton. Não em jogos online (anti-cheat).",
+    ),
+    (
+        "card not found (numapilot topo lists them)",
+        "placa não encontrada (numapilot topo mostra as placas)",
+    ),
+    (
+        "numapilot: warning: OptiScaler in the game's folder came without the FSR 4 INT8 DLL: reinstall it from the profile (Adjust… → Upscaling)",
+        "numapilot: aviso: o OptiScaler na pasta do jogo veio sem a DLL do FSR 4 INT8: reinstale pelo perfil (Ajustar… → Upscaling)",
+    ),
+    (
+        "numapilot: warning: the game already upscales with FSR 4: in the presentation block use upscaling \"none\" and the gamescope game resolution equal to the output (lsfg-vk on the output card still generates frames)",
+        "numapilot: aviso: o jogo já amplia com o FSR 4: no bloco de apresentação use upscaling \"nenhum\" e a resolução do jogo no gamescope igual à de saída (o lsfg-vk na placa de saída continua gerando quadros)",
+    ),
+    (
+        "could not compute the SHA-256 (sha256sum)",
+        "não consegui calcular o SHA-256 (sha256sum)",
+    ),
 ];

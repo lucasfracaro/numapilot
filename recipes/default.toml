@@ -95,7 +95,7 @@ notes = [
 prefix = "gfx906"
 family = "Vega 20 (GCN 5)"
 compute = "rocm-community"
-upscale = ["fsr3", "xess", "fsr1-gamescope", "lsfg"]
+upscale = ["fsr4-int8", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
 
 [[arch]]
 prefix = "gfx101"
@@ -107,25 +107,25 @@ upscale = ["fsr3", "xess", "fsr1-gamescope", "lsfg"]
 prefix = "gfx1013"
 family = "RDNA 2 (BC-250 / Cyan Skillfish)"
 compute = "vulkan"
-upscale = ["fsr3", "xess", "fsr1-gamescope", "lsfg"]
+upscale = ["fsr4-int8", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
 
 [[arch]]
 prefix = "gfx103"
 family = "RDNA 2"
 compute = "rocm"
-upscale = ["fsr4-int8-experimental", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
+upscale = ["fsr4-int8", "fsr4-int8-experimental", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
 
 [[arch]]
 prefix = "gfx110"
 family = "RDNA 3"
 compute = "rocm"
-upscale = ["fsr4-rdna3", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
+upscale = ["fsr4-rdna3", "fsr4-int8", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
 
 [[arch]]
 prefix = "gfx115"
 family = "RDNA 3.5 (APU)"
 compute = "rocm"
-upscale = ["fsr4-int8-experimental", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
+upscale = ["fsr4-int8", "fsr4-int8-experimental", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
 
 [[arch]]
 prefix = "gfx120"

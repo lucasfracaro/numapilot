@@ -343,6 +343,7 @@ and Resizable BAR.
 | `numapilot steam command GAME [--gpu CARD]` | prints the launch options to paste in Steam for one game (works with Steam open), optionally forcing a card |
 | `numapilot clock [PROGRAM] [--watch]` | the clock a program is really getting: MHz of the CPUs its threads ran on, and clock, level, load and power of the card it renders on |
 | `numapilot upscale fetch\|status\|install\|remove APPID` | OptiScaler per game |
+| `numapilot upscale check` · `upscale install APPID --fsr4 [--gpu GPU] [--watermark]` | FSR 4 INT8 on the game's card |
 | `numapilot tune start\|status\|apply GAME` | FPS optimizer |
 | `numapilot peers add\|list\|remove\|wake\|pull\|backup` | other PCs |
 | `numapilot web` | phone panel |
@@ -567,8 +568,12 @@ teach numapilot about special boards.
 | FSR 4 for RDNA 3 | RX 7000 | `PROTON_FSR4_RDNA3_UPGRADE=1` |
 | Newest FSR 3.1 / DLSS / XeSS | whatever the game already supports | `PROTON_*_UPGRADE` |
 | OptiScaler | any card | `dxgi.dll` in the game's folder (the original is restored on removal); experimental FSR 4 INT8 |
+| FSR 4 INT8 on the game's card | MI50/Vega 20, BC-250, RDNA 2/3 | OptiScaler 10 + an FSR 4.1 DLL made for the card (BC250 FSR4 for wave32, its wave64 rebuild from fsr4-gfx803 for Vega 20), downloaded on the PC and checked by SHA-256; `numapilot upscale check` says what each card gets |
 
-  Do not use OptiScaler in online games (anti-cheat).
+  Do not use OptiScaler in online games (anti-cheat). FSR 4 runs inside the game, so only games
+  with DLSS, FSR 2+ or XeSS. With two cards, combine it with the presentation block: the game
+  upscales on its card and lsfg-vk ("Lossless Scaling on the output card") generates frames on the
+  other. No DLL is kept in this repository: numapilot downloads them from their projects.
 - **FPS optimizer**: tests settings (cores, sockets, cards) each time the game starts, measures 60 s
   with MangoHud and picks the best (favoring the 1% low).
 - **From the phone**: lists the Steam games with **Open** and **Start Sunshine**; with Wake-on-LAN

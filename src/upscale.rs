@@ -38,6 +38,11 @@ pub const MODES: &[(&str, &str, &str)] = &[
         "OptiScaler",
         "adds FSR/XeSS (and experimental FSR 4 INT8) to games that only have DLSS or nothing",
     ),
+    (
+        "fsr4-int8",
+        "FSR 4 INT8 on the game's card",
+        "FSR 4.1 inside the game on cards without RDNA 4 (MI50, BC-250, RDNA 2/3): OptiScaler with a DLL made for them; the game must have DLSS, FSR 2+ or XeSS",
+    ),
 ];
 
 /// Environment variables of the mode (OptiScaler must also be installed in the game's folder).
@@ -50,7 +55,8 @@ pub fn env(u: &Upscale) -> Vec<(String, String)> {
         "fsr3" => s("PROTON_FSR3_UPGRADE", "1"),
         "dlss" => s("PROTON_DLSS_UPGRADE", "1"),
         "xess" => s("PROTON_XESS_UPGRADE", "1"),
-        "optiscaler" => {
+        // Proton's own FSR 4 swap stays off: it would replace the DLL numapilot put in the game
+        "optiscaler" | "fsr4-int8" => {
             let cur = std::env::var("WINEDLLOVERRIDES").unwrap_or_default();
             let add = "dxgi=n,b";
             s(
@@ -61,7 +67,7 @@ pub fn env(u: &Upscale) -> Vec<(String, String)> {
                     format!("{cur};{add}")
                 },
             );
-            if u.int8 {
+            if u.int8 && u.mode == "optiscaler" {
                 // RDNA 3 on Linux: vkd3d-proton's compatibility path
                 s("DXIL_SPIRV_CONFIG", "wmma_rdna3_workaround");
             }
@@ -91,6 +97,7 @@ pub fn suggested(arch_upscale: &[String]) -> Vec<&'static str> {
             }
             "dlss" => "dlss",
             "xess" => "xess",
+            "fsr4-int8" => "fsr4-int8",
             _ => continue,
         };
         if !v.contains(&m) {
@@ -299,6 +306,9 @@ pub struct Installed {
     pub files: Vec<String>,
     /// dxgi.dll that already existed and was renamed to dxgi-original.dll (OptiScaler loads it).
     pub had_dxgi: bool,
+    /// FSR 4 INT8 route of the upscaler DLL that came along (`fsr4::Route::id`), if any.
+    #[serde(default)]
+    pub fsr4: Option<String>,
 }
 
 const MANIFEST: &str = ".numapilot-optiscaler.json";
@@ -312,12 +322,29 @@ pub fn install(dir: &Path, int8: bool) -> Result<String, String> {
     let (ver, src) = local_release().ok_or(crate::i18n::tr(
         "download OptiScaler first (Download button / numapilot upscale fetch)",
     ))?;
-    if installed(dir).is_some() {
-        remove(dir)?;
-    }
     let dll = find_file(&src, "OptiScaler.dll", 2)
         .ok_or(crate::i18n::tr("OptiScaler.dll not found in the package"))?;
     let root = dll.parent().unwrap().to_path_buf();
+    install_from(dir, &ver, &root, int8)?;
+    Ok(ver)
+}
+
+/// Writes the manifest of what numapilot put in the folder.
+pub fn save_manifest(dir: &Path, m: &Installed) -> Result<(), String> {
+    std::fs::write(
+        dir.join(MANIFEST),
+        serde_json::to_string_pretty(m).unwrap_or_default(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Copies the OptiScaler package at `root` (the folder with OptiScaler.dll) into `dir`, replacing
+/// numapilot's earlier install, and writes the manifest.
+pub fn install_from(dir: &Path, ver: &str, root: &Path, int8: bool) -> Result<Installed, String> {
+    if installed(dir).is_some() {
+        remove(dir)?;
+    }
+    let root = root.to_path_buf();
     let mut files = vec![];
     let had_dxgi = dir.join("dxgi.dll").exists();
     if had_dxgi {
@@ -335,8 +362,8 @@ pub fn install(dir: &Path, int8: bool) -> Result<String, String> {
                 stack.push(p);
                 continue;
             }
-            // .bat and .reg belong to the Windows installer
-            if n.ends_with(".bat") || n.ends_with(".reg") {
+            // .bat and .reg belong to the Windows installer, setup_linux.sh to the manual one
+            if n.ends_with(".bat") || n.ends_with(".reg") || n.ends_with(".sh") {
                 continue;
             }
             let target = if n.eq_ignore_ascii_case("OptiScaler.dll") {
@@ -374,17 +401,14 @@ pub fn install(dir: &Path, int8: bool) -> Result<String, String> {
         }
     }
     let m = Installed {
-        version: ver.clone(),
+        version: ver.to_string(),
         dir: dir.to_path_buf(),
         files,
         had_dxgi,
+        fsr4: None,
     };
-    std::fs::write(
-        dir.join(MANIFEST),
-        serde_json::to_string_pretty(&m).unwrap_or_default(),
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(ver)
+    save_manifest(dir, &m)?;
+    Ok(m)
 }
 
 /// Removes only what numapilot put there and restores the original dxgi.dll.
@@ -395,6 +419,24 @@ pub fn remove(dir: &Path) -> Result<(), String> {
     for f in &m.files {
         let _ = std::fs::remove_file(dir.join(f));
     }
+    // folders that came with the package and are empty now (deepest first; never the game's own)
+    let mut dirs: Vec<PathBuf> = m
+        .files
+        .iter()
+        .flat_map(|f| {
+            Path::new(f)
+                .ancestors()
+                .skip(1)
+                .filter(|a| !a.as_os_str().is_empty())
+                .map(|a| dir.join(a))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
+    dirs.dedup();
+    for d in dirs {
+        let _ = std::fs::remove_dir(d);
+    }
     if m.had_dxgi && dir.join("dxgi-original.dll").exists() {
         std::fs::rename(dir.join("dxgi-original.dll"), dir.join("dxgi.dll"))
             .map_err(|e| e.to_string())?;
@@ -402,12 +444,17 @@ pub fn remove(dir: &Path) -> Result<(), String> {
     std::fs::remove_file(dir.join(MANIFEST)).map_err(|e| e.to_string())
 }
 
+/// Tests that point XDG_DATA_HOME somewhere else take this first.
+#[cfg(test)]
+pub(crate) static DATA_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn env_and_install() {
+        let _l = DATA_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let u = Upscale {
             mode: "fsr4-rdna3".into(),
             indicator: true,

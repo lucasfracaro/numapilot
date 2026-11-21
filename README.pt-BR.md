@@ -331,6 +331,7 @@ link PCIe e Resizable BAR.
 | `numapilot steam command JOGO [--gpu PLACA]` | mostra as opções de inicialização para colar na Steam para um jogo (funciona com a Steam aberta), forçando uma placa se quiser |
 | `numapilot clock [PROGRAMA] [--watch]` | o clock que um programa está recebendo de verdade: MHz das CPUs em que as threads rodaram, e clock, nível, uso e potência da placa em que ele desenha |
 | `numapilot upscale fetch\|status\|install\|remove APPID` | OptiScaler por jogo |
+| `numapilot upscale check` · `upscale install APPID --fsr4 [--gpu GPU] [--watermark]` | FSR 4 INT8 na placa do jogo |
 | `numapilot tune start\|status\|apply JOGO` | otimizador de FPS |
 | `numapilot peers add\|list\|remove\|wake\|pull\|backup` | outros PCs |
 | `numapilot web` | painel no celular |
@@ -549,8 +550,12 @@ ensinam o numapilot sobre placas especiais.
 | FSR 4 para RDNA 3 | RX 7000 | `PROTON_FSR4_RDNA3_UPGRADE=1` |
 | FSR 3.1 / DLSS / XeSS mais novos | quem o jogo já suporta | `PROTON_*_UPGRADE` |
 | OptiScaler | qualquer placa | `dxgi.dll` na pasta do jogo (devolve a original ao remover); FSR 4 INT8 experimental |
+| FSR 4 INT8 na placa do jogo | MI50/Vega 20, BC-250, RDNA 2/3 | OptiScaler 10 + uma DLL do FSR 4.1 feita para a placa (BC250 FSR4 para wave32, a versão wave64 dela do fsr4-gfx803 para Vega 20), baixadas no PC e conferidas pelo SHA-256; `numapilot upscale check` diz o que cada placa recebe |
 
-  Não use o OptiScaler em jogos online (anti-cheat).
+  Não use o OptiScaler em jogos online (anti-cheat). O FSR 4 roda dentro do jogo, então só em jogos
+  com DLSS, FSR 2+ ou XeSS. Com duas placas, junte com o bloco de apresentação: o jogo amplia na
+  placa dele e o lsfg-vk ("Lossless Scaling na placa de saída") gera os quadros na outra. Nenhuma
+  DLL fica neste repositório: o numapilot baixa dos projetos delas.
 - **Otimizador de FPS**: testa configurações (núcleos, sockets, placas) a cada vez que o jogo abre,
   mede 60 s com o MangoHud e escolhe a melhor (valorizando o 1% low).
 - **Pelo celular**: lista os jogos da Steam com **Abrir** e **Ligar Sunshine**; com o Wake-on-LAN dá
