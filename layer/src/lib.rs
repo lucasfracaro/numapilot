@@ -635,11 +635,18 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
     let mut ci2 = *info;
     ci2.image_usage |= vk::ImageUsageFlags::TRANSFER_DST;
     if fg {
-        // one more image: the layer holds one for the generated frame
-        ci2.min_image_count += 1;
+        // more images: the layer acquires one for the generated frame while gamescope may hold
+        // its own, and the WSI only lets an app hold (images − the surface's minimum) at once
+        let asked = ci2.min_image_count;
+        ci2.min_image_count = asked.max(caps.min_image_count) + 2;
         if caps.max_image_count != 0 {
             ci2.min_image_count = ci2.min_image_count.min(caps.max_image_count);
         }
+        log!(
+            "frame generation: {} images (gamescope asked for {asked}, the surface's minimum is {})",
+            ci2.min_image_count,
+            caps.min_image_count
+        );
     }
     let r = unsafe { (d.swap.create_swapchain_khr)(device, &ci2, alloc, out) };
     if r != vk::Result::SUCCESS {
@@ -789,7 +796,18 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
                     &mut j,
                 )
             };
-            matches!(r, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR).then_some(j)
+            let ok = matches!(r, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR);
+            if !ok {
+                static MISSED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                let n = MISSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if n < 5 || (n + 1) % 300 == 0 {
+                    eprintln!(
+                        "numapilot-upscale: no image for the generated frame ({r:?}, {} times)",
+                        n + 1
+                    );
+                }
+            }
+            ok.then_some(j)
         };
         match unsafe { sw.chain.run(&d, queue, dq, i, &waits, &mut acquire) } {
             Ok((sem, fg)) => {
@@ -826,7 +844,7 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
         }
         static GENERATED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = GENERATED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if n == 0 || (n + 1) % 600 == 0 {
+        if n == 0 || (n + 1) % 60 == 0 {
             log!("{} generated frames shown", n + 1);
         }
     }
