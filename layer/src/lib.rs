@@ -90,6 +90,15 @@ pub fn framegen() -> bool {
     std::env::var("NUMAPILOT_UPSCALE_FG").is_ok_and(|v| v == "2")
 }
 
+/// `RADV_DEBUG` with `nodcc` added (kept as it is when already there).
+fn no_dcc(cur: Option<&str>) -> String {
+    match cur.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) if c.split(',').any(|f| f.trim() == "nodcc") => c.to_string(),
+        Some(c) => format!("{c},nodcc"),
+        None => "nodcc".to_string(),
+    }
+}
+
 /// `NUMAPILOT_UPSCALE_TEMPORAL=1`: the temporal pass (estimated motion, history) after the model.
 pub fn temporal() -> bool {
     std::env::var("NUMAPILOT_UPSCALE_TEMPORAL").is_ok_and(|v| v == "1")
@@ -329,7 +338,24 @@ unsafe extern "system" fn numapilot_CreateInstance(
             return vk::Result::ERROR_INITIALIZATION_FAILED;
         };
         let create: vk::PFN_vkCreateInstance = std::mem::transmute(create);
+        // Frame generation writes the generated frame into a swapchain image gamescope never
+        // touched, from gamescope's compute-only queue. On the BC-250 (gfx10) that image is
+        // DCC-compressed and the first generated frame faulted the GPU (TCP write, compute ring
+        // reset); with RADV_DEBUG=nodcc it ran clean. RADV reads RADV_DEBUG when the instance is
+        // created: add nodcc for gamescope's instance only and put the variable back, so the
+        // game gamescope starts later does not inherit it.
+        let saved = (framegen() && active()).then(|| std::env::var_os("RADV_DEBUG"));
+        if let Some(old) = &saved {
+            let v = no_dcc(old.as_ref().and_then(|o| o.to_str()));
+            log!("frame generation: RADV_DEBUG={v} for gamescope's instance (DCC off)");
+            std::env::set_var("RADV_DEBUG", v);
+        }
         let r = create(ci, alloc, out);
+        match saved {
+            Some(Some(old)) => std::env::set_var("RADV_DEBUG", old),
+            Some(None) => std::env::remove_var("RADV_DEBUG"),
+            None => {}
+        }
         if r != vk::Result::SUCCESS {
             return r;
         }
@@ -876,6 +902,14 @@ impl DeviceData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nodcc_added_once() {
+        assert_eq!(no_dcc(None), "nodcc");
+        assert_eq!(no_dcc(Some("")), "nodcc");
+        assert_eq!(no_dcc(Some("nohiz")), "nohiz,nodcc");
+        assert_eq!(no_dcc(Some("nohiz, nodcc")), "nohiz, nodcc");
+    }
 
     #[test]
     fn processes_and_models() {
