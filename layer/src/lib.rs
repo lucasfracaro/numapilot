@@ -78,6 +78,12 @@ pub fn model_shader(name: &str) -> Option<std::borrow::Cow<'static, str>> {
     numapilot::vkbench::model_source(name)
 }
 
+/// Mesa's `vk_wsi_force_swapchain_to_current_extent` (driconf, set by gamescope's environment).
+pub fn forced_extent() -> bool {
+    std::env::var("vk_wsi_force_swapchain_to_current_extent")
+        .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+}
+
 /// `NUMAPILOT_UPSCALE_TEMPORAL=1`: the temporal pass (estimated motion, history) after the model.
 pub fn temporal() -> bool {
     std::env::var("NUMAPILOT_UPSCALE_TEMPORAL").is_ok_and(|v| v == "1")
@@ -579,6 +585,21 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
         return pass();
     }
     let real = info.image_extent;
+    // gamescope sets vk_wsi_force_swapchain_to_current_extent: Mesa then makes the images the
+    // window's current size, not the size asked for. If those differ (the window is being
+    // resized), the images are not the size the chain would write: pass through, gamescope
+    // recreates the swapchain at the new size right after.
+    let cur = caps.current_extent;
+    if forced_extent()
+        && cur.width != u32::MAX
+        && (cur.width, cur.height) != (real.width, real.height)
+    {
+        eprintln!(
+            "numapilot-upscale: the window is {}x{}, the swapchain asks for {}x{}: passing through until they match",
+            cur.width, cur.height, real.width, real.height
+        );
+        return pass();
+    }
     let game = game_size((real.width, real.height));
     let Some(src) = chain::Src::of((real.width, real.height), game) else {
         eprintln!(
