@@ -79,7 +79,7 @@ pub struct Profile {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(default)]
 pub struct Upscale {
-    /// nenhum | fsr4 | fsr4-rdna3 | fsr3 | dlss | xess | optiscaler
+    /// nenhum | fsr4 | fsr4-rdna3 | fsr3 | dlss | xess | optiscaler | fsr4-int8
     pub mode: String,
     /// Shows the FSR 4/DLSS watermark (to check that it took effect).
     pub indicator: bool,

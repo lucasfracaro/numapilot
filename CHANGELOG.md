@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **FSR 4 INT8 on the game's card** (upscale mode "fsr4-int8", `src/fsr4.rs`). FSR 4.1 runs
+  inside the game on cards without RDNA 4: OptiScaler 10.0.0-pre1 as `dxgi.dll`, OptiPatcher,
+  NVIDIA's signed `nvngx_dlss.dll` (only when the game has none) and the upscaler DLL made for the
+  card: the BC250 FSR4 fork (RC12) on wave32 cards (BC-250, RDNA 2/3), its wave64 rebuild from
+  fsr4-gfx803 on Vega 20 (MI50). OptiScaler is set to the FFX backend with the INT8 model and its
+  own frame generation off. Everything is downloaded on the PC, checked by SHA-256 and listed in
+  the game's manifest, so removing restores the folder (now also the empty folders it created).
+  Polaris needs a patched RADV and is only explained. `numapilot upscale check` shows each card's
+  route; `run` warns when the game moved to a card the installed DLL was not made for, about Mesa
+  older than 26.2.3 with the BC250 DLL, and when the presentation block would upscale a second
+  time. With two cards, lsfg-vk on the output card ("lsfg-out") generates the frames.
 - Upscaling layer, temporal pass: the history is no longer copied every present (about 74 MB
   per frame at 720p → 1440p, not counted by `present-bench`); odd presents use descriptor sets
   with each kept buffer swapped with its source (ping-pong). On the BC-250 the temporal pass

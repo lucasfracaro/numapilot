@@ -96,12 +96,22 @@ enum Cmd {
     },
     /// Community recipes: show | update [URL] (update with sudo)
     Recipes { action: String, url: Option<String> },
-    /// Upscaling: fetch (downloads OptiScaler) | status|install|remove APPID [--int8]
+    /// Upscaling: fetch (downloads OptiScaler) | check (FSR 4 on each card) |
+    /// status|install|remove APPID [--int8] [--fsr4 [--gpu GPU] [--watermark]]
     Upscale {
         action: String,
         appid: Option<String>,
         #[arg(long)]
         int8: bool,
+        /// FSR 4 INT8 on the game's card: OptiScaler 10 with the DLL made for that card.
+        #[arg(long)]
+        fsr4: bool,
+        /// Card the game runs on (default: the profile's, else the gaming card).
+        #[arg(long)]
+        gpu: Option<String>,
+        /// Shows FSR 4's watermark in the game (to check that it took effect).
+        #[arg(long)]
+        watermark: bool,
     },
     /// Other PCs: list | add LINK [NAME] | remove NAME | wake NAME (wakes over the network) |
     /// pull NAME [todos] (copies profiles) | backup (stores everyone's)
@@ -711,8 +721,31 @@ fn real_main() -> Result<()> {
             action,
             appid,
             int8,
+            fsr4,
+            gpu,
+            watermark,
         } => {
             use numapilot::upscale;
+            let topo = Topology::load(&cfg);
+            if action == "check" {
+                for (ok, line) in numapilot::fsr4::report(&topo.gpus) {
+                    println!(
+                        "{} {line}",
+                        if ok {
+                            "OK     "
+                        } else {
+                            numapilot::t2!("NO     ", "NÃO   ")
+                        }
+                    );
+                }
+                println!(
+                    "{}",
+                    numapilot::i18n::tr(
+                        "FSR 4 runs inside the game: only games with DLSS, FSR 2+ or XeSS, through Proton. Not in online games (anti-cheat)."
+                    )
+                );
+                return Ok(());
+            }
             if action == "fetch" {
                 let v = upscale::fetch(&mut |m| println!("{m}")).map_err(|e| anyhow::anyhow!(e))?;
                 println!(
@@ -740,16 +773,75 @@ fn real_main() -> Result<()> {
                         Some(i) => println!(
                             "{}",
                             numapilot::tf!(
-                                "OptiScaler {} installed ({} files)",
-                                "OptiScaler {} instalado ({} arquivos)",
+                                "OptiScaler {} installed ({} files){}",
+                                "OptiScaler {} instalado ({} arquivos){}",
                                 i.version,
-                                i.files.len()
+                                i.files.len(),
+                                i.fsr4
+                                    .as_deref()
+                                    .map(|r| format!(", FSR 4 INT8 ({r})"))
+                                    .unwrap_or_default()
                             )
                         ),
                         None => println!(
                             "{}",
                             numapilot::tf!("OptiScaler not installed", "OptiScaler não instalado")
                         ),
+                    }
+                    Ok(())
+                }
+                "install" if fsr4 => {
+                    let profiles = Profiles::load();
+                    let want = gpu.or_else(|| {
+                        profiles
+                            .get(&format!("steam:{id}"))
+                            .map(|p| p.gpu.clone())
+                            .filter(|g| !g.is_empty() && g != "auto")
+                    });
+                    let card = match want.as_deref() {
+                        Some("display") => topo.display_gpu(),
+                        Some(w) => topo.gpus.iter().find(|g| g.alias == w || g.pci == w),
+                        None => topo.gaming_gpu(),
+                    }
+                    .cloned()
+                    .context(numapilot::i18n::tr(
+                        "card not found (numapilot topo lists them)",
+                    ))?;
+                    let r = numapilot::fsr4::route(&card);
+                    if !r.installable() {
+                        bail!(
+                            "{}",
+                            numapilot::tf!(
+                                "{}: {}",
+                                "{}: {}",
+                                card.alias,
+                                numapilot::i18n::tr(r.explain())
+                            )
+                        );
+                    }
+                    println!(
+                        "{}",
+                        numapilot::tf!(
+                            "Card: {} ({}): {}",
+                            "Placa: {} ({}): {}",
+                            card.alias,
+                            card.pci,
+                            numapilot::i18n::tr(r.explain())
+                        )
+                    );
+                    let v = numapilot::fsr4::install(&dir, r, watermark, &mut |m| println!("{m}"))
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                    println!(
+                        "{}",
+                        numapilot::tf!(
+                            "{v} installed in {}. In the game choose DLSS (or FSR/XeSS) as the upscaler; the first start compiles shaders. Do not use it in online games (the anti-cheat may ban you).",
+                            "{v} instalado em {}. No jogo escolha DLSS (ou FSR/XeSS) como upscaler; a primeira abertura compila shaders. Não use em jogos online (anti-cheat pode banir).",
+                            dir.display()
+                        )
+                    );
+                    let mesa = numapilot::recipes::mesa_version();
+                    for w in numapilot::fsr4::warnings(&card, Some(r.id()), mesa.as_deref()) {
+                        println!("{}", numapilot::tf!("warning: {}", "aviso: {}", w));
                     }
                     Ok(())
                 }
@@ -783,8 +875,8 @@ fn real_main() -> Result<()> {
                 _ => bail!(
                     "{}",
                     numapilot::tf!(
-                        "usage: numapilot upscale fetch | status|install|remove APPID [--int8]",
-                        "use: numapilot upscale fetch | status|install|remove APPID [--int8]"
+                        "usage: numapilot upscale fetch | check | status|install|remove APPID [--int8] [--fsr4 [--gpu GPU] [--watermark]]",
+                        "use: numapilot upscale fetch | check | status|install|remove APPID [--int8] [--fsr4 [--gpu GPU] [--watermark]]"
                     )
                 ),
             }
@@ -2555,13 +2647,46 @@ fn cmd_run(
         .and_then(|p| p.upscale.clone())
         .filter(|u| u.mode != "nenhum" && !u.mode.is_empty())
     {
-        if u.mode == "optiscaler"
-            && let Some(id) = pkey.strip_prefix("steam:")
-            && numapilot::upscale::steam_game_root(id)
+        let inst = pkey.strip_prefix("steam:").map(|id| {
+            numapilot::upscale::steam_game_root(id)
                 .and_then(|r| numapilot::upscale::exe_dir(&r))
                 .and_then(|d| numapilot::upscale::installed(&d))
-                .is_none()
-        {
+        });
+        if u.mode == "fsr4-int8" {
+            // FSR 4 runs inside the game, on the card that renders it
+            if let Some(g) = d.gpus.first() {
+                let mesa = numapilot::recipes::mesa_version();
+                let route = inst
+                    .as_ref()
+                    .and_then(|i| i.as_ref())
+                    .and_then(|i| i.fsr4.clone());
+                for w in numapilot::fsr4::warnings(g, route.as_deref(), mesa.as_deref()) {
+                    eprintln!(
+                        "{}",
+                        numapilot::tf!("numapilot: warning: {}", "numapilot: aviso: {}", w)
+                    );
+                }
+            }
+            if matches!(&inst, Some(Some(i)) if i.fsr4.is_none()) {
+                eprintln!(
+                    "{}",
+                    numapilot::i18n::tr(
+                        "numapilot: warning: OptiScaler in the game's folder came without the FSR 4 INT8 DLL: reinstall it from the profile (Adjust… → Upscaling)"
+                    )
+                );
+            }
+            if let Some((pr, _)) = &present_run
+                && pr.upscaler != "none"
+            {
+                eprintln!(
+                    "{}",
+                    numapilot::i18n::tr(
+                        "numapilot: warning: the game already upscales with FSR 4: in the presentation block use upscaling \"none\" and the gamescope game resolution equal to the output (lsfg-vk on the output card still generates frames)"
+                    )
+                );
+            }
+        }
+        if (u.mode == "optiscaler" || u.mode == "fsr4-int8") && matches!(&inst, Some(None)) {
             eprintln!(
                 "{}",
                 numapilot::tf!(

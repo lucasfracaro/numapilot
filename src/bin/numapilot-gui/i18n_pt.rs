@@ -2338,4 +2338,8 @@ pub const PT: &[(&str, &str)] = &[
         "lsfg-vk-cli healthcheck: arquivos antigos, duplicados ou faltando",
     ),
     ("monitor", "monitor"),
+    (
+        "With two cards: the game upscales on its card and lsfg-vk generates frames on the other (presentation block, generator \"Lossless Scaling on the output card\", upscaling \"none\").",
+        "Com duas placas: o jogo amplia na placa dele e o lsfg-vk gera os quadros na outra (bloco de apresentação, gerador \"Lossless Scaling na placa de saída\", upscaling \"nenhum\").",
+    ),
 ];

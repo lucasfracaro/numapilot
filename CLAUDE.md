@@ -263,6 +263,23 @@ ela a cada present (sem esperar), escreve o gerado e o real no mesmo submit e ap
 antes; só com FIFO. Travamentos da BC-250 (2026-11-21): eram pools de comando compartilhados
 entre swapchains e `vkDeviceWaitIdle` no destroy (corrigido no #19); cada Chain tem os seus pools.
 
+## FSR 4 INT8 na placa do jogo (2026-11-21)
+
+`src/fsr4.rs` + modo `fsr4-int8` do `Upscale` (Ajustar → Upscaling; `numapilot upscale check` e
+`upscale install APPID --fsr4 [--gpu G] [--watermark]`). O método dos vídeos da RX 580 é OptiScaler
+no Proton + DLL do FSR 4 INT8; **DLSS de verdade não roda em AMD** (os vídeos chamam de DLSS a
+entrada que o OptiScaler converte). Rota por placa (`fsr4::route`, por gfx ou PCI id): wave32
+(BC-250 gfx1013, RDNA 2/3) → DLL do BC250 FSR4 RC12; wave64 com INT8 (gfx906 MI50) → DLL `bc250`
+do fsr4-gfx803 r6 (o fork sem o pedido de wave32); gfx900 → a mesma, lenta; Polaris → precisa de
+RADV com patch (não instalamos); RDNA 4 → modo `fsr4` do Proton. OptiScaler 10.0.0-pre1 (nightly),
+OptiPatcher e `nvngx_dlss.dll` da NVIDIA. **Nenhuma DLL no repositório** (decisão do Lucas,
+2026-11-21: repo público MIT; DLL INT8 vazada da AMD, licença da NVIDIA, OptiScaler GPL-3): tudo é
+baixado no PC com URL e **SHA-256 fixos** (`fsr4::Pinned`) e recusado se não bater. Servidor
+conferido (2026-11-21): as duas MI50 têm `integerDotProduct4x8BitPackedSignedAccelerated` e
+`shaderFloat16`, subgroup só 64; RX 570 nenhum dos dois. Com duas placas: FSR 4 no jogo + `lsfg-out`
+na outra (bloco de apresentação com upscaling "none"). Falta: testar num jogo DX12 com DLSS na MI50
+e na BC-250 (CUs e clock de fábrica) e medir o custo.
+
 ## Capturas do README
 
 `tools/capturas` (veja o README de lá): sysfs de mentira do servidor, notebook e BC-250, carga por
