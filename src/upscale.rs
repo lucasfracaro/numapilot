@@ -282,6 +282,73 @@ pub fn exe_dir(game_root: &Path) -> Option<PathBuf> {
     best.map(|b| b.2)
 }
 
+/// Folder of the Windows game a running program is (the process or one of its children), for
+/// games outside Steam. Looks for the `.exe` in the command line: a Unix path, a `Z:\\` path, or
+/// a name found in the process's working folder (Wine starts the game there).
+pub fn game_dir_of_pid(pid: i32) -> Option<PathBuf> {
+    let proc = std::path::Path::new("/proc");
+    // the process and its descendants, parents first
+    let mut kids: std::collections::HashMap<i32, Vec<i32>> = Default::default();
+    for e in std::fs::read_dir(proc).ok()?.flatten() {
+        let Ok(p) = e.file_name().to_string_lossy().parse::<i32>() else {
+            continue;
+        };
+        let Ok(st) = std::fs::read_to_string(e.path().join("stat")) else {
+            continue;
+        };
+        let ppid = st
+            .rsplit_once(')')
+            .and_then(|(_, r)| r.split_whitespace().nth(1))
+            .and_then(|x| x.parse::<i32>().ok());
+        if let Some(pp) = ppid {
+            kids.entry(pp).or_default().push(p);
+        }
+    }
+    let mut order = vec![pid];
+    let mut i = 0;
+    while i < order.len() && order.len() < 512 {
+        if let Some(k) = kids.get(&order[i]) {
+            order.extend(k);
+        }
+        i += 1;
+    }
+    order
+        .into_iter()
+        .find_map(|p| exe_dir_in_cmdline(&proc.join(p.to_string())))
+}
+
+fn exe_dir_in_cmdline(pdir: &Path) -> Option<PathBuf> {
+    let raw = std::fs::read(pdir.join("cmdline")).ok()?;
+    let cwd = std::fs::read_link(pdir.join("cwd")).ok();
+    for arg in raw.split(|&b| b == 0) {
+        let a = String::from_utf8_lossy(arg);
+        let low = a.to_lowercase();
+        if !low.ends_with(".exe")
+            || low.contains("\\windows\\")
+            || low.contains("/windows/")
+            || SKIP_EXE.iter().any(|s| low.contains(s))
+        {
+            continue;
+        }
+        let unix = if low.starts_with("z:\\") {
+            a[2..].replace('\\', "/")
+        } else {
+            a.replace('\\', "/")
+        };
+        let path = PathBuf::from(&unix);
+        let found = if path.is_absolute() && path.is_file() {
+            Some(path)
+        } else {
+            let name = unix.rsplit('/').next().unwrap_or(&unix).to_string();
+            cwd.as_ref().map(|c| c.join(&name)).filter(|p| p.is_file())
+        };
+        if let Some(f) = found {
+            return f.parent().map(Path::to_path_buf);
+        }
+    }
+    None
+}
+
 /// Install folder of a Steam game by appid.
 pub fn steam_game_root(appid: &str) -> Option<PathBuf> {
     for lib in crate::steam::libraries() {
@@ -451,6 +518,33 @@ pub(crate) static DATA_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn game_folder_from_the_command_line() {
+        let base = std::env::temp_dir().join(format!("numapilot-exe-dir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let game = base.join("Games/Some Game/bin");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join("Game.exe"), b"").unwrap();
+        let pdir = base.join("proc");
+        std::fs::create_dir_all(&pdir).unwrap();
+        // a Windows name found in the working folder, after Wine's own programs
+        std::fs::write(
+            pdir.join("cmdline"),
+            b"C:\\windows\\system32\\steam.exe\0Game.exe\0-dx12\0",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&game, pdir.join("cwd")).unwrap();
+        assert_eq!(exe_dir_in_cmdline(&pdir), Some(game.clone()));
+        // a Z: path
+        let z = format!("Z:{}\\Game.exe", game.display()).replace('/', "\\");
+        std::fs::write(pdir.join("cmdline"), format!("wine\0{z}\0")).unwrap();
+        assert_eq!(exe_dir_in_cmdline(&pdir), Some(game.clone()));
+        // nothing that is a game
+        std::fs::write(pdir.join("cmdline"), b"/usr/bin/bash\0-c\0").unwrap();
+        assert_eq!(exe_dir_in_cmdline(&pdir), None);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn env_and_install() {

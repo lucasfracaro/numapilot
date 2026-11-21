@@ -97,7 +97,7 @@ enum Cmd {
     /// Community recipes: show | update [URL] (update with sudo)
     Recipes { action: String, url: Option<String> },
     /// Upscaling: fetch (downloads OptiScaler) | check (FSR 4 on each card) |
-    /// status|install|remove APPID [--int8] [--fsr4 [--gpu GPU] [--watermark]]
+    /// status|install|remove APPID|FOLDER [--int8] [--fsr4 [--gpu GPU] [--watermark]]
     Upscale {
         action: String,
         appid: Option<String>,
@@ -755,10 +755,21 @@ fn real_main() -> Result<()> {
                 return Ok(());
             }
             let id = appid.context(numapilot::i18n::tr("the Steam appid is missing"))?;
-            let root = upscale::steam_game_root(&id)
-                .context(numapilot::i18n::tr("game not found in the Steam libraries"))?;
-            let dir = upscale::exe_dir(&root)
-                .context(numapilot::i18n::tr("could not find the game's executable"))?;
+            // a folder instead of an appid: games outside Steam (the folder of the .exe)
+            let dir = if id.contains('/') {
+                let d = std::path::PathBuf::from(&id);
+                anyhow::ensure!(
+                    d.is_dir(),
+                    "{}",
+                    numapilot::tf!("{} is not a folder", "{} não é uma pasta", d.display())
+                );
+                d
+            } else {
+                let root = upscale::steam_game_root(&id)
+                    .context(numapilot::i18n::tr("game not found in the Steam libraries"))?;
+                upscale::exe_dir(&root)
+                    .context(numapilot::i18n::tr("could not find the game's executable"))?
+            };
             match action.as_str() {
                 "status" => {
                     println!(
@@ -875,8 +886,8 @@ fn real_main() -> Result<()> {
                 _ => bail!(
                     "{}",
                     numapilot::tf!(
-                        "usage: numapilot upscale fetch | check | status|install|remove APPID [--int8] [--fsr4 [--gpu GPU] [--watermark]]",
-                        "use: numapilot upscale fetch | check | status|install|remove APPID [--int8] [--fsr4 [--gpu GPU] [--watermark]]"
+                        "usage: numapilot upscale fetch | check | status|install|remove APPID|FOLDER [--int8] [--fsr4 [--gpu GPU] [--watermark]]",
+                        "use: numapilot upscale fetch | check | status|install|remove APPID|PASTA [--int8] [--fsr4 [--gpu GPU] [--watermark]]"
                     )
                 ),
             }

@@ -226,8 +226,27 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
             .small()
             .color(crate::theme::warn()),
         );
-        if let Some(id) = ed.key.strip_prefix("steam:") {
-            let dir = upscale::steam_game_root(id).and_then(|r| upscale::exe_dir(&r));
+        // what `numapilot upscale` gets: the Steam appid, or the folder of the running game's .exe
+        let target: Option<(String, Option<std::path::PathBuf>)> =
+            match ed.key.strip_prefix("steam:") {
+                Some(id) => Some((
+                    id.to_string(),
+                    upscale::steam_game_root(id).and_then(|r| upscale::exe_dir(&r)),
+                )),
+                None => ed
+                    .main_pid
+                    .and_then(upscale::game_dir_of_pid)
+                    .map(|d| (d.display().to_string(), Some(d))),
+            };
+        ui.label(
+            RichText::new(crate::i18n::tr(
+                "Takes effect the next time the game opens. If the game does not start through numapilot, add WINEDLLOVERRIDES=\"dxgi=n,b\" %command% to its launch options. In the game choose DLSS; if the game hides DLSS on this card, choose FSR 3.1 or XeSS: OptiScaler swaps either for FSR 4.",
+            ))
+            .small()
+            .weak(),
+        );
+        if let Some((id, dir)) = target {
+            let id = id.as_str();
             ui.horizontal(|ui| {
                 match dir.as_ref().and_then(|d| upscale::installed(d)) {
                     Some(i) => {
@@ -265,7 +284,7 @@ fn upscale_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 );
             }
         } else {
-            ui.label(RichText::new(crate::i18n::tr("To install from the interface, open the game through Steam with numapilot (the profile is tied to the appid).")).small().weak());
+            ui.label(RichText::new(crate::i18n::tr("To install from here, open the game and use Adjust… in Programs (or open it through Steam).")).small().weak());
         }
     }
     let new = if u.mode == "nenhum" && !u.indicator {

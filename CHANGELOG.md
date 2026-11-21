@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- OptiScaler / FSR 4 INT8 from Programs → Adjust… also for games outside Steam: the folder of the
+  running game's `.exe` comes from its command line (Unix, `Z:` or working-folder path), and
+  `numapilot upscale status|install|remove` takes that FOLDER instead of an appid. The panel says it
+  takes effect on the next launch, the launch option to add, and to pick FSR 3.1 or XeSS when the
+  game hides DLSS on AMD.
 - FSR 4 INT8: the Steam Deck (Van Gogh, LCD and OLED) is recognised by PCI id without ROCm and
   takes the wave32 route.
 - FSR 4 INT8: the FSR 4 and FSR frame generation watermarks are written as `false` in

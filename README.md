@@ -343,7 +343,7 @@ and Resizable BAR.
 | `numapilot steam command GAME [--gpu CARD]` | prints the launch options to paste in Steam for one game (works with Steam open), optionally forcing a card |
 | `numapilot clock [PROGRAM] [--watch]` | the clock a program is really getting: MHz of the CPUs its threads ran on, and clock, level, load and power of the card it renders on |
 | `numapilot upscale fetch\|status\|install\|remove APPID` | OptiScaler per game |
-| `numapilot upscale check` · `upscale install APPID --fsr4 [--gpu GPU] [--watermark]` | FSR 4 INT8 on the game's card |
+| `numapilot upscale check` · `upscale install APPID\|FOLDER --fsr4 [--gpu GPU] [--watermark]` | FSR 4 INT8 on the game's card |
 | `numapilot tune start\|status\|apply GAME` | FPS optimizer |
 | `numapilot peers add\|list\|remove\|wake\|pull\|backup` | other PCs |
 | `numapilot web` | phone panel |

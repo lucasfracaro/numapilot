@@ -748,8 +748,12 @@ pub const PT: &[(&str, &str)] = &[
     ),
     ("Optimize FPS", "Otimizar FPS"),
     (
-        "To install from the interface, open the game through Steam with numapilot (the profile is tied to the appid).",
-        "Para instalar pela interface, abra o jogo pela Steam com o numapilot (o perfil fica ligado ao appid).",
+        "To install from here, open the game and use Adjust… in Programs (or open it through Steam).",
+        "Para instalar por aqui, abra o jogo e use Ajustar… em Programas (ou abra pela Steam).",
+    ),
+    (
+        "Takes effect the next time the game opens. If the game does not start through numapilot, add WINEDLLOVERRIDES=\"dxgi=n,b\" %command% to its launch options. In the game choose DLSS; if the game hides DLSS on this card, choose FSR 3.1 or XeSS: OptiScaler swaps either for FSR 4.",
+        "Vale na próxima vez que o jogo abrir. Se o jogo não abrir pelo numapilot, ponha WINEDLLOVERRIDES=\"dxgi=n,b\" %command% nas opções de inicialização. No jogo escolha DLSS; se o jogo esconder o DLSS nesta placa, escolha FSR 3.1 ou XeSS: o OptiScaler troca qualquer um pelo FSR 4.",
     ),
     (
         "Game folder not found in the Steam libraries.",
