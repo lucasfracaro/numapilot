@@ -14,6 +14,13 @@
   would make the images a different size than asked. Retested on the BC-250: no fault in four
   runs; Anime4K M + temporal at ~57 FPS.
 
+- **Own frame generation on the output card (engine "blockmatch").** With one of the layer's
+  models and engine "numapilot: block matching" at 2× in Adjust → Presentation, the layer makes
+  the frame halfway between each two from the temporal pass's motion (`shaders/temporal/fg.glsl`)
+  and presents it before each real one, on the output card, like Lossless Scaling but in
+  numapilot's own layer (`NUMAPILOT_UPSCALE_FG=2`). Needs a FIFO (vsync) swapchain. Unreliable
+  motion falls back to the real frame there. `present-bench --compute` also measures
+  `bilinear+temporal+fg` and `anime4k-m+temporal+fg`.
 - **Temporal pass for the layer's models (M3, FSR 2 style with estimated motion).** New
   "Temporal" option under the upscaler in Adjust → Presentation (`Present.temporal`,
   `NUMAPILOT_UPSCALE_TEMPORAL=1`): block matching on the game's frame against the previous one,

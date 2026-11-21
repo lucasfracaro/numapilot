@@ -273,6 +273,14 @@ pub fn with_temporal(model: &str) -> String {
     format!("{model}\n{TEMPORAL}")
 }
 
+pub const FRAMEGEN: &str = include_str!("../shaders/temporal/fg.glsl");
+
+/// A model's shader with the temporal pass and the frame generation pass (texture `FG`: the
+/// frame halfway between the previous output and this one).
+pub fn with_framegen(model: &str) -> String {
+    format!("{model}\n{TEMPORAL}\n{FRAMEGEN}")
+}
+
 /// Textures kept from one frame to the next: (kept as, copied from at the end of the frame).
 /// `INPUT` is the frame the passes started from, `MAIN` the final output.
 pub fn history(sizes: &BTreeMap<String, (u32, u32)>) -> Vec<(&'static str, &'static str)> {
@@ -1342,6 +1350,12 @@ mod tests {
             for q in &planned[planned.len() - 2..] {
                 compile(&q.glsl).unwrap_or_else(|e| panic!("{name} / {}: {e:#}", q.desc));
             }
+            // frame generation after it, at the output size
+            let (planned, sizes) = plan(&parse_hooks(&with_framegen(src)), 1280, 720).unwrap();
+            assert_eq!(sizes["FG"], (2560, 1440), "{name}");
+            let q = planned.last().unwrap();
+            assert_eq!(q.save, "FG");
+            compile(&q.glsl).unwrap_or_else(|e| panic!("{name} / {}: {e:#}", q.desc));
         }
         // the luma models keep their wrapping, the temporal pass comes after
         let p = parse_hooks(&with_temporal(ARTCNN_C4F16));
@@ -1451,6 +1465,41 @@ mod tests {
                 assert_eq!((mv[i], mv[i + 1]), (-3.0, -2.0), "block {bx},{by}");
             }
         }
+        // the generated frame halfway through a 2-pixel move is the picture moved by 1
+        let (c, d) = (frame(0, 0), frame(2, 0));
+        let fg = with_framegen(BILINEAR_X2);
+        let (_, mid) = run_frames(&ctx, &fg, w as u32, h as u32, 1, &[&c, &d], Some("FG")).unwrap();
+        let (_, want) = run(
+            &ctx,
+            BILINEAR_X2,
+            w as u32,
+            h as u32,
+            1,
+            Some(&frame(1, 0)),
+            true,
+        )
+        .unwrap();
+        let (_, last) = run(&ctx, BILINEAR_X2, w as u32, h as u32, 1, Some(&d), true).unwrap();
+        let ow = w * 2;
+        let inner = |v: &[f32], u: &[f32]| {
+            let mut sum = 0.0;
+            let mut n = 0;
+            for y in 24..h * 2 - 24 {
+                for x in 24..ow - 24 {
+                    for ch in 0..3 {
+                        let i = (y * ow + x) * 4 + ch;
+                        sum += (v[i] - u[i]).abs();
+                        n += 1;
+                    }
+                }
+            }
+            sum / n as f32
+        };
+        let (good, lazy) = (inner(&mid, &want), inner(&last, &want));
+        assert!(
+            good < 0.02 && good < lazy / 3.0,
+            "halfway {good}, last frame {lazy}"
+        );
         // a still picture stays itself through the temporal pass
         let (_, still) =
             run_frames(&ctx, &shader, w as u32, h as u32, 4, &[&a], Some("MAIN")).unwrap();

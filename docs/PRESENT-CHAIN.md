@@ -228,3 +228,33 @@ vkcube runs through the layer with it. Measured on the second MI50 (server, 2026
 
 So at 720p → 1440p it fits with Anime4K M; at 1080p → 4K only with the lighter models. In gamescope
 (vkcube, 960x510 → 1920x1020) the picture was whole, with no trails or blocky tears.
+
+## Frame generation in the layer (engine "blockmatch")
+
+The "DLSS 5 through a capture card" idea: the output card makes the in-between frames from the
+finished picture alone, like Lossless Scaling, with the motion the temporal pass already
+estimates. `shaders/temporal/fg.glsl` (MIT) makes the frame halfway between the previous output
+and this one: each output pixel looks up the block motion (twice, so it uses the motion of where
+the block is halfway), samples the previous output half a step forward and this one half a step
+back, and blends them. Where the motion is unreliable (a block that matched nothing well, or the
+two samples disagree: something appeared or was uncovered) it shows this frame there, which reads
+as a small judder instead of a smear. Checked in the runner: halfway through a 2-pixel move the
+generated frame is the picture moved by 1.
+
+The layer (`NUMAPILOT_UPSCALE_FG=2`, set by the profile with engine "blockmatch", 2×, and one of
+the layer's models) asks the real swapchain for one more image. At each present of gamescope it
+acquires that extra image without waiting (without a free one, that frame goes without a
+generated one), writes the generated frame there and the real one into gamescope's image in the
+same submit, and presents the generated one first. It needs a FIFO (vsync) swapchain, where each
+present takes its own vblank: with another present mode the layer only upscales. Latency: the
+real frame is shown one vblank later than without frame generation, as with any interpolation.
+Tested on lavapipe with vkcube (Xvfb): every present after the first shows a generated frame,
+synchronization validation clean.
+
+Server test (MI50 09:00, gamescope SDL window under KWin, vkcube, 2026-11-21): with vkcube capped
+at 10 FPS about one generated frame per real frame (240 generated in ~250 real frames); at its
+~20 FPS most acquires of the extra image failed. That setup only took about 20 presents per
+second in all (vkcube runs at ~20 FPS there even without the layer, on a 120 Hz output; the
+window is likely shown on a monitor of the other card), so real + generated did not fit. Cost of
+the pass on the MI50: +0.3 ms at 720p → 1440p, +0.7 ms at 1080p → 4K.
+
