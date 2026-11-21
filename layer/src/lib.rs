@@ -104,7 +104,8 @@ fn no_dcc(cur: Option<&str>) -> String {
 /// real frame there instead of running the generation passes), `noclear` (no black clear of the
 /// extra image when the window is larger than the picture), `fence` (also wait for the extra
 /// image's acquire on the CPU), `trace` (log acquires and presents with the calling thread),
-/// `lock` (no acquire for the generated frame while gamescope acquires on another thread).
+/// `lock` (no acquire for the generated frame while gamescope acquires on another thread),
+/// `moreimages` (the two extra swapchain images also without frame generation).
 pub fn fg_test(flag: &str) -> bool {
     static T: OnceLock<String> = OnceLock::new();
     T.get_or_init(|| std::env::var("NUMAPILOT_UPSCALE_FG_TEST").unwrap_or_default())
@@ -704,7 +705,7 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
     }
     let mut ci2 = *info;
     ci2.image_usage |= vk::ImageUsageFlags::TRANSFER_DST;
-    if fg {
+    if fg || fg_test("moreimages") {
         // more images: the layer acquires one for the generated frame while gamescope may hold
         // its own, and the WSI only lets an app hold (images − the surface's minimum) at once
         let asked = ci2.min_image_count;
