@@ -785,16 +785,11 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
                 return None;
             }
             let mut j = 0u32;
-            // a few ms at most: without a free image this frame goes without a generated one
+            // no waiting: without a free image right now this frame goes without a generated
+            // one rather than showing the real frame later (server test: waiting 4 ms timed out
+            // anyway when the display took fewer frames than real + generated)
             let r = unsafe {
-                (d.swap.acquire_next_image_khr)(
-                    device,
-                    sc,
-                    4_000_000,
-                    sem,
-                    vk::Fence::null(),
-                    &mut j,
-                )
+                (d.swap.acquire_next_image_khr)(device, sc, 0, sem, vk::Fence::null(), &mut j)
             };
             let ok = matches!(r, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR);
             if !ok {
@@ -802,7 +797,7 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
                 let n = MISSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 if n < 5 || (n + 1) % 300 == 0 {
                     eprintln!(
-                        "numapilot-upscale: no image for the generated frame ({r:?}, {} times)",
+                        "numapilot-upscale: no free image for the generated frame ({r:?}, {} times)",
                         n + 1
                     );
                 }

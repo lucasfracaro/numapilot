@@ -259,7 +259,7 @@ anterior, limita pela vizinhança 3×3 e mistura 80/20; histórico (`PREV_IN`/`P
 pelo runner e pela camada. Sem jitter do jogo, estabiliza mais do que ganha detalhe.
 Geração de quadros própria (motor `blockmatch`, `NUMAPILOT_UPSCALE_FG=2`, `shaders/temporal/fg.glsl`):
 quadro do meio pelo MOTION do temporal; a camada pede uma imagem a mais ao swapchain, adquire
-ela a cada present (até 4 ms), escreve o gerado e o real no mesmo submit e apresenta o gerado
+ela a cada present (sem esperar), escreve o gerado e o real no mesmo submit e apresenta o gerado
 antes; só com FIFO. Travamentos da BC-250 (2026-11-21): eram pools de comando compartilhados
 entre swapchains e `vkDeviceWaitIdle` no destroy (corrigido no #19); cada Chain tem os seus pools.
 

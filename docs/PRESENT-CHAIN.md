@@ -243,11 +243,18 @@ generated frame is the picture moved by 1.
 
 The layer (`NUMAPILOT_UPSCALE_FG=2`, set by the profile with engine "blockmatch", 2×, and one of
 the layer's models) asks the real swapchain for one more image. At each present of gamescope it
-acquires that extra image (waiting 4 ms at most; without one, that frame goes without a
+acquires that extra image without waiting (without a free one, that frame goes without a
 generated one), writes the generated frame there and the real one into gamescope's image in the
 same submit, and presents the generated one first. It needs a FIFO (vsync) swapchain, where each
 present takes its own vblank: with another present mode the layer only upscales. Latency: the
 real frame is shown one vblank later than without frame generation, as with any interpolation.
 Tested on lavapipe with vkcube (Xvfb): every present after the first shows a generated frame,
 synchronization validation clean.
+
+Server test (MI50 09:00, gamescope SDL window under KWin, vkcube, 2026-11-21): with vkcube capped
+at 10 FPS about one generated frame per real frame (240 generated in ~250 real frames); at its
+~20 FPS most acquires of the extra image failed. That setup only took about 20 presents per
+second in all (vkcube runs at ~20 FPS there even without the layer, on a 120 Hz output; the
+window is likely shown on a monitor of the other card), so real + generated did not fit. Cost of
+the pass on the MI50: +0.3 ms at 720p → 1440p, +0.7 ms at 1080p → 4K.
 
