@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Temporal pass for the layer's models (M3, FSR 2 style with estimated motion).** New
+  "Temporal" option under the upscaler in Adjust → Presentation (`Present.temporal`,
+  `NUMAPILOT_UPSCALE_TEMPORAL=1`): block matching on the game's frame against the previous one,
+  then the previous output moved along that motion, clamped to the 3×3 neighbourhood and blended
+  with the current one (`shaders/temporal/temporal.glsl`). The layer and the runner keep the
+  previous input and output between presents. Without the game's jitter it steadies the picture
+  more than it adds detail. `present-bench --compute` also measures `bilinear+temporal` and
+  `anime4k-m+temporal`.
+
 - Upscaling layer: fixed the picture showing only its top-left quarter, 2× (server test).
   gamescope composes at the window's size whatever the surface reports, so the layer no longer
   shrinks the surface: gamescope runs with `-S integer -F nearest`, the layer reads one texel

@@ -471,6 +471,18 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
                 });
             ui.end_row();
 
+            if numapilot::present::layer_model(&pr.upscaler).is_some() {
+                ui.label("");
+                ui.checkbox(
+                    &mut pr.temporal,
+                    crate::i18n::tr("Temporal: steadier picture (estimated motion)"),
+                )
+                .on_hover_text(crate::i18n::tr(
+                    "Blends each frame with the previous one moved along the motion estimated from the picture (FSR 2 style, without the game's motion vectors): less shimmering on edges and fine detail.",
+                ));
+                ui.end_row();
+            }
+
             ui.label(crate::i18n::tr("Frame generation"));
             ui.horizontal(|ui| {
                 let mults = [

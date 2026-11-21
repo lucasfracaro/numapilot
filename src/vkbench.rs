@@ -246,15 +246,40 @@ fn parse_raw(src: &str) -> Vec<Pass> {
 /// doubled luma back onto a bilinear RGB picture after it, so every model goes MAIN → MAIN.
 pub fn parse_hooks(src: &str) -> Vec<Pass> {
     let mut passes = parse_raw(src);
-    if passes.iter().any(|p| p.hook == "LUMA") {
+    if let Some(last) = passes.iter().rposition(|p| p.hook == "LUMA") {
+        // MAIN passes after the luma model (the temporal pass) run on its RGB result
+        let after: Vec<Pass> = passes
+            .split_off(last + 1)
+            .into_iter()
+            .filter(|p| p.hook == "MAIN")
+            .collect();
         passes.retain(|p| p.hook == "LUMA");
         let mut all = parse_raw(TO_LUMA);
         all.append(&mut passes);
         all.extend(parse_raw(FROM_LUMA));
+        all.extend(after);
         return all;
     }
     passes.retain(|p| p.hook == "MAIN");
     passes
+}
+
+/// The temporal pass (`shaders/temporal`, numapilot's own): block matching on the game's frames
+/// and the previous output reprojected along it, clamped and blended (docs/PRESENT-CHAIN.md, M3).
+pub const TEMPORAL: &str = include_str!("../shaders/temporal/temporal.glsl");
+
+/// A model's shader with the temporal pass after it.
+pub fn with_temporal(model: &str) -> String {
+    format!("{model}\n{TEMPORAL}")
+}
+
+/// Textures kept from one frame to the next: (kept as, copied from at the end of the frame).
+/// `INPUT` is the frame the passes started from, `MAIN` the final output.
+pub fn history(sizes: &BTreeMap<String, (u32, u32)>) -> Vec<(&'static str, &'static str)> {
+    [("PREV_IN", "INPUT"), ("PREV_OUT", "MAIN")]
+        .into_iter()
+        .filter(|(k, _)| sizes.contains_key(*k))
+        .collect()
 }
 
 /// Evaluates mpv's size expressions (reverse Polish: `conv2d_tf.w 2 *`).
@@ -422,8 +447,20 @@ pub fn plan(
 ) -> Result<(Vec<Planned>, BTreeMap<String, (u32, u32)>)> {
     let mut sizes = BTreeMap::new();
     sizes.insert("MAIN".to_string(), (w, h));
+    sizes.insert("INPUT".to_string(), (w, h));
     let mut out = vec![];
     for p in passes {
+        // the previous frame's textures, the first time a pass asks for them
+        for b in &p.binds {
+            let size = match b.as_str() {
+                "PREV_IN" => Some((w, h)),
+                "PREV_OUT" => sizes.get("MAIN").copied(),
+                _ => None,
+            };
+            if let Some(sz) = size {
+                sizes.entry(b.clone()).or_insert(sz);
+            }
+        }
         let Some(&hooked) = sizes.get(&p.hook) else {
             bail!("{}: hooks '{}' before it exists", p.desc, p.hook);
         };
@@ -533,6 +570,17 @@ vec4 {b}_texOff_(vec2 off) {{
             ));
         }
         sizes.insert(p.save.clone(), (ow, oh));
+        if p.save == "MAIN"
+            && let Some(&prev) = sizes.get("PREV_OUT")
+            && prev != (ow, oh)
+        {
+            bail!(
+                "{}: the output changes size after PREV_OUT was read ({}x{} → {ow}x{oh})",
+                p.desc,
+                prev.0,
+                prev.1
+            );
+        }
         out.push(Planned {
             desc: p.desc.clone(),
             glsl: g,
@@ -784,6 +832,23 @@ pub fn run(
     input: Option<&[f32]>,
     readback: bool,
 ) -> Result<(Timing, Vec<f32>)> {
+    let frames: Vec<&[f32]> = input.into_iter().collect();
+    run_frames(ctx, shader, w, h, runs, &frames, readback.then_some("MAIN"))
+}
+
+/// `run` over a sequence of input frames (frame i of the runs is `frames[i % len]`; none = flat
+/// grey), keeping the history textures (`history`) from one frame to the next. `read` returns
+/// that texture after the last frame.
+pub fn run_frames(
+    ctx: &Ctx,
+    shader: &str,
+    w: u32,
+    h: u32,
+    runs: u32,
+    frames: &[&[f32]],
+    read: Option<&str>,
+) -> Result<(Timing, Vec<f32>)> {
+    let input = frames.first().copied();
     let passes = parse_hooks(shader);
     if passes.is_empty() {
         bail!("no passes in the shader");
@@ -803,6 +868,12 @@ pub fn run(
     bufs.push(ctx.buffer(px((w, h)), usage, false)?);
     let mut cur: BTreeMap<String, usize> = BTreeMap::new();
     cur.insert("MAIN".into(), 0);
+    cur.insert("INPUT".into(), 0);
+    let kept = history(&sizes);
+    for (k, _) in &kept {
+        bufs.push(ctx.buffer(px(sizes[*k]), usage, false)?);
+        cur.insert(k.to_string(), bufs.len() - 1);
+    }
     let mut wiring: Vec<(usize, Vec<usize>)> = vec![];
     for p in &planned {
         let ins: Vec<usize> = p.binds.iter().map(|b| cur[b]).collect();
@@ -811,8 +882,14 @@ pub fn run(
         cur.insert(p.save.clone(), o);
         wiring.push((o, ins));
     }
-    let out_idx = cur["MAIN"];
-    let out_size = sizes["MAIN"];
+    // (kept buffer, buffer it is copied from at the end of each frame)
+    let copies: Vec<(usize, usize)> = kept.iter().map(|(k, src)| (cur[*k], cur[*src])).collect();
+    let readback = read.is_some();
+    let read = read.unwrap_or("MAIN");
+    let Some(&out_idx) = cur.get(read) else {
+        bail!("no texture '{read}'");
+    };
+    let out_size = sizes[read];
 
     // descriptors and pipelines
     let max_b = planned.iter().map(|p| p.binds.len() + 1).max().unwrap_or(1) as u32;
@@ -1013,10 +1090,28 @@ pub fn run(
                 i as u32 + 1,
             );
         }
+        if !copies.is_empty() {
+            // this frame's input and output become the next frame's history
+            barrier(
+                cb,
+                vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::SHADER_READ,
+                vk::AccessFlags::TRANSFER_READ | vk::AccessFlags::TRANSFER_WRITE,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::PipelineStageFlags::TRANSFER,
+            );
+            for &(dst, src) in &copies {
+                d.cmd_copy_buffer(
+                    cb,
+                    bufs[src].b,
+                    bufs[dst].b,
+                    &[vk::BufferCopy::default().size(bufs[dst].size)],
+                );
+            }
+        }
         if let Some(rb) = &readback_buf {
             barrier(
                 cb,
-                vk::AccessFlags::SHADER_WRITE,
+                vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::TRANSFER_WRITE,
                 vk::AccessFlags::TRANSFER_READ,
                 vk::PipelineStageFlags::COMPUTE_SHADER,
                 vk::PipelineStageFlags::TRANSFER,
@@ -1031,11 +1126,48 @@ pub fn run(
         d.end_command_buffer(cb)?;
     }
     let fence = unsafe { d.create_fence(&vk::FenceCreateInfo::default(), None) }?;
+    // the history starts black
+    if !copies.is_empty() {
+        let init = unsafe {
+            d.allocate_command_buffers(
+                &vk::CommandBufferAllocateInfo::default()
+                    .command_pool(cpool)
+                    .level(vk::CommandBufferLevel::PRIMARY)
+                    .command_buffer_count(1),
+            )
+        }?[0];
+        unsafe {
+            d.begin_command_buffer(init, &vk::CommandBufferBeginInfo::default())?;
+            for &(dst, _) in &copies {
+                d.cmd_fill_buffer(init, bufs[dst].b, 0, vk::WHOLE_SIZE, 0);
+            }
+            d.end_command_buffer(init)?;
+            let cbs = [init];
+            d.queue_submit(
+                ctx.queue,
+                &[vk::SubmitInfo::default().command_buffers(&cbs)],
+                fence,
+            )?;
+            d.wait_for_fences(&[fence], true, 60_000_000_000)?;
+            d.reset_fences(&[fence])?;
+        }
+    }
     let mut per_pass: Vec<Vec<f64>> = vec![vec![]; planned.len()];
     let mut totals = vec![];
     let runs = runs.max(1);
     let mut result = Ok(());
-    for _ in 0..runs + 1 {
+    for run in 0..runs as usize + 1 {
+        // the next input frame into the staging buffer
+        if frames.len() > 1
+            && let Some(st) = &staging_in
+        {
+            let f = frames[run % frames.len()];
+            unsafe {
+                let ptr = d.map_memory(st.m, 0, st.size, vk::MemoryMapFlags::empty())? as *mut f32;
+                std::ptr::copy_nonoverlapping(f.as_ptr(), ptr, f.len().min((st.size / 4) as usize));
+                d.unmap_memory(st.m);
+            }
+        }
         let cbs = [cb];
         let r = unsafe {
             d.queue_submit(
@@ -1189,6 +1321,39 @@ mod tests {
     }
 
     #[test]
+    fn temporal_after_any_model() {
+        for (name, _, src) in MODELS {
+            let p = parse_hooks(&with_temporal(src));
+            assert_eq!(
+                p.last().unwrap().desc,
+                "temporal: reproject and blend",
+                "{name}"
+            );
+            let (planned, sizes) = plan(&p, 1280, 720).unwrap();
+            assert_eq!(sizes["MAIN"], (2560, 1440), "{name}");
+            assert_eq!(sizes["PREV_OUT"], (2560, 1440), "{name}");
+            assert_eq!(sizes["PREV_IN"], (1280, 720), "{name}");
+            assert_eq!(sizes["MOTION"], (160, 90), "{name}");
+            assert_eq!(
+                history(&sizes),
+                [("PREV_IN", "INPUT"), ("PREV_OUT", "MAIN")],
+                "{name}"
+            );
+            for q in &planned[planned.len() - 2..] {
+                compile(&q.glsl).unwrap_or_else(|e| panic!("{name} / {}: {e:#}", q.desc));
+            }
+        }
+        // the luma models keep their wrapping, the temporal pass comes after
+        let p = parse_hooks(&with_temporal(ARTCNN_C4F16));
+        let i = p
+            .iter()
+            .position(|x| x.desc == "luma onto bilinear rgb")
+            .unwrap();
+        assert_eq!(p[i + 1].desc, "temporal: luma");
+        assert!(history(&plan(&parse_hooks(ANIME4K_S), 64, 36).unwrap().1).is_empty());
+    }
+
+    #[test]
     fn every_pass_compiles() {
         for (name, _, src) in MODELS {
             let (planned, _) = plan(&parse_hooks(src), 64, 36).unwrap();
@@ -1249,5 +1414,52 @@ mod tests {
             .sum::<f32>()
             / base.len() as f32;
         assert!(mean < 0.02, "{mean}");
+        // block matching finds a known shift: frame B is frame A moved 3 right and 2 down
+        let (w, h) = (64usize, 48usize);
+        let tex = |x: i32, y: i32| {
+            let (x, y) = (x as f32, y as f32);
+            0.5 + 0.2 * (x * 0.7).sin() * (y * 0.45).cos() + 0.2 * ((x + 2.0 * y) * 0.31).sin()
+        };
+        let frame = |dx: i32, dy: i32| {
+            let mut f = vec![1f32; w * h * 4];
+            for y in 0..h {
+                for x in 0..w {
+                    let v = tex(x as i32 - dx, y as i32 - dy);
+                    for c in 0..3 {
+                        f[(y * w + x) * 4 + c] = v;
+                    }
+                }
+            }
+            f
+        };
+        let (a, b) = (frame(0, 0), frame(3, 2));
+        let shader = with_temporal(BILINEAR_X2);
+        let (_, mv) = run_frames(
+            &ctx,
+            &shader,
+            w as u32,
+            h as u32,
+            1,
+            &[&a, &b],
+            Some("MOTION"),
+        )
+        .unwrap();
+        // inner blocks (8×6 grid): the block was 3 left and 2 up in the previous frame
+        for by in 1..5 {
+            for bx in 1..7 {
+                let i = (by * 8 + bx) * 4;
+                assert_eq!((mv[i], mv[i + 1]), (-3.0, -2.0), "block {bx},{by}");
+            }
+        }
+        // a still picture stays itself through the temporal pass
+        let (_, still) =
+            run_frames(&ctx, &shader, w as u32, h as u32, 4, &[&a], Some("MAIN")).unwrap();
+        let (_, plain) = run(&ctx, BILINEAR_X2, w as u32, h as u32, 1, Some(&a), true).unwrap();
+        let diff = still
+            .iter()
+            .zip(&plain)
+            .map(|(x, y)| (x - y).abs())
+            .fold(0f32, f32::max);
+        assert!(diff < 0.02, "{diff}");
     }
 }

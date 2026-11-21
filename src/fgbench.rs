@@ -659,12 +659,34 @@ pub fn compute(g: &Gpu, w: u32, h: u32, runs: u32) -> anyhow::Result<ComputeRepo
         ));
     }
     let mut models = vec![];
-    for (id, name) in crate::vkbench::model_names() {
+    // every model, then the temporal pass on top of two of them (its own cost)
+    let list = crate::vkbench::model_names()
+        .into_iter()
+        .map(|(id, name)| (id, name.to_string(), false))
+        .chain(
+            ["bilinear", "anime4k-m"]
+                .into_iter()
+                .map(|id| (id, format!("{id} + temporal"), true)),
+        )
+        .collect::<Vec<_>>();
+    for (id, name, temporal) in list {
         // FSRCNNX is downloaded the first time (LGPL, not shipped)
         let src = crate::vkbench::model_source(id).or_else(|| {
             crate::vkbench::fetch(id).ok()?;
             crate::vkbench::model_source(id)
         });
+        let src = src.map(|s| {
+            if temporal {
+                crate::vkbench::with_temporal(&s)
+            } else {
+                s.into_owned()
+            }
+        });
+        let model = if temporal {
+            format!("{id}+temporal")
+        } else {
+            id.to_string()
+        };
         let r = match &src {
             Some(src) => crate::vkbench::run(&ctx, src, w, h, runs, None, false),
             None => Err(anyhow::anyhow!(crate::i18n::tr(
@@ -673,15 +695,15 @@ pub fn compute(g: &Gpu, w: u32, h: u32, runs: u32) -> anyhow::Result<ComputeRepo
         };
         models.push(match r {
             Ok((t, _)) => ComputeModel {
-                model: id.into(),
-                name: name.into(),
+                model: model.clone(),
+                name: name.clone(),
                 ms: Some(t.total_ms),
                 slowest: t.passes.iter().max_by(|a, b| a.1.total_cmp(&b.1)).cloned(),
                 error: None,
             },
             Err(e) => ComputeModel {
-                model: id.into(),
-                name: name.into(),
+                model,
+                name,
                 ms: None,
                 slowest: None,
                 error: Some(format!("{e:#}")),

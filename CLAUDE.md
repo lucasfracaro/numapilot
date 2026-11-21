@@ -253,7 +253,10 @@ baixado em ~/.local/share/numapilot/shaders no primeiro uso, nunca no repositór
 RGB → luma antes e soma a luma ampliada sobre o RGB bilinear depois; passes `//!COMPUTE` do mpv
 (memória compartilhada) viram buffers, e o naga inverte arrays multidimensionais e lê `barrier()`
 como de subgrupo (`flatten_shared`, `workgroup_barriers`). Falta: medir na MI50, testar junto do
-`lsfg-out`. Próximo: FSR 2 com movimento estimado.
+`lsfg-out`. Passada temporal (M3, `shaders/temporal/temporal.glsl`, `Present.temporal` →
+`NUMAPILOT_UPSCALE_TEMPORAL=1`): blocos 8×8 no quadro do jogo contra o anterior, reprojeta a saída
+anterior, limita pela vizinhança 3×3 e mistura 80/20; histórico (`PREV_IN`/`PREV_OUT`) guardado
+pelo runner e pela camada. Sem jitter do jogo, estabiliza mais do que ganha detalhe.
 
 ## Capturas do README
 

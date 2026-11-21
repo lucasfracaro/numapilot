@@ -193,3 +193,38 @@ the FSRCNN-TensorFlow releases into `~/.local/share/numapilot/shaders` the first
 Checked on lavapipe: every pass compiles; on a smooth picture ArtCNN C4F16 stays within 0.02 of
 bilinear on average, and a real picture looks right with every model. To measure on the server:
 `numapilot present-bench --gpu gfx906-1 --compute`.
+
+## M3: temporal pass with estimated motion
+
+`shaders/temporal/temporal.glsl` (numapilot's own, MIT) is an option on top of any model
+(Adjust → Presentation → "Temporal", `NUMAPILOT_UPSCALE_TEMPORAL=1` for the layer). It is not the
+FidelityFX FSR 2 code but the same idea reduced to what the picture alone gives:
+
+1. **Block matching** on the game's frame (INPUT) against the previous one (PREV_IN): 8×8 blocks,
+   16 luma samples each, ±8 game pixels; standing still wins ties (HUD, flat areas). Coarse to
+   fine: steps of 2 pixels on a 3×3-blurred luma (81 candidates), then ±1 around the two best on
+   the luma itself (18), instead of all 289. The full search cost 3.7 ms at 720p and 8.8 ms at
+   1080p on the MI50 (first server run).
+2. **Reproject and blend**: the previous output (PREV_OUT) is read where the block was, clamped
+   to the min/max of the current 3×3 neighbourhood (the FSR 2 / TAA guard against ghosting) and
+   mixed 80/20 with the current frame. A block that matches nothing well (new content) or a
+   history outside the picture takes the current frame only.
+
+The runner keeps INPUT and MAIN of each present as PREV_IN / PREV_OUT for the next one (black at
+the start); the layer copies them at the end of each present.
+
+**Without jitter there is little new detail to gather**: the game renders the same pixel centres
+every frame, so the pass mostly steadies the picture (less shimmering and crawling edges in
+motion, softer noise) rather than adding resolution like the real FSR 2 with a jittered game.
+Flat depth is implied (no disocclusion test beyond the block match). Checked on lavapipe: the
+block matching finds a known (3, 2) shift, a still picture stays within 0.02 of the model alone,
+vkcube runs through the layer with it. Measured on the second MI50 (server, 2026-11-21, `present-bench --compute`, median of 50):
+
+| | 720p → 1440p | 1080p → 4K |
+|---|---|---|
+| bilinear + temporal | 1.81 ms | 4.47 ms |
+| anime4k-m + temporal | 2.72 ms | 6.46 ms |
+| block matching alone | 1.24 ms | 3.18 ms |
+
+So at 720p → 1440p it fits with Anime4K M; at 1080p → 4K only with the lighter models. In gamescope
+(vkcube, 960x510 → 1920x1020) the picture was whole, with no trails or blocky tears.

@@ -2264,6 +2264,14 @@ pub const PT: &[(&str, &str)] = &[
     ("the game's card", "a placa do jogo"),
     ("Upscaling model", "Modelo de upscaling"),
     ("Frame generation", "Geração de quadros"),
+    (
+        "Temporal: steadier picture (estimated motion)",
+        "Temporal: imagem mais estável (movimento estimado)",
+    ),
+    (
+        "Blends each frame with the previous one moved along the motion estimated from the picture (FSR 2 style, without the game's motion vectors): less shimmering on edges and fine detail.",
+        "Mistura cada quadro com o anterior deslocado pelo movimento estimado da imagem (no estilo do FSR 2, sem os vetores de movimento do jogo): menos cintilação em bordas e detalhes finos.",
+    ),
     ("Minimum base FPS", "FPS mínimo de base"),
     (
         "under this the generation turns off (it looks bad below ~40)",

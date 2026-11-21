@@ -170,6 +170,10 @@ pub struct Chain {
     passes: Vec<Pass>,
     pool: vk::DescriptorPool,
     frames: Vec<Frame>,
+    /// Kept from one present to the next (temporal pass): (kept buffer, source buffer, bytes).
+    hist: Vec<(usize, usize, u64)>,
+    /// The kept buffers were cleared.
+    hist_ready: bool,
 }
 
 unsafe fn mem_type(d: &DeviceData, bits: u32, want: vk::MemoryPropertyFlags) -> Option<u32> {
@@ -259,6 +263,8 @@ impl Chain {
             passes: vec![],
             pool: vk::DescriptorPool::null(),
             frames: vec![],
+            hist: vec![],
+            hist_ready: false,
         };
         match unsafe { c.build(d, info, px, shader) } {
             Ok(()) => Ok(c),
@@ -364,6 +370,14 @@ impl Chain {
             .push(unsafe { buffer(d, bytes(sw, sh, 16), usage) }?);
         let mut cur: std::collections::BTreeMap<String, usize> = Default::default();
         cur.insert("MAIN".into(), 1);
+        cur.insert("INPUT".into(), 1);
+        let kept = numapilot::vkbench::history(&sizes);
+        for (k, _) in &kept {
+            let (kw, kh) = sizes[*k];
+            self.bufs
+                .push(unsafe { buffer(d, bytes(kw, kh, 16), usage) }?);
+            cur.insert(k.to_string(), self.bufs.len() - 1);
+        }
         // (spirv, out size, out buffer, in buffers)
         let mut specs: Vec<(Vec<u32>, (u32, u32), usize, Vec<usize>)> = vec![(
             numapilot::vkbench::compile(&unpack_glsl(&self.src, rw, px))?,
@@ -384,6 +398,13 @@ impl Chain {
                 ins,
             ));
         }
+        self.hist = kept
+            .iter()
+            .map(|(k, src)| {
+                let (kw, kh) = sizes[*k];
+                (cur[*k], cur[*src], bytes(kw, kh, 16))
+            })
+            .collect();
         self.bufs
             .push(unsafe { buffer(d, bytes(ow, oh, 4), usage) }?);
         self.raw_out = self.bufs.len() - 1;
@@ -606,13 +627,23 @@ impl Chain {
                 &vk::CommandBufferBeginInfo::default()
                     .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
             )?;
-            // the previous frame's passes share the buffers
+            // the previous frame's passes and history copies share the buffers
             mem_barrier(
-                vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::TRANSFER_READ,
-                vk::AccessFlags::TRANSFER_WRITE | vk::AccessFlags::SHADER_WRITE,
+                vk::AccessFlags::SHADER_WRITE | vk::AccessFlags::TRANSFER_WRITE,
+                vk::AccessFlags::TRANSFER_READ
+                    | vk::AccessFlags::TRANSFER_WRITE
+                    | vk::AccessFlags::SHADER_READ
+                    | vk::AccessFlags::SHADER_WRITE,
                 vk::PipelineStageFlags::COMPUTE_SHADER | vk::PipelineStageFlags::TRANSFER,
                 vk::PipelineStageFlags::TRANSFER | vk::PipelineStageFlags::COMPUTE_SHADER,
             );
+            if !self.hist_ready {
+                // the history starts black
+                for &(dst, _, _) in &self.hist {
+                    dev.cmd_fill_buffer(cb, self.bufs[dst].b, 0, vk::WHOLE_SIZE, 0);
+                }
+                self.hist_ready = true;
+            }
             // gamescope left the small image ready for presenting
             img_barrier(
                 small,
@@ -667,6 +698,15 @@ impl Chain {
                     vk::AccessFlags::SHADER_READ | vk::AccessFlags::TRANSFER_READ,
                     vk::PipelineStageFlags::COMPUTE_SHADER,
                     vk::PipelineStageFlags::COMPUTE_SHADER | vk::PipelineStageFlags::TRANSFER,
+                );
+            }
+            // this frame's input and output become the next one's history
+            for &(dst, src, size) in &self.hist {
+                dev.cmd_copy_buffer(
+                    cb,
+                    self.bufs[src].b,
+                    self.bufs[dst].b,
+                    &[vk::BufferCopy::default().size(size)],
                 );
             }
             img_barrier(
