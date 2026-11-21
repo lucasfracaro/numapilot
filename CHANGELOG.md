@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `self-update`: a source folder left on a loose commit (detached HEAD, e.g. after testing a pull
+  request) goes back to main before pulling when main already has that commit, and stops with
+  what to do when it does not; the "new commits" check compares with origin/main there instead of
+  failing ("could not query the repository", seen on the BC-250).
 - **FSR 4 INT8 on the game's card** (upscale mode "fsr4-int8", `src/fsr4.rs`). FSR 4.1 runs
   inside the game on cards without RDNA 4: OptiScaler 10.0.0-pre1 as `dxgi.dll`, OptiPatcher,
   NVIDIA's signed `nvngx_dlss.dll` (only when the game has none) and the upscaler DLL made for the
