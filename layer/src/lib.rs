@@ -90,6 +90,54 @@ pub fn framegen() -> bool {
     std::env::var("NUMAPILOT_UPSCALE_FG").is_ok_and(|v| v == "2")
 }
 
+/// `RADV_DEBUG` with `nodcc` added (kept as it is when already there).
+fn no_dcc(cur: Option<&str>) -> String {
+    match cur.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) if c.split(',').any(|f| f.trim() == "nodcc") => c.to_string(),
+        Some(c) => format!("{c},nodcc"),
+        None => "nodcc".to_string(),
+    }
+}
+
+/// `NUMAPILOT_UPSCALE_FG_TEST`: diagnostics for the generated frame's path (BC-250 fault),
+/// comma-separated: `noimage` (present the extra image without writing it), `nopass` (copy the
+/// real frame there instead of running the generation passes), `noclear` (no black clear of the
+/// extra image when the window is larger than the picture), `fence` (also wait for the extra
+/// image's acquire on the CPU), `trace` (log acquires and presents with the calling thread),
+/// `lock` (no acquire for the generated frame while gamescope acquires on another thread),
+/// `moreimages` (the two extra swapchain images also without frame generation).
+pub fn fg_test(flag: &str) -> bool {
+    static T: OnceLock<String> = OnceLock::new();
+    T.get_or_init(|| std::env::var("NUMAPILOT_UPSCALE_FG_TEST").unwrap_or_default())
+        .split(',')
+        .any(|f| f.trim() == flag)
+}
+
+/// Diagnostics (`NUMAPILOT_UPSCALE_FG_TEST=trace`): a line with the time and the calling thread.
+pub(crate) fn trace(what: std::fmt::Arguments<'_>) {
+    if !fg_test("trace") {
+        return;
+    }
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    static LINES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    if LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) > 400 {
+        return;
+    }
+    let t = START.get_or_init(std::time::Instant::now).elapsed();
+    let comm = std::fs::read_to_string("/proc/thread-self/comm").unwrap_or_default();
+    eprintln!(
+        "numapilot-upscale: trace {:>8.3} ms [{}] {what}",
+        t.as_secs_f64() * 1e3,
+        comm.trim()
+    );
+}
+
+/// Set while the layer's present (its own acquire and the extra present) runs.
+static IN_PRESENT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// `NUMAPILOT_UPSCALE_FG_TEST=lock`: gamescope's acquires and the layer's acquire + extra present
+/// never overlap (the layer skips the generated frame instead of waiting).
+static ACQ_LOCK: Mutex<()> = Mutex::new(());
+
 /// `NUMAPILOT_UPSCALE_TEMPORAL=1`: the temporal pass (estimated motion, history) after the model.
 pub fn temporal() -> bool {
     std::env::var("NUMAPILOT_UPSCALE_TEMPORAL").is_ok_and(|v| v == "1")
@@ -253,6 +301,12 @@ fn device_fn(name: &CStr) -> vk::PFN_vkVoidFunction {
             pfn(numapilot_GetSwapchainImagesKHR as vk::PFN_vkGetSwapchainImagesKHR)
         }
         b"vkQueuePresentKHR" => pfn(numapilot_QueuePresentKHR as vk::PFN_vkQueuePresentKHR),
+        b"vkAcquireNextImageKHR" => {
+            pfn(numapilot_AcquireNextImageKHR as vk::PFN_vkAcquireNextImageKHR)
+        }
+        b"vkAcquireNextImage2KHR" => {
+            pfn(numapilot_AcquireNextImage2KHR as vk::PFN_vkAcquireNextImage2KHR)
+        }
         _ => None,
     }
 }
@@ -329,7 +383,24 @@ unsafe extern "system" fn numapilot_CreateInstance(
             return vk::Result::ERROR_INITIALIZATION_FAILED;
         };
         let create: vk::PFN_vkCreateInstance = std::mem::transmute(create);
+        // Frame generation writes the generated frame into a swapchain image gamescope never
+        // touched, from gamescope's compute-only queue. On the BC-250 (gfx10) that image is
+        // DCC-compressed and the first generated frame faulted the GPU (TCP write, compute ring
+        // reset); with RADV_DEBUG=nodcc it ran clean. RADV reads RADV_DEBUG when the instance is
+        // created: add nodcc for gamescope's instance only and put the variable back, so the
+        // game gamescope starts later does not inherit it.
+        let saved = (framegen() && active()).then(|| std::env::var_os("RADV_DEBUG"));
+        if let Some(old) = &saved {
+            let v = no_dcc(old.as_ref().and_then(|o| o.to_str()));
+            log!("frame generation: RADV_DEBUG={v} for gamescope's instance (DCC off)");
+            std::env::set_var("RADV_DEBUG", v);
+        }
         let r = create(ci, alloc, out);
+        match saved {
+            Some(Some(old)) => std::env::set_var("RADV_DEBUG", old),
+            Some(None) => std::env::remove_var("RADV_DEBUG"),
+            None => {}
+        }
         if r != vk::Result::SUCCESS {
             return r;
         }
@@ -634,7 +705,7 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
     }
     let mut ci2 = *info;
     ci2.image_usage |= vk::ImageUsageFlags::TRANSFER_DST;
-    if fg {
+    if fg || fg_test("moreimages") {
         // more images: the layer acquires one for the generated frame while gamescope may hold
         // its own, and the WSI only lets an app hold (images − the surface's minimum) at once
         let asked = ci2.min_image_count;
@@ -653,6 +724,12 @@ unsafe extern "system" fn numapilot_CreateSwapchainKHR(
         return r;
     }
     let sc = unsafe { *out };
+    trace(format_args!(
+        "create swapchain {:#x} ({} images asked, old {:#x})",
+        sc.as_raw(),
+        ci2.min_image_count,
+        ci2.old_swapchain.as_raw()
+    ));
     match unsafe { chain::Chain::new(&d, sc, info, real, src, px, &shader, fg) } {
         Ok(chain) => {
             eprintln!(
@@ -695,6 +772,7 @@ unsafe extern "system" fn numapilot_DestroySwapchainKHR(
     let Some(d) = st().devices.get(&device.as_raw()).cloned() else {
         return;
     };
+    trace(format_args!("destroy swapchain {:#x}", sc.as_raw()));
     let sw = st().swaps.remove(&sc.as_raw());
     if let Some(sw) = sw {
         // no vkDeviceWaitIdle: it needs every queue of the device to itself, and gamescope may
@@ -737,6 +815,57 @@ unsafe extern "system" fn numapilot_GetSwapchainImagesKHR(
     }
 }
 
+unsafe extern "system" fn numapilot_AcquireNextImageKHR(
+    device: vk::Device,
+    sc: vk::SwapchainKHR,
+    timeout: u64,
+    sem: vk::Semaphore,
+    fence: vk::Fence,
+    out: *mut u32,
+) -> vk::Result {
+    let Some(d) = st().devices.get(&device.as_raw()).cloned() else {
+        return vk::Result::ERROR_INITIALIZATION_FAILED;
+    };
+    let busy = IN_PRESENT.load(std::sync::atomic::Ordering::SeqCst);
+    let _g = fg_test("lock").then(|| ACQ_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
+    let r = unsafe { (d.swap.acquire_next_image_khr)(device, sc, timeout, sem, fence, out) };
+    trace(format_args!(
+        "gamescope acquire: {r:?} image {} (timeout {timeout}, sem {}, fence {}){}",
+        unsafe { *out },
+        sem != vk::Semaphore::null(),
+        fence != vk::Fence::null(),
+        if busy {
+            " DURING THE LAYER'S PRESENT"
+        } else {
+            ""
+        }
+    ));
+    r
+}
+
+unsafe extern "system" fn numapilot_AcquireNextImage2KHR(
+    device: vk::Device,
+    info: *const vk::AcquireNextImageInfoKHR<'_>,
+    out: *mut u32,
+) -> vk::Result {
+    let Some(d) = st().devices.get(&device.as_raw()).cloned() else {
+        return vk::Result::ERROR_INITIALIZATION_FAILED;
+    };
+    let busy = IN_PRESENT.load(std::sync::atomic::Ordering::SeqCst);
+    let _g = fg_test("lock").then(|| ACQ_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
+    let r = unsafe { (d.swap.acquire_next_image2_khr)(device, info, out) };
+    trace(format_args!(
+        "gamescope acquire2: {r:?} image {}{}",
+        unsafe { *out },
+        if busy {
+            " DURING THE LAYER'S PRESENT"
+        } else {
+            ""
+        }
+    ));
+    r
+}
+
 unsafe extern "system" fn numapilot_QueuePresentKHR(
     queue: vk::Queue,
     info: *const vk::PresentInfoKHR<'_>,
@@ -777,7 +906,16 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
     };
     let mut signals = vec![];
     let mut generated = None;
+    IN_PRESENT.store(true, std::sync::atomic::Ordering::SeqCst);
+    // with `lock`: no generated frame while gamescope is acquiring on another thread
+    let guard = if fg_test("lock") {
+        ACQ_LOCK.try_lock().ok()
+    } else {
+        None
+    };
+    let fg_ok = fg_ok && (guard.is_some() || !fg_test("lock"));
     for (sw, i, sc) in tracked {
+        trace(format_args!("present image {i}"));
         let mut sw = sw.lock().unwrap_or_else(|e| e.into_inner());
         let device = d.dev.handle();
         let mut acquire = |sem: vk::Semaphore| -> Option<u32> {
@@ -788,9 +926,22 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
             // no waiting: without a free image right now this frame goes without a generated
             // one rather than showing the real frame later (server test: waiting 4 ms timed out
             // anyway when the display took fewer frames than real + generated)
-            let r = unsafe {
-                (d.swap.acquire_next_image_khr)(device, sc, 0, sem, vk::Fence::null(), &mut j)
+            // diagnostics: also wait for the acquire on the CPU before the submit
+            let fence = if fg_test("fence") {
+                unsafe { d.dev.create_fence(&vk::FenceCreateInfo::default(), None) }
+                    .unwrap_or(vk::Fence::null())
+            } else {
+                vk::Fence::null()
             };
+            let r = unsafe { (d.swap.acquire_next_image_khr)(device, sc, 0, sem, fence, &mut j) };
+            if fence != vk::Fence::null() {
+                unsafe {
+                    if matches!(r, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR) {
+                        let _ = d.dev.wait_for_fences(&[fence], true, 1_000_000_000);
+                    }
+                    d.dev.destroy_fence(fence, None);
+                }
+            }
             let ok = matches!(r, vk::Result::SUCCESS | vk::Result::SUBOPTIMAL_KHR);
             if !ok {
                 static MISSED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -802,6 +953,7 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
                     );
                 }
             }
+            trace(format_args!("layer acquire: {r:?} image {j}"));
             ok.then_some(j)
         };
         match unsafe { sw.chain.run(&d, queue, dq, i, &waits, &mut acquire) } {
@@ -815,6 +967,7 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
             }
             Err(e) => {
                 eprintln!("numapilot-upscale: present: {e:#}");
+                IN_PRESENT.store(false, std::sync::atomic::Ordering::SeqCst);
                 return vk::Result::ERROR_DEVICE_LOST;
             }
         }
@@ -837,17 +990,22 @@ unsafe extern "system" fn numapilot_QueuePresentKHR(
         if r != vk::Result::SUCCESS && r != vk::Result::SUBOPTIMAL_KHR {
             log!("present of the generated frame: {r:?}");
         }
+        trace(format_args!("generated present image {j}: {r:?}"));
         static GENERATED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = GENERATED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if n == 0 || (n + 1) % 60 == 0 {
             log!("{} generated frames shown", n + 1);
         }
     }
+    drop(guard);
+    IN_PRESENT.store(false, std::sync::atomic::Ordering::SeqCst);
     let last = [*signals.last().expect("one chain at least")];
     let mut pi2 = *pi;
     pi2.wait_semaphore_count = 1;
     pi2.p_wait_semaphores = last.as_ptr();
-    unsafe { (d.swap.queue_present_khr)(queue, &pi2) }
+    let r = unsafe { (d.swap.queue_present_khr)(queue, &pi2) };
+    trace(format_args!("real present: {r:?}"));
+    r
 }
 
 impl DeviceData {
@@ -876,6 +1034,14 @@ impl DeviceData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nodcc_added_once() {
+        assert_eq!(no_dcc(None), "nodcc");
+        assert_eq!(no_dcc(Some("")), "nodcc");
+        assert_eq!(no_dcc(Some("nohiz")), "nohiz,nodcc");
+        assert_eq!(no_dcc(Some("nohiz, nodcc")), "nohiz, nodcc");
+    }
 
     #[test]
     fn processes_and_models() {

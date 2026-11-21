@@ -251,10 +251,26 @@ real frame is shown one vblank later than without frame generation, as with any 
 Tested on lavapipe with vkcube (Xvfb): every present after the first shows a generated frame,
 synchronization validation clean.
 
-Server test (MI50 09:00, gamescope SDL window under KWin, vkcube, 2026-11-21): with vkcube capped
-at 10 FPS about one generated frame per real frame (240 generated in ~250 real frames); at its
-~20 FPS most acquires of the extra image failed. That setup only took about 20 presents per
-second in all (vkcube runs at ~20 FPS there even without the layer, on a 120 Hz output; the
-window is likely shown on a monitor of the other card), so real + generated did not fit. Cost of
+Server test (MI50 09:00, gamescope fullscreen on its own 120 Hz monitor, vkcube, Anime4K M +
+temporal, 2026-11-21): with vkcube capped at 30 FPS, 30 → 60 shown; capped at 60, 60 → 120; one
+generated frame per real frame in both. Uncapped (vkcube already at ~116 FPS on 120 Hz) FIFO has
+no free vblank and only ~10% of the frames get a generated one. About one screenshot in three
+shows blocky tears or broken edges on fast-moving edges (block vectors), the real frames are
+clean. An earlier test at ~20 FPS was spoiled by the monitors being in DPMS standby (vkcube runs
+at 5–20 FPS then, with or without gamescope): wake them (`kscreen-doctor --dpms on`) before
+measuring. Validation (sync + GPU-assisted) found no out-of-bounds access in the layer's passes.
+gamescope submits and presents on a compute-only queue family, so the layer's clear and
+buffer → image copies run as RADV compute shaders.
+
+BC-250 (gfx10, 2560×1440 at 60 Hz, 2026-11-21): the first generated frame faulted the GPU (gfxhub
+page fault from the TCP, write, then a compute ring reset and VK_ERROR_DEVICE_LOST in gamescope;
+the desktop survived). With `RADV_DEBUG=nodcc` on gamescope it ran clean twice (30 → 60, 660–840
+generated frames); without it the fault came back at once. The swapchain images there are
+DCC-compressed and the generated frame goes into one gamescope never touched. So with frame
+generation the layer adds `nodcc` to `RADV_DEBUG` while gamescope's Vulkan instance is created
+and restores the variable right after (the game gamescope starts does not inherit it). A first
+retest with that still faulted once in three runs, so the cause is not settled:
+`NUMAPILOT_UPSCALE_FG_TEST` (comma-separated `noimage`, `nopass`, `noclear`, `fence`) turns
+parts of the generated frame's path off to find which one faults. Cost of
 the pass on the MI50: +0.3 ms at 720p → 1440p, +0.7 ms at 1080p → 4K.
 

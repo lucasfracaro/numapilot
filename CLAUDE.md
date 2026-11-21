@@ -262,6 +262,13 @@ quadro do meio pelo MOTION do temporal; a camada pede uma imagem a mais ao swapc
 ela a cada present (sem esperar), escreve o gerado e o real no mesmo submit e apresenta o gerado
 antes; só com FIFO. Travamentos da BC-250 (2026-11-21): eram pools de comando compartilhados
 entre swapchains e `vkDeviceWaitIdle` no destroy (corrigido no #19); cada Chain tem os seus pools.
+Geração testada (2026-11-21): servidor em tela cheia no monitor da MI50 de saída (DP-8, 120 Hz):
+30 → 60 e 60 → 120 fps, 1 gerado por real; ~1 em 3 capturas com defeitos em bordas rápidas. Os
+"~20 fps" de antes eram os monitores em DPMS desligado (acordar com `kscreen-doctor --dpms on`
+antes de medir). O gamescope envia e apresenta numa fila só de compute. Na BC-250 (DCC nas imagens
+do swapchain) o primeiro quadro gerado dava page fault (reset da fila de compute); com
+`RADV_DEBUG=nodcc` rodou limpo: a camada põe `nodcc` só na criação da instância do gamescope com
+FG e devolve a variável depois.
 
 ## Capturas do README
 
