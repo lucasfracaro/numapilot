@@ -895,13 +895,24 @@ pub fn open_dpm_levels(pci: &str) -> usize {
 }
 
 pub fn set_power_profile(pci: &str, short: &str) -> Result<(), String> {
+    apply_power_profile(pci, short, false)
+}
+
+/// Like `set_power_profile`, but writes the level, the clock tables and the profile even when
+/// the profile already shows as active: another tool (LACT saves "low" for both MI50s on the
+/// server) can put the card back in "low" without touching pp_power_profile_mode.
+pub fn force_power_profile(pci: &str, short: &str) -> Result<(), String> {
+    apply_power_profile(pci, short, true)
+}
+
+fn apply_power_profile(pci: &str, short: &str, force: bool) -> Result<(), String> {
     let want = profile_driver_name(short).ok_or("perfil desconhecido")?;
     let (list, active) = power_profiles(pci).ok_or("a placa não tem pp_power_profile_mode")?;
     let (idx, _) = list
         .iter()
         .find(|(_, n)| n == want)
         .ok_or(format!("a placa não tem o perfil {want}"))?;
-    if active == Some(*idx) {
+    if !force && active == Some(*idx) {
         return Ok(());
     }
     let lvl = sys(&format!(

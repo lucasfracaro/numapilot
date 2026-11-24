@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A card used by a program with a saved profile follows numapilot, not another tool: when LACT
+  (or anything else) puts it in the "low" performance level, the daemon takes it back within 5 s
+  (the profile's power profile with every clock level allowed, or "auto"), whatever the load.
+  Before, it only reacted at 50% load or more, so light scenes such as Skyrim's menus stayed at
+  860 MHz of 1700 on the MI50. Idle saving and the power-saving profile are left alone.
 - OptiScaler / FSR 4 INT8 from Programs → Adjust… also for games outside Steam: the folder of the
   running game's `.exe` comes from its command line (Unix, `Z:` or working-folder path), and
   `numapilot upscale status|install|remove` takes that FOLDER instead of an appid. The panel says it
