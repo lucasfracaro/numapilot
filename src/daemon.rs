@@ -442,7 +442,66 @@ impl Hw {
                 let _ = gpuctl::set_power_profile(pci, "padrao");
             }
         }
+        self.reclaim_profiled_cards(topo, procs, &want);
         self.gpu_prof = want;
+    }
+
+    /// A card used by a program with a saved profile follows numapilot, not another tool:
+    /// LACT saves "low" for both MI50s on the server and puts it back now and then, which left
+    /// Skyrim's menus at 860 MHz of 1700. The old check (busy at 50% or more for five seconds)
+    /// never fires on a light load such as a menu, so here the level is taken back as soon as
+    /// it shows "low", whatever the load. Not when numapilot itself put it in "low" (idle
+    /// saving), nor for a profile that asks for power saving; AMD only (other cards have no
+    /// such file).
+    fn reclaim_profiled_cards(
+        &mut self,
+        topo: &Topology,
+        procs: &HashMap<i32, Tracked>,
+        want: &BTreeMap<String, String>,
+    ) {
+        let mut owned: BTreeMap<String, String> = BTreeMap::new();
+        for t in procs.values().filter(|t| t.profile_in_effect()) {
+            let Some(p) = t.profile.as_ref() else {
+                continue;
+            };
+            for a in &t.gpus {
+                if let Some(g) = topo
+                    .gpus
+                    .iter()
+                    .find(|g| g.alias == *a && g.vendor == 0x1002 && g.device != 0x13fe)
+                {
+                    owned
+                        .entry(g.pci.clone())
+                        .or_insert_with(|| p.gpu_power.clone());
+                }
+            }
+        }
+        for (pci, prof) in &owned {
+            let prof = want.get(pci).unwrap_or(prof);
+            if prof == "economia" {
+                continue;
+            }
+            if self.idle.get(pci).is_some_and(|e| e.1.is_some()) {
+                continue;
+            }
+            let lvl_path = crate::util::sys(&format!(
+                "bus/pci/devices/{pci}/power_dpm_force_performance_level"
+            ));
+            if crate::util::read_trim(&lvl_path).as_deref() != Some("low") {
+                continue;
+            }
+            let r = if prof == "auto" {
+                std::fs::write(&lvl_path, "auto").map_err(|e| e.to_string())
+            } else {
+                gpuctl::force_power_profile(pci, prof)
+            };
+            match r {
+                Ok(()) => crate::nlog!(
+                    "GPU {pci}: put in \"low\" by another tool (LACT?) while a program with a profile uses it: taken back"
+                ),
+                Err(e) => crate::nlog!("GPU {pci}: could not take the level back: {e}"),
+            }
+        }
     }
 
     fn lowlat_tick(&mut self, topo: &Topology, procs: &HashMap<i32, Tracked>) {
