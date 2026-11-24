@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `steam command APPID --gpu CARD` drops card variables set by hand before `%command%`
+  (`DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, DXVK/VKD3D filters) that would point at another card, and
+  adds `WINEDLLOVERRIDES="dxgi=n,b"` when OptiScaler is installed in the game (seen with
+  Spider-Man on the server).
 - OptiScaler / FSR 4 INT8 from Programs → Adjust… also for games outside Steam: the folder of the
   running game's `.exe` comes from its command line (Unix, `Z:` or working-folder path), and
   `numapilot upscale status|install|remove` takes that FOLDER instead of an appid. The panel says it

@@ -3671,7 +3671,7 @@ fn cmd_steam(cfg: &Config, action: &str, game: Option<&str>, gpu: Option<&str>) 
                     "{name} ({id}): Steam → Propriedades → Geral → Opções de inicialização:"
                 )
             );
-            println!("\n{}\n", steam::command_for(&cur, gpu));
+            println!("\n{}\n", steam::command_for_installed(&id, &cur, gpu));
             if gpu.is_none() {
                 println!(
                     "{}",
@@ -3683,7 +3683,7 @@ fn cmd_steam(cfg: &Config, action: &str, game: Option<&str>, gpu: Option<&str>) 
                     println!(
                         "  {:<10} {}",
                         g.alias,
-                        steam::command_for(&cur, Some(&g.alias))
+                        steam::command_for_installed(&id, &cur, Some(&g.alias))
                     );
                 }
             }

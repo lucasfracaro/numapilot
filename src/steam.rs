@@ -332,6 +332,23 @@ pub fn command_for(opt: &str, gpu: Option<&str>) -> String {
     let o = wrap_option(opt);
     // drop a card chosen before
     let mut words: Vec<&str> = o.split(' ').collect();
+    if gpu.is_some() {
+        // card variables set by hand before numapilot would fight the card it picks
+        let run = words
+            .iter()
+            .position(|w| *w == "%command%")
+            .unwrap_or(words.len());
+        let mut i = 0;
+        let mut end = run;
+        while i < end {
+            if CARD_VARS.iter().any(|v| words[i].starts_with(v)) {
+                words.remove(i);
+                end -= 1;
+            } else {
+                i += 1;
+            }
+        }
+    }
     if let Some(i) = words.iter().position(|w| *w == "run")
         && i > 0
         && words[i - 1].ends_with("numapilot")
@@ -353,6 +370,23 @@ pub fn command_for(opt: &str, gpu: Option<&str>) -> String {
     words.join(" ")
 }
 
+/// Environment variables that pick the card; `numapilot run --gpu` sets them itself.
+const CARD_VARS: [&str; 4] = [
+    "DRI_PRIME=",
+    "MESA_VK_DEVICE_SELECT=",
+    "DXVK_FILTER_DEVICE_NAME=",
+    "VKD3D_FILTER_DEVICE_NAME=",
+];
+
+/// Adds `WINEDLLOVERRIDES="dxgi=n,b"` (OptiScaler as dxgi.dll) to launch options that lack it.
+pub fn with_dxgi_override(line: &str) -> String {
+    if line.contains("dxgi=n") {
+        line.to_string()
+    } else {
+        format!("WINEDLLOVERRIDES=\"dxgi=n,b\" {line}")
+    }
+}
+
 /// The line to paste for the game `appid`, from what Steam has for it now. None = Steam's
 /// configuration was not found.
 pub fn command_for_game(appid: &str, gpu: Option<&str>) -> Option<String> {
@@ -362,7 +396,21 @@ pub fn command_for_game(appid: &str, gpu: Option<&str>) -> Option<String> {
         .get(appid)
         .cloned()
         .unwrap_or_default();
-    Some(command_for(&cur, gpu))
+    Some(command_for_installed(appid, &cur, gpu))
+}
+
+/// `command_for`, plus the dxgi override when OptiScaler is installed in the game.
+pub fn command_for_installed(appid: &str, opt: &str, gpu: Option<&str>) -> String {
+    let line = command_for(opt, gpu);
+    let has_opti = crate::upscale::steam_game_root(appid)
+        .and_then(|r| crate::upscale::exe_dir(&r))
+        .and_then(|d| crate::upscale::installed(&d))
+        .is_some();
+    if has_opti {
+        with_dxgi_override(&line)
+    } else {
+        line
+    }
 }
 
 pub fn unwrap_option(opt: &str) -> String {
@@ -421,6 +469,25 @@ pub fn apply_all(path: &Path, games: &[(String, String)], enable: bool) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forced_card_drops_hand_set_card_variables() {
+        let o = "DRI_PRIME=pci-0000_09_00_0 MESA_VK_DEVICE_SELECT=pci-0000_09_00_0 mangohud %command% -skip DRI_PRIME=x";
+        assert_eq!(
+            command_for(o, Some("gfx906-0")),
+            "mangohud numapilot run --gpu gfx906-0 -- %command% -skip DRI_PRIME=x"
+        );
+        // without a forced card the user's choice stays
+        assert!(command_for(o, None).starts_with("DRI_PRIME=pci-0000_09_00_0 MESA_VK"));
+        assert_eq!(
+            with_dxgi_override("numapilot run -- %command%"),
+            "WINEDLLOVERRIDES=\"dxgi=n,b\" numapilot run -- %command%"
+        );
+        assert_eq!(
+            with_dxgi_override("WINEDLLOVERRIDES=\"dxgi=n,b\" %command%"),
+            "WINEDLLOVERRIDES=\"dxgi=n,b\" %command%"
+        );
+    }
 
     const LC: &str = r#""UserLocalConfigStore"
 {
