@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `numapilot run` started by Steam (`SteamAppId`/`SteamGameId`) counts as graphics when nothing
+  else says the use: `--gpu gfx906-0` from Steam's launch options only set ROCm variables, so the
+  game rendered on the default card instead of the chosen MI50.
 - `steam command APPID --gpu CARD` drops card variables set by hand before `%command%`
   (`DRI_PRIME`, `MESA_VK_DEVICE_SELECT`, DXVK/VKD3D filters) that would point at another card, and
   adds `WINEDLLOVERRIDES="dxgi=n,b"` when OptiScaler is installed in the game (seen with

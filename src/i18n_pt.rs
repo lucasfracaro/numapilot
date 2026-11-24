@@ -331,6 +331,7 @@ pub const PT: &[(&str, &str)] = &[
         "known compute program → ROCm GPU",
         "programa conhecido de computação → GPU ROCm",
     ),
+    ("Steam game → graphics", "jogo da Steam → gráfico"),
     (
         "profile saved by the graphical interface",
         "perfil salvo pela interface gráfica",

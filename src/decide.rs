@@ -194,6 +194,14 @@ pub fn pick_gpus(
     })
 }
 
+/// Launched by Steam for a game (Steam sets the appid; 0 or empty for non-game tools).
+fn steam_launch() -> bool {
+    ["SteamGameId", "SteamAppId"].iter().any(|k| {
+        std::env::var(k)
+            .is_ok_and(|v| !v.is_empty() && v != "0" && v.chars().all(|c| c.is_ascii_digit()))
+    })
+}
+
 fn hint_graphics(want: Option<Kind>) -> bool {
     want == Some(Kind::Graphics)
 }
@@ -273,6 +281,15 @@ pub fn decide_launch(
                 .transpose()?
                 .unwrap_or(MemSpec::Local),
         },
+    };
+    // a Steam game (Steam's launch wrapper runs first, and it looks like nothing): graphics, so
+    // a named compute card (MI50) still gets DRI_PRIME/the Vulkan device instead of only ROCm
+    let usage = match usage {
+        None if steam_launch() => {
+            reasons.push(crate::i18n::tr("Steam game → graphics").into());
+            Some(Kind::Graphics)
+        }
+        u => u,
     };
     let hint = cfg.is_compute_hint(inp.idents);
     if gpu == GpuSpec::Auto && usage.is_none() && hint {
