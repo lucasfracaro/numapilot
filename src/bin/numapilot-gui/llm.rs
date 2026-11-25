@@ -20,6 +20,12 @@ const KEYS: &[&str] = &[
 ];
 
 pub fn ui(app: &mut App, ui: &mut egui::Ui) {
+    egui::ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .show(ui, |ui| body(app, ui));
+}
+
+fn body(app: &mut App, ui: &mut egui::Ui) {
     if app.llm_cfg.is_none() {
         app.llm_cfg = Some(LabSettings::load());
     }
