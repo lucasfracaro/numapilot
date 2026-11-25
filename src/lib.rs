@@ -1,6 +1,7 @@
 //! numapilot: chooses NUMA socket, memory and GPU for each program.
 pub mod acer;
 pub mod apps;
+pub mod automation;
 pub mod autostart;
 pub mod backup;
 pub mod bench;

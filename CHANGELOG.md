@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Lab and containers tab: **Automation: n8n + Nod**. "Create and turn on" starts n8n (container
+  `numapilot-n8n`, data in the `numapilot-n8n` volume, port 5678 on 127.0.0.1) and Nod, n8n's
+  open-source AI agent (cloned to `~/.local/share/numapilot/comunidade/nod` and started with its
+  own Docker Compose stack, port 4310); then "Open: n8n / Nod" (Nod's button copies its access
+  token). Nothing starts at boot: n8n has `--restart no` and Nod gets `numapilot.override.yaml`
+  with `restart: "no"` on every service. Nod needs Docker Engine 25+ with Compose v2 (without it
+  only n8n starts and the tab says why); with both on Docker, n8n joins Nod's network as `n8n`.
+  Without Docker, "Install Docker" opens a terminal that installs `docker`, `docker-compose` and
+  `docker-buildx`, enables `docker.socket` (Docker starts only when used) and adds the user to the
+  `docker` group. CLI: `numapilot automation up|down|update|status|token|install-docker`.
 - Hot GPU warning (tray, phone notification, web panel, Graphics cards tab colours): each sensor
   (edge, junction/hotspot, memory) is compared with its own critical temperature from the driver
   (`tempN_crit`) minus 10 °C, and the text names the sensor ("junction 95 °C (critical 105 °C)").
