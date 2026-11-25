@@ -1112,8 +1112,18 @@ impl App {
     }
 
     /// Side menu.
+    /// Side menu, with a scroll bar when the window is too short for all of it (small screens).
     fn nav(&mut self, ui: &mut egui::Ui) {
+        let viewport_h = ui.available_height();
+        egui::ScrollArea::vertical()
+            .id_salt("nav-scroll")
+            .auto_shrink([false, false])
+            .show(ui, |ui| self.nav_body(ui, viewport_h));
+    }
+
+    fn nav_body(&mut self, ui: &mut egui::Ui, viewport_h: f32) {
         let p = theme::pal(ui);
+        let top = ui.cursor().top();
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.add_space(6.0);
@@ -1182,28 +1192,32 @@ impl App {
                 ui.add_space(1.0);
             }
         }
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-            ui.add_space(6.0);
-            let mut pref = ui.ctx().options(|o| o.theme_preference);
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                for (v, l) in [
-                    (egui::ThemePreference::System, i18n::tr("System")),
-                    (egui::ThemePreference::Light, i18n::tr("Light")),
-                    (egui::ThemePreference::Dark, i18n::tr("Dark")),
-                ] {
-                    if ui
-                        .selectable_label(pref == v, RichText::new(l).size(12.0))
-                        .clicked()
-                    {
-                        pref = v;
-                        ui.ctx().set_theme(v);
-                        theme::save_theme(v);
-                    }
+        // Theme at the bottom when there is room; right after the menu (scrolling) when not.
+        const THEME_H: f32 = 52.0;
+        let gap = viewport_h - (ui.cursor().top() - top) - THEME_H;
+        if gap > 0.0 {
+            ui.add_space(gap);
+        }
+        ui.label(RichText::new(i18n::tr("Theme")).size(11.5).color(p.weak));
+        let mut pref = ui.ctx().options(|o| o.theme_preference);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            for (v, l) in [
+                (egui::ThemePreference::System, i18n::tr("System")),
+                (egui::ThemePreference::Light, i18n::tr("Light")),
+                (egui::ThemePreference::Dark, i18n::tr("Dark")),
+            ] {
+                if ui
+                    .selectable_label(pref == v, RichText::new(l).size(12.0))
+                    .clicked()
+                {
+                    pref = v;
+                    ui.ctx().set_theme(v);
+                    theme::save_theme(v);
                 }
-            });
-            ui.label(RichText::new(i18n::tr("Theme")).size(11.5).color(p.weak));
+            }
         });
+        ui.add_space(6.0);
     }
 
     /// Top: page title, service state and the live meters.
@@ -1964,7 +1978,15 @@ impl App {
                 top: 16,
                 bottom: 10,
             }))
-            .show(ui, |ui| self.header(ui));
+            .show(ui, |ui| {
+                // On a short window the meters (which wrap into more rows when narrow) must
+                // not take the whole height: at most 40% of it, the rest by scrolling.
+                let max_h = (ui.ctx().content_rect().height() * 0.4).max(120.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("header-scroll")
+                    .max_height(max_h)
+                    .show(ui, |ui| self.header(ui));
+            });
         // Floating notice (goes away by itself)
         if let Some((m, ok, t)) = &self.toast
             && t.elapsed() < Duration::from_secs(8)
@@ -1999,19 +2021,35 @@ impl App {
                 top: 6,
                 bottom: 16,
             }))
-            .show(ui, |ui| match self.tab {
-                Tab::Programs => self.programs(ui),
-                Tab::Map => map::ui(self, ui),
-                Tab::Profiles => self.profiles_tab(ui),
-                Tab::Gpus => gpus::ui(self, ui),
-                Tab::Machine => machine::ui(self, ui),
-                Tab::Lab => lab::ui(self, ui),
-                Tab::Llm => llm::ui(self, ui),
-                Tab::Stream => stream::ui(self, ui),
-                Tab::Settings => settings::ui(self, ui),
-                Tab::Startup => startup::ui(self, ui),
-                Tab::Services => services::ui(self, ui),
-                Tab::Tests => checklist::ui(self, ui),
+            .show(ui, |ui| {
+                // Every page scrolls sideways when the window is narrower than PAGE_MIN_W
+                // (laid out at that width instead of squeezed), and up and down: pages that
+                // keep a header above their own list scroll that list; the others scroll whole.
+                const PAGE_MIN_W: f32 = 760.0;
+                let w = ui.available_width().max(PAGE_MIN_W);
+                let h = ui.available_height();
+                egui::ScrollArea::horizontal()
+                    .id_salt(("page-x", self.tab as usize))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.set_min_width(w);
+                        ui.set_max_width(w);
+                        ui.set_max_height(h);
+                        match self.tab {
+                            Tab::Programs => self.programs(ui),
+                            Tab::Map => map::ui(self, ui),
+                            Tab::Profiles => self.profiles_tab(ui),
+                            Tab::Gpus => gpus::ui(self, ui),
+                            Tab::Machine => machine::ui(self, ui),
+                            Tab::Lab => lab::ui(self, ui),
+                            Tab::Llm => llm::ui(self, ui),
+                            Tab::Stream => scroll_page(ui, "stream", |ui| stream::ui(self, ui)),
+                            Tab::Settings => settings::ui(self, ui),
+                            Tab::Startup => startup::ui(self, ui),
+                            Tab::Services => services::ui(self, ui),
+                            Tab::Tests => checklist::ui(self, ui),
+                        }
+                    });
             });
         let ctx = ui.ctx().clone();
         self.job_window(&ctx);
@@ -2020,6 +2058,14 @@ impl App {
             self.send(Request::FixMemory { key });
         }
     }
+}
+
+/// A page that has no scroll area of its own scrolls whole.
+fn scroll_page(ui: &mut egui::Ui, id: &str, f: impl FnOnce(&mut egui::Ui)) {
+    egui::ScrollArea::vertical()
+        .id_salt(id)
+        .auto_shrink([false, false])
+        .show(ui, f);
 }
 
 fn truncate(s: &str, n: usize) -> String {
