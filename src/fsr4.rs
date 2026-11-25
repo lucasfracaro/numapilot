@@ -76,7 +76,7 @@ impl Route {
                 "FSR 4 INT8 with the BC250 FSR4 DLL (INT8 dot product in hardware, waves of 32)"
             }
             Route::Wave64 => {
-                "FSR 4 INT8 with the wave64 rebuild of the BC250 FSR4 DLL (INT8 dot product in hardware)"
+                "FSR 4 INT8 with the wave64 rebuild of the BC250 FSR4 DLL: runs, but on the MI50 it looked worse than native (Spider-Man, 1440p); prefer the game's upscaler with lsfg-vk on the other card"
             }
             Route::Wave64Slow => {
                 "FSR 4 INT8 with the wave64 DLL, without an INT8 dot product: works, but costs about 5 ms per frame at 1080p"

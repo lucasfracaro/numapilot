@@ -95,7 +95,8 @@ notes = [
 prefix = "gfx906"
 family = "Vega 20 (GCN 5)"
 compute = "rocm-community"
-upscale = ["fsr4-int8", "fsr3", "xess", "fsr1-gamescope", "lsfg"]
+# fsr4-int8 runs on the MI50 but looked worse than native in Spider-Man (2026-11-25): not offered
+upscale = ["fsr3", "xess", "fsr1-gamescope", "lsfg"]
 
 [[arch]]
 prefix = "gfx101"

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- FSR 4 INT8 is no longer suggested for Vega 20 (MI50): tested in Spider-Man at 1440p it looked
+  worse than native. It can still be chosen and installed.
 - `numapilot run` started by Steam (`SteamAppId`/`SteamGameId`) counts as graphics when nothing
   else says the use: `--gpu gfx906-0` from Steam's launch options only set ROCm variables, so the
   game rendered on the default card instead of the chosen MI50.

@@ -1633,8 +1633,8 @@ pub const PT: &[(&str, &str)] = &[
         "FSR 4 INT8 com a DLL do BC250 FSR4 (produto escalar INT8 em hardware, ondas de 32)",
     ),
     (
-        "FSR 4 INT8 with the wave64 rebuild of the BC250 FSR4 DLL (INT8 dot product in hardware)",
-        "FSR 4 INT8 com a versão wave64 da DLL do BC250 FSR4 (produto escalar INT8 em hardware)",
+        "FSR 4 INT8 with the wave64 rebuild of the BC250 FSR4 DLL: runs, but on the MI50 it looked worse than native (Spider-Man, 1440p); prefer the game's upscaler with lsfg-vk on the other card",
+        "FSR 4 INT8 com a versão wave64 da DLL do BC250 FSR4: roda, mas na MI50 ficou pior que a imagem nativa (Spider-Man, 1440p); prefira o upscaler do jogo com o lsfg-vk na outra placa",
     ),
     (
         "FSR 4 INT8 with the wave64 DLL, without an INT8 dot product: works, but costs about 5 ms per frame at 1080p",

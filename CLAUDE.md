@@ -291,7 +291,11 @@ Testado na BC-250 (2026-11-21, 40 CUs, Proton 11.0, Spider-Man Remastered com DL
 `WINEDLLOVERRIDES="dxgi=n,b" %command%`): marca d'água "FSR4-I8 UPSCALE 4.1.1R12" aparece (FSR 4
 INT8 rodando), GPU sem reset. Mas a VRAM da BIOS é só 512 MB (desktop usa ~316 MB): 71 erros
 `amdgpu_dm_plane_helper_prepare_fb: Failed to pin framebuffer: -ENOMEM` em 3,5 min. Falta: FPS
-(MangoHud), testar sem DLSS para ver se o ENOMEM é do FSR 4, UMA maior na BIOS; MI50 num jogo DX12.
+(MangoHud), testar sem DLSS para ver se o ENOMEM é do FSR 4, UMA maior na BIOS.
+MI50 (2026-11-25, Spider-Man 1440p, gfx906-0, FSR do jogo em Qualidade → FSR 4 wave64): roda, mas
+a imagem ficou pior que a nativa (17 FPS no menu de pausa); sem FSR 4 ficou melhor. Tirado das
+sugestões do gfx906 na receita. `run` pela Steam agora conta como gráfico (`SteamAppId`), senão a
+MI50 nomeada só recebia ROCm.
 
 ## Capturas do README
 
