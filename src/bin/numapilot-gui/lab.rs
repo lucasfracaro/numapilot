@@ -154,7 +154,22 @@ fn automation_ui(app: &mut App, ui: &mut egui::Ui) {
         });
         ui.label(RichText::new(crate::i18n::tr("n8n (workflows) and Nod (n8n's AI agent, which builds and tests n8n workflows for you) in containers. They only run when you turn them on here: nothing starts at boot.")).weak());
         if let Some(n) = st.as_ref().and_then(|s| s.nod_note.as_ref()) {
-            ui.label(RichText::new(n).small().color(crate::theme::err()));
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(n).small().color(crate::theme::err()));
+                if st.as_ref().is_some_and(automation::docker_installable)
+                    && ui
+                        .button(crate::i18n::tr("Install Docker"))
+                        .on_hover_text(crate::i18n::tr("Opens a terminal that installs docker, docker-compose and docker-buildx, turns on the Docker socket (Docker only starts when used) and adds you to the docker group. It asks for your password; log out and back in afterwards."))
+                        .clicked()
+                {
+                    let cmd = [crate::jobs::sibling_abs("numapilot"), "automation".into(), "install-docker".into()];
+                    match crate::jobs::in_terminal(&cmd) {
+                        Ok(()) => app.toast(crate::i18n::tr("Installing Docker in the terminal"), true),
+                        Err(e) => app.toast(e, false),
+                    }
+                    invalidate();
+                }
+            });
         }
         ui.horizontal_wrapped(|ui| {
             if any_running {

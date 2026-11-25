@@ -97,7 +97,7 @@ enum Cmd {
     /// Community recipes: show | update [URL] (update with sudo)
     Recipes { action: String, url: Option<String> },
     /// n8n + Nod (n8n's AI agent) in containers, only started by hand:
-    /// up | down | update | status | token
+    /// up | down | update | status | token | install-docker
     #[command(alias = "automacao")]
     Automation { action: String },
     /// Upscaling: fetch (downloads OptiScaler) | check (FSR 4 on each card) |
@@ -673,6 +673,7 @@ fn real_main() -> Result<()> {
                 "up" | "on" => automation::up(&mut log, false),
                 "down" | "off" => automation::down(&mut log),
                 "update" => automation::update(&mut log),
+                "install-docker" => automation::install_docker(),
                 "token" => {
                     let t = automation::nod_token().context(numapilot::i18n::tr(
                         "Nod is not installed yet (numapilot automation up)",
@@ -700,7 +701,7 @@ fn real_main() -> Result<()> {
                     Ok(())
                 }
                 _ => Err(numapilot::i18n::tr(
-                    "usage: numapilot automation up | down | update | status | token",
+                    "usage: numapilot automation up | down | update | status | token | install-docker",
                 )
                 .to_string()),
             };

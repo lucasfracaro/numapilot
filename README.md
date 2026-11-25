@@ -317,7 +317,9 @@ and Resizable BAR.
   token). Nothing starts at boot (`--restart no`, and a Compose override with `restart: "no"` for
   Nod). n8n runs on Docker or Podman; Nod needs Docker Engine 25+ with Compose v2 and is built from
   its repository the first time. When both run on Docker, Nod reaches n8n at `http://n8n:5678`.
-  CLI: `numapilot automation up|down|update|status|token`.
+  Without Docker, an **Install Docker** button opens a terminal that installs `docker`,
+  `docker-compose` and `docker-buildx`, turns on `docker.socket` (Docker starts only when used)
+  and adds you to the `docker` group. CLI: `numapilot automation up|down|update|status|token|install-docker`.
 - **AI server**: picks the `.gguf` model, the GPUs and the context; start/stop; chat and API address
   (OpenAI-compatible); **Optimize (tokens/s)**. **Saved models**: one button per model with its
   own cards, context, arguments and container image (another llama.cpp build); "After a reboot"

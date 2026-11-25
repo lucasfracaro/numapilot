@@ -9,7 +9,9 @@
   token). Nothing starts at boot: n8n has `--restart no` and Nod gets `numapilot.override.yaml`
   with `restart: "no"` on every service. Nod needs Docker Engine 25+ with Compose v2 (without it
   only n8n starts and the tab says why); with both on Docker, n8n joins Nod's network as `n8n`.
-  CLI: `numapilot automation up|down|update|status|token`.
+  Without Docker, "Install Docker" opens a terminal that installs `docker`, `docker-compose` and
+  `docker-buildx`, enables `docker.socket` (Docker starts only when used) and adds the user to the
+  `docker` group. CLI: `numapilot automation up|down|update|status|token|install-docker`.
 - Hot GPU warning (tray, phone notification, web panel, Graphics cards tab colours): each sensor
   (edge, junction/hotspot, memory) is compared with its own critical temperature from the driver
   (`tempN_crit`) minus 10 °C, and the text names the sensor ("junction 95 °C (critical 105 °C)").

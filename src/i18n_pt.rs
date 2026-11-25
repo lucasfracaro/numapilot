@@ -1739,7 +1739,15 @@ pub const PT: &[(&str, &str)] = &[
         "O Nod ainda não está instalado (numapilot automation up)",
     ),
     (
-        "usage: numapilot automation up | down | update | status | token",
-        "uso: numapilot automation up | down | update | status | token",
+        "usage: numapilot automation up | down | update | status | token | install-docker",
+        "uso: numapilot automation up | down | update | status | token | install-docker",
+    ),
+    (
+        "you are already in the docker group: log out and back in (or restart) for it to apply",
+        "você já está no grupo docker: saia da sessão e entre de novo (ou reinicie) para valer",
+    ),
+    (
+        "the Docker installation failed (see the messages above)",
+        "a instalação do Docker falhou (veja as mensagens acima)",
     ),
 ];

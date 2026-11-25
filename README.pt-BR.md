@@ -307,7 +307,9 @@ link PCIe e Resizable BAR.
   copia o token de acesso). Nada inicia com o PC (`--restart no`, e um override do Compose com
   `restart: "no"` no Nod). O n8n roda no Docker ou no Podman; o Nod precisa do Docker Engine 25+
   com Compose v2 e é montado a partir do repositório dele na primeira vez. Com os dois no Docker, o
-  Nod acha o n8n em `http://n8n:5678`. Linha de comando: `numapilot automation up|down|update|status|token`.
+  Nod acha o n8n em `http://n8n:5678`. Sem Docker, o botão **Instalar o Docker** abre um terminal que instala `docker`,
+  `docker-compose` e `docker-buildx`, liga o `docker.socket` (o Docker só inicia quando for usado)
+  e põe você no grupo `docker`. Linha de comando: `numapilot automation up|down|update|status|token|install-docker`.
 - **Servidor de IA**: escolhe o modelo `.gguf`, as GPUs e o contexto; inicia/para; chat e endereço
   da API (compatível com a da OpenAI); **Otimizar (tokens/s)**. **Modelos salvos**: um botão por
   modelo com placas, contexto, argumentos e imagem de container próprios (outra build do

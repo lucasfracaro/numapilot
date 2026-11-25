@@ -163,19 +163,24 @@ fn docker_check() -> Option<Result<(), String>> {
         quiet(Command::new("docker").args(["version", "--format", "{{.Server.APIVersion}}"]))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr).to_lowercase();
-        return Some(Err(if err.contains("permission denied") {
-            crate::i18n::tr(
+        return Some(Err(
+            if err.contains("permission denied") && in_docker_group() {
+                crate::i18n::tr("you are already in the docker group: log out and back in (or restart) for it to apply").into()
+            } else if err.contains("permission denied") {
+                crate::i18n::tr(
                 "Docker is installed but this user cannot use it: sudo usermod -aG docker $USER, then log in again",
             )
             .into()
-        } else if err.contains("podman") {
-            crate::i18n::tr(
-                "the docker command here is Podman's; Nod needs Docker Engine 25 or newer",
-            )
-            .into()
-        } else {
-            crate::i18n::tr("the Docker service is not running: sudo systemctl start docker").into()
-        }));
+            } else if err.contains("podman") {
+                crate::i18n::tr(
+                    "the docker command here is Podman's; Nod needs Docker Engine 25 or newer",
+                )
+                .into()
+            } else {
+                crate::i18n::tr("the Docker service is not running: sudo systemctl start docker")
+                    .into()
+            },
+        ));
     }
     let api = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let minor = api.strip_prefix("1.").and_then(|m| m.parse::<u32>().ok());
@@ -193,6 +198,72 @@ fn docker_check() -> Option<Result<(), String>> {
         .into()));
     }
     Some(Ok(()))
+}
+
+fn user_name() -> String {
+    std::env::var("USER")
+        .ok()
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(|| {
+            quiet(Command::new("id").arg("-un"))
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default()
+        })
+}
+
+/// The user is listed in /etc/group's docker line (maybe not yet in this login session).
+fn in_docker_group() -> bool {
+    let user = user_name();
+    std::fs::read_to_string("/etc/group").is_ok_and(|g| group_has(&g, "docker", &user))
+}
+
+pub fn group_has(etc_group: &str, group: &str, user: &str) -> bool {
+    etc_group.lines().any(|l| {
+        let f: Vec<&str> = l.split(':').collect();
+        f.len() >= 4 && f[0] == group && f[3].split(',').any(|m| m.trim() == user)
+    })
+}
+
+/// Script that installs Docker on Arch/CachyOS (run in a terminal: it asks for the password).
+/// Socket activation: Docker only starts when something uses it, and n8n/Nod never restart at
+/// boot, so nothing runs until the "Turn on" button.
+pub fn docker_install_script(user: &str) -> String {
+    let user = user.replace(
+        |c: char| !(c.is_ascii_alphanumeric() || "._-".contains(c)),
+        "",
+    );
+    format!(
+        "set -e\n\
+         command -v pacman >/dev/null || {{ echo 'Only Arch-based systems (pacman) are supported here: install Docker Engine 25+ with Compose v2 by hand.'; exit 1; }}\n\
+         echo '== Installing docker, docker-compose and docker-buildx'\n\
+         sudo pacman -S --needed docker docker-compose docker-buildx\n\
+         echo '== Turning on the Docker socket (Docker starts only when used)'\n\
+         sudo systemctl enable --now docker.socket\n\
+         echo '== Adding {user} to the docker group'\n\
+         sudo usermod -aG docker {user}\n\
+         echo\n\
+         echo 'Docker is installed. Log out and back in (or restart) so the docker group applies, then use Turn on in the Lab and containers tab.'\n"
+    )
+}
+
+/// Installs Docker (asks for the sudo password in this terminal).
+pub fn install_docker() -> Result<(), String> {
+    let st = Command::new("sh")
+        .args(["-c", &docker_install_script(&user_name())])
+        .status()
+        .map_err(|e| e.to_string())?;
+    if st.success() {
+        Ok(())
+    } else {
+        Err(crate::i18n::tr("the Docker installation failed (see the messages above)").into())
+    }
+}
+
+/// Docker is missing or not usable and the install script can fix it.
+pub fn docker_installable(st: &Status) -> bool {
+    st.nod == State::NoEngine
+        && (!crate::containers::which("docker") || st.nod_note.is_some())
+        && crate::containers::which("pacman")
 }
 
 /// Engine for n8n: Docker when usable (so it can share Nod's network), else the tab's engine.
@@ -441,6 +512,22 @@ pub fn update(log: &mut dyn FnMut(&str)) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn docker_group_membership() {
+        let g = "wheel:x:998:lucas\ndocker:x:970:ana,lucas\n";
+        assert!(group_has(g, "docker", "lucas"));
+        assert!(!group_has(g, "docker", "bob"));
+        assert!(!group_has("docker:x:970:\n", "docker", "lucas"));
+    }
+
+    #[test]
+    fn docker_script_installs_compose_and_adds_the_user() {
+        let s = docker_install_script("lucas; rm -rf /");
+        assert!(s.contains("pacman -S --needed docker docker-compose docker-buildx"));
+        assert!(s.contains("systemctl enable --now docker.socket"));
+        assert!(s.contains("usermod -aG docker lucasrm-rf"));
+    }
 
     #[test]
     fn reads_env_values() {
