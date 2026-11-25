@@ -2346,4 +2346,91 @@ pub const PT: &[(&str, &str)] = &[
         "With two cards: the game upscales on its card and lsfg-vk generates frames on the other (presentation block, generator \"Lossless Scaling on the output card\", upscaling \"none\").",
         "Com duas placas: o jogo amplia na placa dele e o lsfg-vk gera os quadros na outra (bloco de apresentação, gerador \"Lossless Scaling na placa de saída\", upscaling \"nenhum\").",
     ),
+    // AI server: saved models
+    // AI server: CPU models
+    ("CPU models", "Modelos de CPU"),
+    (
+        "Small models that run on the processor, each with a local page and API. They only start when you click; choose the socket, cores and priority of each one.",
+        "Modelos pequenos que rodam no processador, cada um com página e API locais. Só sobem quando você clica; escolha o socket, os núcleos e a prioridade de cada um.",
+    ),
+    ("all sockets", "todos os sockets"),
+    ("all cores", "todos os núcleos"),
+    ("settings", "ajustes"),
+    ("log", "log"),
+    ("Socket", "Socket"),
+    (
+        "Physical cores; 0 = all of the chosen sockets",
+        "Núcleos físicos; 0 = todos dos sockets escolhidos",
+    ),
+    ("hyper-threading", "hyper-threading"),
+    (
+        "0 = normal, 19 = lowest (gives way to everything else)",
+        "0 = normal, 19 = a mais baixa (dá lugar a todo o resto)",
+    ),
+    (
+        "Changes apply the next time it starts.",
+        "As mudanças valem a partir da próxima vez que ele subir.",
+    ),
+    ("Add a CPU model...", "Adicionar modelo de CPU..."),
+    (
+        "Text from photos, scans and PDFs",
+        "Texto de fotos, digitalizações e PDFs",
+    ),
+    (
+        "Speech to text (Portuguese included)",
+        "Fala para texto (inclui português)",
+    ),
+    (
+        "Text embeddings for search and sorting (OpenAI-compatible API)",
+        "Embeddings de texto para busca e triagem (API compatível com a da OpenAI)",
+    ),
+    (
+        "Text to speech (Portuguese voice \"rafael\")",
+        "Texto para fala (voz em português \"rafael\")",
+    ),
+    ("Saved models", "Modelos salvos"),
+    (
+        "None yet: choose the model and settings below, give it a name and click \"Save as a saved model\".",
+        "Nenhum ainda: escolha o modelo e os ajustes abaixo, dê um nome e clique em \"Salvar como modelo salvo\".",
+    ),
+    (
+        "Start the AI server with this model",
+        "Iniciar o servidor de IA com este modelo",
+    ),
+    ("Stop the AI server first", "Pare o servidor de IA antes"),
+    (
+        "The model file is not in the models folder",
+        "O arquivo do modelo não está na pasta de modelos",
+    ),
+    ("all cards", "todas as placas"),
+    ("edit", "editar"),
+    ("delete", "apagar"),
+    ("name of the saved model", "nome do modelo salvo"),
+    ("Save as a saved model", "Salvar como modelo salvo"),
+    (
+        "Saves this model, cards, context and extra arguments as a button above. A saved model with the same name is replaced.",
+        "Salva este modelo, as placas, o contexto e os argumentos extras como um botão acima. Um modelo salvo com o mesmo nome é substituído.",
+    ),
+    (
+        "Each sensor (edge, hotspot, memory) warns 10 °C below its own critical temperature from the driver. This value is used only for sensors without one (NVIDIA, APUs).",
+        "Cada sensor (borda, hotspot, memória) avisa 10 °C abaixo da temperatura crítica dele, informada pelo driver. Este valor só vale para sensores sem ela (NVIDIA, APUs).",
+    ),
+    ("Image (engine)", "Imagem (motor)"),
+    (
+        "empty = the default llama.cpp for these cards",
+        "vazio = o llama.cpp padrão destas placas",
+    ),
+    (
+        "Container image with llama-server (another llama.cpp build or fork). The default follows the cards: gfx906 build on the MI50s, CUDA on NVIDIA, ROCm or Vulkan on the others.",
+        "Imagem de container com o llama-server (outra build ou fork do llama.cpp). A padrão segue as placas: build gfx906 nas MI50, CUDA na NVIDIA, ROCm ou Vulkan nas outras.",
+    ),
+    ("After a reboot", "Depois de reiniciar"),
+    (
+        "start the AI server again by itself",
+        "subir o servidor de IA sozinho de novo",
+    ),
+    (
+        "Off: the server only runs when you start it here (or from a saved model). Applies the next time it starts.",
+        "Desligado: o servidor só roda quando você inicia por aqui (ou por um modelo salvo). Vale a partir da próxima vez que ele subir.",
+    ),
 ];

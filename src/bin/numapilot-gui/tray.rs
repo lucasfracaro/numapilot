@@ -235,21 +235,23 @@ impl Alerts {
                 self.battery_warned = false;
             }
         }
+        let hot_c = numapilot::notify::Notify::load().gpu_hot_c;
         for g in &topo.gpus {
             let s = gpuctl::read_sensors(&g.pci);
-            let Some(t) = s.control_temp() else { continue };
+            let hot = s.hot(hot_c);
             let n = self.streak.entry(g.pci.clone()).or_default();
-            *n = if t >= 90.0 { *n + 1 } else { 0 };
+            *n = if hot.is_some() { *n + 1 } else { 0 };
             let recent = self
                 .last
                 .get(&g.pci)
                 .is_some_and(|l| l.elapsed() < Duration::from_secs(600));
-            if *n >= 3 && !recent {
+            if let Some(h) = hot.filter(|_| *n >= 3 && !recent) {
                 self.last.insert(g.pci.clone(), std::time::Instant::now());
                 let body = crate::tf!(
-                    "{} is at {t:.0} °C (fan {}). Check the airflow or lower the power limit.",
-                    "{} está a {t:.0} °C (ventoinha {}). Confira a ventilação ou reduza o limite de potência.",
+                    "{}: {} (fan {}). Check the airflow or lower the power limit.",
+                    "{}: {} (ventoinha {}). Confira a ventilação ou reduza o limite de potência.",
                     g.alias,
+                    h.describe(),
                     s.fan_pct
                         .map(|p| format!("{p:.0}%"))
                         .unwrap_or_else(|| "?".into())
@@ -273,10 +275,11 @@ impl Alerts {
 fn summary(topo: &Topology) -> (String, bool) {
     let mut lines = Vec::new();
     let mut hot = false;
+    let hot_c = numapilot::notify::Notify::load().gpu_hot_c;
     for g in &topo.gpus {
         let s = gpuctl::read_sensors(&g.pci);
         let t = s.control_temp();
-        hot |= t.is_some_and(|t| t >= 90.0);
+        hot |= s.hot(hot_c).is_some();
         lines.push(format!(
             "{}: {} · {}% · {}",
             g.alias,

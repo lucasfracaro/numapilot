@@ -42,6 +42,7 @@ LLM_CTX=16384
 LLM_PORT=8080
 LLM_BIND="127.0.0.1"
 LLM_ARGS=""            # argumentos extras do llama-server
+LLM_AUTOSTART=1        # 1 = o servidor de IA volta sozinho depois de reiniciar o PC; 0 = só quando pedido
 UPDATE_LOG="${XDG_STATE_HOME:-$HOME/.local/state}/gfx906-lab/updates.log"
 # Atualização: "auto" = instala sozinho o que passar na validação; "aviso" = só avisa que há versão nova.
 UPDATE_MODE="auto"
@@ -747,7 +748,9 @@ llm_run() {
     local model=$1 img=$2 eng
     eng=$(engine)
     "$eng" rm -f "$LLM_NAME" >/dev/null 2>&1 || true
-    local args=(run -d --name "$LLM_NAME" --restart unless-stopped --ipc=host
+    local restart=unless-stopped
+    [[ ${LLM_AUTOSTART:-1} == 0 ]] && restart=no
+    local args=(run -d --name "$LLM_NAME" --restart "$restart" --ipc=host
         --security-opt seccomp=unconfined -p "$LLM_BIND:$LLM_PORT:8080" -v "$LLM_MODELS:/models:ro"
         --label io.numapilot.model="$model" --entrypoint sh)
     local renders=${NUMAPILOT_RENDER:-} r ngpu=0
@@ -779,7 +782,7 @@ llm_run() {
     [[ -n $LLM_ARGS ]] && srv+=($LLM_ARGS)
     # shellcheck disable=SC2016
     "$eng" "${args[@]}" "$img" -c 'exec "$(command -v llama-server || echo /app/llama-server)" "$@"' llama-server "${srv[@]}" >/dev/null
-    enable_podman_restart
+    [[ $restart == no ]] || enable_podman_restart
     info "carregando $model (pode levar alguns minutos)..."
     local i
     for i in $(seq 1 180); do

@@ -42,6 +42,8 @@ const DEFAULTS: &[(&str, &str)] = &[
     ("LLM_CTX", "16384"),
     ("LLM_PORT", "8080"),
     ("LLM_ARGS", ""),
+    ("LLM_AUTOSTART", "1"),
+    ("LLM_IMAGE", ""),
     ("UPDATE_MODE", "auto"),
     ("REGRESS_PCT", "10"),
 ];
@@ -139,6 +141,101 @@ impl LabSettings {
     }
 }
 
+/// A saved AI model: one button in the AI server tab that starts llama.cpp with these settings
+/// (~/.config/gfx906-lab/llm-presets.toml).
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LlmPreset {
+    pub name: String,
+    pub model: String,
+    #[serde(default)]
+    pub gpu: String,
+    #[serde(default)]
+    pub ctx: u32,
+    #[serde(default)]
+    pub args: String,
+    /// llama.cpp container image for this model (another build or fork); empty = the default one.
+    #[serde(default)]
+    pub image: String,
+}
+
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct PresetFile {
+    #[serde(default, rename = "preset")]
+    presets: Vec<LlmPreset>,
+}
+
+impl LlmPreset {
+    /// The model, cards, context and extra arguments currently in the form.
+    pub fn from_settings(name: &str, cfg: &LabSettings) -> LlmPreset {
+        LlmPreset {
+            name: name.trim().to_string(),
+            model: cfg.get("LLM_MODEL"),
+            gpu: cfg.get("LLM_GPU"),
+            ctx: cfg.get("LLM_CTX").parse().unwrap_or(16384),
+            args: cfg.get("LLM_ARGS"),
+            image: cfg.get("LLM_IMAGE"),
+        }
+    }
+
+    /// Puts the preset into the settings (the script reads them on `llm up`).
+    pub fn apply(&self, cfg: &mut LabSettings) {
+        cfg.set("LLM_MODEL", &self.model);
+        if !self.gpu.is_empty() {
+            cfg.set("LLM_GPU", &self.gpu);
+        }
+        if self.ctx > 0 {
+            cfg.set("LLM_CTX", &self.ctx.to_string());
+        }
+        cfg.set("LLM_ARGS", &self.args);
+        cfg.set("LLM_IMAGE", &self.image);
+    }
+}
+
+pub fn presets_path() -> PathBuf {
+    cfg_dir().join("llm-presets.toml")
+}
+
+pub fn presets_from_str(s: &str) -> Vec<LlmPreset> {
+    toml::from_str::<PresetFile>(s)
+        .map(|f| f.presets)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| !p.name.is_empty() && !p.model.is_empty())
+        .collect()
+}
+
+pub fn presets_to_string(list: &[LlmPreset]) -> String {
+    let f = PresetFile {
+        presets: list.to_vec(),
+    };
+    format!(
+        "# Saved AI models (numapilot, AI server tab).\n{}",
+        toml::to_string(&f).unwrap_or_default()
+    )
+}
+
+pub fn load_presets() -> Vec<LlmPreset> {
+    std::fs::read_to_string(presets_path())
+        .map(|s| presets_from_str(&s))
+        .unwrap_or_default()
+}
+
+pub fn save_presets(list: &[LlmPreset]) -> std::io::Result<()> {
+    std::fs::create_dir_all(cfg_dir())?;
+    std::fs::write(presets_path(), presets_to_string(list))
+}
+
+/// Adds the preset, or replaces the one with the same name (ignoring case).
+pub fn upsert_preset(list: &mut Vec<LlmPreset>, p: LlmPreset) {
+    match list
+        .iter_mut()
+        .find(|x| x.name.eq_ignore_ascii_case(&p.name))
+    {
+        Some(x) => *x = p,
+        None => list.push(p),
+    }
+}
+
 /// .gguf models (only the 1st part of split files), with total size in bytes.
 pub fn list_models(dir: &std::path::Path) -> Vec<(String, u64)> {
     fn walk(
@@ -198,6 +295,52 @@ mod tests {
         );
         assert_eq!(m.get("LAB_BIND").map(String::as_str), Some("0.0.0.0"));
         assert!(!m.contains_key("foo"));
+    }
+
+    #[test]
+    fn presets_round_trip() {
+        let mut l = Vec::new();
+        upsert_preset(
+            &mut l,
+            LlmPreset {
+                name: "Qwen 256k".into(),
+                model: "q/a.gguf".into(),
+                gpu: "compute:all".into(),
+                ctx: 262144,
+                args: "--flash-attn on".into(),
+                image: "docker.io/x/llama:1".into(),
+            },
+        );
+        upsert_preset(
+            &mut l,
+            LlmPreset {
+                name: "small".into(),
+                model: "b.gguf".into(),
+                ..Default::default()
+            },
+        );
+        upsert_preset(
+            &mut l,
+            LlmPreset {
+                name: "qwen 256K".into(),
+                model: "q/a.gguf".into(),
+                ctx: 131072,
+                ..Default::default()
+            },
+        );
+        assert_eq!(l.len(), 2);
+        let back = presets_from_str(&presets_to_string(&l));
+        assert_eq!(back, l);
+        assert_eq!(back[0].ctx, 131072);
+        assert!(presets_from_str("not toml [").is_empty());
+        let mut cfg = LabSettings {
+            values: BTreeMap::new(),
+        };
+        back[1].apply(&mut cfg);
+        assert_eq!(cfg.get("LLM_MODEL"), "b.gguf");
+        assert!(!cfg.values.contains_key("LLM_CTX"));
+        let p = LlmPreset::from_settings(" x ", &cfg);
+        assert_eq!((p.name.as_str(), p.ctx), ("x", 16384));
     }
 
     #[test]

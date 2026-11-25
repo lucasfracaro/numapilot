@@ -1601,8 +1601,8 @@ pub fn run(cfg: Config) -> Result<()> {
                     }
                     let s = gpuctl::read_sensors(&g.pci);
                     let st = hw.hot_streak.entry(g.pci.clone()).or_default();
-                    match s.control_temp() {
-                        Some(t) if t >= n.gpu_hot_c => {
+                    match s.hot(n.gpu_hot_c) {
+                        Some(h) => {
                             *st += 1;
                             if *st == 3 {
                                 crate::notify::event(
@@ -1610,9 +1610,10 @@ pub fn run(cfg: Config) -> Result<()> {
                                     &format!("hot-{}", g.pci),
                                     &crate::tf!("Hot GPU: {}", "GPU quente: {}", g.alias),
                                     &crate::tf!(
-                                        "{} is at {t:.0} °C (fan {}, {}). Check the airflow or lower the power.",
-                                        "{} está a {t:.0} °C (ventoinha {}, {}). Confira a ventilação ou reduza a potência.",
+                                        "{}: {} (fan {}, {}). Check the airflow or lower the power.",
+                                        "{}: {} (ventoinha {}, {}). Confira a ventilação ou reduza a potência.",
                                         g.alias,
+                                        h.describe(),
                                         s.fan_pct.map(|p| format!("{p:.0}%")).unwrap_or("?".into()),
                                         s.power_w
                                             .map(|p| format!("{p:.0} W"))

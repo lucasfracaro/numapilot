@@ -4,7 +4,7 @@ use crate::App;
 use crate::jobs::open_url;
 use crate::lab::gfx;
 use eframe::egui::{self, Color32, RichText};
-use numapilot::labcfg::{LabSettings, list_models};
+use numapilot::labcfg::{LabSettings, LlmPreset, list_models};
 use numapilot::topo::GpuRole;
 use std::path::PathBuf;
 
@@ -15,6 +15,8 @@ const KEYS: &[&str] = &[
     "LLM_CTX",
     "LLM_PORT",
     "LLM_ARGS",
+    "LLM_AUTOSTART",
+    "LLM_IMAGE",
 ];
 
 pub fn ui(app: &mut App, ui: &mut egui::Ui) {
@@ -48,6 +50,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         .weak(),
     );
     ui.separator();
+
+    presets_ui(app, ui, &mut cfg, state, &models_dir);
 
     egui::Grid::new("llm")
         .num_columns(2)
@@ -180,6 +184,44 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 cfg.set("LLM_ARGS", &a);
             }
             ui.end_row();
+
+            ui.label(crate::i18n::tr("Image (engine)"));
+            let mut im = cfg.get("LLM_IMAGE");
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut im)
+                        .desired_width(420.0)
+                        .hint_text(crate::i18n::tr(
+                            "empty = the default llama.cpp for these cards",
+                        )),
+                )
+                .on_hover_text(crate::i18n::tr(
+                    "Container image with llama-server (another llama.cpp build or fork). \
+                     The default follows the cards: gfx906 build on the MI50s, CUDA on NVIDIA, \
+                     ROCm or Vulkan on the others.",
+                ))
+                .changed()
+            {
+                cfg.set("LLM_IMAGE", im.trim());
+            }
+            ui.end_row();
+
+            ui.label(crate::i18n::tr("After a reboot"));
+            let mut auto = cfg.get("LLM_AUTOSTART") != "0";
+            if ui
+                .checkbox(
+                    &mut auto,
+                    crate::i18n::tr("start the AI server again by itself"),
+                )
+                .on_hover_text(crate::i18n::tr(
+                    "Off: the server only runs when you start it here (or from a saved model). \
+                     Applies the next time it starts.",
+                ))
+                .changed()
+            {
+                cfg.set("LLM_AUTOSTART", if auto { "1" } else { "0" });
+            }
+            ui.end_row();
         });
 
     let model = cfg.get("LLM_MODEL");
@@ -272,6 +314,44 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
             );
         }
     });
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::TextEdit::singleline(&mut app.llm_preset_name)
+                .desired_width(220.0)
+                .hint_text(crate::i18n::tr("name of the saved model")),
+        );
+        let ok = !app.llm_preset_name.trim().is_empty() && !cfg.get("LLM_MODEL").is_empty();
+        if ui
+            .add_enabled(
+                ok,
+                egui::Button::new(crate::i18n::tr("Save as a saved model")),
+            )
+            .on_hover_text(crate::i18n::tr(
+                "Saves this model, cards, context and extra arguments as a button above. \
+                 A saved model with the same name is replaced.",
+            ))
+            .clicked()
+        {
+            let mut list = app
+                .llm_presets
+                .take()
+                .unwrap_or_else(numapilot::labcfg::load_presets);
+            let p = LlmPreset::from_settings(&app.llm_preset_name, &cfg);
+            let name = p.name.clone();
+            numapilot::labcfg::upsert_preset(&mut list, p);
+            match numapilot::labcfg::save_presets(&list) {
+                Ok(()) => app.toast(
+                    crate::tf!("Saved model \"{name}\" saved", "Modelo \"{name}\" salvo"),
+                    true,
+                ),
+                Err(e) => app.toast(
+                    crate::tf!("Could not save: {e}", "Não consegui salvar: {e}"),
+                    false,
+                ),
+            }
+            app.llm_presets = Some(list);
+        }
+    });
     ui.add_space(6.0);
     ui.add_enabled_ui(state == Some(true), |ui| {
         ui.horizontal(|ui| {
@@ -286,6 +366,364 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
         });
     });
     app.llm_cfg = Some(cfg);
+    ui.add_space(10.0);
+    ui.separator();
+    cpu_models_ui(app, ui);
+}
+
+/// CPU models (OCR, speech to text, embeddings, text to speech): one button each, started
+/// only by hand, with their own socket, cores, hyper-threading and priority.
+fn cpu_models_ui(app: &mut App, ui: &mut egui::Ui) {
+    use numapilot::aiapps::{self, AiApp, KINDS};
+    if app.ai_apps.is_none() {
+        app.ai_apps = Some(aiapps::load_apps());
+    }
+    let mut list = app.ai_apps.take().unwrap_or_default();
+    let stale = app
+        .ai_running
+        .0
+        .is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(2));
+    if stale {
+        app.ai_running = (Some(std::time::Instant::now()), aiapps::running(&list));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs(2));
+    }
+    let running = app.ai_running.1.clone();
+    let mut changed = false;
+    let mut remove = None;
+
+    ui.label(RichText::new(crate::i18n::tr("CPU models")).strong());
+    ui.label(
+        RichText::new(crate::i18n::tr(
+            "Small models that run on the processor, each with a local page and API. They only \
+             start when you click; choose the socket, cores and priority of each one.",
+        ))
+        .weak(),
+    );
+    let max_cores = app
+        .topo
+        .nodes
+        .iter()
+        .map(|n| n.physical_cores)
+        .sum::<usize>()
+        .max(1) as u32;
+    let nodes: Vec<usize> = app.topo.nodes.iter().map(|n| n.id).collect();
+    egui::Grid::new("ai-apps")
+        .num_columns(3)
+        .spacing([10.0, 6.0])
+        .show(ui, |ui| {
+            for (i, a) in list.iter_mut().enumerate() {
+                let Some(k) = a.kind() else { continue };
+                let on = running.get(i).copied().unwrap_or(false);
+                let ready = aiapps::installed(&a.kind);
+                if !ready {
+                    if ui
+                        .button(crate::tf!("Install {}", "Instalar {}", a.name))
+                        .on_hover_text(crate::tf!(
+                            "Creates its Python environment and downloads {} (in a terminal).",
+                            "Cria o ambiente Python e baixa o {} (num terminal).",
+                            k.repo
+                        ))
+                        .clicked()
+                    {
+                        install(app, k);
+                    }
+                } else if on {
+                    if ui.button(format!("■ {}", a.name)).clicked() {
+                        app.start_job(
+                            crate::tf!("Stopping {}", "Parando {}", a.name),
+                            a.down_argv(),
+                        );
+                        app.ai_running.0 = None;
+                    }
+                } else if ui
+                    .button(format!("▶ {}", a.name))
+                    .on_hover_text(crate::i18n::tr(k.about))
+                    .clicked()
+                {
+                    match aiapps::write_server() {
+                        Ok(()) => {
+                            app.start_job(
+                                crate::tf!("Starting {}", "Iniciando {}", a.name),
+                                a.up_argv(&app.topo),
+                            );
+                            app.ai_running.0 = None;
+                        }
+                        Err(e) => app.toast(
+                            crate::tf!("Could not save: {e}", "Não consegui salvar: {e}"),
+                            false,
+                        ),
+                    }
+                }
+                let socket = match a.node {
+                    Some(n) => crate::tf!("socket {n}", "socket {n}"),
+                    None => crate::i18n::tr("all sockets").to_string(),
+                };
+                let cores = if a.cores == 0 {
+                    crate::i18n::tr("all cores").to_string()
+                } else {
+                    crate::tf!("{} cores", "{} núcleos", a.cores)
+                };
+                let mut info = format!(
+                    "{}  ·  {socket}  ·  {cores}{}  ·  :{}",
+                    k.label,
+                    if a.smt { " + HT" } else { "" },
+                    a.port
+                );
+                if a.nice > 0 {
+                    info.push_str(&crate::tf!(
+                        "  ·  priority {}",
+                        "  ·  prioridade {}",
+                        a.nice
+                    ));
+                }
+                ui.label(RichText::new(info).weak());
+                ui.horizontal(|ui| {
+                    if on {
+                        ui.label(
+                            RichText::new(crate::t2!("running", "rodando"))
+                                .color(crate::theme::ok()),
+                        );
+                        if crate::theme::small(ui, crate::i18n::tr("open")).clicked() {
+                            let _ = open_url(&a.url());
+                        }
+                    }
+                    if crate::theme::small(ui, crate::i18n::tr("settings")).clicked() {
+                        app.ai_edit = if app.ai_edit == Some(i) {
+                            None
+                        } else {
+                            Some(i)
+                        };
+                    }
+                    if ready && crate::theme::small(ui, crate::i18n::tr("update")).clicked() {
+                        install(app, k);
+                    }
+                    if crate::theme::small(ui, crate::i18n::tr("log")).clicked() {
+                        app.start_job(crate::tf!("Log of {}", "Log do {}", a.name), a.log_argv());
+                    }
+                    if !on && crate::theme::small(ui, crate::i18n::tr("delete")).clicked() {
+                        remove = Some(i);
+                    }
+                });
+                ui.end_row();
+                if app.ai_edit == Some(i) {
+                    ui.label("");
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(crate::i18n::tr("Name"));
+                            changed |= ui
+                                .add(egui::TextEdit::singleline(&mut a.name).desired_width(200.0))
+                                .lost_focus();
+                            ui.label(crate::i18n::tr("Port"));
+                            changed |= ui
+                                .add(egui::DragValue::new(&mut a.port).range(1024..=65535))
+                                .changed();
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label(crate::i18n::tr("Socket"));
+                            let txt = match a.node {
+                                Some(n) => format!("{n}"),
+                                None => crate::i18n::tr("all").to_string(),
+                            };
+                            egui::ComboBox::from_id_salt(("ai-node", i))
+                                .selected_text(txt)
+                                .show_ui(ui, |ui| {
+                                    changed |= ui
+                                        .selectable_value(&mut a.node, None, crate::i18n::tr("all"))
+                                        .changed();
+                                    for n in &nodes {
+                                        changed |= ui
+                                            .selectable_value(&mut a.node, Some(*n), format!("{n}"))
+                                            .changed();
+                                    }
+                                });
+                            ui.label(crate::i18n::tr("Cores"));
+                            changed |= ui
+                                .add(egui::DragValue::new(&mut a.cores).range(0..=max_cores))
+                                .on_hover_text(crate::i18n::tr(
+                                    "Physical cores; 0 = all of the chosen sockets",
+                                ))
+                                .changed();
+                            changed |= ui
+                                .checkbox(&mut a.smt, crate::i18n::tr("hyper-threading"))
+                                .changed();
+                            ui.label(crate::i18n::tr("Priority"));
+                            changed |= ui
+                                .add(egui::DragValue::new(&mut a.nice).range(0..=19))
+                                .on_hover_text(crate::i18n::tr(
+                                    "0 = normal, 19 = lowest (gives way to everything else)",
+                                ))
+                                .changed();
+                        });
+                        ui.label(
+                            RichText::new(crate::i18n::tr(
+                                "Changes apply the next time it starts.",
+                            ))
+                            .weak(),
+                        );
+                    });
+                    ui.label("");
+                    ui.end_row();
+                }
+            }
+        });
+    if let Some(i) = remove {
+        list.remove(i);
+        app.ai_edit = None;
+        changed = true;
+    }
+    ui.horizontal(|ui| {
+        egui::ComboBox::from_id_salt("ai-add")
+            .selected_text(crate::i18n::tr("Add a CPU model..."))
+            .width(260.0)
+            .show_ui(ui, |ui| {
+                for k in KINDS {
+                    if ui
+                        .selectable_label(
+                            false,
+                            format!("{} — {}", k.label, crate::i18n::tr(k.about)),
+                        )
+                        .clicked()
+                    {
+                        let mut a = AiApp::new(k);
+                        while list.iter().any(|x| x.port == a.port) {
+                            a.port += 10;
+                        }
+                        while list.iter().any(|x| x.unit() == a.unit()) {
+                            a.name.push_str(" 2");
+                        }
+                        list.push(a);
+                        changed = true;
+                    }
+                }
+            });
+    });
+    if changed {
+        if let Err(e) = aiapps::save_apps(&list) {
+            app.toast(
+                crate::tf!("Could not save: {e}", "Não consegui salvar: {e}"),
+                false,
+            );
+        }
+        app.ai_running.0 = None;
+    }
+    app.ai_apps = Some(list);
+}
+
+fn install(app: &mut App, k: &numapilot::aiapps::Kind) {
+    if let Err(e) = numapilot::aiapps::write_server() {
+        app.toast(
+            crate::tf!("Could not save: {e}", "Não consegui salvar: {e}"),
+            false,
+        );
+        return;
+    }
+    let script = numapilot::aiapps::install_script(k);
+    if let Err(e) = crate::jobs::in_terminal(&["sh".into(), "-c".into(), script]) {
+        app.toast(e, false);
+    }
+}
+
+/// Saved models: one button each that starts llama.cpp with that model and its settings.
+fn presets_ui(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    cfg: &mut LabSettings,
+    state: Option<bool>,
+    models_dir: &std::path::Path,
+) {
+    if app.llm_presets.is_none() {
+        app.llm_presets = Some(numapilot::labcfg::load_presets());
+    }
+    let list = app.llm_presets.clone().unwrap_or_default();
+    ui.label(RichText::new(crate::i18n::tr("Saved models")).strong());
+    if list.is_empty() {
+        ui.label(
+            RichText::new(crate::i18n::tr(
+                "None yet: choose the model and settings below, give it a name and click \
+                 \"Save as a saved model\".",
+            ))
+            .weak(),
+        );
+    }
+    let running_model = cfg.get("LLM_MODEL");
+    let mut remove = None;
+    egui::Grid::new("llm-presets")
+        .num_columns(3)
+        .spacing([10.0, 6.0])
+        .show(ui, |ui| {
+            for (i, p) in list.iter().enumerate() {
+                let exists = models_dir.join(&p.model).is_file();
+                let btn = ui
+                    .add_enabled(
+                        state.is_none() && exists,
+                        egui::Button::new(format!("▶ {}", p.name)),
+                    )
+                    .on_hover_text(crate::i18n::tr("Start the AI server with this model"))
+                    .on_disabled_hover_text(if exists {
+                        crate::i18n::tr("Stop the AI server first")
+                    } else {
+                        crate::i18n::tr("The model file is not in the models folder")
+                    });
+                if btn.clicked() {
+                    p.apply(cfg);
+                    save(app, cfg);
+                    app.start_job(
+                        crate::tf!("Starting {}", "Iniciando {}", p.name),
+                        gfx(&["llm", "up"]),
+                    );
+                }
+                let gpu = if p.gpu == "compute:all" || p.gpu.is_empty() {
+                    crate::i18n::tr("all cards").to_string()
+                } else {
+                    p.gpu.clone()
+                };
+                let mut info = format!("{}  ·  {}k  ·  {gpu}", p.model, p.ctx / 1024);
+                if !p.args.is_empty() {
+                    info.push_str(&format!("  ·  {}", p.args));
+                }
+                if !p.image.is_empty() {
+                    info.push_str(&format!("  ·  {}", p.image));
+                }
+                let mut t = RichText::new(info).weak();
+                if !exists {
+                    t = t.color(crate::theme::warn());
+                }
+                ui.label(t);
+                ui.horizontal(|ui| {
+                    if state.is_some() && p.model == running_model {
+                        ui.label(
+                            RichText::new(crate::t2!("in use", "em uso")).color(crate::theme::ok()),
+                        );
+                    }
+                    if crate::theme::small(ui, crate::i18n::tr("edit")).clicked() {
+                        p.apply(cfg);
+                        app.llm_preset_name = p.name.clone();
+                    }
+                    if crate::theme::small(ui, crate::i18n::tr("delete")).clicked() {
+                        remove = Some(i);
+                    }
+                });
+                ui.end_row();
+            }
+        });
+    if let Some(i) = remove {
+        let mut list = list;
+        let gone = list.remove(i);
+        if let Err(e) = numapilot::labcfg::save_presets(&list) {
+            app.toast(
+                crate::tf!("Could not save: {e}", "Não consegui salvar: {e}"),
+                false,
+            );
+        } else {
+            app.toast(
+                crate::tf!("Removed \"{}\"", "\"{}\" removido", gone.name),
+                true,
+            );
+        }
+        app.llm_presets = Some(list);
+    }
+    ui.separator();
 }
 
 fn save(app: &mut App, cfg: &LabSettings) {
