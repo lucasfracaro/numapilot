@@ -307,7 +307,11 @@ fn notify_ui(app: &mut App, ui: &mut egui::Ui) {
             egui::DragValue::new(&mut n.gpu_hot_c)
                 .range(70.0..=105.0)
                 .suffix(" °C"),
-        );
+        )
+        .on_hover_text(crate::i18n::tr(
+            "Each sensor (edge, hotspot, memory) warns 10 °C below its own critical temperature \
+             from the driver. This value is used only for sensors without one (NVIDIA, APUs).",
+        ));
         ui.checkbox(&mut n.health, crate::i18n::tr("disks/memory/battery"));
         ui.checkbox(&mut n.llm, crate::t2!("AI server", "servidor de IA"));
         ui.checkbox(&mut n.peers, crate::i18n::tr("other PCs"));

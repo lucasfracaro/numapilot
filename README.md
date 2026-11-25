@@ -312,7 +312,9 @@ and Resizable BAR.
   terminal, with PyTorch on the GPU and the data and ML libraries; lists the containers and the
   apps in each. Details in [AI and lab](#ai-and-lab).
 - **AI server**: picks the `.gguf` model, the GPUs and the context; start/stop; chat and API address
-  (OpenAI-compatible); **Optimize (tokens/s)**.
+  (OpenAI-compatible); **Optimize (tokens/s)**. **Saved models**: one button per model with its
+  own cards, context, arguments and container image (another llama.cpp build); "After a reboot"
+  chooses whether the server comes back by itself or only runs when started.
 - **Streaming**: turns on Sunshine and picks the GPU and the encoder (VA-API, NVENC, Quick Sync or
   software).
 

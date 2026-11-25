@@ -16,16 +16,39 @@ fn temp_color(t: f64) -> Color32 {
     }
 }
 
+/// Colour against the sensor's own critical temperature (red from the same limit as the hot
+/// GPU warning, `gpuctl::HOT_MARGIN_C` below it), or the fixed scale when there is none.
+fn sensor_color(t: f64, crit: Option<f64>) -> Color32 {
+    match crit {
+        Some(c) if t >= c - gpuctl::HOT_MARGIN_C => crate::theme::err(),
+        Some(c) if t >= c - gpuctl::HOT_MARGIN_C - 15.0 => crate::theme::warn(),
+        Some(_) => crate::theme::ok(),
+        None => temp_color(t),
+    }
+}
+
 fn temps(ui: &mut egui::Ui, s: &Sensors) {
-    for (label, v) in [
-        (crate::i18n::tr("edge"), s.edge_c),
-        ("hotspot", s.junction_c),
-        (crate::i18n::tr("memory"), s.mem_c),
-        ("APU", s.apu_c),
-        ("VRM", s.vrm_c),
+    for (label, v, crit) in [
+        (crate::i18n::tr("edge"), s.edge_c, s.edge_crit_c),
+        ("hotspot", s.junction_c, s.junction_crit_c),
+        (crate::i18n::tr("memory"), s.mem_c, s.mem_crit_c),
+        ("APU", s.apu_c, None),
+        ("VRM", s.vrm_c, None),
     ] {
         if let Some(t) = v {
-            crate::theme::stat(ui, label, &format!("{t:.0} °C"), Some(temp_color(t)));
+            let r = crate::theme::stat(
+                ui,
+                label,
+                &format!("{t:.0} °C"),
+                Some(sensor_color(t, crit)),
+            );
+            if let Some(c) = crit {
+                r.on_hover_text(crate::tf!(
+                    "Critical: {c:.0} °C (warning from {:.0} °C)",
+                    "Crítica: {c:.0} °C (aviso a partir de {:.0} °C)",
+                    c - gpuctl::HOT_MARGIN_C
+                ));
+            }
         }
     }
 }
