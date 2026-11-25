@@ -468,6 +468,12 @@ pub fn gpu_env(d: &Decision, topo: &Topology) -> (Vec<(String, String)>, Vec<Str
     let mut unset = Vec::new();
     match d.kind {
         Kind::Graphics => {
+            // Proton's xalia (controller navigation of launchers) reads the controller too and
+            // made Spider-Man drop D-pad and trigger input on the server; a Steam game does not
+            // need it. The user's own PROTON_USE_XALIA wins.
+            if steam_launch() && std::env::var_os("PROTON_USE_XALIA").is_none() {
+                set.push(("PROTON_USE_XALIA".into(), "0".into()));
+            }
             if let Some(g) = d.gpus.first() {
                 // OpenGL and Vulkan (Mesa) pick the card through DRI_PRIME=pci-...
                 set.push(("DRI_PRIME".into(), g.dri_prime()));

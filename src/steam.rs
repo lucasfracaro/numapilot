@@ -395,6 +395,11 @@ pub fn command_for(opt: &str, gpu: Option<&str>) -> String {
                 break;
             }
         }
+        // a forced card is for the game's graphics (an MI50 alone would mean ROCm compute)
+        if !words.contains(&"--use") && gpu.is_some() {
+            words.insert(i + 1, "graphics");
+            words.insert(i + 1, "--use");
+        }
         if let Some(g) = gpu {
             words.insert(i + 1, g);
             words.insert(i + 1, "--gpu");
@@ -508,7 +513,7 @@ mod tests {
         let o = "DRI_PRIME=pci-0000_09_00_0 MESA_VK_DEVICE_SELECT=pci-0000_09_00_0 mangohud %command% -skip DRI_PRIME=x";
         assert_eq!(
             command_for(o, Some("gfx906-0")),
-            "mangohud numapilot run --gpu gfx906-0 -- %command% -skip DRI_PRIME=x"
+            "mangohud numapilot run --gpu gfx906-0 --use graphics -- %command% -skip DRI_PRIME=x"
         );
         // without a forced card the user's choice stays
         assert!(command_for(o, None).starts_with("DRI_PRIME=pci-0000_09_00_0 MESA_VK"));
@@ -626,18 +631,18 @@ mod tests {
         assert_eq!(command_for("", None), "numapilot run -- %command%");
         assert_eq!(
             command_for("", Some("gfx906-1")),
-            "numapilot run --gpu gfx906-1 -- %command%"
+            "numapilot run --gpu gfx906-1 --use graphics -- %command%"
         );
         // keeps the variables and wrappers the game already had
         assert_eq!(
             command_for("RADV_DEBUG=nodcc mangohud %command%", Some("gfx906-0")),
-            "RADV_DEBUG=nodcc mangohud numapilot run --gpu gfx906-0 -- %command%"
+            "RADV_DEBUG=nodcc mangohud numapilot run --gpu gfx906-0 --use graphics -- %command%"
         );
         // a card chosen before is replaced, or removed
         let had = "A=1 numapilot run --gpu gfx906-0 -- mangohud %command% -arg";
         assert_eq!(
             command_for(had, Some("gfx803-0")),
-            "A=1 numapilot run --gpu gfx803-0 -- mangohud %command% -arg"
+            "A=1 numapilot run --gpu gfx803-0 --use graphics -- mangohud %command% -arg"
         );
         assert_eq!(
             command_for(had, None),

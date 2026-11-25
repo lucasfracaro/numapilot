@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The Steam launch line numapilot writes (`steam command`, the profile panel) forces graphics with
+  the card (`--gpu CARD --use graphics`), and `numapilot run` turns Proton's xalia off for Steam
+  games (`PROTON_USE_XALIA=0`, unless already set): it also reads the controller and Spider-Man
+  lost D-pad and trigger input on the server.
 - Programs: a Steam game is named after Steam's own game name, and never after one of Wine's
   helpers (Spider-Man showed up as `xalia.exe`).
 - AI server tab scrolls: with several saved and CPU models the bottom of the tab was out of
