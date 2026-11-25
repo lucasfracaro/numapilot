@@ -77,7 +77,7 @@ impl Route {
                 "FSR 4 INT8 with the BC250 FSR4 DLL (INT8 dot product in hardware, waves of 32)"
             }
             Route::Wave64 => {
-                "FSR 4 INT8 with the wave64 rebuild of the BC250 FSR4 DLL: runs, but on the MI50 it looked worse than native (Spider-Man, 1440p); prefer the game's upscaler with lsfg-vk on the other card"
+                "FSR 4 INT8 on wave64 (AMD's 4.0.2 by default, or the 4.1.1 rebuilds with --dll): the 4.1.1 rebuild looked worse than native on the MI50 (Spider-Man, 1440p); compare with the game's upscaler"
             }
             Route::Wave64Slow => {
                 "FSR 4 INT8 with the wave64 DLL, without an INT8 dot product: works, but costs about 5 ms per frame at 1080p"
@@ -606,7 +606,7 @@ pub fn install(
         }
         _ => {
             let id = wave64_dll(wave64);
-            let label = WAVE64_DLLS.iter().find(|d| d.0 == id).map_or("", |d| d.1);
+            let label = crate::i18n::tr(WAVE64_DLLS.iter().find(|d| d.0 == id).map_or("", |d| d.1));
             format!("OptiScaler {OPTISCALER_VERSION} + {label}")
         }
     })

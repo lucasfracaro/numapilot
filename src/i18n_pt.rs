@@ -1633,8 +1633,8 @@ pub const PT: &[(&str, &str)] = &[
         "FSR 4 INT8 com a DLL do BC250 FSR4 (produto escalar INT8 em hardware, ondas de 32)",
     ),
     (
-        "FSR 4 INT8 with the wave64 rebuild of the BC250 FSR4 DLL: runs, but on the MI50 it looked worse than native (Spider-Man, 1440p); prefer the game's upscaler with lsfg-vk on the other card",
-        "FSR 4 INT8 com a versão wave64 da DLL do BC250 FSR4: roda, mas na MI50 ficou pior que a imagem nativa (Spider-Man, 1440p); prefira o upscaler do jogo com o lsfg-vk na outra placa",
+        "FSR 4 INT8 on wave64 (AMD's 4.0.2 by default, or the 4.1.1 rebuilds with --dll): the 4.1.1 rebuild looked worse than native on the MI50 (Spider-Man, 1440p); compare with the game's upscaler",
+        "FSR 4 INT8 em wave64 (a 4.0.2 da AMD por padrão, ou as 4.1.1 recompiladas com --dll): a 4.1.1 recompilada ficou pior que a imagem nativa na MI50 (Spider-Man, 1440p); compare com o upscaler do jogo",
     ),
     (
         "FSR 4 INT8 with the wave64 DLL, without an INT8 dot product: works, but costs about 5 ms per frame at 1080p",
@@ -1656,6 +1656,18 @@ pub const PT: &[(&str, &str)] = &[
     (
         "downloading NVIDIA's DLSS DLL (OptiScaler offers DLSS to the game through it)",
         "baixando a DLL do DLSS da NVIDIA (o OptiScaler oferece o DLSS ao jogo por ela)",
+    ),
+    (
+        "FSR 4.0.2 INT8 (AMD's leaked build)",
+        "FSR 4.0.2 INT8 (versão vazada da AMD)",
+    ),
+    (
+        "FSR 4.1.1 rebuilt for Vega (fsr4-gfx803)",
+        "FSR 4.1.1 recompilado para Vega (fsr4-gfx803)",
+    ),
+    (
+        "FSR 4.1.1 rebuilt for wave64 (fsr4-gfx803 bc250)",
+        "FSR 4.1.1 recompilado para wave64 (fsr4-gfx803 bc250)",
     ),
     (
         "downloading the FSR 4.0.2 INT8 DLL",
