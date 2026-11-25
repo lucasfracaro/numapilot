@@ -693,6 +693,7 @@ pub(crate) fn ui(app: &mut App, ui: &mut egui::Ui) {
         if let Some(g) = g {
             egui::Window::new(crate::i18n::tr("Force stop"))
                 .collapsible(false)
+                .vscroll(true)
                 .resizable(false)
                 .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ui.ctx(), |ui| {

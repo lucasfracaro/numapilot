@@ -404,6 +404,7 @@ fn details_window(app: &mut App, ctx: &egui::Context) {
     ))
     .open(&mut open)
     .collapsible(false)
+    .vscroll(true)
     .default_width(640.0)
     .show(ctx, |ui| {
         egui::Grid::new("trace")
@@ -509,6 +510,7 @@ fn uninstall_window(app: &mut App, ctx: &egui::Context) {
     egui::Window::new(crate::tf!("Uninstall {}", "Desinstalar {}", it.name))
         .open(&mut open)
         .collapsible(false)
+        .vscroll(true)
         .default_width(600.0)
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx, |ui| {
@@ -657,6 +659,7 @@ fn add_window(app: &mut App, ctx: &egui::Context) {
     egui::Window::new(title)
         .open(&mut open)
         .collapsible(false)
+        .vscroll(true)
         .default_width(520.0)
         .show(ctx, |ui| {
             let s = &mut app.startup;

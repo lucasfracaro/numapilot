@@ -65,6 +65,13 @@ fn ctl_args(s: &crate::bg::Sunshine, action: &str) -> Option<Vec<String>> {
 }
 
 pub fn ui(app: &mut App, ui: &mut egui::Ui) {
+    egui::ScrollArea::vertical()
+        .id_salt("stream_scroll")
+        .auto_shrink([false, false])
+        .show(ui, |ui| body(app, ui));
+}
+
+fn body(app: &mut App, ui: &mut egui::Ui) {
     let (sun, vaapi) = match app.bg.lock() {
         Ok(b) => (b.sunshine.clone(), b.vaapi.clone()),
         Err(_) => return,
