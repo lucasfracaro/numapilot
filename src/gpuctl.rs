@@ -29,6 +29,13 @@ pub struct Sensors {
     pub edge_c: Option<f64>,
     pub junction_c: Option<f64>,
     pub mem_c: Option<f64>,
+    /// Critical temperature of each sensor from the driver (`tempN_crit`), °C.
+    #[serde(default)]
+    pub edge_crit_c: Option<f64>,
+    #[serde(default)]
+    pub junction_crit_c: Option<f64>,
+    #[serde(default)]
+    pub mem_crit_c: Option<f64>,
     pub fan_rpm: Option<u64>,
     /// Current fan in % (from pwm1).
     pub fan_pct: Option<f64>,
@@ -61,6 +68,67 @@ impl Sensors {
     /// Temperature used for the curve: junction (hotspot) if present, otherwise edge.
     pub fn control_temp(&self) -> Option<f64> {
         self.junction_c.or(self.edge_c).or(self.apu_c)
+    }
+
+    /// The sensor furthest past its warning limit, if any: each sensor is compared with its own
+    /// critical temperature minus `HOT_MARGIN_C` (`fallback_c` when the driver gives none).
+    /// The same check feeds the tray and the phone notification.
+    pub fn hot(&self, fallback_c: f64) -> Option<HotSensor> {
+        [
+            ("edge", self.edge_c, self.edge_crit_c),
+            ("junction", self.junction_c, self.junction_crit_c),
+            ("mem", self.mem_c, self.mem_crit_c),
+            ("apu", self.apu_c, None),
+        ]
+        .into_iter()
+        .filter_map(|(sensor, t, crit)| {
+            let t = t?;
+            let limit = crit.map(|c| c - HOT_MARGIN_C).unwrap_or(fallback_c);
+            (t >= limit).then_some(HotSensor {
+                sensor,
+                temp_c: t,
+                limit_c: limit,
+                crit_c: crit,
+            })
+        })
+        .max_by(|a, b| (a.temp_c - a.limit_c).total_cmp(&(b.temp_c - b.limit_c)))
+    }
+}
+
+/// Degrees below the driver's critical temperature at which a sensor counts as hot.
+pub const HOT_MARGIN_C: f64 = 10.0;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HotSensor {
+    /// "edge", "junction", "mem" or "apu" (hwmon labels).
+    pub sensor: &'static str,
+    pub temp_c: f64,
+    pub limit_c: f64,
+    pub crit_c: Option<f64>,
+}
+
+impl HotSensor {
+    /// "junction 96 °C (critical 105 °C)", for the warning text.
+    pub fn describe(&self) -> String {
+        let name = match self.sensor {
+            "junction" => crate::t2!("junction (hotspot)", "junção (hotspot)"),
+            "mem" => crate::t2!("memory", "memória"),
+            "apu" => "APU",
+            _ => crate::t2!("edge", "borda (edge)"),
+        };
+        match self.crit_c {
+            Some(c) => crate::tf!(
+                "{name} {:.0} °C (critical {c:.0} °C)",
+                "{name} {:.0} °C (crítica {c:.0} °C)",
+                self.temp_c
+            ),
+            None => crate::tf!(
+                "{name} {:.0} °C (warning at {:.0} °C)",
+                "{name} {:.0} °C (aviso a partir de {:.0} °C)",
+                self.temp_c,
+                self.limit_c
+            ),
+        }
     }
 }
 
@@ -104,11 +172,12 @@ pub fn read_sensors(pci: &str) -> Sensors {
         let Some(c) = plausible_temp(v / 1000.0) else {
             continue;
         };
+        let crit = num(h.join(format!("temp{i}_crit"))).and_then(|v| plausible_temp(v / 1000.0));
         match label.as_str() {
-            "edge" => s.edge_c = Some(c),
-            "junction" => s.junction_c = Some(c),
-            "mem" => s.mem_c = Some(c),
-            _ if i == 1 => s.edge_c = Some(c),
+            "edge" => (s.edge_c, s.edge_crit_c) = (Some(c), crit),
+            "junction" => (s.junction_c, s.junction_crit_c) = (Some(c), crit),
+            "mem" => (s.mem_c, s.mem_crit_c) = (Some(c), crit),
+            _ if i == 1 => (s.edge_c, s.edge_crit_c) = (Some(c), crit),
             _ => {}
         }
     }
@@ -330,6 +399,33 @@ pub fn set_power_cap(pci: &str, watts: Option<f64>) -> io::Result<f64> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hot_uses_each_sensors_own_limit() {
+        // MI50 under load: junction 94 is fine (critical 105), HBM at 86 is not (critical 94).
+        let mut s = Sensors {
+            edge_c: Some(80.0),
+            edge_crit_c: Some(100.0),
+            junction_c: Some(94.0),
+            junction_crit_c: Some(105.0),
+            mem_c: Some(80.0),
+            mem_crit_c: Some(94.0),
+            ..Default::default()
+        };
+        assert_eq!(s.hot(90.0), None);
+        s.mem_c = Some(86.0);
+        let h = s.hot(90.0).unwrap();
+        assert_eq!((h.sensor, h.limit_c), ("mem", 84.0));
+        s.junction_c = Some(104.0);
+        assert_eq!(s.hot(90.0).unwrap().sensor, "junction");
+        // No critical value (NVIDIA, old drivers): the configured limit.
+        let n = Sensors {
+            edge_c: Some(91.0),
+            ..Default::default()
+        };
+        assert_eq!(n.hot(90.0).unwrap().limit_c, 90.0);
+        assert_eq!(n.hot(95.0), None);
+    }
+
     use super::*;
 
     #[test]

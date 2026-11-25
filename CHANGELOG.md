@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Hot GPU warning (tray, phone notification, web panel, Graphics cards tab colours): each sensor
+  (edge, junction/hotspot, memory) is compared with its own critical temperature from the driver
+  (`tempN_crit`) minus 10 °C, and the text names the sensor ("junction 95 °C (critical 105 °C)").
+  Before, the tray used a fixed 90 °C on the junction, which warned at normal load on the MI50
+  (critical 105 °C) while other programs showed the lower edge reading, and the HBM2 memory
+  (critical 94 °C on the MI50) was never checked. The configured limit now applies only to
+  sensors without a critical value (NVIDIA, APUs).
 - AI server tab: **saved models**. "Save as a saved model" keeps the chosen model, cards, context,
   extra arguments and container image (`~/.config/gfx906-lab/llm-presets.toml`); each one gets a
   button that starts llama.cpp with it, plus edit/delete. New setting `LLM_AUTOSTART` ("After a

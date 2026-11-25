@@ -2370,6 +2370,10 @@ pub const PT: &[(&str, &str)] = &[
         "Saves this model, cards, context and extra arguments as a button above. A saved model with the same name is replaced.",
         "Salva este modelo, as placas, o contexto e os argumentos extras como um botão acima. Um modelo salvo com o mesmo nome é substituído.",
     ),
+    (
+        "Each sensor (edge, hotspot, memory) warns 10 °C below its own critical temperature from the driver. This value is used only for sensors without one (NVIDIA, APUs).",
+        "Cada sensor (borda, hotspot, memória) avisa 10 °C abaixo da temperatura crítica dele, informada pelo driver. Este valor só vale para sensores sem ela (NVIDIA, APUs).",
+    ),
     ("Image (engine)", "Imagem (motor)"),
     (
         "empty = the default llama.cpp for these cards",
