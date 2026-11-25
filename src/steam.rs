@@ -231,6 +231,39 @@ fn is_tool(name: &str) -> bool {
     .any(|t| name.contains(t))
 }
 
+/// Name of an installed Steam game, from a list read again at most once a minute (for labels
+/// shown every refresh).
+pub fn game_name(appid: &str) -> Option<String> {
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+    type Cache = Option<(Instant, std::collections::HashMap<String, String>)>;
+    static CACHE: Mutex<Cache> = Mutex::new(None);
+    let mut c = CACHE.lock().ok()?;
+    let stale = c
+        .as_ref()
+        .is_none_or(|(t, m)| !m.contains_key(appid) && t.elapsed() > Duration::from_secs(60));
+    if stale {
+        *c = Some((Instant::now(), installed_games().into_iter().collect()));
+    }
+    c.as_ref().and_then(|(_, m)| m.get(appid).cloned())
+}
+
+/// Wine/Proton's own programs, which run next to every game (never the game's name).
+pub const WINE_HELPERS: [&str; 12] = [
+    "xalia.exe",
+    "explorer.exe",
+    "services.exe",
+    "winedevice.exe",
+    "rpcss.exe",
+    "svchost.exe",
+    "plugplay.exe",
+    "tabtip.exe",
+    "steam.exe",
+    "conhost.exe",
+    "start.exe",
+    "crs-handler.exe",
+];
+
 /// (appid, name) of the installed games (without Proton/runtimes).
 pub fn installed_games() -> Vec<(String, String)> {
     let mut v = Vec::new();
