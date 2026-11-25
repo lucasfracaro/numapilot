@@ -96,6 +96,10 @@ enum Cmd {
     },
     /// Community recipes: show | update [URL] (update with sudo)
     Recipes { action: String, url: Option<String> },
+    /// n8n + Nod (n8n's AI agent) in containers, only started by hand:
+    /// up | down | update | status | token
+    #[command(alias = "automacao")]
+    Automation { action: String },
     /// Upscaling: fetch (downloads OptiScaler) | check (FSR 4 on each card) |
     /// status|install|remove APPID|FOLDER [--int8] [--fsr4 [--gpu GPU] [--watermark]]
     Upscale {
@@ -661,6 +665,46 @@ fn real_main() -> Result<()> {
                     )
                 ),
             }
+        }
+        Cmd::Automation { action } => {
+            use numapilot::automation::{self, State};
+            let mut log = |m: &str| println!("{m}");
+            let r = match action.as_str() {
+                "up" | "on" => automation::up(&mut log, false),
+                "down" | "off" => automation::down(&mut log),
+                "update" => automation::update(&mut log),
+                "token" => {
+                    let t = automation::nod_token().context(numapilot::i18n::tr(
+                        "Nod is not installed yet (numapilot automation up)",
+                    ))?;
+                    println!("{t}");
+                    Ok(())
+                }
+                "status" => {
+                    let st = automation::status();
+                    let show = |s: State| match s {
+                        State::Running => numapilot::i18n::tr("running"),
+                        State::Stopped => numapilot::t2!("stopped", "parado"),
+                        State::Missing => numapilot::i18n::tr("not installed"),
+                        State::NoEngine => numapilot::i18n::tr("unavailable"),
+                    };
+                    println!("n8n: {}  {}", show(st.n8n), automation::n8n_url());
+                    println!(
+                        "Nod: {}  {}",
+                        show(st.nod),
+                        automation::nod_url(st.nod_port)
+                    );
+                    if let Some(n) = st.nod_note {
+                        println!("     {n}");
+                    }
+                    Ok(())
+                }
+                _ => Err(numapilot::i18n::tr(
+                    "usage: numapilot automation up | down | update | status | token",
+                )
+                .to_string()),
+            };
+            r.map_err(|e| anyhow::anyhow!(e))
         }
         Cmd::Recipes { action, url } => match action.as_str() {
             "show" => {

@@ -301,6 +301,13 @@ link PCIe e Resizable BAR.
 - **Laboratório**: container com JupyterLab, VS Code (navegador ou o do PC por SSH), PyCharm e
   terminal, com PyTorch na GPU e as bibliotecas de dados e ML; lista os containers e os apps de cada
   um. Detalhes em [IA e laboratório](#ia-e-laboratório).
+- **Automação: n8n + Nod**: um botão liga o [n8n](https://n8n.io) (fluxos de automação) e o
+  [Nod](https://github.com/n8n-io/nod) (o agente de IA de código aberto do n8n, que monta e testa
+  fluxos do n8n) em containers, e depois aparecem botões "Abrir" para a página de cada um (o do Nod
+  copia o token de acesso). Nada inicia com o PC (`--restart no`, e um override do Compose com
+  `restart: "no"` no Nod). O n8n roda no Docker ou no Podman; o Nod precisa do Docker Engine 25+
+  com Compose v2 e é montado a partir do repositório dele na primeira vez. Com os dois no Docker, o
+  Nod acha o n8n em `http://n8n:5678`. Linha de comando: `numapilot automation up|down|update|status|token`.
 - **Servidor de IA**: escolhe o modelo `.gguf`, as GPUs e o contexto; inicia/para; chat e endereço
   da API (compatível com a da OpenAI); **Otimizar (tokens/s)**. **Modelos salvos**: um botão por
   modelo com placas, contexto, argumentos e imagem de container próprios (outra build do

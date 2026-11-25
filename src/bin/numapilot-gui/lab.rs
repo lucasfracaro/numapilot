@@ -100,6 +100,132 @@ pub fn gfx(args: &[&str]) -> Vec<String> {
     v
 }
 
+// ---------- automation (n8n + Nod) ----------
+
+use numapilot::automation::{self, State};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// Last status of the automation stack, read in a thread (it runs docker/podman commands).
+static AUTO: Mutex<Option<(Instant, Option<automation::Status>, bool)>> = Mutex::new(None);
+
+fn auto_status(ctx: &egui::Context) -> Option<automation::Status> {
+    let mut g = AUTO.lock().ok()?;
+    let (at, st, busy) = g.get_or_insert((Instant::now() - Duration::from_secs(60), None, false));
+    if !*busy && at.elapsed() > Duration::from_secs(4) {
+        *busy = true;
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let s = automation::status();
+            if let Ok(mut g) = AUTO.lock() {
+                *g = Some((Instant::now(), Some(s), false));
+            }
+            ctx.request_repaint();
+        });
+    }
+    st.clone()
+}
+
+fn state_badge(ui: &mut egui::Ui, name: &str, s: Option<State>) {
+    let (t, c) = match s {
+        Some(State::Running) => (crate::i18n::tr("running"), crate::theme::ok()),
+        Some(State::Stopped) => (crate::t2!("stopped", "parado"), Color32::GRAY),
+        Some(State::Missing) => (crate::i18n::tr("not installed"), Color32::GRAY),
+        Some(State::NoEngine) => (crate::i18n::tr("unavailable"), crate::theme::err()),
+        None => ("…", Color32::GRAY),
+    };
+    ui.label(RichText::new(name).strong());
+    ui.label(RichText::new(t).color(c));
+}
+
+fn automation_ui(app: &mut App, ui: &mut egui::Ui) {
+    let st = auto_status(ui.ctx());
+    let n8n = st.as_ref().map(|s| s.n8n);
+    let nod = st.as_ref().map(|s| s.nod);
+    let any_running = n8n == Some(State::Running) || nod == Some(State::Running);
+    let installed = matches!(n8n, Some(State::Running | State::Stopped));
+    let cli = |a: &str| vec![sibling("numapilot"), "automation".into(), a.into()];
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal_wrapped(|ui| {
+            crate::theme::title(ui, crate::i18n::tr("Automation: n8n + Nod"));
+            state_badge(ui, "n8n", n8n);
+            state_badge(ui, "Nod", nod);
+        });
+        ui.label(RichText::new(crate::i18n::tr("n8n (workflows) and Nod (n8n's AI agent, which builds and tests n8n workflows for you) in containers. They only run when you turn them on here: nothing starts at boot.")).weak());
+        if let Some(n) = st.as_ref().and_then(|s| s.nod_note.as_ref()) {
+            ui.label(RichText::new(n).small().color(crate::theme::err()));
+        }
+        ui.horizontal_wrapped(|ui| {
+            if any_running {
+                if ui.button(crate::i18n::tr("Turn off")).clicked() {
+                    app.start_job(crate::i18n::tr("Turning n8n and Nod off"), cli("down"));
+                    invalidate();
+                }
+            } else if ui
+                .button(if installed { crate::i18n::tr("Turn on") } else { crate::i18n::tr("Create and turn on (slow the 1st time)") })
+                .clicked()
+            {
+                app.start_job(crate::i18n::tr("Turning n8n and Nod on"), cli("up"));
+                invalidate();
+            }
+            if ui.add_enabled(installed, egui::Button::new(crate::i18n::tr("Update")))
+                .on_hover_text(crate::i18n::tr("New n8n image and Nod's latest code (workflows and Nod's data are kept)"))
+                .clicked()
+            {
+                app.start_job(crate::i18n::tr("Updating n8n and Nod"), cli("update"));
+                invalidate();
+            }
+        });
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(crate::i18n::tr("Open:")).strong());
+            if ui.add_enabled(n8n == Some(State::Running), egui::Button::new("n8n")).clicked() {
+                let _ = open_url(&automation::n8n_url());
+            }
+            let token = automation::nod_token();
+            let b = ui.add_enabled(nod == Some(State::Running), egui::Button::new("Nod"));
+            let b = match &token {
+                Some(t) => b.on_hover_text(crate::tf!("access token: {}", "token de acesso: {}", t)),
+                None => b,
+            };
+            if b.clicked() {
+                let port = st.as_ref().map(|s| s.nod_port).unwrap_or(automation::NOD_PORT);
+                if let Some(t) = token {
+                    ui.ctx().copy_text(t);
+                    app.toast(crate::i18n::tr("Nod access token copied (paste it on the login screen)"), true);
+                }
+                let _ = open_url(&automation::nod_url(port));
+            }
+        });
+        if any_running {
+            let host = st
+                .as_ref()
+                .and_then(|s| s.engine.as_deref())
+                .map(automation::host_from_container)
+                .unwrap_or("host.docker.internal");
+            let llm = LabSettings::load().get("LLM_PORT");
+            ui.label(
+                RichText::new(crate::tf!(
+                    "In Nod: Apps → n8n → address http://n8n:5678, \"Use an access token instead\" with the token from n8n (Settings → Instance-level MCP). Local AI in n8n or Nod: http://{host}:{llm}/v1 (the AI server must listen beyond 127.0.0.1).",
+                    "No Nod: Apps → n8n → endereço http://n8n:5678, \"Use an access token instead\" com o token do n8n (Settings → Instance-level MCP). IA local no n8n ou no Nod: http://{host}:{llm}/v1 (o servidor de IA precisa escutar além do 127.0.0.1)."
+                ))
+                .small()
+                .weak(),
+            );
+        }
+    });
+}
+
+/// Reads the status again soon after a button (the job changes it).
+fn invalidate() {
+    if let Ok(mut g) = AUTO.lock()
+        && let Some((at, _, _)) = g.as_mut()
+    {
+        *at = Instant::now() - Duration::from_secs(60);
+    }
+}
+
 // ---------- interface ----------
 
 fn status_badge(ui: &mut egui::Ui, running: bool) {
@@ -230,6 +356,8 @@ pub fn ui(app: &mut App, ui: &mut egui::Ui) {
                 );
             }
         });
+        ui.add_space(8.0);
+        automation_ui(app, ui);
         ui.add_space(8.0);
 
         // ---- containers ----

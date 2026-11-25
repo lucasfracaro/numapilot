@@ -311,6 +311,13 @@ and Resizable BAR.
 - **Lab**: container with JupyterLab, VS Code (browser or the PC's own through SSH), PyCharm and a
   terminal, with PyTorch on the GPU and the data and ML libraries; lists the containers and the
   apps in each. Details in [AI and lab](#ai-and-lab).
+- **Automation: n8n + Nod**: one button turns on [n8n](https://n8n.io) (workflows) and
+  [Nod](https://github.com/n8n-io/nod) (n8n's open-source AI agent, which builds and tests n8n
+  workflows) in containers, then "Open" buttons for each web page (the Nod button copies its access
+  token). Nothing starts at boot (`--restart no`, and a Compose override with `restart: "no"` for
+  Nod). n8n runs on Docker or Podman; Nod needs Docker Engine 25+ with Compose v2 and is built from
+  its repository the first time. When both run on Docker, Nod reaches n8n at `http://n8n:5678`.
+  CLI: `numapilot automation up|down|update|status|token`.
 - **AI server**: picks the `.gguf` model, the GPUs and the context; start/stop; chat and API address
   (OpenAI-compatible); **Optimize (tokens/s)**. **Saved models**: one button per model with its
   own cards, context, arguments and container image (another llama.cpp build); "After a reboot"

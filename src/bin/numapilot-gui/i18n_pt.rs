@@ -2392,4 +2392,20 @@ pub const PT: &[(&str, &str)] = &[
         "Off: the server only runs when you start it here (or from a saved model). Applies the next time it starts.",
         "Desligado: o servidor só roda quando você inicia por aqui (ou por um modelo salvo). Vale a partir da próxima vez que ele subir.",
     ),
+    ("Automation: n8n + Nod", "Automação: n8n + Nod"),
+    (
+        "n8n (workflows) and Nod (n8n's AI agent, which builds and tests n8n workflows for you) in containers. They only run when you turn them on here: nothing starts at boot.",
+        "n8n (fluxos de automação) e Nod (o agente de IA do n8n, que monta e testa fluxos do n8n para você) em containers. Só rodam quando você liga aqui: nada inicia com o PC.",
+    ),
+    ("Turning n8n and Nod off", "Desligando o n8n e o Nod"),
+    ("Turning n8n and Nod on", "Ligando o n8n e o Nod"),
+    (
+        "New n8n image and Nod's latest code (workflows and Nod's data are kept)",
+        "Imagem nova do n8n e o código mais recente do Nod (os fluxos e os dados do Nod ficam)",
+    ),
+    ("Updating n8n and Nod", "Atualizando o n8n e o Nod"),
+    (
+        "Nod access token copied (paste it on the login screen)",
+        "Token de acesso do Nod copiado (cole na tela de login)",
+    ),
 ];

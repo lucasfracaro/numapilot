@@ -1689,4 +1689,57 @@ pub const PT: &[(&str, &str)] = &[
         "could not compute the SHA-256 (sha256sum)",
         "não consegui calcular o SHA-256 (sha256sum)",
     ),
+    ("not installed", "não instalado"),
+    (
+        "Docker is installed but this user cannot use it: sudo usermod -aG docker $USER, then log in again",
+        "O Docker está instalado, mas este usuário não pode usar: sudo usermod -aG docker $USER e entre de novo na sessão",
+    ),
+    (
+        "the docker command here is Podman's; Nod needs Docker Engine 25 or newer",
+        "o comando docker aqui é o do Podman; o Nod precisa do Docker Engine 25 ou mais novo",
+    ),
+    (
+        "the Docker service is not running: sudo systemctl start docker",
+        "o serviço do Docker não está rodando: sudo systemctl start docker",
+    ),
+    (
+        "Nod needs Docker Engine 25 or newer",
+        "O Nod precisa do Docker Engine 25 ou mais novo",
+    ),
+    (
+        "Docker Compose v2 is missing: sudo pacman -S docker-compose",
+        "Falta o Docker Compose v2: sudo pacman -S docker-compose",
+    ),
+    (
+        "Nod needs Docker: sudo pacman -S docker docker-compose",
+        "O Nod precisa do Docker: sudo pacman -S docker docker-compose",
+    ),
+    (
+        "Creating the n8n container (downloads the image the first time)",
+        "Criando o container do n8n (baixa a imagem na primeira vez)",
+    ),
+    (
+        "Downloading Nod (github.com/n8n-io/nod)",
+        "Baixando o Nod (github.com/n8n-io/nod)",
+    ),
+    (
+        "n8n joined Nod's network: in Nod, n8n is at http://n8n:5678",
+        "O n8n entrou na rede do Nod: no Nod, o n8n fica em http://n8n:5678",
+    ),
+    (
+        "Starting Nod (the first time it builds its images: several minutes)",
+        "Ligando o Nod (na primeira vez ele monta as imagens: vários minutos)",
+    ),
+    (
+        "Nod skipped: it needs Docker (sudo pacman -S docker docker-compose)",
+        "O Nod não foi ligado: precisa do Docker (sudo pacman -S docker docker-compose)",
+    ),
+    (
+        "Nod is not installed yet (numapilot automation up)",
+        "O Nod ainda não está instalado (numapilot automation up)",
+    ),
+    (
+        "usage: numapilot automation up | down | update | status | token",
+        "uso: numapilot automation up | down | update | status | token",
+    ),
 ];
