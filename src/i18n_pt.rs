@@ -1658,6 +1658,10 @@ pub const PT: &[(&str, &str)] = &[
         "baixando a DLL do DLSS da NVIDIA (o OptiScaler oferece o DLSS ao jogo por ela)",
     ),
     (
+        "downloading the FSR 4.0.2 INT8 DLL",
+        "baixando a DLL do FSR 4.0.2 INT8",
+    ),
+    (
         "downloading the wave64 FSR 4 DLL (fsr4-gfx803)",
         "baixando a DLL wave64 do FSR 4 (fsr4-gfx803)",
     ),

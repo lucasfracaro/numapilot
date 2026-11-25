@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- FSR 4 on wave64 cards (MI50/Vega) now installs AMD's FSR 4.0.2 INT8 build by default (pinned
+  copy kept by fsr4-gfx803, SHA-256 checked); `upscale install … --fsr4 --dll vega|fork` picks
+  the 4.1.1 rebuilds instead. Each DLL is cached in its own folder.
 - The Steam launch line numapilot writes (`steam command`, the profile panel) forces graphics with
   the card (`--gpu CARD --use graphics`), and `numapilot run` turns Proton's xalia off for Steam
   games (`PROTON_USE_XALIA=0`, unless already set): it also reads the controller and Spider-Man

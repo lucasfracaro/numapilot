@@ -97,7 +97,7 @@ enum Cmd {
     /// Community recipes: show | update [URL] (update with sudo)
     Recipes { action: String, url: Option<String> },
     /// Upscaling: fetch (downloads OptiScaler) | check (FSR 4 on each card) |
-    /// status|install|remove APPID|FOLDER [--int8] [--fsr4 [--gpu GPU] [--watermark]]
+    /// status|install|remove APPID|FOLDER [--int8] [--fsr4 [--gpu GPU] [--dll 4.0.2|vega|fork] [--watermark]]
     Upscale {
         action: String,
         appid: Option<String>,
@@ -109,6 +109,9 @@ enum Cmd {
         /// Card the game runs on (default: the profile's, else the gaming card).
         #[arg(long)]
         gpu: Option<String>,
+        /// FSR 4 DLL for wave64 cards (MI50/Vega): 4.0.2 (default), vega or fork (4.1.1 rebuilds).
+        #[arg(long)]
+        dll: Option<String>,
         /// Shows the FSR 4 and frame generation watermarks in the game (to check that they took effect).
         #[arg(long)]
         watermark: bool,
@@ -723,6 +726,7 @@ fn real_main() -> Result<()> {
             int8,
             fsr4,
             gpu,
+            dll,
             watermark,
         } => {
             use numapilot::upscale;
@@ -840,7 +844,10 @@ fn real_main() -> Result<()> {
                             numapilot::i18n::tr(r.explain())
                         )
                     );
-                    let v = numapilot::fsr4::install(&dir, r, watermark, &mut |m| println!("{m}"))
+                    let v =
+                        numapilot::fsr4::install(&dir, r, dll.as_deref(), watermark, &mut |m| {
+                            println!("{m}")
+                        })
                         .map_err(|e| anyhow::anyhow!(e))?;
                     println!(
                         "{}",
@@ -886,8 +893,8 @@ fn real_main() -> Result<()> {
                 _ => bail!(
                     "{}",
                     numapilot::tf!(
-                        "usage: numapilot upscale fetch | check | status|install|remove APPID|FOLDER [--int8] [--fsr4 [--gpu GPU] [--watermark]]",
-                        "use: numapilot upscale fetch | check | status|install|remove APPID|PASTA [--int8] [--fsr4 [--gpu GPU] [--watermark]]"
+                        "usage: numapilot upscale fetch | check | status|install|remove APPID|FOLDER [--int8] [--fsr4 [--gpu GPU] [--dll 4.0.2|vega|fork] [--watermark]]",
+                        "use: numapilot upscale fetch | check | status|install|remove APPID|PASTA [--int8] [--fsr4 [--gpu GPU] [--dll 4.0.2|vega|fork] [--watermark]]"
                     )
                 ),
             }

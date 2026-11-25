@@ -295,6 +295,9 @@ INT8 rodando), GPU sem reset. Mas a VRAM da BIOS é só 512 MB (desktop usa ~316
 MI50 (2026-11-25, Spider-Man 1440p, gfx906-0, FSR do jogo em Qualidade → FSR 4 wave64): roda, mas
 a imagem ficou pior que a nativa (17 FPS no menu de pausa); sem FSR 4 ficou melhor. Tirado das
 sugestões do gfx906 na receita. `run` pela Steam agora conta como gráfico (`SteamAppId`), senão a
+Wave64 agora usa por padrão a DLL **4.0.2 INT8** da AMD (pedido do Lucas, 2026-11-25; cópia fixa no
+commit 6aa7c33 do fsr4-gfx803, SHA-256 fixo); `--dll vega|fork` escolhe as 4.1.1 recompiladas
+(`fsr4::WAVE64_DLLS`, cache em `dll-wave64-<id>`). Falta comparar 4.0.2 × IGTI no servidor.
 MI50 nomeada só recebia ROCm.
 Controle no Spider-Man do servidor (2026-11-25): direcional/gatilhos falhando eram o DualSense com
 5% de bateria no Bluetooth ("DualSense input CRC's check failed") mais o xalia do Proton lendo o

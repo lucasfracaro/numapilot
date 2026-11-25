@@ -8,8 +8,9 @@
 //!
 //! - waves of 32 (RDNA 2/3, the BC-250's gfx1013): the BC250 FSR4 fork
 //!   (github.com/daniel-h-0/bc250-fsr4-fork, RC12), whose shaders carry the weights as constants;
-//! - waves of 64 only (Vega 20 / MI50, CDNA): the same fork rebuilt without the wave32 request by
-//!   github.com/Schaka/fsr4-gfx803 (its `bc250` DLL, measured on a Vega 56).
+//! - waves of 64 only (Vega 20 / MI50, CDNA): AMD's leaked FSR 4.0.2 INT8 build by default (AMD's
+//!   own builds run on wave64; the copy is the one github.com/Schaka/fsr4-gfx803 keeps), or that
+//!   project's 4.1.1 rebuilds (`vega`, `bc250` = "fork"), chosen with `--dll`.
 //!
 //! Polaris (GCN 4) has no INT8 dot product and needs a patched RADV (fsr4-gfx803): numapilot
 //! does not install a second driver, so it only explains that. NVIDIA has real DLSS and RDNA 4 has
@@ -188,6 +189,39 @@ pub const WAVE64_ARCHIVE: Pinned = Pinned {
 /// faster in one game on a Vega 56; both give the same picture).
 pub const WAVE64_DLL: &str = "amd_fidelityfx_upscaler_dx12.bc250.dll";
 pub const WAVE64_SHA256: &str = "5343b4e353bad7ac324b9fe2babcd9e9c3790729568e912bd590d6b426f7b324";
+/// The Vega build in the same archive: the fork with pass9/pass11 left to AMD's shaders.
+pub const WAVE64_VEGA_DLL: &str = "amd_fidelityfx_upscaler_dx12.vega.dll";
+pub const WAVE64_VEGA_SHA256: &str =
+    "1618d9491fa9a448bf2c89cbb87294842d730e12983426e279f91a507ea4ea36";
+/// AMD's leaked FSR 4.0.2 INT8 upscaler, as fsr4-gfx803 keeps it (a plain DLL, no archive).
+pub const V402: Pinned = Pinned {
+    url: "https://github.com/Schaka/fsr4-gfx803/raw/6aa7c33c32e534845ec62b859a7a46fa6879398c/fsr4_dlls/4.0.2-int8/amd_fidelityfx_upscaler_dx12.dll",
+    sha256: "9123f83739e7bb39fcb135cafc339606dec78a74c650338ad275ee45c2d59d02",
+};
+/// The DLLs a wave64 card can take: (id, label). The first is the default; 4.0.2 is what MI50
+/// owners report as the most stable (Lucas, 2026-11-25), the other two are 4.1.1 rebuilds.
+pub const WAVE64_DLLS: [(&str, &str); 3] = [
+    ("4.0.2", "FSR 4.0.2 INT8 (AMD's leaked build)"),
+    ("vega", "FSR 4.1.1 rebuilt for Vega (fsr4-gfx803)"),
+    ("fork", "FSR 4.1.1 rebuilt for wave64 (fsr4-gfx803 bc250)"),
+];
+
+/// The wave64 DLL to use: a known id, else the default.
+pub fn wave64_dll(want: Option<&str>) -> &'static str {
+    WAVE64_DLLS
+        .iter()
+        .find(|(id, _)| Some(*id) == want)
+        .map_or(WAVE64_DLLS[0].0, |(id, _)| id)
+}
+
+/// What a route installs, as stored in the game's manifest ("wave32", "wave64 4.0.2", ...).
+pub fn build_id(r: Route, dll: Option<&str>) -> String {
+    match r {
+        Route::Wave64 | Route::Wave64Slow => format!("wave64 {}", wave64_dll(dll)),
+        _ => r.id().to_string(),
+    }
+}
+
 /// Name OptiScaler loads the upscaler under.
 pub const UPSCALER_DLL: &str = "amd_fidelityfx_upscaler_dx12.dll";
 /// Mesa before 26.2.3 miscompiles other shaders next to the fork's (BC250 FSR4 release notes).
@@ -207,9 +241,9 @@ pub fn optiscaler_dir() -> PathBuf {
 }
 
 /// Downloaded upscaler DLL for a route, if it is there.
-pub fn local_dll(r: Route) -> Option<PathBuf> {
+pub fn local_dll(r: Route, dll: Option<&str>) -> Option<PathBuf> {
     let p = data_dir()
-        .join(format!("dll-{}", r.id()))
+        .join(format!("dll-{}", build_id(r, dll).replace(' ', "-")))
         .join(UPSCALER_DLL);
     p.is_file().then_some(p)
 }
@@ -363,7 +397,7 @@ fn find(dir: &Path, name: &str, depth: usize) -> Option<PathBuf> {
 
 /// Downloads OptiScaler 10, OptiPatcher, the DLSS helper and the upscaler DLL for the route
 /// (each once, each checked by SHA-256). Returns the DLL.
-pub fn fetch(r: Route, log: &mut dyn FnMut(&str)) -> Result<PathBuf, String> {
+pub fn fetch(r: Route, dll: Option<&str>, log: &mut dyn FnMut(&str)) -> Result<PathBuf, String> {
     if !r.installable() {
         return Err(crate::i18n::tr(r.explain()).into());
     }
@@ -393,11 +427,19 @@ pub fn fetch(r: Route, log: &mut dyn FnMut(&str)) -> Result<PathBuf, String> {
         ));
         download(&DLSS_HELPER, &helper("nvngx_dlss.dll"))?;
     }
-    if let Some(p) = local_dll(r) {
+    if let Some(p) = local_dll(r, dll) {
         return Ok(p);
     }
-    let dest = data_dir().join(format!("dll-{}", r.id()));
-    let tmp = data_dir().join(format!("tmp-{}", r.id()));
+    let build = build_id(r, dll).replace(' ', "-");
+    let dest = data_dir().join(format!("dll-{build}"));
+    let tmp = data_dir().join(format!("tmp-{build}"));
+    let wave64 = wave64_dll(dll);
+    if r != Route::Wave32 && wave64 == "4.0.2" {
+        log(crate::i18n::tr("downloading the FSR 4.0.2 INT8 DLL"));
+        std::fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+        download(&V402, &dest.join(UPSCALER_DLL))?;
+        return Ok(dest.join(UPSCALER_DLL));
+    }
     let _ = std::fs::remove_dir_all(&tmp);
     let res = (|| -> Result<PathBuf, String> {
         let (arc, want, sum) = if r == Route::Wave32 {
@@ -415,7 +457,11 @@ pub fn fetch(r: Route, log: &mut dyn FnMut(&str)) -> Result<PathBuf, String> {
             ));
             let arc = tmp.join("fsr4-gfx803-dlls.tar.gz");
             download(&WAVE64_ARCHIVE, &arc)?;
-            (arc, WAVE64_DLL, WAVE64_SHA256)
+            if wave64 == "vega" {
+                (arc, WAVE64_VEGA_DLL, WAVE64_VEGA_SHA256)
+            } else {
+                (arc, WAVE64_DLL, WAVE64_SHA256)
+            }
         };
         let x = tmp.join("x");
         extract(&arc, &x)?;
@@ -510,10 +556,11 @@ pub fn ini_settings(watermark: bool) -> Vec<(&'static str, &'static str, &'stati
 pub fn install(
     dir: &Path,
     r: Route,
+    wave64: Option<&str>,
     watermark: bool,
     log: &mut dyn FnMut(&str),
 ) -> Result<String, String> {
-    let dll = fetch(r, log)?;
+    let dll = fetch(r, wave64, log)?;
     let od = optiscaler_dir();
     let root = find(&od, "OptiScaler.dll", 2)
         .and_then(|p| p.parent().map(Path::to_path_buf))
@@ -551,13 +598,17 @@ pub fn install(
         text = set_ini(&text, s, k, v);
     }
     std::fs::write(&ini, text).map_err(|e| e.to_string())?;
-    m.fsr4 = Some(r.id().into());
+    m.fsr4 = Some(build_id(r, wave64));
     crate::upscale::save_manifest(dir, &m)?;
     Ok(match r {
         Route::Wave32 => {
             format!("OptiScaler {OPTISCALER_VERSION} + FSR {WAVE32_VERSION} (BC250 FSR4)")
         }
-        _ => format!("OptiScaler {OPTISCALER_VERSION} + FSR 4.1.1 wave64 (fsr4-gfx803)"),
+        _ => {
+            let id = wave64_dll(wave64);
+            let label = WAVE64_DLLS.iter().find(|d| d.0 == id).map_or("", |d| d.1);
+            format!("OptiScaler {OPTISCALER_VERSION} + {label}")
+        }
     })
 }
 
@@ -698,10 +749,17 @@ mod tests {
             &DLSS_HELPER,
             &WAVE32_ARCHIVE,
             &WAVE64_ARCHIVE,
+            &V402,
         ] {
             assert!(f.url.starts_with("https://"));
             assert!(f.sha256.len() == 64 && f.sha256.chars().all(|c| c.is_ascii_hexdigit()));
         }
+        // wave64 DLL choice: 4.0.2 by default, unknown names fall back to it
+        assert_eq!(wave64_dll(None), "4.0.2");
+        assert_eq!(wave64_dll(Some("vega")), "vega");
+        assert_eq!(wave64_dll(Some("x")), "4.0.2");
+        assert_eq!(build_id(Route::Wave64, None), "wave64 4.0.2");
+        assert_eq!(build_id(Route::Wave32, Some("vega")), "wave32");
     }
 
     #[test]
@@ -727,11 +785,11 @@ mod tests {
         std::fs::write(od.join("OptiScaler").join(UPSCALER_DLL), b"amd").unwrap();
         std::fs::write(helper("OptiPatcher.asi"), b"patch").unwrap();
         std::fs::write(helper("nvngx_dlss.dll"), b"dlss").unwrap();
-        let d = data_dir().join("dll-wave64");
+        let d = data_dir().join("dll-wave64-fork");
         std::fs::create_dir_all(&d).unwrap();
         std::fs::write(d.join(UPSCALER_DLL), b"wave64").unwrap();
 
-        install(&game, Route::Wave64, true, &mut |_| {}).unwrap();
+        install(&game, Route::Wave64, Some("fork"), true, &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(game.join("dxgi.dll")).unwrap(), b"opti");
         assert_eq!(
             std::fs::read(game.join("OptiScaler").join(UPSCALER_DLL)).unwrap(),
@@ -743,7 +801,7 @@ mod tests {
         assert!(ini.contains("Fsr4EnableWatermark=true") && ini.contains("LoadAsiPlugins=true"));
         assert!(ini.contains("[FSRFG]\nEnableWatermark=true"));
         let m = crate::upscale::installed(&game).unwrap();
-        assert_eq!(m.fsr4.as_deref(), Some("wave64"));
+        assert_eq!(m.fsr4.as_deref(), Some("wave64 fork"));
         crate::upscale::remove(&game).unwrap();
         let left: Vec<_> = std::fs::read_dir(&game)
             .unwrap()
