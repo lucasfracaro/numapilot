@@ -55,7 +55,12 @@ pub const KINDS: &[Kind] = &[
         label: "EmbeddingGemma 2",
         about: "Text embeddings for search and sorting (OpenAI-compatible API)",
         repo: "google/embeddinggemma-2",
-        pip: &["sentence-transformers", "transformers"],
+        pip: &[
+            "sentence-transformers",
+            "transformers",
+            "torchvision",
+            "pillow",
+        ],
         torch: true,
         port: 8093,
         gated: false,
@@ -68,7 +73,7 @@ pub const KINDS: &[Kind] = &[
         pip: &["pocket-tts", "scipy"],
         torch: true,
         port: 8094,
-        gated: true,
+        gated: false,
     },
 ];
 
@@ -447,6 +452,6 @@ mod tests {
         assert!(s.contains("'pocket-tts' 'scipy'"));
         assert!(s.contains("--download"));
         assert!(s.contains(".ready"));
-        assert!(s.contains("huggingface.co/kyutai/pocket-tts"));
+        assert!(!s.contains("auth login"));
     }
 }

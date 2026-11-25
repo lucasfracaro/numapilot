@@ -68,7 +68,7 @@ def load(kind, threads):
         torch_threads(threads)
         from pocket_tts import TTSModel
 
-        lang = os.environ.get("NUMAPILOT_TTS_LANGUAGE", "")
+        lang = os.environ.get("NUMAPILOT_TTS_LANGUAGE", "portuguese")
         try:
             return TTSModel.load_model(language=lang) if lang else TTSModel.load_model()
         except TypeError:
