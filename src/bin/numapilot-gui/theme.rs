@@ -186,6 +186,13 @@ pub fn install(ctx: &egui::Context) {
             sp.window_margin = Margin::same(14);
             sp.menu_margin = Margin::same(8);
             sp.combo_width = 140.0;
+            // scroll bars always visible (egui hides them until hovered): on a short screen
+            // it has to be obvious that there is more below
+            sp.scroll = egui::style::ScrollStyle {
+                bar_width: 8.0,
+                floating_allocated_width: 8.0,
+                ..egui::style::ScrollStyle::thin()
+            };
 
             let v = &mut s.visuals;
             v.panel_fill = p.bg;
