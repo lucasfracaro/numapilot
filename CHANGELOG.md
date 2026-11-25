@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- AI server tab: **saved models**. "Save as a saved model" keeps the chosen model, cards, context,
+  extra arguments and container image (`~/.config/gfx906-lab/llm-presets.toml`); each one gets a
+  button that starts llama.cpp with it, plus edit/delete. New setting `LLM_AUTOSTART` ("After a
+  reboot" in the tab): `0` starts the container with `--restart no`, so the server only runs when
+  started by hand; the default `1` keeps the old behaviour. The image field (`LLM_IMAGE`) is now
+  in the tab too.
 - `numapilot run` started by Steam (`SteamAppId`/`SteamGameId`) counts as graphics when nothing
   else says the use: `--gpu gfx906-0` from Steam's launch options only set ROCm variables, so the
   game rendered on the default card instead of the chosen MI50.

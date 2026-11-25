@@ -302,7 +302,9 @@ link PCIe e Resizable BAR.
   terminal, com PyTorch na GPU e as bibliotecas de dados e ML; lista os containers e os apps de cada
   um. Detalhes em [IA e laboratório](#ia-e-laboratório).
 - **Servidor de IA**: escolhe o modelo `.gguf`, as GPUs e o contexto; inicia/para; chat e endereço
-  da API (compatível com a da OpenAI); **Otimizar (tokens/s)**.
+  da API (compatível com a da OpenAI); **Otimizar (tokens/s)**. **Modelos salvos**: um botão por
+  modelo com placas, contexto, argumentos e imagem de container próprios (outra build do
+  llama.cpp); "Depois de reiniciar" escolhe se o servidor volta sozinho ou só roda quando iniciado.
 - **Streaming**: liga o Sunshine e escolhe a GPU e o codificador (VA-API, NVENC, Quick Sync ou
   software).
 

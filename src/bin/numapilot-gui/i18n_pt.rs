@@ -2346,4 +2346,46 @@ pub const PT: &[(&str, &str)] = &[
         "With two cards: the game upscales on its card and lsfg-vk generates frames on the other (presentation block, generator \"Lossless Scaling on the output card\", upscaling \"none\").",
         "Com duas placas: o jogo amplia na placa dele e o lsfg-vk gera os quadros na outra (bloco de apresentação, gerador \"Lossless Scaling na placa de saída\", upscaling \"nenhum\").",
     ),
+    // AI server: saved models
+    ("Saved models", "Modelos salvos"),
+    (
+        "None yet: choose the model and settings below, give it a name and click \"Save as a saved model\".",
+        "Nenhum ainda: escolha o modelo e os ajustes abaixo, dê um nome e clique em \"Salvar como modelo salvo\".",
+    ),
+    (
+        "Start the AI server with this model",
+        "Iniciar o servidor de IA com este modelo",
+    ),
+    ("Stop the AI server first", "Pare o servidor de IA antes"),
+    (
+        "The model file is not in the models folder",
+        "O arquivo do modelo não está na pasta de modelos",
+    ),
+    ("all cards", "todas as placas"),
+    ("edit", "editar"),
+    ("delete", "apagar"),
+    ("name of the saved model", "nome do modelo salvo"),
+    ("Save as a saved model", "Salvar como modelo salvo"),
+    (
+        "Saves this model, cards, context and extra arguments as a button above. A saved model with the same name is replaced.",
+        "Salva este modelo, as placas, o contexto e os argumentos extras como um botão acima. Um modelo salvo com o mesmo nome é substituído.",
+    ),
+    ("Image (engine)", "Imagem (motor)"),
+    (
+        "empty = the default llama.cpp for these cards",
+        "vazio = o llama.cpp padrão destas placas",
+    ),
+    (
+        "Container image with llama-server (another llama.cpp build or fork). The default follows the cards: gfx906 build on the MI50s, CUDA on NVIDIA, ROCm or Vulkan on the others.",
+        "Imagem de container com o llama-server (outra build ou fork do llama.cpp). A padrão segue as placas: build gfx906 nas MI50, CUDA na NVIDIA, ROCm ou Vulkan nas outras.",
+    ),
+    ("After a reboot", "Depois de reiniciar"),
+    (
+        "start the AI server again by itself",
+        "subir o servidor de IA sozinho de novo",
+    ),
+    (
+        "Off: the server only runs when you start it here (or from a saved model). Applies the next time it starts.",
+        "Desligado: o servidor só roda quando você inicia por aqui (ou por um modelo salvo). Vale a partir da próxima vez que ele subir.",
+    ),
 ];
