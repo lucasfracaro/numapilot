@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Small screens: the side menu, the top cards, the Streaming tab and the windows that had none
+  now scroll, and scroll bars are always shown (egui hid them until the mouse was over them).
+  The theme row stays at the bottom of the menu when it fits.
 - Programs: a Steam game is named after Steam's own game name, and never after one of Wine's
   helpers (Spider-Man showed up as `xalia.exe`).
 - AI server tab scrolls: with several saved and CPU models the bottom of the tab was out of

@@ -1112,8 +1112,9 @@ impl App {
     }
 
     /// Side menu.
-    fn nav(&mut self, ui: &mut egui::Ui) {
+    fn nav(&mut self, ui: &mut egui::Ui, height: f32) {
         let p = theme::pal(ui);
+        let top = ui.min_rect().top();
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.add_space(6.0);
@@ -1182,8 +1183,12 @@ impl App {
                 ui.add_space(1.0);
             }
         }
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-            ui.add_space(6.0);
+        // theme row: pushed to the bottom when there is room, right after the tabs otherwise
+        const THEME_ROW: f32 = 52.0;
+        let used = ui.min_rect().bottom() - top;
+        ui.add_space((height - used - THEME_ROW).max(10.0));
+        {
+            ui.label(RichText::new(i18n::tr("Theme")).size(11.5).color(p.weak));
             let mut pref = ui.ctx().options(|o| o.theme_preference);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
@@ -1202,8 +1207,8 @@ impl App {
                     }
                 }
             });
-            ui.label(RichText::new(i18n::tr("Theme")).size(11.5).color(p.weak));
-        });
+            ui.add_space(6.0);
+        }
     }
 
     /// Top: page title, service state and the live meters.
@@ -1955,7 +1960,14 @@ impl App {
                     .fill(p.nav)
                     .inner_margin(egui::Margin::symmetric(12, 14)),
             )
-            .show(ui, |ui| self.nav(ui));
+            .show(ui, |ui| {
+                // scrolls on short screens; the theme row stays at the bottom when it fits
+                let h = ui.available_height();
+                egui::ScrollArea::vertical()
+                    .id_salt("nav_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.nav(ui, h));
+            });
         egui::Panel::top("top")
             .show_separator_line(false)
             .frame(egui::Frame::new().fill(p.bg).inner_margin(egui::Margin {
@@ -1964,7 +1976,17 @@ impl App {
                 top: 16,
                 bottom: 10,
             }))
-            .show(ui, |ui| self.header(ui));
+            .show(ui, |ui| {
+                // many cards (2 sockets + 3 GPUs) wrap into rows: never more than ~40% of a
+                // short screen, the rest scrolls
+                let max = (ui.ctx().content_rect().height() * 0.4).max(120.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("top_scroll")
+                    .max_height(max)
+                    // the panel keeps last frame's height: let it grow up to `max`
+                    .min_scrolled_height(max)
+                    .show(ui, |ui| self.header(ui));
+            });
         // Floating notice (goes away by itself)
         if let Some((m, ok, t)) = &self.toast
             && t.elapsed() < Duration::from_secs(8)
