@@ -82,9 +82,14 @@ fn group_rows(rows: &[Row]) -> Vec<Group> {
                 .min()
                 .unwrap_or(rs[0].pid);
             let label = if steam {
-                rs.iter()
-                    .find(|r| r.comm.to_lowercase().ends_with(".exe"))
-                    .map(|r| r.comm.clone())
+                // the game's name from Steam; else its .exe, never one of Wine's helpers (xalia.exe
+                // used to win because the game's own row read 0 cores)
+                let exe = |r: &&&Row| {
+                    let c = r.comm.to_lowercase();
+                    c.ends_with(".exe") && !numapilot::steam::WINE_HELPERS.contains(&c.as_str())
+                };
+                numapilot::steam::game_name(&key["steam:".len()..])
+                    .or_else(|| rs.iter().find(exe).map(|r| r.comm.clone()))
                     .unwrap_or_else(|| rs[0].label.clone())
             } else {
                 rs.iter()
