@@ -4,6 +4,8 @@
 
 - Programs: a Steam game is named after Steam's own game name, and never after one of Wine's
   helpers (Spider-Man showed up as `xalia.exe`).
+- AI server tab scrolls: with several saved and CPU models the bottom of the tab was out of
+  reach.
 - FSR 4 INT8 is no longer suggested for Vega 20 (MI50): tested in Spider-Man at 1440p it looked
   worse than native. It can still be chosen and installed.
 - AI server tab: **CPU models** (`src/aiapps.rs`, `packaging/ai-apps/server.py`). Indra OCR
