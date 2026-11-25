@@ -296,6 +296,10 @@ MI50 (2026-11-25, Spider-Man 1440p, gfx906-0, FSR do jogo em Qualidade → FSR 4
 a imagem ficou pior que a nativa (17 FPS no menu de pausa); sem FSR 4 ficou melhor. Tirado das
 sugestões do gfx906 na receita. `run` pela Steam agora conta como gráfico (`SteamAppId`), senão a
 MI50 nomeada só recebia ROCm.
+Controle no Spider-Man do servidor (2026-11-25): direcional/gatilhos falhando eram o DualSense com
+5% de bateria no Bluetooth ("DualSense input CRC's check failed") mais o xalia do Proton lendo o
+controle; o `run` agora põe `PROTON_USE_XALIA=0` em jogos da Steam e o `steam command` gera
+`--gpu X --use graphics`. Com isso e o IGTI do jogo, o Lucas achou "muito bom".
 
 ## Capturas do README
 
