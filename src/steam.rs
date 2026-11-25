@@ -420,6 +420,17 @@ pub fn with_dxgi_override(line: &str) -> String {
     }
 }
 
+/// Adds `PROTON_USE_XALIA=0` to launch options that do not set it. Xalia (Proton's gamepad
+/// helper for launchers) reads the controller too, and with a DualSense the game keeps seeing it
+/// connect and disconnect (Spider-Man lost the d-pad and triggers). An explicit value stays.
+pub fn with_xalia_off(line: &str) -> String {
+    if line.contains("PROTON_USE_XALIA=") {
+        line.to_string()
+    } else {
+        format!("PROTON_USE_XALIA=0 {line}")
+    }
+}
+
 /// The line to paste for the game `appid`, from what Steam has for it now. None = Steam's
 /// configuration was not found.
 pub fn command_for_game(appid: &str, gpu: Option<&str>) -> Option<String> {
@@ -432,9 +443,9 @@ pub fn command_for_game(appid: &str, gpu: Option<&str>) -> Option<String> {
     Some(command_for_installed(appid, &cur, gpu))
 }
 
-/// `command_for`, plus the dxgi override when OptiScaler is installed in the game.
+/// `command_for` with xalia off, plus the dxgi override when OptiScaler is installed in the game.
 pub fn command_for_installed(appid: &str, opt: &str, gpu: Option<&str>) -> String {
-    let line = command_for(opt, gpu);
+    let line = with_xalia_off(&command_for(opt, gpu));
     let has_opti = crate::upscale::steam_game_root(appid)
         .and_then(|r| crate::upscale::exe_dir(&r))
         .and_then(|d| crate::upscale::installed(&d))
@@ -519,6 +530,19 @@ mod tests {
         assert_eq!(
             with_dxgi_override("WINEDLLOVERRIDES=\"dxgi=n,b\" %command%"),
             "WINEDLLOVERRIDES=\"dxgi=n,b\" %command%"
+        );
+        assert_eq!(
+            with_xalia_off("mangohud numapilot run -- %command%"),
+            "PROTON_USE_XALIA=0 mangohud numapilot run -- %command%"
+        );
+        // the user's own choice stays
+        assert_eq!(
+            with_xalia_off("PROTON_USE_XALIA=1 %command%"),
+            "PROTON_USE_XALIA=1 %command%"
+        );
+        assert_eq!(
+            with_dxgi_override(&with_xalia_off("numapilot run --gpu gfx906-0 -- %command%")),
+            "WINEDLLOVERRIDES=\"dxgi=n,b\" PROTON_USE_XALIA=0 numapilot run --gpu gfx906-0 -- %command%"
         );
     }
 
