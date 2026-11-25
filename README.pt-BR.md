@@ -305,6 +305,9 @@ link PCIe e Resizable BAR.
   da API (compatível com a da OpenAI); **Otimizar (tokens/s)**. **Modelos salvos**: um botão por
   modelo com placas, contexto, argumentos e imagem de container próprios (outra build do
   llama.cpp); "Depois de reiniciar" escolhe se o servidor volta sozinho ou só roda quando iniciado.
+  **Modelos de CPU**: Indra OCR, Parakeet Redux (fala para texto), EmbeddingGemma 2 e Pocket TTS,
+  cada um no seu ambiente Python e iniciado por um botão como página + API locais (nunca no
+  login), com socket, núcleos, hyper-threading e prioridade próprios.
 - **Streaming**: liga o Sunshine e escolhe a GPU e o codificador (VA-API, NVENC, Quick Sync ou
   software).
 

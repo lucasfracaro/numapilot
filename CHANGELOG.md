@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- AI server tab: **CPU models** (`src/aiapps.rs`, `packaging/ai-apps/server.py`). Indra OCR
+  (photos/PDFs to text), Parakeet Redux (speech to text), EmbeddingGemma 2 (OpenAI-compatible
+  embeddings) and Pocket TTS (text to speech, Portuguese voice) get an Install button (Python
+  venv in `~/.local/share/numapilot/ai-apps/`, CPU-only PyTorch, model download) and a start
+  button that runs a small local server with a test page as a transient `systemd-run --user`
+  unit: socket (`NUMAMask`), physical cores and hyper-threading (`CPUAffinity`, thread
+  variables) and priority (`Nice`) per model, saved in `~/.config/gfx906-lab/ai-apps.toml`.
+  Nothing is enabled, so none of them starts at login.
 - Hot GPU warning (tray, phone notification, web panel, Graphics cards tab colours): each sensor
   (edge, junction/hotspot, memory) is compared with its own critical temperature from the driver
   (`tempN_crit`) minus 10 °C, and the text names the sensor ("junction 95 °C (critical 105 °C)").

@@ -2347,6 +2347,47 @@ pub const PT: &[(&str, &str)] = &[
         "Com duas placas: o jogo amplia na placa dele e o lsfg-vk gera os quadros na outra (bloco de apresentação, gerador \"Lossless Scaling na placa de saída\", upscaling \"nenhum\").",
     ),
     // AI server: saved models
+    // AI server: CPU models
+    ("CPU models", "Modelos de CPU"),
+    (
+        "Small models that run on the processor, each with a local page and API. They only start when you click; choose the socket, cores and priority of each one.",
+        "Modelos pequenos que rodam no processador, cada um com página e API locais. Só sobem quando você clica; escolha o socket, os núcleos e a prioridade de cada um.",
+    ),
+    ("all sockets", "todos os sockets"),
+    ("all cores", "todos os núcleos"),
+    ("settings", "ajustes"),
+    ("log", "log"),
+    ("Socket", "Socket"),
+    (
+        "Physical cores; 0 = all of the chosen sockets",
+        "Núcleos físicos; 0 = todos dos sockets escolhidos",
+    ),
+    ("hyper-threading", "hyper-threading"),
+    (
+        "0 = normal, 19 = lowest (gives way to everything else)",
+        "0 = normal, 19 = a mais baixa (dá lugar a todo o resto)",
+    ),
+    (
+        "Changes apply the next time it starts.",
+        "As mudanças valem a partir da próxima vez que ele subir.",
+    ),
+    ("Add a CPU model...", "Adicionar modelo de CPU..."),
+    (
+        "Text from photos, scans and PDFs",
+        "Texto de fotos, digitalizações e PDFs",
+    ),
+    (
+        "Speech to text (Portuguese included)",
+        "Fala para texto (inclui português)",
+    ),
+    (
+        "Text embeddings for search and sorting (OpenAI-compatible API)",
+        "Embeddings de texto para busca e triagem (API compatível com a da OpenAI)",
+    ),
+    (
+        "Text to speech (Portuguese voice \"rafael\")",
+        "Texto para fala (voz em português \"rafael\")",
+    ),
     ("Saved models", "Modelos salvos"),
     (
         "None yet: choose the model and settings below, give it a name and click \"Save as a saved model\".",
