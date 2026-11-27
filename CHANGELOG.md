@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- AI server tab: each model has one button. ▶ starts it and stays grey while the model loads
+  (GPU: until llama.cpp answers; CPU: until its port opens), then turns into a red ■ that stops
+  and unloads it. The saved models' "edit" and "delete" come right after the name and the row
+  scrolls sideways (they were cut off on a Full HD screen).
 - AI server, saved models: the model loaded now shows a ⏹ button that stops the server, and the
   ▶ of another saved model works while the server runs (stops the current one, starts that one).
 - AI programs: a card holding a ROCm compute process's model (256 MiB or more of its VRAM,

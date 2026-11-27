@@ -390,11 +390,19 @@ fn cpu_models_ui(app: &mut App, ui: &mut egui::Ui) {
         .0
         .is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(2));
     if stale {
-        app.ai_running = (Some(std::time::Instant::now()), aiapps::running(&list));
+        let on = aiapps::running(&list);
+        // the server loads the model before it opens its port: open port = loaded
+        let ready = list
+            .iter()
+            .zip(&on)
+            .map(|(a, &on)| on && port_open(a.port))
+            .collect();
+        app.ai_running = (Some(std::time::Instant::now()), on, ready);
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_secs(2));
     }
     let running = app.ai_running.1.clone();
+    let loaded = app.ai_running.2.clone();
     let mut changed = false;
     let mut remove = None;
 
@@ -434,8 +442,20 @@ fn cpu_models_ui(app: &mut App, ui: &mut egui::Ui) {
                     {
                         install(app, k);
                     }
+                } else if starting(app, &a.name) || (on && !loaded.get(i).copied().unwrap_or(false))
+                {
+                    loading_button(ui, &a.name);
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_secs(1));
                 } else if on {
-                    if ui.button(format!("■ {}", a.name)).clicked() {
+                    if stop_button(ui, &a.name)
+                        .on_hover_text(crate::tf!(
+                            "Stop {} (unloads the model)",
+                            "Parar o {} (descarrega o modelo)",
+                            a.name
+                        ))
+                        .clicked()
+                    {
                         app.start_job(
                             crate::tf!("Stopping {}", "Parando {}", a.name),
                             a.down_argv(),
@@ -486,10 +506,17 @@ fn cpu_models_ui(app: &mut App, ui: &mut egui::Ui) {
                 ui.label(RichText::new(info).weak());
                 ui.horizontal(|ui| {
                     if on {
-                        ui.label(
-                            RichText::new(crate::t2!("running", "rodando"))
-                                .color(crate::theme::ok()),
-                        );
+                        if loaded.get(i).copied().unwrap_or(false) {
+                            ui.label(
+                                RichText::new(crate::t2!("running", "rodando"))
+                                    .color(crate::theme::ok()),
+                            );
+                        } else {
+                            ui.label(
+                                RichText::new(crate::t2!("loading", "carregando"))
+                                    .color(crate::theme::warn()),
+                            );
+                        }
                         if crate::theme::small(ui, crate::i18n::tr("open")).clicked() {
                             let _ = open_url(&a.url());
                         }
@@ -654,30 +681,40 @@ fn presets_ui(
     }
     let running_model = cfg.get("LLM_MODEL");
     let mut remove = None;
-    egui::Grid::new("llm-presets")
-        .num_columns(3)
-        .spacing([10.0, 6.0])
+    // the details line is long (file, arguments, image): the buttons come before it and the
+    // table scrolls sideways, so "edit" and "delete" show on a Full HD screen too
+    egui::ScrollArea::horizontal()
+        .id_salt("llm-presets-scroll")
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
         .show(ui, |ui| {
-            for (i, p) in list.iter().enumerate() {
-                let exists = models_dir.join(&p.model).is_file();
-                let in_use = state.is_some() && p.model == running_model;
-                if in_use {
-                    // The model loaded now: stop it here, to free the cards or switch by hand.
-                    if ui
-                        .button(format!("⏹ {}", p.name))
-                        .on_hover_text(crate::t2!(
-                            "Stop the AI server (unloads this model)",
-                            "Parar o servidor de IA (descarrega este modelo)"
-                        ))
-                        .clicked()
-                    {
-                        app.start_job(
-                            crate::i18n::tr("Stopping the AI server"),
-                            gfx(&["llm", "down"]),
-                        );
-                    }
-                } else {
-                    let btn = ui
+            egui::Grid::new("llm-presets")
+                .num_columns(3)
+                .spacing([10.0, 6.0])
+                .show(ui, |ui| {
+                    for (i, p) in list.iter().enumerate() {
+                        let exists = models_dir.join(&p.model).is_file();
+                        let in_use = state.is_some() && p.model == running_model;
+                        if starting(app, &p.name) || (in_use && state == Some(false)) {
+                            // started, still loading: grey until the server answers
+                            loading_button(ui, &p.name);
+                            ui.ctx()
+                                .request_repaint_after(std::time::Duration::from_secs(1));
+                        } else if in_use {
+                            // The model loaded now: stop it here, to free the cards or switch by hand.
+                            if stop_button(ui, &p.name)
+                                .on_hover_text(crate::t2!(
+                                    "Stop the AI server (unloads this model)",
+                                    "Parar o servidor de IA (descarrega este modelo)"
+                                ))
+                                .clicked()
+                            {
+                                app.start_job(
+                                    crate::i18n::tr("Stopping the AI server"),
+                                    gfx(&["llm", "down"]),
+                                );
+                            }
+                        } else {
+                            let btn = ui
                         .add_enabled(exists, egui::Button::new(format!("▶ {}", p.name)))
                         .on_hover_text(if state.is_some() {
                             crate::t2!(
@@ -690,59 +727,61 @@ fn presets_ui(
                         .on_disabled_hover_text(crate::i18n::tr(
                             "The model file is not in the models folder",
                         ));
-                    if btn.clicked() {
-                        p.apply(cfg);
-                        save(app, cfg);
-                        if state.is_some() {
-                            app.start_job(
-                                crate::tf!("Switching to {}", "Trocando para {}", p.name),
-                                vec![
-                                    "sh".into(),
-                                    "-c".into(),
-                                    format!("'{0}' llm down; '{0}' llm up", gfx(&[])[0]),
-                                ],
-                            );
-                        } else {
-                            app.start_job(
-                                crate::tf!("Starting {}", "Iniciando {}", p.name),
-                                gfx(&["llm", "up"]),
-                            );
+                            if btn.clicked() {
+                                p.apply(cfg);
+                                save(app, cfg);
+                                if state.is_some() {
+                                    app.start_job(
+                                        crate::tf!("Switching to {}", "Trocando para {}", p.name),
+                                        vec![
+                                            "sh".into(),
+                                            "-c".into(),
+                                            format!("'{0}' llm down; '{0}' llm up", gfx(&[])[0]),
+                                        ],
+                                    );
+                                } else {
+                                    app.start_job(
+                                        crate::tf!("Starting {}", "Iniciando {}", p.name),
+                                        gfx(&["llm", "up"]),
+                                    );
+                                }
+                            }
                         }
-                    }
-                }
-                let gpu = if p.gpu == "compute:all" || p.gpu.is_empty() {
-                    crate::i18n::tr("all cards").to_string()
-                } else {
-                    p.gpu.clone()
-                };
-                let mut info = format!("{}  ·  {}k  ·  {gpu}", p.model, p.ctx / 1024);
-                if !p.args.is_empty() {
-                    info.push_str(&format!("  ·  {}", p.args));
-                }
-                if !p.image.is_empty() {
-                    info.push_str(&format!("  ·  {}", p.image));
-                }
-                let mut t = RichText::new(info).weak();
-                if !exists {
-                    t = t.color(crate::theme::warn());
-                }
-                ui.label(t);
-                ui.horizontal(|ui| {
-                    if in_use {
-                        ui.label(
-                            RichText::new(crate::t2!("in use", "em uso")).color(crate::theme::ok()),
-                        );
-                    }
-                    if crate::theme::small(ui, crate::i18n::tr("edit")).clicked() {
-                        p.apply(cfg);
-                        app.llm_preset_name = p.name.clone();
-                    }
-                    if crate::theme::small(ui, crate::i18n::tr("delete")).clicked() {
-                        remove = Some(i);
+                        let gpu = if p.gpu == "compute:all" || p.gpu.is_empty() {
+                            crate::i18n::tr("all cards").to_string()
+                        } else {
+                            p.gpu.clone()
+                        };
+                        let mut info = format!("{}  ·  {}k  ·  {gpu}", p.model, p.ctx / 1024);
+                        if !p.args.is_empty() {
+                            info.push_str(&format!("  ·  {}", p.args));
+                        }
+                        if !p.image.is_empty() {
+                            info.push_str(&format!("  ·  {}", p.image));
+                        }
+                        ui.horizontal(|ui| {
+                            if in_use {
+                                ui.label(
+                                    RichText::new(crate::t2!("in use", "em uso"))
+                                        .color(crate::theme::ok()),
+                                );
+                            }
+                            if crate::theme::small(ui, crate::i18n::tr("edit")).clicked() {
+                                p.apply(cfg);
+                                app.llm_preset_name = p.name.clone();
+                            }
+                            if crate::theme::small(ui, crate::i18n::tr("delete")).clicked() {
+                                remove = Some(i);
+                            }
+                        });
+                        let mut t = RichText::new(info).weak();
+                        if !exists {
+                            t = t.color(crate::theme::warn());
+                        }
+                        ui.label(t);
+                        ui.end_row();
                     }
                 });
-                ui.end_row();
-            }
         });
     if let Some(i) = remove {
         let mut list = list;
@@ -771,4 +810,39 @@ fn save(app: &mut App, cfg: &LabSettings) {
             false,
         ),
     }
+}
+
+/// A start of `name` (GPU or CPU model) is still running as the current job.
+fn starting(app: &App, name: &str) -> bool {
+    app.job.as_ref().is_some_and(|j| {
+        j.finished().is_none()
+            && [
+                crate::tf!("Starting {}", "Iniciando {}", name),
+                crate::tf!("Switching to {}", "Trocando para {}", name),
+            ]
+            .contains(&j.title)
+    })
+}
+
+/// The model's button while it loads: grey, not clickable.
+fn loading_button(ui: &mut egui::Ui, name: &str) {
+    ui.add_enabled(false, egui::Button::new(format!("▶ {name}")))
+        .on_disabled_hover_text(crate::i18n::tr("loading the model..."));
+}
+
+/// The model's button once loaded: red stop, unloads it.
+fn stop_button(ui: &mut egui::Ui, name: &str) -> egui::Response {
+    ui.add(
+        egui::Button::new(RichText::new(format!("■ {name}")).color(Color32::WHITE))
+            .fill(crate::theme::err()),
+    )
+}
+
+/// Something listens on this local port.
+fn port_open(port: u16) -> bool {
+    std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        std::time::Duration::from_millis(100),
+    )
+    .is_ok()
 }

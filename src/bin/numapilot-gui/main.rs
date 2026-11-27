@@ -419,7 +419,8 @@ pub(crate) struct App {
     pub(crate) llm_presets: Option<Vec<numapilot::labcfg::LlmPreset>>,
     pub(crate) llm_preset_name: String,
     pub(crate) ai_apps: Option<Vec<numapilot::aiapps::AiApp>>,
-    pub(crate) ai_running: (Option<std::time::Instant>, Vec<bool>),
+    /// CPU models: when last read, which are running, which answer on their port (loaded).
+    pub(crate) ai_running: (Option<std::time::Instant>, Vec<bool>, Vec<bool>),
     pub(crate) ai_edit: Option<usize>,
     ctx: egui::Context,
     pub(crate) groups: Vec<Group>,
@@ -595,7 +596,7 @@ impl App {
             llm_presets: None,
             llm_preset_name: String::new(),
             ai_apps: None,
-            ai_running: (None, Vec::new()),
+            ai_running: (None, Vec::new(), Vec::new()),
             ai_edit: None,
             ctx,
             groups: vec![],
