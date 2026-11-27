@@ -1603,6 +1603,22 @@ pub const PT: &[(&str, &str)] = &[
         "a geração de quadros do numapilot faz só 2×: usando 2×",
     ),
     ("RIFE v4 lite (planned)", "RIFE v4 lite (planejado)"),
+    (
+        "MAKO FG on the game's card (open model, no Lossless Scaling needed)",
+        "MAKO FG na placa do jogo (modelo aberto, sem precisar do Lossless Scaling)",
+    ),
+    (
+        "afmf-linux on the game's card (AMD Fluid Motion Frames style, 2×)",
+        "afmf-linux na placa do jogo (no estilo do AMD Fluid Motion Frames, 2×)",
+    ),
+    (
+        "mako-launch was not found: MAKO is loaded by its variables only (layer order not guaranteed)",
+        "mako-launch não encontrado: o MAKO é carregado só pelas variáveis (ordem das camadas não garantida)",
+    ),
+    (
+        "afmf-linux makes 2× only: using 2×",
+        "o afmf-linux faz só 2×: usando 2×",
+    ),
     ("lsfg-vk is not installed", "lsfg-vk não instalado"),
     (
         "Lossless Scaling is not installed through Steam (app 993090)",

@@ -683,6 +683,26 @@ fn present_ui(app: &mut App, ui: &mut egui::Ui, ed: &mut Editor) {
         ui.label(RichText::new(note).small());
         crate::lsfg::panel(app, ui, "editor", false);
     }
+    if pr.multiplier > 1 && (pr.engine == "mako" || pr.engine == "afmf") {
+        let game_card = game_gpu
+            .as_ref()
+            .map(|g| g.alias.clone())
+            .unwrap_or_else(|| "?".into());
+        let note = if pr.engine == "mako" {
+            crate::tf!(
+                "Frame generation runs inside the game, on its card ({}), with MAKO Renderer (its open MAKO FG model, 2–5×; no minimum base FPS of its own). Started through mako-launch, which keeps lsfg-vk out of the game. Install it with GOverlay (Frame Generation) or from github.com/eugeniosegala/MAKO.",
+                "A geração de quadros roda dentro do jogo, na placa dele ({}), com o MAKO Renderer (modelo aberto MAKO FG, 2–5×; sem FPS mínimo próprio). Abre pelo mako-launch, que tira o lsfg-vk do jogo. Instale pelo GOverlay (Frame Generation) ou em github.com/eugeniosegala/MAKO.",
+                game_card
+            )
+        } else {
+            crate::tf!(
+                "Frame generation runs inside the game, on its card ({}), with afmf-linux (2×, optical flow from the picture, like AMD Fluid Motion Frames), turning off under the minimum base FPS. Not together with OptiScaler/FSR 4 INT8 in the same game. Install it with GOverlay (Frame Generation) or from github.com/serialexperimentslainnnn/afmf-linux.",
+                "A geração de quadros roda dentro do jogo, na placa dele ({}), com o afmf-linux (2×, fluxo óptico da imagem, como o AMD Fluid Motion Frames), desligando abaixo do FPS mínimo de base. Não junto com OptiScaler/FSR 4 INT8 no mesmo jogo. Instale pelo GOverlay (Frame Generation) ou em github.com/serialexperimentslainnnn/afmf-linux.",
+                game_card
+            )
+        };
+        ui.label(RichText::new(note).small());
+    }
     match &ed.present_last {
         Some(m) => {
             ui.label(

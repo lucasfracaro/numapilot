@@ -271,6 +271,17 @@ gerados (reset da fila de compute, o gamescope perde o device, o desktop fica). 
 (`nodcc` também falhou), nem as escritas da camada na imagem extra (`noimage` falhou), nem
 corrida entre threads (tudo na thread gamescope-xwm); sem geração e com 6 imagens ficou limpo.
 Chaves de diagnóstico em `NUMAPILOT_UPSCALE_FG_TEST`. Causa ainda aberta.
+Geradores do GOverlay (2026-11-27, `src/vklayers.rs`): motores `mako` e `afmf` do bloco, no jogo.
+O GOverlay (GPL-3, Pascal; o `bgmod` dele monta as variáveis) instalou no servidor, em
+~/.local/share/vulkan/implicit_layer.d: MAKO Renderer 5.0 (+ ~/.local/bin/mako-launch), afmf-linux
+1.3.1, vkBasalt, vkSumi, vkNemu. Nada copiado do GOverlay: só as variáveis documentadas. MAKO:
+`MAKO_ENV=1` + `MAKO_MULTIPLIER` etc. (valores 0/1; "false" não pega), atrás do `mako-launch`
+(isola a WSI do gamescope, ordena MangoHud com `MAKO_MANGOHUD_REAL_FRAMES=1`); "cross-GPU
+unsupported" (gpu = a do jogo). O escalonador do MAKO (`ENABLE_MAKO_SPATIAL_SCALING`) **não liga
+no gamescope aninhado** ("gamescope-wsi-surface-unproven"), por isso ficou fora. afmf-linux: só
+variáveis, Vulkan 1.1+ (no vkcube 1.0 só repete quadros; testar com o `pascube` do GOverlay, que
+demora ~15 s para abrir e não sai com SIGTERM). Os dois conferidos pelo `run` no servidor (jogo na
+gfx906-0, gamescope na gfx906-1). Falta: FPS real × mostrado num jogo de verdade.
 
 ## FSR 4 INT8 na placa do jogo (2026-11-21)
 

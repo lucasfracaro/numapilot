@@ -448,6 +448,12 @@ inside gamescope, with its SDL backend and a config of numapilot's own in
 `lsfg-vk` branch (Properties → Betas); `numapilot lsfg` (and the panel in Adjust → Presentation
 and in Settings) shows what is missing and installs it from the AUR (`lsfg-vk`) in a terminal.
 Its settings: `lsfg-vk-ui` or `~/.config/lsfg-vk/conf.toml`.
+Two more frame generators that need no Lossless Scaling, the ones GOverlay installs (Frame
+Generation tab), also in the Presentation block, both inside the game on its card: **MAKO FG**
+(MAKO Renderer, open model, 2–5×, started through its `mako-launch` with an environment-only
+profile) and **afmf-linux** (AMD Fluid Motion Frames style 2× from the picture, off under the
+minimum base FPS). numapilot only finds their Vulkan layers and sets their variables; it ships
+none of them. `numapilot upscale check` shows which are installed.
 
 ## AI and lab
 
