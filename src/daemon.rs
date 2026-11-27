@@ -18,7 +18,7 @@ use crate::topo::Topology;
 use crate::util::{format_cpulist, glob_match, is_root};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -474,6 +474,20 @@ impl Hw {
                         .entry(g.pci.clone())
                         .or_insert_with(|| p.gpu_power.clone());
                 }
+            }
+        }
+        // AI programs (llama.cpp, Ollama, PyTorch...) usually have no profile and often run in
+        // a container, and split-layer inference keeps each card busy only half the time, so
+        // the "busy 50% for 5 s" rescue rarely fires: llama.cpp on both MI50s decoded at
+        // 859/350 MHz. A card with weights of a ROCm compute process in its memory is taken
+        // back the same way. LACT puts "low" back on every DRM event (each server start).
+        for pci in kfd_compute_cards() {
+            if topo
+                .gpus
+                .iter()
+                .any(|g| g.pci == pci && g.vendor == 0x1002 && g.device != 0x13fe)
+            {
+                owned.entry(pci).or_insert_with(|| "auto".into());
             }
         }
         for (pci, prof) in &owned {
@@ -3102,9 +3116,99 @@ fn nv_offsets(pci: &str, c: &gpuctl::GpuControl) -> Result<(), String> {
     Ok(())
 }
 
+/// VRAM a ROCm compute process must hold on a card to count as using it: the runtime maps a
+/// little on every card it sees at start, a loaded model holds gigabytes.
+const KFD_MIN_VRAM: u64 = 256 << 20;
+
+/// PCI addresses of the cards on which some ROCm (KFD) process holds at least
+/// `KFD_MIN_VRAM`: /sys/class/kfd/kfd/proc/<pid>/vram_<gpu_id>, with the gpu_id mapped to its
+/// PCI address through the KFD topology (location_id = bus << 8 | devfn). Readable by root.
+fn kfd_compute_cards() -> BTreeSet<String> {
+    let kfd = crate::util::sys("class/kfd/kfd");
+    let mut ids: HashMap<String, String> = HashMap::new();
+    if let Ok(rd) = std::fs::read_dir(kfd.join("topology/nodes")) {
+        for n in rd.flatten() {
+            let id = crate::util::read_trim(n.path().join("gpu_id")).unwrap_or_default();
+            if id.is_empty() || id == "0" {
+                continue;
+            }
+            let props = std::fs::read_to_string(n.path().join("properties")).unwrap_or_default();
+            let val = |k: &str| {
+                props.lines().find_map(|l| {
+                    let (a, b) = l.split_once(' ')?;
+                    (a == k).then(|| b.trim().parse::<u64>().ok()).flatten()
+                })
+            };
+            if let Some(loc) = val("location_id") {
+                let dom = val("domain").unwrap_or(0);
+                ids.insert(
+                    id,
+                    format!(
+                        "{dom:04x}:{:02x}:{:02x}.{:x}",
+                        loc >> 8,
+                        (loc >> 3) & 0x1f,
+                        loc & 7
+                    ),
+                );
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    let Ok(rd) = std::fs::read_dir(kfd.join("proc")) else {
+        return out;
+    };
+    for p in rd.flatten() {
+        let Ok(files) = std::fs::read_dir(p.path()) else {
+            continue;
+        };
+        for f in files.flatten() {
+            let name = f.file_name().to_string_lossy().into_owned();
+            let Some(id) = name.strip_prefix("vram_") else {
+                continue;
+            };
+            let used = crate::util::read_trim(f.path())
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(0);
+            if used >= KFD_MIN_VRAM {
+                if let Some(pci) = ids.get(id) {
+                    out.insert(pci.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kfd_compute_cards_maps_vram_to_pci() {
+        let root = std::env::temp_dir().join(format!("np-kfd-{}", std::process::id()));
+        let k = root.join("class/kfd/kfd");
+        for (n, id, loc) in [(1, "0", 0), (2, "40493", 1536), (3, "27240", 2304)] {
+            let d = k.join(format!("topology/nodes/{n}"));
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("gpu_id"), id).unwrap();
+            std::fs::write(
+                d.join("properties"),
+                format!("cpu_cores_count 0\nlocation_id {loc}\ndomain 0\n"),
+            )
+            .unwrap();
+        }
+        let pr = k.join("proc/1234");
+        std::fs::create_dir_all(&pr).unwrap();
+        std::fs::write(pr.join("vram_40493"), "12884901888").unwrap(); // 12 GiB: a model
+        std::fs::write(pr.join("vram_27240"), "2097152").unwrap(); // 2 MiB: runtime only
+        let _g = crate::util::test_sysfs_lock(&root);
+        let got = kfd_compute_cards();
+        std::fs::remove_dir_all(&root).ok();
+        assert_eq!(
+            got.into_iter().collect::<Vec<_>>(),
+            vec!["0000:06:00.0".to_string()]
+        );
+    }
 
     #[test]
     fn profile_with_exact_cpu_list_keeps_it() {

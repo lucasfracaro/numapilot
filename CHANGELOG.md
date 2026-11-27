@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- AI programs: a card holding a ROCm compute process's model (256 MiB or more of its VRAM,
+  read from /sys/class/kfd) is taken back from a "low" level set by another tool within 5 s,
+  like the cards of profiled programs. LACT puts "low" back on both MI50s at every DRM event,
+  and llama.cpp split across them keeps each card busy only half the time, so it decoded at
+  859 MHz core / 350 MHz memory.
 - FSR 4 on wave64 cards (MI50/Vega) now installs AMD's FSR 4.0.2 INT8 build by default (pinned
   copy kept by fsr4-gfx803, SHA-256 checked); `upscale install … --fsr4 --dll vega|fork` picks
   the 4.1.1 rebuilds instead. Each DLL is cached in its own folder.
