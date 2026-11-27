@@ -654,64 +654,72 @@ fn presets_ui(
     }
     let running_model = cfg.get("LLM_MODEL");
     let mut remove = None;
-    egui::Grid::new("llm-presets")
-        .num_columns(3)
-        .spacing([10.0, 6.0])
+    // the details line is long (file, arguments, image): the buttons come before it and the
+    // table scrolls sideways, so "edit" and "delete" show on a Full HD screen too
+    egui::ScrollArea::horizontal()
+        .id_salt("llm-presets-scroll")
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
         .show(ui, |ui| {
-            for (i, p) in list.iter().enumerate() {
-                let exists = models_dir.join(&p.model).is_file();
-                let btn = ui
-                    .add_enabled(
-                        state.is_none() && exists,
-                        egui::Button::new(format!("▶ {}", p.name)),
-                    )
-                    .on_hover_text(crate::i18n::tr("Start the AI server with this model"))
-                    .on_disabled_hover_text(if exists {
-                        crate::i18n::tr("Stop the AI server first")
-                    } else {
-                        crate::i18n::tr("The model file is not in the models folder")
-                    });
-                if btn.clicked() {
-                    p.apply(cfg);
-                    save(app, cfg);
-                    app.start_job(
-                        crate::tf!("Starting {}", "Iniciando {}", p.name),
-                        gfx(&["llm", "up"]),
-                    );
-                }
-                let gpu = if p.gpu == "compute:all" || p.gpu.is_empty() {
-                    crate::i18n::tr("all cards").to_string()
-                } else {
-                    p.gpu.clone()
-                };
-                let mut info = format!("{}  ·  {}k  ·  {gpu}", p.model, p.ctx / 1024);
-                if !p.args.is_empty() {
-                    info.push_str(&format!("  ·  {}", p.args));
-                }
-                if !p.image.is_empty() {
-                    info.push_str(&format!("  ·  {}", p.image));
-                }
-                let mut t = RichText::new(info).weak();
-                if !exists {
-                    t = t.color(crate::theme::warn());
-                }
-                ui.label(t);
-                ui.horizontal(|ui| {
-                    if state.is_some() && p.model == running_model {
-                        ui.label(
-                            RichText::new(crate::t2!("in use", "em uso")).color(crate::theme::ok()),
-                        );
-                    }
-                    if crate::theme::small(ui, crate::i18n::tr("edit")).clicked() {
-                        p.apply(cfg);
-                        app.llm_preset_name = p.name.clone();
-                    }
-                    if crate::theme::small(ui, crate::i18n::tr("delete")).clicked() {
-                        remove = Some(i);
+            egui::Grid::new("llm-presets")
+                .num_columns(3)
+                .spacing([10.0, 6.0])
+                .show(ui, |ui| {
+                    for (i, p) in list.iter().enumerate() {
+                        let exists = models_dir.join(&p.model).is_file();
+                        let btn = ui
+                            .add_enabled(
+                                state.is_none() && exists,
+                                egui::Button::new(format!("▶ {}", p.name)),
+                            )
+                            .on_hover_text(crate::i18n::tr("Start the AI server with this model"))
+                            .on_disabled_hover_text(if exists {
+                                crate::i18n::tr("Stop the AI server first")
+                            } else {
+                                crate::i18n::tr("The model file is not in the models folder")
+                            });
+                        if btn.clicked() {
+                            p.apply(cfg);
+                            save(app, cfg);
+                            app.start_job(
+                                crate::tf!("Starting {}", "Iniciando {}", p.name),
+                                gfx(&["llm", "up"]),
+                            );
+                        }
+                        let gpu = if p.gpu == "compute:all" || p.gpu.is_empty() {
+                            crate::i18n::tr("all cards").to_string()
+                        } else {
+                            p.gpu.clone()
+                        };
+                        let mut info = format!("{}  ·  {}k  ·  {gpu}", p.model, p.ctx / 1024);
+                        if !p.args.is_empty() {
+                            info.push_str(&format!("  ·  {}", p.args));
+                        }
+                        if !p.image.is_empty() {
+                            info.push_str(&format!("  ·  {}", p.image));
+                        }
+                        ui.horizontal(|ui| {
+                            if state.is_some() && p.model == running_model {
+                                ui.label(
+                                    RichText::new(crate::t2!("in use", "em uso"))
+                                        .color(crate::theme::ok()),
+                                );
+                            }
+                            if crate::theme::small(ui, crate::i18n::tr("edit")).clicked() {
+                                p.apply(cfg);
+                                app.llm_preset_name = p.name.clone();
+                            }
+                            if crate::theme::small(ui, crate::i18n::tr("delete")).clicked() {
+                                remove = Some(i);
+                            }
+                        });
+                        let mut t = RichText::new(info).weak();
+                        if !exists {
+                            t = t.color(crate::theme::warn());
+                        }
+                        ui.label(t);
+                        ui.end_row();
                     }
                 });
-                ui.end_row();
-            }
         });
     if let Some(i) = remove {
         let mut list = list;

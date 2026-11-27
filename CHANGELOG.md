@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- AI server tab: the saved models' "edit" and "delete" buttons come right after the name, and
+  the row scrolls sideways when its details are wider than the window (they were cut off on a
+  Full HD screen).
 - AI programs: a card holding a ROCm compute process's model (256 MiB or more of its VRAM,
   read from /sys/class/kfd) is taken back from a "low" level set by another tool within 5 s,
   like the cards of profiled programs. LACT puts "low" back on both MI50s at every DRM event,
