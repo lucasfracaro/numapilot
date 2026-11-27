@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- gfx906-rocm (AI server, lab, `container run`): with cards chosen by numapilot, a ROCm container
+  now gets every render node plus `ROCR_VISIBLE_DEVICES` for the chosen ones. Passing only the
+  chosen render nodes made ROCr 10.1 see no card at all on the server (the RX 470 is in the KFD
+  topology), so llama.cpp silently ran on the CPU at ~5 tok/s.
 - AI server tab: each model has one button. ▶ starts it and stays grey while the model loads
   (GPU: until llama.cpp answers; CPU: until its port opens), then turns into a red ■ that stops
   and unloads it. The saved models' "edit" and "delete" come right after the name and the row

@@ -422,9 +422,7 @@ cmd_container() {
         local args=(run --rm -it --device=/dev/kfd --ipc=host --security-opt seccomp=unconfined
             -v "$PWD:$PWD" -w "$PWD")
         # Só as GPUs escolhidas pelo numapilot; sem ele, todas.
-        local renders=${NUMAPILOT_RENDER:-}
-        if [[ -z $renders ]]; then renders=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true); fi
-        for r in $renders; do args+=(--device="$r"); done
+        mapfile -t -O "${#args[@]}" args < <(render_devices)
         if [[ $eng == podman && $EUID -ne 0 ]]; then
             args+=(--group-add keep-groups)
             # Podman sem root herda a afinidade do numapilot (cpuset via cgroup costuma não estar delegado).
@@ -536,9 +534,7 @@ lab_up() {
         -v "$HOME/.cache/huggingface:/root/.cache/huggingface"
         -v "$(lab_keys):/lab/authorized_keys:ro")
     # GPUs: as escolhidas pelo numapilot (numapilot run --gpu ... -- gfx906-rocm lab up); senão todas.
-    local renders=${NUMAPILOT_RENDER:-} r
-    [[ -n $renders ]] || renders=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true)
-    for r in $renders; do args+=(--device="$r"); done
+    mapfile -t -O "${#args[@]}" args < <(render_devices)
     mapfile -t -O "${#args[@]}" args < <(stack_devices)
     mapfile -t -O "${#args[@]}" args < <(stack_env)
     if [[ $eng == podman && $EUID -ne 0 ]]; then
@@ -753,9 +749,10 @@ llm_run() {
     local args=(run -d --name "$LLM_NAME" --restart "$restart" --ipc=host
         --security-opt seccomp=unconfined -p "$LLM_BIND:$LLM_PORT:8080" -v "$LLM_MODELS:/models:ro"
         --label io.numapilot.model="$model" --entrypoint sh)
-    local renders=${NUMAPILOT_RENDER:-} r ngpu=0
+    local renders=${NUMAPILOT_RENDER:-} ngpu
     [[ -n $renders ]] || renders=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true)
-    for r in $renders; do args+=(--device="$r"); ngpu=$((ngpu + 1)); done
+    ngpu=$(wc -w <<<"$renders")
+    mapfile -t -O "${#args[@]}" args < <(render_devices)
     mapfile -t -O "${#args[@]}" args < <(stack_devices)
     if [[ $eng == podman && $EUID -ne 0 ]]; then
         args+=(--group-add keep-groups)
@@ -1024,6 +1021,25 @@ stack_env() { # variáveis extras por placa (uma linha cada)
         grep -qil 0x1002 /sys/bus/pci/devices/*/vendor 2>/dev/null; then
         printf '%s\n' -e GGML_VK_PREFER_HOST_MEMORY=1
     fi
+    return 0
+}
+
+render_devices() { # --device (and ROCR_VISIBLE_DEVICES) for the cards numapilot chose; all of them without it
+    local renders=${NUMAPILOT_RENDER:-} all r
+    all=$(compgen -G '/dev/dri/renderD*' | tr '\n' ' ' || true)
+    case $GPU_STACK in
+    gfx906 | rocm)
+        # ROCr gives up on every card ("no ROCm-capable device") when a card listed in the KFD
+        # topology has no render node in the container (the RX 470 next to the two MI50s):
+        # pass every render node and pick the cards with ROCR_VISIBLE_DEVICES instead.
+        if [[ -n $renders && -n ${ROCR_VISIBLE_DEVICES:-} ]]; then
+            printf -- '-e\nROCR_VISIBLE_DEVICES=%s\n' "$ROCR_VISIBLE_DEVICES"
+            renders=$all
+        fi
+        ;;
+    esac
+    [[ -n $renders ]] || renders=$all
+    for r in $renders; do printf -- '--device=%s\n' "$r"; done
     return 0
 }
 
