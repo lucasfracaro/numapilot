@@ -434,6 +434,12 @@ com o backend SDL e uma configuração própria do numapilot em
 (Propriedades → Betas); `numapilot lsfg` (e o painel em Ajustar → Apresentação e em Configurações)
 mostra o que falta e instala pelo AUR (`lsfg-vk`) num terminal. Configurações: `lsfg-vk-ui` ou
 `~/.config/lsfg-vk/conf.toml`.
+Mais dois geradores de quadros que não precisam do Lossless Scaling, os que o GOverlay instala (aba
+Frame Generation), também no bloco Apresentação, os dois dentro do jogo, na placa dele: **MAKO FG**
+(MAKO Renderer, modelo aberto, 2–5×, aberto pelo `mako-launch` dele com um perfil só de variáveis)
+e **afmf-linux** (2× no estilo do AMD Fluid Motion Frames, pela imagem; desliga abaixo do FPS mínimo
+de base). O numapilot só acha as camadas Vulkan deles e põe as variáveis; não distribui nenhum.
+`numapilot upscale check` mostra quais estão instalados.
 
 ## IA e laboratório
 

@@ -8,6 +8,12 @@
   scrolls sideways (they were cut off on a Full HD screen).
 - AI server, saved models: the model loaded now shows a ⏹ button that stops the server, and the
   ▶ of another saved model works while the server runs (stops the current one, starts that one).
+- Presentation block: two more frame generators, the ones GOverlay offers, inside the game on its
+  card: "mako" (MAKO Renderer's open MAKO FG, 2–5×, through `mako-launch` with
+  `MAKO_ENV=1`, MangoHud counting only the game's frames) and "afmf" (afmf-linux, 2×,
+  `AFMF_GAMESCOPE=1`, the block's minimum base FPS as `AFMF_MIN_FPS`). Both keep lsfg-vk out of
+  the game. Found by their Vulkan layer manifests (`vklayers`); `upscale check` lists them.
+  Tested on the server (MI50 gfx906-0 game, gamescope on gfx906-1): both generate.
 - AI programs: a card holding a ROCm compute process's model (256 MiB or more of its VRAM,
   read from /sys/class/kfd) is taken back from a "low" level set by another tool within 5 s,
   like the cards of profiled programs. LACT puts "low" back on both MI50s at every DRM event,

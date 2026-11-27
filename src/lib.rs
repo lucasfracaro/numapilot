@@ -63,6 +63,7 @@ pub mod undervolt;
 pub mod upscale;
 pub mod util;
 pub mod vkbench;
+pub mod vklayers;
 pub mod vm;
 pub mod watch;
 pub mod web;

@@ -82,8 +82,9 @@ pub fn upscale_layer_installed() -> bool {
 /// Frame generators: (value, name, ready). lsfg-vk is a Vulkan layer: "lsfg" loads it in the game
 /// (generates on the game's card, with the user's own lsfg-vk settings), "lsfg-out" only in
 /// gamescope (generates on the output card, with a config of numapilot's own). Block matching and
-/// RIFE are the chain on the output card (planned).
-pub const ENGINES: [(&str, &str, bool); 4] = [
+/// RIFE are the chain on the output card (planned). "mako" and "afmf" are other projects' layers
+/// (the ones GOverlay offers, `vklayers`), loaded in the game: they generate on the game's card.
+pub const ENGINES: [(&str, &str, bool); 6] = [
     (
         "lsfg",
         "Lossless Scaling on the game's card (lsfg-vk)",
@@ -97,6 +98,16 @@ pub const ENGINES: [(&str, &str, bool); 4] = [
     (
         "blockmatch",
         "numapilot: block matching on the output card (2×, with a layer model)",
+        true,
+    ),
+    (
+        "mako",
+        "MAKO FG on the game's card (open model, no Lossless Scaling needed)",
+        true,
+    ),
+    (
+        "afmf",
+        "afmf-linux on the game's card (AMD Fluid Motion Frames style, 2×)",
         true,
     ),
     ("rife", "RIFE v4 lite (planned)", false),
@@ -173,6 +184,8 @@ pub struct Plan {
     pub warnings: Vec<String>,
     /// MangoHud measures real × shown (set by the launcher when it is installed).
     pub measuring: bool,
+    /// Launcher put in front of the game, after its variables (MAKO's `mako-launch`).
+    pub game_wrapper: Vec<String>,
 }
 
 impl Plan {
@@ -186,6 +199,7 @@ impl Plan {
             }
             c.extend(self.game_env.iter().map(|(k, v)| format!("{k}={v}")));
         }
+        c.extend(self.game_wrapper.iter().cloned());
         c
     }
 }
@@ -193,7 +207,14 @@ impl Plan {
 /// Builds the launch: `gs` is the gamescope block in effect (the profile's or the default one),
 /// `out` the output card when it is not the game's (`decide::resolve_out_gpu`).
 pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg) -> Plan {
-    let mut p = plan_with(pr, gs, out, lsfg, upscale_layer_installed());
+    let mut p = plan_full(
+        pr,
+        gs,
+        out,
+        lsfg,
+        upscale_layer_installed(),
+        &crate::vklayers::Found::detect(),
+    );
     if model_missing(&pr.upscaler) {
         // `run` downloads it first; here only when that failed
         p.warnings.push(crate::tf!(
@@ -207,6 +228,18 @@ pub fn plan(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg) -> Plan
 
 /// `plan` with whether numapilot's upscaling layer is installed given (tests).
 pub fn plan_with(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg, layer: bool) -> Plan {
+    plan_full(pr, gs, out, lsfg, layer, &crate::vklayers::Found::default())
+}
+
+/// `plan_with` with the other projects' frame generators found on the machine given (tests).
+pub fn plan_full(
+    pr: &Present,
+    gs: &Gamescope,
+    out: Option<&Gpu>,
+    lsfg: Lsfg,
+    layer: bool,
+    others: &crate::vklayers::Found,
+) -> Plan {
     let mut warnings = vec![];
     let mut g = gs.clone();
     g.fsr = false;
@@ -285,7 +318,8 @@ pub fn plan_with(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg, la
             o.alias
         ));
     }
-    let game_env = vec![];
+    let mut game_env = vec![];
+    let mut game_wrapper = vec![];
     let mut lsfg_out = false;
     let mut multiplier = pr.multiplier.max(1);
     if multiplier > 1 {
@@ -343,6 +377,68 @@ pub fn plan_with(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg, la
                 }
                 set(&mut gamescope_env, "NUMAPILOT_UPSCALE_FG", "2".into());
             }
+        } else if pr.engine == "mako" {
+            if !others.mako {
+                warnings.push(crate::tf!(
+                    "MAKO Renderer is not installed (GOverlay → Frame Generation, or {}): no frame generation",
+                    "o MAKO Renderer não está instalado (GOverlay → Frame Generation, ou {}): sem geração de quadros",
+                    crate::vklayers::MAKO.url
+                ));
+                multiplier = 1;
+            } else {
+                // MAKO's environment-only profile (no file of the user's is touched); its own
+                // launcher, when there, orders the layers (MangoHud counting only the game's
+                // frames) and keeps lsfg-vk out of the game
+                for (k, v) in [
+                    ("ENABLE_MAKO", "1".to_string()),
+                    ("MAKO_ENV", "1".into()),
+                    ("MAKO_FRAME_GENERATION_PROVISIONED", "1".into()),
+                    ("MAKO_FRAME_GENERATION_ENABLED", "1".into()),
+                    ("MAKO_MULTIPLIER", multiplier.clamp(2, 5).to_string()),
+                    ("MAKO_MANGOHUD_REAL_FRAMES", "1".into()),
+                    ("DISABLE_LSFGVK", "1".into()),
+                    ("DISABLE_LSFG", "1".into()),
+                    ("DISABLE_AFMF", "1".into()),
+                ] {
+                    set(&mut game_env, k, v);
+                }
+                match &others.mako_launch {
+                    Some(l) => game_wrapper.push(l.to_string_lossy().into_owned()),
+                    None => warnings.push(
+                        crate::i18n::tr(
+                            "mako-launch was not found: MAKO is loaded by its variables only (layer order not guaranteed)",
+                        )
+                        .into(),
+                    ),
+                }
+            }
+        } else if pr.engine == "afmf" {
+            if !others.afmf {
+                warnings.push(crate::tf!(
+                    "afmf-linux is not installed (GOverlay → Frame Generation, or {}): no frame generation",
+                    "o afmf-linux não está instalado (GOverlay → Frame Generation, ou {}): sem geração de quadros",
+                    crate::vklayers::AFMF.url
+                ));
+                multiplier = 1;
+            } else {
+                if multiplier > 2 {
+                    warnings.push(crate::i18n::tr("afmf-linux makes 2× only: using 2×").into());
+                    multiplier = 2;
+                }
+                // the game always runs inside gamescope here: more swapchain images, and the
+                // layer passes through in gamescope itself. lsfg-vk and MAKO in the same game
+                // fight over the presents (afmf-linux's README: lsfg-vk even hangs it).
+                for (k, v) in [
+                    ("AFMF_ENABLE", "1".to_string()),
+                    ("AFMF_GAMESCOPE", "1".into()),
+                    ("AFMF_MIN_FPS", pr.min_fps.to_string()),
+                    ("DISABLE_LSFGVK", "1".into()),
+                    ("DISABLE_LSFG", "1".into()),
+                    ("DISABLE_MAKO", "1".into()),
+                ] {
+                    set(&mut game_env, k, v);
+                }
+            }
         } else if pr.engine == "lsfg" {
             // lsfg-vk inside the game, with the user's own settings (multiplier included).
             warnings.push(crate::tf!(
@@ -361,6 +457,7 @@ pub fn plan_with(pr: &Present, gs: &Gamescope, out: Option<&Gpu>, lsfg: Lsfg, la
         multiplier,
         warnings,
         measuring: false,
+        game_wrapper,
     }
 }
 
@@ -954,6 +1051,64 @@ mod tests {
         // gamescope's own upscaler: no layer, no frame generation
         let p = fg("fsr1", 2);
         assert!(!has_fg(&p) && p.multiplier == 1 && !p.warnings.is_empty());
+    }
+
+    #[test]
+    fn mako_and_afmf_in_the_game() {
+        use crate::vklayers::Found;
+        let gs = Gamescope {
+            render_w: Some(1280),
+            render_h: Some(720),
+            out_w: Some(2560),
+            out_h: Some(1440),
+            ..Default::default()
+        };
+        let fg = |engine: &str, mult: u8, found: &Found| {
+            plan_full(
+                &Present {
+                    upscaler: "fsr1".into(),
+                    multiplier: mult,
+                    engine: engine.into(),
+                    min_fps: 45,
+                    ..Default::default()
+                },
+                &gs,
+                None,
+                Lsfg::Missing,
+                true,
+                found,
+            )
+        };
+        let has = |p: &Plan, k: &str, v: &str| p.game_env.contains(&(k.into(), v.into()));
+        // MAKO: variables only for the game, through mako-launch, 3× kept
+        let p = fg("mako", 3, &Found::all());
+        assert_eq!(p.multiplier, 3);
+        assert!(has(&p, "ENABLE_MAKO", "1") && has(&p, "MAKO_MULTIPLIER", "3"));
+        assert!(has(&p, "DISABLE_LSFGVK", "1") && has(&p, "DISABLE_AFMF", "1"));
+        assert!(p.gamescope_env.is_empty() && p.warnings.is_empty());
+        assert_eq!(
+            p.game_prefix(vec![]).last().map(String::as_str),
+            Some("/usr/bin/mako-launch")
+        );
+        // the filter of the output card stays
+        assert!(p.gamescope.windows(2).any(|w| w == ["-F", "fsr"]));
+        // without the launcher: variables only, with a warning
+        let mut f = Found::all();
+        f.mako_launch = None;
+        let p = fg("mako", 2, &f);
+        assert!(p.game_wrapper.is_empty() && p.multiplier == 2 && p.warnings.len() == 1);
+        // not installed: no generation
+        let p = fg("mako", 2, &Found::default());
+        assert!(p.multiplier == 1 && p.game_env.is_empty() && !p.warnings.is_empty());
+
+        // afmf-linux: 2× only, gamescope mode, the profile's minimum
+        let p = fg("afmf", 3, &Found::all());
+        assert_eq!(p.multiplier, 2);
+        assert!(has(&p, "AFMF_ENABLE", "1") && has(&p, "AFMF_GAMESCOPE", "1"));
+        assert!(has(&p, "AFMF_MIN_FPS", "45") && has(&p, "DISABLE_MAKO", "1"));
+        assert!(p.game_wrapper.is_empty() && p.warnings.len() == 1);
+        let p = fg("afmf", 2, &Found::default());
+        assert!(p.multiplier == 1 && p.game_env.is_empty());
     }
 
     #[test]

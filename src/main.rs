@@ -748,6 +748,17 @@ fn real_main() -> Result<()> {
                         "FSR 4 runs inside the game: only games with DLSS, FSR 2+ or XeSS, through Proton. Not in online games (anti-cheat)."
                     )
                 );
+                // frame generators of other projects (the ones GOverlay installs)
+                for (ok, line) in numapilot::vklayers::report() {
+                    println!(
+                        "{} {line}",
+                        if ok {
+                            "OK     "
+                        } else {
+                            numapilot::t2!("NO     ", "NÃO   ")
+                        }
+                    );
+                }
                 return Ok(());
             }
             if action == "fetch" {

@@ -99,7 +99,7 @@ pub struct Present {
     pub upscaler: String,
     /// Frames shown per real frame: 1 = no frame generation, 2 = 2×, 3 = 3×.
     pub multiplier: u8,
-    /// Frame generator: lsfg | blockmatch | rife (`present::ENGINES`).
+    /// Frame generator: lsfg | lsfg-out | blockmatch | mako | afmf | rife (`present::ENGINES`).
     pub engine: String,
     /// Base FPS under which frame generation turns off (below ~40 it looks bad).
     pub min_fps: u32,
