@@ -2397,7 +2397,6 @@ pub const PT: &[(&str, &str)] = &[
         "Start the AI server with this model",
         "Iniciar o servidor de IA com este modelo",
     ),
-    ("Stop the AI server first", "Pare o servidor de IA antes"),
     (
         "The model file is not in the models folder",
         "O arquivo do modelo não está na pasta de modelos",

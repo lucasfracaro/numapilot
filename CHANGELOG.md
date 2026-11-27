@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- AI server, saved models: the model loaded now shows a ⏹ button that stops the server, and the
+  ▶ of another saved model works while the server runs (stops the current one, starts that one).
 - AI programs: a card holding a ROCm compute process's model (256 MiB or more of its VRAM,
   read from /sys/class/kfd) is taken back from a "low" level set by another tool within 5 s,
   like the cards of profiled programs. LACT puts "low" back on both MI50s at every DRM event,

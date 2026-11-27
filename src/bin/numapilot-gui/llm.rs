@@ -660,24 +660,55 @@ fn presets_ui(
         .show(ui, |ui| {
             for (i, p) in list.iter().enumerate() {
                 let exists = models_dir.join(&p.model).is_file();
-                let btn = ui
-                    .add_enabled(
-                        state.is_none() && exists,
-                        egui::Button::new(format!("▶ {}", p.name)),
-                    )
-                    .on_hover_text(crate::i18n::tr("Start the AI server with this model"))
-                    .on_disabled_hover_text(if exists {
-                        crate::i18n::tr("Stop the AI server first")
-                    } else {
-                        crate::i18n::tr("The model file is not in the models folder")
-                    });
-                if btn.clicked() {
-                    p.apply(cfg);
-                    save(app, cfg);
-                    app.start_job(
-                        crate::tf!("Starting {}", "Iniciando {}", p.name),
-                        gfx(&["llm", "up"]),
-                    );
+                let in_use = state.is_some() && p.model == running_model;
+                if in_use {
+                    // The model loaded now: stop it here, to free the cards or switch by hand.
+                    if ui
+                        .button(format!("⏹ {}", p.name))
+                        .on_hover_text(crate::t2!(
+                            "Stop the AI server (unloads this model)",
+                            "Parar o servidor de IA (descarrega este modelo)"
+                        ))
+                        .clicked()
+                    {
+                        app.start_job(
+                            crate::i18n::tr("Stopping the AI server"),
+                            gfx(&["llm", "down"]),
+                        );
+                    }
+                } else {
+                    let btn = ui
+                        .add_enabled(exists, egui::Button::new(format!("▶ {}", p.name)))
+                        .on_hover_text(if state.is_some() {
+                            crate::t2!(
+                                "Stop the model loaded now and start the AI server with this one",
+                                "Parar o modelo carregado agora e iniciar o servidor de IA com este"
+                            )
+                        } else {
+                            crate::i18n::tr("Start the AI server with this model")
+                        })
+                        .on_disabled_hover_text(crate::i18n::tr(
+                            "The model file is not in the models folder",
+                        ));
+                    if btn.clicked() {
+                        p.apply(cfg);
+                        save(app, cfg);
+                        if state.is_some() {
+                            app.start_job(
+                                crate::tf!("Switching to {}", "Trocando para {}", p.name),
+                                vec![
+                                    "sh".into(),
+                                    "-c".into(),
+                                    format!("'{0}' llm down; '{0}' llm up", gfx(&[])[0]),
+                                ],
+                            );
+                        } else {
+                            app.start_job(
+                                crate::tf!("Starting {}", "Iniciando {}", p.name),
+                                gfx(&["llm", "up"]),
+                            );
+                        }
+                    }
                 }
                 let gpu = if p.gpu == "compute:all" || p.gpu.is_empty() {
                     crate::i18n::tr("all cards").to_string()
@@ -697,7 +728,7 @@ fn presets_ui(
                 }
                 ui.label(t);
                 ui.horizontal(|ui| {
-                    if state.is_some() && p.model == running_model {
+                    if in_use {
                         ui.label(
                             RichText::new(crate::t2!("in use", "em uso")).color(crate::theme::ok()),
                         );
